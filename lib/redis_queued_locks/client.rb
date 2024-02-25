@@ -15,18 +15,20 @@ class RedisQueuedLocks::Client
     setting :default_lock_ttl, 10_000 # NOTE: milliseconds
     setting :default_queue_ttl, 5 # NOTE: seconds
     setting :lock_release_batch_size, 100
+    setting :instrumenter, RedisQueuedLocks::Instrument::VoidNotifier
 
     # TODO: setting :logger, Logger.new(IO::NULL)
     # TODO: setting :debug, true/false
 
-    validate 'retry_count', :integer
-    validate 'retry_delay', :integer
-    validate 'retry_jitter', :integer
-    validate 'acquire_timeout', :integer
-    validate 'exp_precision', :integer
-    validate 'default_lock_tt', :integer
-    validate 'default_queue_ttl', :integer
-    validate 'lock_release_batch_size', :integer
+    validate('retry_count', :integer)
+    validate('retry_delay', :integer)
+    validate('retry_jitter', :integer)
+    validate('acquire_timeout', :integer)
+    validate('exp_precision', :integer)
+    validate('default_lock_tt', :integer)
+    validate('default_queue_ttl', :integer)
+    validate('lock_release_batch_size', :integer)
+    validate('instrumenter') { |instr| RedisQueuedLocks::Instrument.valid_interface?(instr) }
   end
 
   # @return [RedisClient]
@@ -67,6 +69,8 @@ class RedisQueuedLocks::Client
   #   A time-interval between the each retry (in milliseconds).
   # @option retry_jitter [Integer]
   #   Time-shift range for retry-delay (in milliseconds).
+  # @option instrumenter [#notify]
+  #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
   # @param [Block]
   #   A block of code that should be executed after the successfully acquired lock.
   # @return [Hash<Symbol,Any>]
@@ -84,6 +88,7 @@ class RedisQueuedLocks::Client
     retry_count: config[:retry_count],
     retry_delay: config[:retry_delay],
     retry_jitter: config[:retry_jitter],
+    raise_errors: false,
     &block
   )
     RedisQueuedLocks::Acquier.acquire_lock!(
@@ -97,6 +102,38 @@ class RedisQueuedLocks::Client
       retry_count:,
       retry_delay:,
       retry_jitter:,
+      raise_errors:,
+      &block
+    )
+  end
+
+  # @note See #lock method signature.
+  #
+  # @api public
+  # @since 0.1.0
+  def lock!(
+    lock_name,
+    process_id: RedisQueuedLocks::Resource.get_process_id,
+    thread_id: RedisQueuedLocks::Resource.get_thread_id,
+    ttl: config[:default_lock_ttl],
+    queue_ttl: config[:default_queue_ttl],
+    timeout: config[:acquire_timeout],
+    retry_count: config[:retry_count],
+    retry_delay: config[:retry_delay],
+    retry_jitter: config[:retry_jitter],
+    &block
+  )
+    lock(
+      lock_name,
+      process_id:,
+      thread_id:,
+      ttl:,
+      queue_ttl:,
+      timeout:,
+      retry_count:,
+      retry_delay:,
+      retry_jitter:,
+      raise_errors: true,
       &block
     )
   end

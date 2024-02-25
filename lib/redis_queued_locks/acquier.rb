@@ -47,6 +47,8 @@ module RedisQueuedLocks::Acquier
     #   A time-interval between the each retry (in milliseconds).
     # @option retry_jitter [Integer]
     #   Time-shift range for retry-delay (in milliseconds).
+    # @option raise_errors [Boolean]
+    #   Raise errors on exceptional cases.
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
     # @return [Hash<Symbol,Any>]
@@ -66,6 +68,7 @@ module RedisQueuedLocks::Acquier
       retry_count:,
       retry_delay:,
       retry_jitter:,
+      raise_errors:,
       &block
     )
       # Step 1: prepare lock requirements (generate lock name, calc lock ttl, etc).
@@ -76,11 +79,20 @@ module RedisQueuedLocks::Acquier
       acquier_position = RedisQueuedLocks::Resource.calc_initial_acquier_position
 
       # Step X: intermediate result observer
-      acq_process = { lock_info: {}, should_try: true, tries: 0, acquired: false, result: nil }
+      acq_process = {
+        lock_info: {},
+        should_try: true,
+        tries: 0,
+        acquired: false,
+        result: nil,
+        acq_time: nil # NOTE: in milliseconds
+      }
       acq_dequeue = -> { dequeue_from_lock_queue(redis, lock_key_queue, acquier_id) }
 
       # Step 2: try to lock with timeout
-      with_timeout(timeout, lock_key, on_timeout: acq_dequeue) do
+      with_timeout(timeout, lock_key, raise_errors, on_timeout: acq_dequeue) do
+        acq_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
+
         # Step 2.1: caclically try to obtain the lock
         while acq_process[:should_try]
           try_to_lock(
@@ -93,6 +105,9 @@ module RedisQueuedLocks::Acquier
             queue_ttl
           ) => { ok:, result: }
 
+          acq_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
+          acq_time = ((acq_end_time - acq_start_time) * 1_000).ceil
+
           # Step X: save the intermediate results to the result observer
           acq_process[:result] = result
 
@@ -102,6 +117,7 @@ module RedisQueuedLocks::Acquier
             acq_process[:lock_info] = result
             acq_process[:acquired] = true
             acq_process[:should_try] = false
+            acq_process[:acq_time] = acq_time
           else
             # Step 2.1.b: failed acquirement => retry
             acq_process[:tries] += 1
@@ -125,7 +141,7 @@ module RedisQueuedLocks::Acquier
       if acq_process[:acquired]
         # Step 3.a: acquired successfully => run logic or return the result of acquirement
         if block_given?
-          yield_with_expire(redis, lock_key, &block)
+          yield_with_expire(redis, lock_key, &block) # INSTRUMENT: lock release
         else
           { ok: true, result: acq_process[:lock_info] }
         end
@@ -154,6 +170,7 @@ module RedisQueuedLocks::Acquier
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
 
+      # INSTRUMENT: lock release
       result = fully_release_lock(redis, lock_key, lock_key_queue)
       { ok: true, result: result }
     end
@@ -169,6 +186,7 @@ module RedisQueuedLocks::Acquier
     # @api private
     # @since 0.1.0
     def release_all_locks!(redis, batch_size)
+      # INSTRUMENT: all locks released
       result = fully_release_all_locks(redis, batch_size)
       { ok: true, result: result }
     end
@@ -177,18 +195,22 @@ module RedisQueuedLocks::Acquier
 
     # @param timeout [Integer] Time period after which the logic will fail with timeout error.
     # @param lock_key [String] Lock name.
+    # @param raise_errors [Boolean] Raise erros on exceptional cases.
     # @option on_timeout [Proc,NilClass] Callback invoked on Timeout::Error.
     # @return [Any]
     #
     # @api private
     # @since 0.1.0
-    def with_timeout(timeout, lock_key, on_timeout: nil, &block)
+    def with_timeout(timeout, lock_key, raise_errors, on_timeout: nil, &block)
       ::Timeout.timeout(timeout, &block)
     rescue ::Timeout::Error
       on_timeout.call unless on_timeout == nil
-      raise(RedisQueuedLocks::LockAcquiermentTimeoutError, <<~ERROR_MESSAGE.strip)
-        Failed to acquire the lock "#{lock_key}" for the given timeout (#{timeout} seconds).
-      ERROR_MESSAGE
+
+      if raise_errors
+        raise(RedisQueuedLocks::LockAcquiermentTimeoutError, <<~ERROR_MESSAGE.strip)
+          Failed to acquire the lock "#{lock_key}" for the given timeout (#{timeout} seconds).
+        ERROR_MESSAGE
+      end
     end
   end
 end
