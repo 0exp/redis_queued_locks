@@ -10,8 +10,9 @@ Gem::Specification.new do |spec|
   spec.authors = ['Rustam Ibragimov']
   spec.email   = ['iamdaiver@gmail.com']
 
-  spec.summary     = 'Redis Queued Locks.'
-  spec.description = 'Redis Queued Locks.'
+  spec.summary     = 'Queued distributed locks based on Redis.'
+  spec.description = 'Distributed lock implementation with "lock acquisition queue" ' \
+                     'capabilities based on the Redis Database.'
   spec.homepage    = 'https://github.com/0exp/redis_queued_locks'
   spec.license     = 'MIT'
 
