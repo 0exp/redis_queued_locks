@@ -10,7 +10,6 @@ module RedisQueuedLocks::Instrument::VoidNotifier
     #
     # @api private
     # @since 0.1.0
-    def notify(event, payload = {})
-    end
+    def notify(event, payload = {}); end
   end
 end

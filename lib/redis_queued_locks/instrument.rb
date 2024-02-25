@@ -16,7 +16,7 @@ module RedisQueuedLocks::Instrument
       if instrumenter == RedisQueuedLocks::Instrument::ActiveSupport
         # NOTE: active_support should be required in your app
         defined?(::ActiveSupport::Notifications)
-      elsif instrumenter.respond_to?("notify")
+      elsif instrumenter.respond_to?(:notify)
         # NOTE: the method signature should be (event, payload). Supported variants:
         #   => [[:req, :event], [:req, :payload]]
         #   => [[:req, :event], [:opt, :payload]]
@@ -29,11 +29,12 @@ module RedisQueuedLocks::Instrument
         s_prm = m_sig[1][0]
 
         if m_sig.size == 2
-          puts :kek
+          # rubocop:disable Layout/MultilineOperationIndentation
           # NOTE: check the signature vairants
           f_prm == :req && s_prm == :req ||
           f_prm == :req && s_prm == :opt ||
           f_prm == :opt && s_prm == :opt
+          # rubocop:enable Layout/MultilineOperationIndentation
         else
           # NOTE: incompatible signature
           false
