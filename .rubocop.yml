@@ -1,0 +1,35 @@
+inherit_gem:
+  armitage-rubocop:
+    - lib/rubocop.general.yml
+    - lib/rubocop.rake.yml
+    - lib/rubocop.rspec.yml
+
+AllCops:
+  TargetRubyVersion: 3.2
+  NewCops: enable
+  Include:
+    - lib/**/*.rb
+    - spec/**/*.rb
+    - Gemfile
+    - Rakefile
+    - redis_queued_locks.gemspec
+    - bin/console
+
+Metrics/ParameterLists:
+  Enabled: false
+
+Metrics/BlockLength:
+  Enabled: false
+
+Lint/EmptyBlock:
+  Exclude:
+    - spec/**/*.rb
+
+Gemspec/DevelopmentDependencies:
+  EnforcedStyle: Gemfile
+
+Metrics/AbcSize:
+  Enabled: false
+
+Metrics/CyclomaticComplexity:
+  Enabled: false
