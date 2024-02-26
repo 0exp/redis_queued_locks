@@ -186,9 +186,8 @@ Return value:
   ```
 - for failed lock obtaining:
   ```ruby
-  { ok: false, result: :acquier_is_not_first_in_queue }
-  { ok: false, result: :lock_is_still_acquired }
-  { ok: false, result: :lock_is_acquired_during_acquire_race }
+  { ok: false, result: :timeout_reached }
+  { ok: false, result: :retry_count_reached }
   { ok: false, result: :unknown }
   ```
 
@@ -197,9 +196,9 @@ Return value:
 
 #### #lock! - exceptional lock obtaining
 
-- fails when:
-  - `timeout` limit reached before lock is obtained;
-  - `retry_count` limit reached before lock is obtained;
+- fails when (and with):
+  - (`RedisQueuedLocks::LockAcquiermentTimeoutError`) `timeout` limit reached before lock is obtained;
+  - (`RedisQueuedLocks::LockAcquiermentRetryLimitError`) `retry_count` limit reached before lock is obtained;
 
 ```ruby
 def lock!(
@@ -233,7 +232,18 @@ def unlock(lock_name)
   - the lock name that should be released.
 
 Return:
-- `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Symbol/Hash }`;
+- `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Hash<Symbol,Numeric|String> }`;
+
+```ruby
+{
+  ok: true,
+  result: {
+    rel_time: 0.02, # time spent to lock release (in seconds)
+    rel_key: "rql:lock:your_lock_name", # released lock key
+    rel_queue: "rql:lock_queue:your_lock_name" # released lock key queue
+  }
+}
+```
 
 ---
 
@@ -250,7 +260,17 @@ def clear_locks(batch_size: config[:lock_release_batch_size])
   - batch of cleared locks and lock queus unde the one pipelined redis command;
 
 Return:
-- `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Symbol/Hash }`;
+- `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Hash<Symbol,Numeric> }`;
+
+```ruby
+{
+  ok: true,
+  result: {
+    rel_time: 3.07, # time spent to release all locks and related lock queues
+    rel_key_cnt: 100_500 # released redis keys (released locks + released lock queues)
+  }
+}
+```
 
 ---
 

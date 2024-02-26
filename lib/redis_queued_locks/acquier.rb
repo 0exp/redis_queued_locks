@@ -60,7 +60,7 @@ module RedisQueuedLocks::Acquier
     #
     # @api private
     # @since 0.1.0
-    # rubocop:disable Metrics/MethodLength
+    # rubocop:disable Metrics/MethodLength, Metrics/BlockNesting
     def acquire_lock!(
       redis,
       lock_name,
@@ -147,6 +147,7 @@ module RedisQueuedLocks::Acquier
             if retry_count != nil && acq_process[:tries] >= retry_count
               # NOTE: reached the retry limit => quit from the loop
               acq_process[:should_try] = false
+              acq_process[:result] = :retry_limit_reached
               # NOTE: reached the retry limit => dequeue from the lock queue
               acq_dequeue.call
               # NOTE: check and raise an error
@@ -154,10 +155,11 @@ module RedisQueuedLocks::Acquier
                 Failed to acquire the lock "#{lock_key}"
                 for the given retry_count limit (#{retry_count} times).
               ERROR_MESSAGE
-            elsif delay_execution(retry_delay, retry_jitter)
+            else
               # NOTE:
               #   delay the exceution in order to prevent chaotic attempts
               #   and to allow other processes and threads to obtain the lock too.
+              delay_execution(retry_delay, retry_jitter)
             end
           end
         end
@@ -191,12 +193,18 @@ module RedisQueuedLocks::Acquier
           { ok: true, result: acq_process[:lock_info] }
         end
       else
-        # Step 3.b: lock is not acquired:
-        #   => drop itslef from the queue and return the reason of the failed acquirement
+        unless acq_process[:result] == :retry_limit_reached
+          # NOTE: we have only two situations if lock is not acquired:
+          #   - time limit is reached
+          #   - retry count limit is reached
+          #   In other cases the lock obtaining time and tries count are infinite.
+          acq_process[:result] = :timeout_reached
+        end
+        # Step 3.b: lock is not acquired (acquier is dequeued by timeout callback)
         { ok: false, result: acq_process[:result] }
       end
     end
-    # rubocop:enable Metrics/MethodLength
+    # rubocop:enable Metrics/MethodLength, Metrics/BlockNesting
 
     # Release the concrete lock:
     # - 1. clear lock queue: al; related processes released
@@ -208,7 +216,7 @@ module RedisQueuedLocks::Acquier
     # @param redis [RedisClient] Redis connection client.
     # @param lock_name [String] The lock name that should be released.
     # @param isntrumenter [#notify] See RedisQueuedLocks::Instrument::ActiveSupport for example.
-    # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
+    # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Hash<Symbil,Numeric|String> }
     #
     # @api private
     # @since 0.1.0
@@ -231,7 +239,7 @@ module RedisQueuedLocks::Acquier
         })
       end
 
-      { ok: true, result: result }
+      { ok: true, result: { rel_time: rel_time, rel_key: lock_key, rel_queue: lock_key_queue } }
     end
 
     # Release all locks:
@@ -241,7 +249,7 @@ module RedisQueuedLocks::Acquier
     # @param redis [RedisClient] Redis connection client.
     # @param batch_size [Integer] The number of lock keys that should be released in a time.
     # @param isntrumenter [#notify] See RedisQueuedLocks::Instrument::ActiveSupport for example.
-    # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
+    # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Hash<Symbol,Numeric> }
     #
     # @api private
     # @since 0.1.0
@@ -260,7 +268,7 @@ module RedisQueuedLocks::Acquier
         })
       end
 
-      { ok: true, result: result }
+      { ok: true, result: { rel_key_cnt: result[:rel_keys], rel_time: rel_time } }
     end
 
     private

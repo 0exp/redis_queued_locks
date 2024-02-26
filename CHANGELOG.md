@@ -1,7 +1,14 @@
 ## [Unreleased]
 
+## [0.0.6] - 2024-02-27
+### Changed
+- Major documentation updates;
+- `RedisQueuedLock#release_lock!` now returns detaield semantic result;
+- `RediSQueuedLock#release_all_locks!` now returns detailed semantic result;
+
 ## [0.0.5] - 2024-02-26
-- Minor update with documentation and configuration updates inside.
+### Changed
+- Minor gem update with documentation and configuration updates inside.
 
 ## [0.0.4] - 2024-02-26
 ### Changed
