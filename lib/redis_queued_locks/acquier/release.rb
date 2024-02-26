@@ -38,7 +38,7 @@ module RedisQueuedLocks::Acquier::Release
         count: batch_size
       ) do |lock_queue|
         pipeline.call('ZREMRANGEBYSCORE', lock_queue, '-inf', '+inf')
-        pipeline.call('EXPIRE', RedisQueuedLocks::Resource.lock_key_from_queue(lock_queue), "0")
+        pipeline.call('EXPIRE', RedisQueuedLocks::Resource.lock_key_from_queue(lock_queue), '0')
       end
 
       # Step B: release all locks
