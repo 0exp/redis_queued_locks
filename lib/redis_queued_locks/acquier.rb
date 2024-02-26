@@ -37,10 +37,10 @@ module RedisQueuedLocks::Acquier
     #   The process that want to acquire the lock.
     # @option thread_id [Integer,String]
     #   The process's thread that want to acquire the lock.
-    # @option ttl [Integer]
-    #   Lock's time to live (in milliseconds).
+    # @option ttl [Integer,NilClass]
+    #   Lock's time to live (in milliseconds). Nil means "without timeout".
     # @option queue_ttl [Integer]
-    #   ?
+    #   Lifetime of the acuier's lock request.
     # @option timeout [Integer]
     #   Time period whe should try to acquire the lock (in seconds).
     # @option retry_count [Integer]
