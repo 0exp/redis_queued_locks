@@ -111,7 +111,14 @@ end
 
 ### Usage
 
-#### lock - obtain a lock;
+- [lock](#lock---obtain-a-lock)
+- [lock!](#lock---exeptional-lock-obtaining)
+- [unlock](#unlock---release-a-lock)
+- [clear_locks](#clear_locks---release-all-locks-and-lock-queues)
+
+---
+
+#### lock - obtain a lock
 
 ```ruby
 def lock(
@@ -159,7 +166,7 @@ Return value:
 
 ---
 
-#### #lock! - exeptional lock obtaining;
+#### #lock! - exceptiona lock obtaining
 
 - fails when:
   - `timeout` limit reached before lock is obtained;
