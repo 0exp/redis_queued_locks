@@ -177,8 +177,8 @@ Return value:
   {
     ok: true,
     result: {
-      lock_key: String, # acquierd lock key (rql:lock:lock_name)
-      acq_id: String, # acquier identifier ("process_id/thread_id")
+      lock_key: String, # acquierd lock key ("rql:lock:your_lock_name")
+      acq_id: String, # acquier identifier ("your_process_id/your_thread_id")
       ts: Integer, # time (epoch) when lock was obtained (integer)
       ttl: Integer # lock's time to live in milliseconds (integer)
     }
