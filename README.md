@@ -31,13 +31,9 @@ Distributed lock implementation with "lock acquisition queue" capabilities based
     - `lock_key` - `string` - released lock (lock name);
     - `lock_key_queue` - `string` - released lock queue (lock queue name);
 - `"redis_queued_locks.explicit_all_locks_release"`
-  - an event signalizes about the explicit all locks release (invoked viaa `RedisQueuedLock#clear_locks`);
+  - an event signalizes about the explicit all locks release (invoked via `RedisQueuedLock#clear_locks`);
   - payload:
     - `rel_time` - `float`/`milliseconds` - time when the locks was released
     - `at` - `integer`/`epoch` - the time when the operation has ended;
     - `rel_lock_cnt` - `integer` - released lock count;
     - `rel_queue_cnt` - `integer` - released queue count;
-
-## Todo
-
-- CI (github actions);
