@@ -345,7 +345,7 @@ Detalized event semantics and payload structure:
 
 - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
 - `100%` test coverage;
-- better code stylization and interesting refactorings :)
+- better code stylization and interesting refactorings;
 
 ---
 
