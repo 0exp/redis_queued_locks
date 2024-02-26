@@ -10,7 +10,7 @@ class RedisQueuedLocks::Client
     setting :retry_count, 3
     setting :retry_delay, 200 # NOTE: milliseconds
     setting :retry_jitter, 50 # NOTE: milliseconds
-    setting :acquire_timeout, 10 # NOTE: seconds
+    setting :default_timeout, 10 # NOTE: seconds
     setting :exp_precision, 1 # NOTE: milliseconds
     setting :default_lock_ttl, 10_000 # NOTE: milliseconds
     setting :default_queue_ttl, 5 # NOTE: seconds
@@ -23,7 +23,7 @@ class RedisQueuedLocks::Client
     validate('retry_count', :integer)
     validate('retry_delay', :integer)
     validate('retry_jitter', :integer)
-    validate('acquire_timeout', :integer)
+    validate('default_timeout', :integer)
     validate('exp_precision', :integer)
     validate('default_lock_tt', :integer)
     validate('default_queue_ttl', :integer)
@@ -86,7 +86,7 @@ class RedisQueuedLocks::Client
     thread_id: RedisQueuedLocks::Resource.get_thread_id,
     ttl: config[:default_lock_ttl],
     queue_ttl: config[:default_queue_ttl],
-    timeout: config[:acquire_timeout],
+    timeout: config[:default_timeout],
     retry_count: config[:retry_count],
     retry_delay: config[:retry_delay],
     retry_jitter: config[:retry_jitter],
@@ -119,7 +119,7 @@ class RedisQueuedLocks::Client
     thread_id: RedisQueuedLocks::Resource.get_thread_id,
     ttl: config[:default_lock_ttl],
     queue_ttl: config[:default_queue_ttl],
-    timeout: config[:acquire_timeout],
+    timeout: config[:default_timeout],
     retry_count: config[:retry_count],
     retry_delay: config[:retry_delay],
     retry_jitter: config[:retry_jitter],

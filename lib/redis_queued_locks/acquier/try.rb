@@ -111,13 +111,13 @@ module RedisQueuedLocks::Acquier::Try
     when result == nil || (result.is_a?(::Array) && result.empty?)
       # Step 7.b: lock is already acquired durign the acquire race => failed to acquire
       { ok: false, result: :lock_is_acquired_during_acquire_race }
-    when result.is_a?(::Array) && result.size == 3 # NOTE: 3 is a count of lock commands
+    when result.is_a?(::Array) && result.size == 3 # NOTE: 3 is a count of redis lock commands
       # TODO:
       #   => (!) analyze the command result and do actions with the depending on it;
       #   => (*) at this moment we accept that all comamnds are completed successfully;
       #   => (!) need to analyze:
       #   1. zpopmin should return our process (array with <acq_id> and <score>)
-      #   2. hset should return 2 (lock key is added to the redis db with 2 fields)
+      #   2. hset should return 2 (lock key is added to the redis as a hashmap with 2 fields)
       #   3. pexpire should return 1 (expiration time is successfully applied)
 
       # Step 7.c: locked! :) let's go! => successfully acquired

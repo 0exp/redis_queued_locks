@@ -12,10 +12,10 @@ RSpec.describe RedisQueuedLocks do
     client = RedisQueuedLocks::Client.new(redis) do |config|
       config.retry_count = 3
     end
-    15.times { client.lock("locklock#{_1}") }
-    15.times { client.lock("locklock#{_1}") {} }
+    15.times { client.lock!("locklock#{_1}") }
+    15.times { client.lock!("locklock#{_1}") {} }
 
-    client.unlock('locklock')
+    client.unlock('locklock1')
     client.clear_locks
   end
 end

@@ -114,7 +114,12 @@ module RedisQueuedLocks::Acquier
           # Step 2.1: analyze an acquirement attempt
           if ok
             # Step 2.1.a: successfully acquired => build the result
-            acq_process[:lock_info] = result
+            acq_process[:lock_info] = {
+              lock_key: result[:lock_key],
+              acq_id: result[:acq_id],
+              ts: result[:ts],
+              ttl: result[:ttl]
+            }
             acq_process[:acquired] = true
             acq_process[:should_try] = false
             acq_process[:acq_time] = acq_time
@@ -193,10 +198,14 @@ module RedisQueuedLocks::Acquier
 
     private
 
-    # @param timeout [Integer] Time period after which the logic will fail with timeout error.
-    # @param lock_key [String] Lock name.
-    # @param raise_errors [Boolean] Raise erros on exceptional cases.
-    # @option on_timeout [Proc,NilClass] Callback invoked on Timeout::Error.
+    # @param timeout [NilClass,Integer]
+    #   Time period after which the logic will fail with timeout error.
+    # @param lock_key [String]
+    #   Lock name.
+    # @param raise_errors [Boolean]
+    #   Raise erros on exceptional cases.
+    # @option on_timeout [Proc,NilClass]
+    #   Callback invoked on Timeout::Error.
     # @return [Any]
     #
     # @api private
