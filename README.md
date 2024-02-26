@@ -53,65 +53,108 @@ end
 
 ```ruby
 redis_clinet = RedisClient.config.new_pool # NOTE: provide your ounw RedisClient instance
-rq_lock = RedisQueuedLocks::Client.new(redis_client) do |config|
+rq_lock_client = RedisQueuedLocks::Client.new(redis_client) do |config|
   # NOTE: some your application-related configs
 end
 ```
 
-#### lock
+### lock
+
+- lock acquirement;
 
 ```ruby
-  lock(
-    lock_name,
-    process_id: RedisQueuedLocks::Resource.get_process_id,
-    thread_id: RedisQueuedLocks::Resource.get_thread_id,
-    ttl: config[:default_lock_ttl],
-    queue_ttl: config[:default_queue_ttl],
-    timeout: config[:try_to_lock_timeout],
-    retry_count: config[:retry_count],
-    retry_delay: config[:retry_delay],
-    retry_jitter: config[:retry_jitter],
-    raise_errors: false,
-    &block
-  )
+def lock(
+  lock_name,
+  process_id: RedisQueuedLocks::Resource.get_process_id,
+  thread_id: RedisQueuedLocks::Resource.get_thread_id,
+  ttl: config[:default_lock_ttl],
+  queue_ttl: config[:default_queue_ttl],
+  timeout: config[:try_to_lock_timeout],
+  retry_count: config[:retry_count],
+  retry_delay: config[:retry_delay],
+  retry_jitter: config[:retry_jitter],
+  raise_errors: false,
+  &block
+)
 ```
 
-- `lock_name` [String]
+- `lock_name` - `[String]`
   - Lock name to be obtained.
-- `process_id` [Integer,String]
+- `process_id` - `[Integer,String]`
   - The process that want to acquire the lock.
-- `thread_id` [Integer,String]
+- `thread_id` - `[Integer,String]`
   - The process's thread that want to acquire the lock.
 - `ttl` [Integer]
   - Lock's time to live (in milliseconds).
-- `queue_ttl` [Integer]
+- `queue_ttl` - `[Integer]`
   - Lifetime of the acuier's lock request. In seconds.
-- `timeout` [Integer,NilClass]
+- `timeout` - `[Integer,NilClass]`
   - Time period whe should try to acquire the lock (in seconds). Nil means "without timeout".
-- `retry_count` [Integer,NilClass]
+- `retry_count` - `[Integer,NilClass]`
   - How many times we should try to acquire a lock. Nil means "infinite retries".
-- `retry_delay` [Integer]
+- `retry_delay` - `[Integer]`
   - A time-interval between the each retry (in milliseconds).
-- `retry_jitter` [Integer]
+- `retry_jitter` - `[Integer]`
   - Time-shift range for retry-delay (in milliseconds).
-- `instrumenter` [#notify]
+- `instrumenter` - `[#notify]`
   - See RedisQueuedLocks::Instrument::ActiveSupport for example.
-- `raise_errors` [Boolean]
+- `raise_errors` - `[Boolean]`
   - Raise errors on library-related limits such as timeout or failed lock obtain.
-- `block` [Block]
+- `block` - `[Block]`
   - A block of code that should be executed after the successfully acquired lock.
 
 Return value:
-- `[Hash<Symbol,Any>]` Format: { ok: true/false, result: Symbol/Hash }.
+- `[Hash<Symbol,Any>]` Format: `{ ok: true/false, result: Symbol/Hash }`;
 
-#### lock!
-- `#lock!`
+### lock!
 
-#### unlock
-- `#unlock`
+- exceptional lock acquirement;
 
-#### clear_locks
-- `#clear_locks`
+```ruby
+def lock!(
+  lock_name,
+  process_id: RedisQueuedLocks::Resource.get_process_id,
+  thread_id: RedisQueuedLocks::Resource.get_thread_id,
+  ttl: config[:default_lock_ttl],
+  queue_ttl: config[:default_queue_ttl],
+  timeout: config[:default_timeout],
+  retry_count: config[:retry_count],
+  retry_delay: config[:retry_delay],
+  retry_jitter: config[:retry_jitter],
+  &block
+)
+```
+
+Return value:
+- `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Symbol/Hash }`;
+
+### unlock
+
+- release a concrete lock with lock request queue;
+
+```ruby
+def unlock(lock_name)
+```
+
+- `lock_name` - `[String]`
+  - the lock name that should be released.
+
+Return:
+- `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Symbol/Hash }`;
+
+### clear_locks
+
+- release all obtained locks and related lock request queues;
+
+```ruby
+def clear_locks(batch_size: config[:lock_release_batch_size])
+```
+
+- `batch_size` - `[Integer]`
+  - batch of cleared locks and lock queus unde the one pipelined redis command;
+
+Return:
+- `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Symbol/Hash }`;
 
 ## Instrumentation events
 
