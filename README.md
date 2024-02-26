@@ -62,9 +62,9 @@ end
 
 ---
 
-#### #lock
+#### #lock - obtain a lock;
 
-- lock acquirement;
+- lock obtaining;
 
 ```ruby
 def lock(
@@ -112,9 +112,9 @@ Return value:
 
 ---
 
-#### #lock!
+#### #lock! - exeptional lock obtaining;
 
-- exceptional lock acquirement;
+- exceptional lock obtaining;
 
 ```ruby
 def lock!(
@@ -136,7 +136,7 @@ Return value:
 
 ---
 
-#### #unlock
+#### #unlock - release a lock
 
 - release a concrete lock with lock request queue;
 
@@ -152,7 +152,7 @@ Return:
 
 ---
 
-#### clear_locks
+#### #clear_locks - release all locks and lock queues
 
 - release all obtained locks and related lock request queues;
 
