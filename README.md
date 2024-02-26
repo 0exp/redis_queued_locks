@@ -250,7 +250,7 @@ List of events:
 - **redis_queued_locks.explicit_lock_release**
 - **redis_queued_locks.explicit_all_locks_release**
 
-Event structure:
+Detalized events structure:
 - `"redis_queued_locks.lock_obtained"`
   - a moment when the lock was obtained;
   - payload:
