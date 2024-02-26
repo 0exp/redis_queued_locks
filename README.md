@@ -51,6 +51,8 @@ end
 
 ## Usage
 
+#### Initialization
+
 ```ruby
 redis_clinet = RedisClient.config.new_pool # NOTE: provide your ounw RedisClient instance
 rq_lock_client = RedisQueuedLocks::Client.new(redis_client) do |config|
@@ -58,7 +60,9 @@ rq_lock_client = RedisQueuedLocks::Client.new(redis_client) do |config|
 end
 ```
 
-### lock
+---
+
+#### #lock
 
 - lock acquirement;
 
@@ -106,7 +110,9 @@ def lock(
 Return value:
 - `[Hash<Symbol,Any>]` Format: `{ ok: true/false, result: Symbol/Hash }`;
 
-### lock!
+---
+
+#### #lock!
 
 - exceptional lock acquirement;
 
@@ -128,7 +134,9 @@ def lock!(
 Return value:
 - `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Symbol/Hash }`;
 
-### unlock
+---
+
+#### #unlock
 
 - release a concrete lock with lock request queue;
 
@@ -142,7 +150,9 @@ def unlock(lock_name)
 Return:
 - `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Symbol/Hash }`;
 
-### clear_locks
+---
+
+#### clear_locks
 
 - release all obtained locks and related lock request queues;
 
