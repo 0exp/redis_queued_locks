@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.4] - 2024-02-26
+### Changed
+- changed default configuration values of `RedisQueuedLocks::Client` config;
+
 ## [0.0.3] - 2024-02-26
 ### Changed
 - Instrumentation events:
