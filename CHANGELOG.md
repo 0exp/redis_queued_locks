@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+## [0.0.5] - 2024-02-26
+- Minor update with documentation and configuration updates inside.
+
 ## [0.0.4] - 2024-02-26
 ### Changed
 - changed default configuration values of `RedisQueuedLocks::Client` config;
