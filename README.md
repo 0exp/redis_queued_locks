@@ -2,7 +2,65 @@
 
 Distributed lock implementation with "lock acquisition queue" capabilities based on the Redis Database.
 
-## Configuration
+---
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Setuo](#setup)
+- [Configuration](#configuration)
+- [Usage](#usage)
+  - [lock](#lock)
+  - [lock!](#lock!)
+  - [unlock](#unlock)
+  - [clear_locks](#clear_locks)
+- [Instrumentation](#instrumentation)
+  - [Instrumentation Events](#isntrumentation-events)
+- [Contributing](#contributing)
+- [License](#license)
+- [Authors](#authors)
+
+---
+
+### Installation
+
+```ruby
+gem 'redis_queued_locks'
+```
+
+```shell
+bundle install
+# --- or ---
+gem install redis_queued_locks
+```
+
+```ruby
+require 'redis_queued_locks'
+```
+
+---
+
+### Setup
+
+```ruby
+require 'redis_queued_locks'
+
+# Step 1: initialize RedisClient instance
+redis_clinet = RedisClient.config.new_pool # NOTE: provide your ounw RedisClient instance
+
+# Step 2: initialize RedisQueuedLock::Client instance
+rq_lock_client = RedisQueuedLocks::Client.new(redis_client) do |config|
+  # NOTE:
+  #   - some your application-related configs;
+  #   - for documentation see <Configuration> section in readme;
+end
+
+# Step 3: start to work with locks :)
+```
+
+---
+
+### Configuration
 
 ```ruby
 redis_client = RedisClient.config.new_pool # NOTE: provide your own RedisClient instance
@@ -49,18 +107,9 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
 end
 ```
 
-## Usage
-
-#### Initialization
-
-```ruby
-redis_clinet = RedisClient.config.new_pool # NOTE: provide your ounw RedisClient instance
-rq_lock_client = RedisQueuedLocks::Client.new(redis_client) do |config|
-  # NOTE: some your application-related configs
-end
-```
-
 ---
+
+### Usage
 
 #### #lock - obtain a lock;
 
@@ -166,7 +215,26 @@ def clear_locks(batch_size: config[:lock_release_batch_size])
 Return:
 - `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Symbol/Hash }`;
 
-## Instrumentation events
+---
+
+## Instrumentation
+
+An instrumentation layer is incapsulated in `instrumenter` object stored in configurations.
+
+Instrumenter object should provide `notify(event, payload)` method with following signarue:
+
+- `event` - `string`;
+- `payload` - `hash<Symbol,Any>`;
+
+`redis_queued_locks` provides two instrumeters:
+
+- `RedisQueuedLocks::Instrument::ActiveSupport` - `ActiveSupport::Notifications` instrumenter
+  that instrument events via `ActiveSupport::Notifications` api;
+- `RedisQueuedLocks::Instrument::VoidNotifier` - instrumenter that does nothing;
+
+By default `RedisQueuedLocks::Client` is configured with the void notifier (which means "instrumentation is disabled").
+
+### Instrumentation Events
 
 - `"redis_queued_locks.lock_obtained"`
   - a moment when the lock was obtained;
@@ -199,3 +267,27 @@ Return:
     - `rel_time` - `float`/`milliseconds` - time spent on "realese all locks" operation;
     - `at` - `integer`/`epoch` - the time when the operation has ended;
     - `rel_keys` - `integer` - released redis keys count (`released queu keys` + `released lock keys`);
+
+---
+
+## Roadmap
+
+- in progress;
+
+---
+
+## Contributing
+
+- Fork it ( https://github.com/0exp/redis_queued_locks )
+- Create your feature branch (`git checkout -b feature/my-new-feature`)
+- Commit your changes (`git commit -am '[feature_context] Add some feature'`)
+- Push to the branch (`git push origin feature/my-new-feature`)
+- Create new Pull Request
+
+## License
+
+Released under MIT License.
+
+## Authors
+
+[Rustam Ibragimov](https://github.com/0exp)
