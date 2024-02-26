@@ -244,13 +244,13 @@ By default `RedisQueuedLocks::Client` is configured with the void notifier (whic
 
 ### Instrumentation Events
 
-List of events:
+List of instrumentation events:
 - **redis_queued_locks.lock_obtained**
 - **redis_queued_locks.lock_hold_and_release**
 - **redis_queued_locks.explicit_lock_release**
 - **redis_queued_locks.explicit_all_locks_release**
 
-
+Detalized event semantics and payload structure:
 - `"redis_queued_locks.lock_obtained"`
   - a moment when the lock was obtained;
   - payload:
