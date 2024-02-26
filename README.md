@@ -10,12 +10,12 @@ Distributed lock implementation with "lock acquisition queue" capabilities based
 - [Setuo](#setup)
 - [Configuration](#configuration)
 - [Usage](#usage)
-  - [lock](#lock)
-  - [lock!](#lock!)
-  - [unlock](#unlock)
-  - [clear_locks](#clear_locks)
+  - [lock](#lock---obtain-a-lock)
+  - [lock!](#lock---exeptional-lock-obtaining)
+  - [unlock](#unlock---release-a-lock)
+  - [clear_locks](#clear_locks---release-all-locks-and-lock-queues)
 - [Instrumentation](#instrumentation)
-  - [Instrumentation Events](#isntrumentation-events)
+  - [Instrumentation Events](#instrumentation-events)
 - [Contributing](#contributing)
 - [License](#license)
 - [Authors](#authors)
@@ -233,6 +233,8 @@ Instrumenter object should provide `notify(event, payload)` method with followin
 - `RedisQueuedLocks::Instrument::VoidNotifier` - instrumenter that does nothing;
 
 By default `RedisQueuedLocks::Client` is configured with the void notifier (which means "instrumentation is disabled").
+
+---
 
 ### Instrumentation Events
 
