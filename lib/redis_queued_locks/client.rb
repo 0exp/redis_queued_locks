@@ -52,7 +52,7 @@ class RedisQueuedLocks::Client
   end
 
   # @param lock_name [String]
-  #   Lock name to be acquier.
+  #   Lock name to be obtained.
   # @option process_id [Integer,String]
   #   The process that want to acquire the lock.
   # @option thread_id [Integer,String]
@@ -73,7 +73,7 @@ class RedisQueuedLocks::Client
   #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
   # @option raise_errors [Boolean]
   #   Raise errors on library-related limits such as timeout or failed lock obtain.
-  # @param [Block]
+  # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
   # @return [Hash<Symbol,Any>]
   #   Format: { ok: true/false, result: Symbol/Hash }.

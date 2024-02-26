@@ -58,9 +58,59 @@ rq_lock = RedisQueuedLocks::Client.new(redis_client) do |config|
 end
 ```
 
-- `#lock`
+#### lock
+
+```ruby
+  lock(
+    lock_name,
+    process_id: RedisQueuedLocks::Resource.get_process_id,
+    thread_id: RedisQueuedLocks::Resource.get_thread_id,
+    ttl: config[:default_lock_ttl],
+    queue_ttl: config[:default_queue_ttl],
+    timeout: config[:try_to_lock_timeout],
+    retry_count: config[:retry_count],
+    retry_delay: config[:retry_delay],
+    retry_jitter: config[:retry_jitter],
+    raise_errors: false,
+    &block
+  )
+```
+
+- `lock_name` [String]
+  - Lock name to be obtained.
+- `process_id` [Integer,String]
+  - The process that want to acquire the lock.
+- `thread_id` [Integer,String]
+  - The process's thread that want to acquire the lock.
+- `ttl` [Integer]
+  - Lock's time to live (in milliseconds).
+- `queue_ttl` [Integer]
+  - Lifetime of the acuier's lock request. In seconds.
+- `timeout` [Integer,NilClass]
+  - Time period whe should try to acquire the lock (in seconds). Nil means "without timeout".
+- `retry_count` [Integer,NilClass]
+  - How many times we should try to acquire a lock. Nil means "infinite retries".
+- `retry_delay` [Integer]
+  - A time-interval between the each retry (in milliseconds).
+- `retry_jitter` [Integer]
+  - Time-shift range for retry-delay (in milliseconds).
+- `instrumenter` [#notify]
+  - See RedisQueuedLocks::Instrument::ActiveSupport for example.
+- `raise_errors` [Boolean]
+  - Raise errors on library-related limits such as timeout or failed lock obtain.
+- `block` [Block]
+  - A block of code that should be executed after the successfully acquired lock.
+
+Return value:
+- `[Hash<Symbol,Any>]` Format: { ok: true/false, result: Symbol/Hash }.
+
+#### lock!
 - `#lock!`
+
+#### unlock
 - `#unlock`
+
+#### clear_locks
 - `#clear_locks`
 
 ## Instrumentation events
