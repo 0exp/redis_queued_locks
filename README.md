@@ -19,7 +19,7 @@ Each lock request is put into a request queue and processed in order of their pr
   - [clear_locks](#clear_locks---release-all-locks-and-lock-queues)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
-- [TODO](#todo)
+- [Todo](#todo)
 - [Contributing](#contributing)
 - [License](#license)
 - [Authors](#authors)
@@ -66,6 +66,7 @@ rq_lock_client = RedisQueuedLocks::Client.new(redis_client) do |config|
 end
 
 # Step 3: start to work with locks :)
+rq_lock_client.lock("some-lock") { puts "Hello, lock!" }
 ```
 
 ---
@@ -341,7 +342,7 @@ Detalized event semantics and payload structure:
 
 ---
 
-## TODO
+## Todo
 
 - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
 - `100%` test coverage;
