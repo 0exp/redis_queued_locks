@@ -17,6 +17,7 @@ Distributed lock implementation with "lock acquisition queue" capabilities based
   - [clear_locks](#clear_locks---release-all-locks-and-lock-queues)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
+- [TODO](#todo)
 - [Contributing](#contributing)
 - [License](#license)
 - [Authors](#authors)
@@ -170,6 +171,26 @@ def lock(
 
 Return value:
 - `[Hash<Symbol,Any>]` Format: `{ ok: true/false, result: Symbol/Hash }`;
+- for successful lock obtaining:
+  ```ruby
+  {
+    ok: true,
+    result: {
+      lock_key: String, # acquierd lock key (rql:lock:lock_name)
+      acq_id: String, # acquier identifier ("process_id/thread_id")
+      ts: Integer, # time (epoch) when lock was obtained (integer)
+      ttl: Integer # lock's time to live in milliseconds (integer)
+    }
+  }
+  ```
+- for failed lock obtaining:
+  ```ruby
+  { ok: false, result: :acquier_is_not_first_in_queue }
+  { ok: false, result: :lock_is_still_acquired }
+  { ok: false, result: :lock_is_acquired_during_acquire_race }
+  { ok: false, result: :unknown }
+  ```
+
 
 ---
 
@@ -296,8 +317,9 @@ Detalized event semantics and payload structure:
 
 ---
 
-## Roadmap
+## TODO
 
+- `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
 - `100%` test coverage;
 - better code stylization and interesting refactorings :)
 
