@@ -283,6 +283,12 @@ By default `RedisQueuedLocks::Client` is configured with the void notifier (whic
 
 ---
 
+## Roadmap
+
+- better code stylization and interesting refactorings :)
+
+---
+
 ## Contributing
 
 - Fork it ( https://github.com/0exp/redis_queued_locks )
