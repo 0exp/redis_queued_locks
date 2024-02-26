@@ -111,7 +111,7 @@ end
 
 ### Usage
 
-#### #lock - obtain a lock;
+#### lock - obtain a lock;
 
 - lock obtaining;
 
@@ -164,6 +164,9 @@ Return value:
 #### #lock! - exeptional lock obtaining;
 
 - exceptional lock obtaining;
+- fails when:
+  - `timeout` limit reached before lock is obtained;
+  - `retry_count` limit  reached before lock is obtained;
 
 ```ruby
 def lock!(
@@ -180,8 +183,7 @@ def lock!(
 )
 ```
 
-Return value:
-- `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Symbol/Hash }`;
+See `#lock` method documentation.
 
 ---
 

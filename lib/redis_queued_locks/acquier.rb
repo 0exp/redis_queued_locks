@@ -149,6 +149,11 @@ module RedisQueuedLocks::Acquier
               acq_process[:should_try] = false
               # NOTE: reached the retry limit => dequeue from the lock queue
               acq_dequeue.call
+              # NOTE: check and raise an error
+              raise(LockAcquiermentRetryLimitError, <<~ERROR_MESSAGE.strip) if raise_errors
+                Failed to acquire the lock "#{lock_key}"
+                for the given retry_count limit (#{retry_count} times).
+              ERROR_MESSAGE
             elsif delay_execution(retry_delay, retry_jitter)
               # NOTE:
               #   delay the exceution in order to prevent chaotic attempts

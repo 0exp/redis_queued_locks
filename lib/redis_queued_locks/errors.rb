@@ -15,5 +15,5 @@ module RedisQueuedLocks
 
   # @api public
   # @since 0.1.0
-  LockAcquiermentLimitError = Class.new(Error)
+  LockAcquiermentRetryLimitError = Class.new(Error)
 end
