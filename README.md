@@ -127,7 +127,7 @@ end
 
 ---
 
-#### lock - obtain a lock
+#### #lock - obtain a lock
 
 ```ruby
 def lock(
