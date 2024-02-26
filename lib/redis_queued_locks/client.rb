@@ -71,6 +71,8 @@ class RedisQueuedLocks::Client
   #   Time-shift range for retry-delay (in milliseconds).
   # @option instrumenter [#notify]
   #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
+  # @option raise_errors [Boolean]
+  #   Raise errors on library-related limits such as timeout or failed lock obtain.
   # @param [Block]
   #   A block of code that should be executed after the successfully acquired lock.
   # @return [Hash<Symbol,Any>]
@@ -139,7 +141,7 @@ class RedisQueuedLocks::Client
   end
 
   # @param lock_name [String] The lock name that should be released.
-  # @return [?]
+  # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol/Hash }.
   #
   # @api public
   # @since 0.1.0
@@ -147,7 +149,7 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Acquier.release_lock!(redis_client, lock_name)
   end
 
-  # @return [?]
+  # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol/Hash }.
   #
   # @api public
   # @since 0.1.0
