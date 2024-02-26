@@ -2,6 +2,7 @@
 
 # @api private
 # @since 0.1.0
+# rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquier
   require_relative 'acquier/try'
   require_relative 'acquier/delay'
@@ -26,6 +27,7 @@ module RedisQueuedLocks::Acquier
   # @since 0.1.0
   REDIS_EXPIRATION_DEVIATION = 2 # NOTE: milliseconds
 
+  # rubocop:disable Metrics/ClassLength
   class << self
     # @param redis [RedisClient]
     #   Redis connection client.
@@ -49,6 +51,8 @@ module RedisQueuedLocks::Acquier
     #   Time-shift range for retry-delay (in milliseconds).
     # @option raise_errors [Boolean]
     #   Raise errors on exceptional cases.
+    # @option instrumenter [#notify]
+    #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
     # @return [Hash<Symbol,Any>]
@@ -69,6 +73,7 @@ module RedisQueuedLocks::Acquier
       retry_delay:,
       retry_jitter:,
       raise_errors:,
+      instrumenter:,
       &block
     )
       # Step 1: prepare lock requirements (generate lock name, calc lock ttl, etc).
@@ -113,6 +118,15 @@ module RedisQueuedLocks::Acquier
 
           # Step 2.1: analyze an acquirement attempt
           if ok
+            # INSTRUMENT: lock obtained
+            instrumenter.notify('redis_queued_locks.lock_obtained', {
+              lock_key: result[:lock_key],
+              ttl: result[:ttl],
+              acq_id: result[:acq_id],
+              ts: result[:ts],
+              acq_time: acq_time
+            })
+
             # Step 2.1.a: successfully acquired => build the result
             acq_process[:lock_info] = {
               lock_key: result[:lock_key],
@@ -222,4 +236,6 @@ module RedisQueuedLocks::Acquier
       end
     end
   end
+  # rubocop:enable Metrics/ClassLength
 end
+# rubocop:enable Metrics/ModuleLength

@@ -105,6 +105,7 @@ class RedisQueuedLocks::Client
       retry_delay:,
       retry_jitter:,
       raise_errors:,
+      instrumenter: config[:instrumenter],
       &block
     )
   end
