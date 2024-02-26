@@ -251,8 +251,6 @@ List of instrumentation events
 - **redis_queued_locks.explicit_lock_release**
 - **redis_queued_locks.explicit_all_locks_release**
 
----
-
 Detalized event semantics and payload structure:
 
 - `"redis_queued_locks.lock_obtained"`
