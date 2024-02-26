@@ -279,9 +279,9 @@ Return:
 
 ## Instrumentation
 
-An instrumentation layer is incapsulated in `instrumenter` object stored in configurations.
+An instrumentation layer is incapsulated in `instrumenter` object stored in [config](#configuration) (`RedisQueuedLocks::Client#config[:instrumenter]`).
 
-Instrumenter object should provide `notify(event, payload)` method with following signarue:
+Instrumenter object should provide `notify(event, payload)` method with the following signarue:
 
 - `event` - `string`;
 - `payload` - `hash<Symbol,Any>`;
@@ -289,7 +289,7 @@ Instrumenter object should provide `notify(event, payload)` method with followin
 `redis_queued_locks` provides two instrumenters:
 
 - `RedisQueuedLocks::Instrument::ActiveSupport` - `ActiveSupport::Notifications` instrumenter
-  that instrument events via `ActiveSupport::Notifications` api;
+  that instrument events via `ActiveSupport::Notifications` API;
 - `RedisQueuedLocks::Instrument::VoidNotifier` - instrumenter that does nothing;
 
 By default `RedisQueuedLocks::Client` is configured with the void notifier (which means "instrumentation is disabled").
