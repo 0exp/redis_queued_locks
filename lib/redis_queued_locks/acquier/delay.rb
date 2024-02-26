@@ -3,6 +3,8 @@
 # @api private
 # @since 0.1.0
 module RedisQueuedLocks::Acquier::Delay
+  # Sleep with random time-shifting (it is necessary for empty-time-slot lock acquirement).
+  #
   # @param retry_delay [Integer] In milliseconds
   # @param retry_jitter [Integer] In milliseconds
   # @return [void]
