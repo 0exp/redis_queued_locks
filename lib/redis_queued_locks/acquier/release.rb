@@ -29,7 +29,11 @@ module RedisQueuedLocks::Acquier::Release
   # @since 0.1.0
   def fully_release_all_locks(redis, batch_size)
     # Step A: release all queus and their related locks
-    redis.scan('MATCH', RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN) do |lock_queue|
+    redis.scan(
+      'MATCH',
+      RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
+      count: batch_size
+    ) do |lock_queue|
       redis.pipelined do |pipeline|
         pipeline.call('ZREMRANGEBYSCORE', lock_queue, '-inf', '+inf')
         pipeline.call('EXPIRE', RedisQueuedLocks::Resource.lock_key_from_queue(lock_queue))
@@ -38,7 +42,11 @@ module RedisQueuedLocks::Acquier::Release
 
     # Step B: release all locks
     redis.pipelined do |pipeline|
-      redis.scan('MATCH', RedisQueuedLocks::Resource::LOCK_PATTERN) do |lock_key|
+      redis.scan(
+        'MATCH',
+        RedisQueuedLocks::Resource::LOCK_PATTERN,
+        count: batch_size
+      ) do |lock_key|
         pipeline.call('EXPIRE', lock_key, '0')
       end
     end
