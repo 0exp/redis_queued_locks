@@ -154,6 +154,33 @@ class RedisQueuedLocks::Client
     )
   end
 
+  # @param lock_name [String]
+  # @return [Boolean]
+  #
+  # @api public
+  # @since 0.1.0
+  def locked?(lock_name)
+    RedisQueuedLocks::Acquier.locked?(redis_client, lock_name)
+  end
+
+  # @param lock_name [String]
+  # @return [Boolean]
+  #
+  # @api public
+  # @since 0.1.0
+  def queued?(lock_name)
+    RedisQueuedLocks::Acquier.queued?(redis_client, lock_name)
+  end
+
+  # @param lock_name [String]
+  # @return [?]
+  #
+  # @api public
+  # @since 0.1.0
+  def lock_info(lock_name)
+    RedisQueuedLocks::Acquier.lock_info(redis_client, lock_name)
+  end
+
   # @option batch_size [Integer]
   # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol/Hash }.
   #

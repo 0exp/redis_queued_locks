@@ -271,6 +271,33 @@ module RedisQueuedLocks::Acquier
       { ok: true, result: { rel_key_cnt: result[:rel_keys], rel_time: rel_time } }
     end
 
+    # @param redis_client [RedisClient]
+    # @param lock_name [String]
+    # @return [Boolean]
+    #
+    # @api private
+    # @since 0.1.0
+    def locked?(redis_client, lock_name)
+    end
+
+    # @param redis_client [RedisClient]
+    # @param lock_name [String]
+    # @return [Boolean]
+    #
+    # @api private
+    # @since 0.1.0
+    def queued?(redis_client, lock_name)
+    end
+
+    # @param redis_client [RedisClient]
+    # @param lock_name [String]
+    # @return [?]
+    #
+    # @api private
+    # @since 0.1.0
+    def lock_info(redis_client, lock_name)
+    end
+
     private
 
     # @param timeout [NilClass,Integer]
