@@ -168,7 +168,7 @@ def lock(
 - `instrumenter` - `[#notify]`
   - See RedisQueuedLocks::Instrument::ActiveSupport for example.
 - `raise_errors` - `[Boolean]`
-  - Raise errors on library-related limits such as timeout or failed lock obtain.
+  - Raise errors on library-related limits such as timeout or retry count limit.
 - `block` - `[Block]`
   - A block of code that should be executed after the successfully acquired lock.
   - If block is **passed** the obtained lock will be released after the block execution or it's ttl (what will happen first);
@@ -194,7 +194,6 @@ Return value:
   { ok: false, result: :retry_count_reached }
   { ok: false, result: :unknown }
   ```
-
 
 ---
 
