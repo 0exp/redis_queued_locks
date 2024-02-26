@@ -90,7 +90,9 @@ module RedisQueuedLocks::Acquier
         tries: 0,
         acquired: false,
         result: nil,
-        acq_time: nil # NOTE: in milliseconds
+        acq_time: nil, # NOTE: in milliseconds
+        hold_time: nil, # NOTE: in milliseconds
+        rel_time: nil # NOTE: in milliseconds
       }
       acq_dequeue = -> { dequeue_from_lock_queue(redis, lock_key_queue, acquier_id) }
 
@@ -118,7 +120,7 @@ module RedisQueuedLocks::Acquier
 
           # Step 2.1: analyze an acquirement attempt
           if ok
-            # INSTRUMENT: lock obtained
+            # Step X (instrumentation): lock obtained
             instrumenter.notify('redis_queued_locks.lock_obtained', {
               lock_key: result[:lock_key],
               ttl: result[:ttl],
@@ -160,7 +162,25 @@ module RedisQueuedLocks::Acquier
       if acq_process[:acquired]
         # Step 3.a: acquired successfully => run logic or return the result of acquirement
         if block_given?
-          yield_with_expire(redis, lock_key, &block) # INSTRUMENT: lock release
+          begin
+            yield_with_expire(redis, lock_key, instrumenter, &block)
+          ensure
+            acq_process[:rel_time] = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
+            acq_process[:hold_time] = ((
+              acq_process[:rel_time] - acq_process[:acq_time]
+            ) * 1000).ceil
+
+            # Step X (instrumentation): lock_hold_and_release
+            instrumenter.notify('redis_queued_locks.lock_hold_and_release', {
+              hold_time: acq_process[:hold_time],
+              rel_time: acq_process[:rel_time],
+              ttl: acq_process[:lock_info][:ttl],
+              acq_id: acq_process[:lock_info][:acq_id],
+              ts: acq_process[:lock_info][:ts],
+              lock_key: acq_process[:lock_info][:lock_key],
+              acq_time: acq_process[:acq_time]
+            })
+          end
         else
           { ok: true, result: acq_process[:lock_info] }
         end
@@ -181,16 +201,28 @@ module RedisQueuedLocks::Acquier
     #
     # @param redis [RedisClient] Redis connection client.
     # @param lock_name [String] The lock name that should be released.
+    # @param isntrumenter [#notify] See RedisQueuedLocks::Instrument::ActiveSupport for example.
     # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
     #
     # @api private
     # @since 0.1.0
-    def release_lock!(redis, lock_name)
+    def release_lock!(redis, lock_name, instrumenter)
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
 
-      # INSTRUMENT: lock release
+      rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
       result = fully_release_lock(redis, lock_key, lock_key_queue)
+      time_at = Time.now.to_i
+      rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
+      rel_time = ((rel_end_time - rel_start_time) * 1_000).ceil
+
+      instrumenter.notify('redis_queued_locks.explicit_lock_release', {
+        lock_key: lock_key,
+        lock_key_queue: lock_key_queue,
+        rel_time: rel_time,
+        at: time_at
+      })
+
       { ok: true, result: result }
     end
 
@@ -200,13 +232,25 @@ module RedisQueuedLocks::Acquier
     #
     # @param redis [RedisClient] Redis connection client.
     # @param batch_size [Integer] The number of lock keys that should be released in a time.
+    # @param isntrumenter [#notify] See RedisQueuedLocks::Instrument::ActiveSupport for example.
     # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
     #
     # @api private
     # @since 0.1.0
-    def release_all_locks!(redis, batch_size)
-      # INSTRUMENT: all locks released
+    def release_all_locks!(redis, batch_size, instrumenter)
+      rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
       result = fully_release_all_locks(redis, batch_size)
+      time_at = Time.now.to_i
+      rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
+      rel_time = ((rel_end_time - rel_start_time) * 1_000).ceil
+
+      instrumenter.notify('redis_queued_locks.explicit_all_locks_release', {
+        at: time_at,
+        rel_time: rel_time,
+        rel_lock_cnt: result[:rel_lock_cnt],
+        rel_queue_cnt: result[:rel_queue_cnt]
+      })
+
       { ok: true, result: result }
     end
 

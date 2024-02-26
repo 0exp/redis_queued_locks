@@ -147,14 +147,23 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def unlock(lock_name)
-    RedisQueuedLocks::Acquier.release_lock!(redis_client, lock_name)
+    RedisQueuedLocks::Acquier.release_lock!(
+      redis_client,
+      lock_name,
+      config[:instrumenter]
+    )
   end
 
+  # @option batch_size [Integer]
   # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol/Hash }.
   #
   # @api public
   # @since 0.1.0
   def clear_locks(batch_size: config[:lock_release_batch_size])
-    RedisQueuedLocks::Acquier.release_all_locks!(redis_client, batch_size)
+    RedisQueuedLocks::Acquier.release_all_locks!(
+      redis_client,
+      batch_size,
+      config[:instrumenter]
+    )
   end
 end
