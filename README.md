@@ -296,6 +296,7 @@ Detalized event semantics and payload structure:
 
 ## Roadmap
 
+- `100%` test coverage;
 - better code stylization and interesting refactorings :)
 
 ---
