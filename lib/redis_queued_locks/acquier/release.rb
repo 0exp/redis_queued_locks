@@ -30,36 +30,31 @@ module RedisQueuedLocks::Acquier::Release
   # @api private
   # @since 0.1.0
   def fully_release_all_locks(redis, batch_size)
-    rel_queue_cnt = 0
-    rel_lock_cnt = 0
-
-    # Step A: release all queus and their related locks
-    redis.scan(
-      'MATCH',
-      RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
-      count: batch_size
-    ) do |lock_queue|
-      rel_queue_cnt += 1
-      rel_lock_cnt += 1
-
-      redis.pipelined do |pipeline|
+    result = redis.pipelined do |pipeline|
+      # Step A: release all queus and their related locks
+      redis.scan(
+        'MATCH',
+        RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
+        count: batch_size
+      ) do |lock_queue|
+        puts "RELEASE (lock_queue): #{lock_queue}"
         pipeline.call('ZREMRANGEBYSCORE', lock_queue, '-inf', '+inf')
-        pipeline.call('EXPIRE', RedisQueuedLocks::Resource.lock_key_from_queue(lock_queue), '0')
+        pipeline.call('EXPIRE', RedisQueuedLocks::Resource.lock_key_from_queue(lock_queue), "0")
       end
-    end
 
-    # Step B: release all locks
-    redis.pipelined do |pipeline|
+      # Step B: release all locks
       redis.scan(
         'MATCH',
         RedisQueuedLocks::Resource::LOCK_PATTERN,
         count: batch_size
       ) do |lock_key|
-        rel_lock_cnt += 1
+        puts "RELEASE (lock_key): #{lock_key}"
         pipeline.call('EXPIRE', lock_key, '0')
       end
     end
 
-    { ok: true, result: { rel_queue_cnt:, rel_lock_cnt: } }
+    rel_keys = result.count { |red_res| red_res == 0 }
+
+    { ok: true, result: { rel_keys: rel_keys } }
   end
 end

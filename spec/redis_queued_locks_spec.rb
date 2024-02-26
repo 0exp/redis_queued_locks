@@ -19,7 +19,7 @@ RSpec.describe RedisQueuedLocks do
       end
     end.new
 
-    redis = RedisClient.config.new_pool(size: 15)
+    redis = RedisClient.config.new_pool(timeout: 5, size: 50)
 
     client = RedisQueuedLocks::Client.new(redis) do |config|
       config.retry_count = 3
@@ -38,13 +38,14 @@ RSpec.describe RedisQueuedLocks do
       end
     end.each(&:join)
 
-    Array.new(100) do |kek|
+    Array.new(120) do |kek|
       Thread.new do
-        client.lock!("locklock#{kek}", retry_count: nil, timeout: nil)
+        client.lock!("locklock#{kek}", ttl: 10_000, retry_count: nil, timeout: nil)
       end
     end
 
     client.unlock('locklock1')
+    sleep(3)
     client.clear_locks
 
     puts test_notifier.notifications

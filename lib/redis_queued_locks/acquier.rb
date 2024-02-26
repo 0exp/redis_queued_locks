@@ -251,8 +251,7 @@ module RedisQueuedLocks::Acquier
         instrumenter.notify('redis_queued_locks.explicit_all_locks_release', {
           at: time_at,
           rel_time: rel_time,
-          rel_lock_cnt: result[:rel_lock_cnt],
-          rel_queue_cnt: result[:rel_queue_cnt]
+          rel_keys: result[:rel_keys]
         })
       end
 

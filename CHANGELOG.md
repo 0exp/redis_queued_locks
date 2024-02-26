@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+## [0.0.3] - 2024-02-26
+### Changed
+- Instrumentation events:
+  - `"redis_queued_locks.explicit_all_locks_release"`
+    - re-factored with fully pipelined invocation;
+    - removed `rel_queue_cnt` and `rel_lock_cnt` because of the pipelined invocation
+      misses the concrete results and now we can receive only "released redis keys count";
+    - adde `rel_keys` payload data (released redis keys);
+
 ## [0.0.2] - 2024-02-26
 ### Added
 - Instrumentation events:
