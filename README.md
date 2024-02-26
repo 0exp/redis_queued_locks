@@ -6,6 +6,7 @@ Distributed lock implementation with "lock acquisition queue" capabilities based
 
 ## Table of Contents
 
+- [Algorithm](#algorithm)
 - [Installation](#installation)
 - [Setuo](#setup)
 - [Configuration](#configuration)
@@ -19,6 +20,12 @@ Distributed lock implementation with "lock acquisition queue" capabilities based
 - [Contributing](#contributing)
 - [License](#license)
 - [Authors](#authors)
+
+---
+
+### Algorithm
+
+- soon;
 
 ---
 
