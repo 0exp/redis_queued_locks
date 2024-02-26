@@ -195,7 +195,7 @@ Return value:
 
 ---
 
-#### #lock! - exceptiona lock obtaining
+#### #lock! - exceptional lock obtaining
 
 - fails when:
   - `timeout` limit reached before lock is obtained;
