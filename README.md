@@ -8,7 +8,7 @@ Distributed lock implementation with "lock acquisition queue" capabilities based
 
 - [Algorithm](#algorithm)
 - [Installation](#installation)
-- [Setuo](#setup)
+- [Setup](#setup)
 - [Configuration](#configuration)
 - [Usage](#usage)
   - [lock](#lock---obtain-a-lock)
