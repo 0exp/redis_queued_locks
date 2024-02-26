@@ -200,7 +200,8 @@ See `#lock` method documentation.
 
 #### #unlock - release a lock
 
-- release a concrete lock with lock request queue;
+- release the concrete lock with lock request queue;
+- queue will be relased first;
 
 ```ruby
 def unlock(lock_name)
@@ -217,6 +218,7 @@ Return:
 #### #clear_locks - release all locks and lock queues
 
 - release all obtained locks and related lock request queues;
+- queues will be released first;
 
 ```ruby
 def clear_locks(batch_size: config[:lock_release_batch_size])
