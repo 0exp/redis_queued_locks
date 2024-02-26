@@ -7,15 +7,46 @@ RSpec.describe RedisQueuedLocks do
 
   specify do
     RedisQueuedLocks.enable_debugger!
+    test_notifier = Class.new do
+      attr_reader :notifications
 
-    redis = RedisClient.config.new_client
+      def initialize
+        @notifications = []
+      end
+
+      def notify(event, payload = {})
+        notifications << { event:, payload: }
+      end
+    end.new
+
+    redis = RedisClient.config.new_pool(size: 15)
+
     client = RedisQueuedLocks::Client.new(redis) do |config|
       config.retry_count = 3
+      config.instrumenter = test_notifier
     end
-    15.times { client.lock!("locklock#{_1}") }
-    15.times { client.lock!("locklock#{_1}") {} }
+
+    Array.new(5) do |kek|
+      Thread.new do
+        client.lock!("locklock#{kek}", retry_count: nil, timeout: nil)
+      end
+    end
+
+    Array.new(5) do |kek|
+      Thread.new do
+        client.lock!("locklock#{kek}", retry_count: nil, timeout: nil) { 'some_logic' }
+      end
+    end.each(&:join)
+
+    Array.new(100) do |kek|
+      Thread.new do
+        client.lock!("locklock#{kek}", retry_count: nil, timeout: nil)
+      end
+    end
 
     client.unlock('locklock1')
     client.clear_locks
+
+    puts test_notifier.notifications
   end
 end

@@ -43,8 +43,8 @@ module RedisQueuedLocks::Acquier
     #   Lifetime of the acuier's lock request. In seconds.
     # @option timeout [Integer]
     #   Time period whe should try to acquire the lock (in seconds).
-    # @option retry_count [Integer]
-    #   How many times we should try to acquire a lock.
+    # @option retry_count [Integer,NilClass]
+    #   How many times we should try to acquire a lock. Nil means "infinite retries".
     # @option retry_delay [Integer]
     #   A time-interval between the each retry (in milliseconds).
     # @option retry_jitter [Integer]
@@ -113,7 +113,7 @@ module RedisQueuedLocks::Acquier
           ) => { ok:, result: }
 
           acq_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
-          acq_time = ((acq_end_time - acq_start_time) * 1_000).ceil
+          acq_time = ((acq_end_time - acq_start_time) * 1_000).ceil(2)
 
           # Step X: save the intermediate results to the result observer
           acq_process[:result] = result
@@ -139,20 +139,20 @@ module RedisQueuedLocks::Acquier
             acq_process[:acquired] = true
             acq_process[:should_try] = false
             acq_process[:acq_time] = acq_time
+            acq_process[:acq_end_time] = acq_end_time
           else
             # Step 2.1.b: failed acquirement => retry
             acq_process[:tries] += 1
 
-            if acq_process[:tries] >= retry_count
+            if retry_count != nil && acq_process[:tries] >= retry_count
               # NOTE: reached the retry limit => quit from the loop
               acq_process[:should_try] = false
               # NOTE: reached the retry limit => dequeue from the lock queue
               acq_dequeue.call
-            else
+            elsif delay_execution(retry_delay, retry_jitter)
               # NOTE:
               #   delay the exceution in order to prevent chaotic attempts
               #   and to allow other processes and threads to obtain the lock too.
-              delay_execution(retry_delay, retry_jitter)
             end
           end
         end
@@ -163,23 +163,24 @@ module RedisQueuedLocks::Acquier
         # Step 3.a: acquired successfully => run logic or return the result of acquirement
         if block_given?
           begin
-            yield_with_expire(redis, lock_key, instrumenter, &block)
+            yield_with_expire(redis, lock_key, &block)
           ensure
             acq_process[:rel_time] = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
-            acq_process[:hold_time] = ((
-              acq_process[:rel_time] - acq_process[:acq_time]
-            ) * 1000).ceil
+            acq_process[:hold_time] = (
+              (acq_process[:rel_time] - acq_process[:acq_end_time]) * 1000
+            ).ceil(2)
 
             # Step X (instrumentation): lock_hold_and_release
-            instrumenter.notify('redis_queued_locks.lock_hold_and_release', {
-              hold_time: acq_process[:hold_time],
-              rel_time: acq_process[:rel_time],
-              ttl: acq_process[:lock_info][:ttl],
-              acq_id: acq_process[:lock_info][:acq_id],
-              ts: acq_process[:lock_info][:ts],
-              lock_key: acq_process[:lock_info][:lock_key],
-              acq_time: acq_process[:acq_time]
-            })
+            run_non_critical do
+              instrumenter.notify('redis_queued_locks.lock_hold_and_release', {
+                hold_time: acq_process[:hold_time],
+                ttl: acq_process[:lock_info][:ttl],
+                acq_id: acq_process[:lock_info][:acq_id],
+                ts: acq_process[:lock_info][:ts],
+                lock_key: acq_process[:lock_info][:lock_key],
+                acq_time: acq_process[:acq_time]
+              })
+            end
           end
         else
           { ok: true, result: acq_process[:lock_info] }
@@ -211,17 +212,19 @@ module RedisQueuedLocks::Acquier
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
 
       rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
-      result = fully_release_lock(redis, lock_key, lock_key_queue)
+      fully_release_lock(redis, lock_key, lock_key_queue) => { ok:, result: }
       time_at = Time.now.to_i
       rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
-      rel_time = ((rel_end_time - rel_start_time) * 1_000).ceil
+      rel_time = ((rel_end_time - rel_start_time) * 1_000).ceil(2)
 
-      instrumenter.notify('redis_queued_locks.explicit_lock_release', {
-        lock_key: lock_key,
-        lock_key_queue: lock_key_queue,
-        rel_time: rel_time,
-        at: time_at
-      })
+      run_non_critical do
+        instrumenter.notify('redis_queued_locks.explicit_lock_release', {
+          lock_key: lock_key,
+          lock_key_queue: lock_key_queue,
+          rel_time: rel_time,
+          at: time_at
+        })
+      end
 
       { ok: true, result: result }
     end
@@ -239,17 +242,19 @@ module RedisQueuedLocks::Acquier
     # @since 0.1.0
     def release_all_locks!(redis, batch_size, instrumenter)
       rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
-      result = fully_release_all_locks(redis, batch_size)
+      fully_release_all_locks(redis, batch_size) => { ok:, result: }
       time_at = Time.now.to_i
       rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
-      rel_time = ((rel_end_time - rel_start_time) * 1_000).ceil
+      rel_time = ((rel_end_time - rel_start_time) * 1_000).ceil(2)
 
-      instrumenter.notify('redis_queued_locks.explicit_all_locks_release', {
-        at: time_at,
-        rel_time: rel_time,
-        rel_lock_cnt: result[:rel_lock_cnt],
-        rel_queue_cnt: result[:rel_queue_cnt]
-      })
+      run_non_critical do
+        instrumenter.notify('redis_queued_locks.explicit_all_locks_release', {
+          at: time_at,
+          rel_time: rel_time,
+          rel_lock_cnt: result[:rel_lock_cnt],
+          rel_queue_cnt: result[:rel_queue_cnt]
+        })
+      end
 
       { ok: true, result: result }
     end
@@ -278,6 +283,15 @@ module RedisQueuedLocks::Acquier
           Failed to acquire the lock "#{lock_key}" for the given timeout (#{timeout} seconds).
         ERROR_MESSAGE
       end
+    end
+
+    # @param block [Block]
+    # @return [Any]
+    #
+    # @api private
+    # @since 0.1.0
+    def run_non_critical(&block)
+      yield rescue nil
     end
   end
   # rubocop:enable Metrics/ClassLength

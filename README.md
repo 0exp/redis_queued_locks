@@ -22,7 +22,6 @@ Distributed lock implementation with "lock acquisition queue" capabilities based
     - `lock_key` - `string` - lock name;
     - `ts` - `integer`/`epoch` - the time when lock was obtained;
     - `acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `rel_time` - `float`/`milliseconds` - time spent on lock "holding + releasing";
 - `"redis_queued_locks.explicit_lock_release"`
   - an event signalizes about the explicit lock release (invoked via `RedisQueuedLock#unlock`);
   - payload:

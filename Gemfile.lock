@@ -33,7 +33,6 @@ GEM
     concurrent-ruby (1.2.3)
     connection_pool (2.4.1)
     diff-lcs (1.5.1)
-    docile (1.4.0)
     drb (2.2.0)
       ruby2_keywords
     i18n (1.14.1)
@@ -105,12 +104,6 @@ GEM
       rubocop-factory_bot (~> 2.22)
     ruby-progressbar (1.13.0)
     ruby2_keywords (0.0.5)
-    simplecov (0.22.0)
-      docile (~> 1.1)
-      simplecov-html (~> 0.11)
-      simplecov_json_formatter (~> 0.1)
-    simplecov-html (0.12.3)
-    simplecov_json_formatter (0.1.4)
     tzinfo (2.0.6)
       concurrent-ruby (~> 1.0)
     unicode-display_width (2.5.0)
@@ -126,7 +119,6 @@ DEPENDENCIES
   rake
   redis_queued_locks!
   rspec
-  simplecov
 
 BUNDLED WITH
    2.5.6

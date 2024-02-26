@@ -12,15 +12,15 @@ class RedisQueuedLocks::Client
     setting :retry_jitter, 50 # NOTE: milliseconds
     setting :default_timeout, 10 # NOTE: seconds
     setting :exp_precision, 1 # NOTE: milliseconds
-    setting :default_lock_ttl, 10_000 # NOTE: milliseconds
-    setting :default_queue_ttl, 5 # NOTE: seconds
+    setting :default_lock_ttl, 5_000 # NOTE: milliseconds
+    setting :default_queue_ttl, 30 # NOTE: seconds
     setting :lock_release_batch_size, 100
     setting :instrumenter, RedisQueuedLocks::Instrument::VoidNotifier
 
     # TODO: setting :logger, Logger.new(IO::NULL)
     # TODO: setting :debug, true/false
 
-    validate('retry_count', :integer)
+    validate('retry_count') { |val| val == nil || (val.is_a?(::Integer) && val >= 0) }
     validate('retry_delay', :integer)
     validate('retry_jitter', :integer)
     validate('default_timeout', :integer)
@@ -28,7 +28,7 @@ class RedisQueuedLocks::Client
     validate('default_lock_tt', :integer)
     validate('default_queue_ttl', :integer)
     validate('lock_release_batch_size', :integer)
-    validate('instrumenter') { |instr| RedisQueuedLocks::Instrument.valid_interface?(instr) }
+    validate('instrumenter') { |val| RedisQueuedLocks::Instrument.valid_interface?(val) }
   end
 
   # @return [RedisClient]
@@ -63,8 +63,8 @@ class RedisQueuedLocks::Client
   #   Lifetime of the acuier's lock request. In seconds.
   # @option timeout [Integer,NilClass]
   #   Time period whe should try to acquire the lock (in seconds). Nil means "without timeout".
-  # @option retry_count [Integer]
-  #   How many times we should try to acquire a lock.
+  # @option retry_count [Integer,NilClass]
+  #   How many times we should try to acquire a lock. Nil means "infinite retries".
   # @option retry_delay [Integer]
   #   A time-interval between the each retry (in milliseconds).
   # @option retry_jitter [Integer]
