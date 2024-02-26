@@ -170,6 +170,8 @@ def lock(
   - Raise errors on library-related limits such as timeout or failed lock obtain.
 - `block` - `[Block]`
   - A block of code that should be executed after the successfully acquired lock.
+  - If block is **passed** the obtained lock will be released after the block execution or it's ttl (what will happen first);
+  - If block is **not passed** the obtained lock will be released after it's ttl;
 
 Return value:
 - `[Hash<Symbol,Any>]` Format: `{ ok: true/false, result: Symbol/Hash }`;
