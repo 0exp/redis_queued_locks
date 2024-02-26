@@ -10,7 +10,7 @@ module RedisQueuedLocks::Debugger
   # @api private
   # @since 0.1.0
   DEBUG_ENABLED_METHOD = <<~METHOD_DECLARATION.strip.freeze
-    def debug(message) = STDOUT.write_nonblock("#\{message}\n")
+    def debug(message) = STDOUT.write("#\{message}\n")
   METHOD_DECLARATION
 
   # @return [String]
