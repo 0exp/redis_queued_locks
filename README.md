@@ -216,7 +216,7 @@ def lock!(
 )
 ```
 
-See `#lock` method documentation.
+See `#lock` method [documentation](#lock---obtain-a-lock).
 
 ---
 
