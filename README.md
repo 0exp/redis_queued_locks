@@ -12,3 +12,7 @@ Distributed lock implementation with "lock acquisition queue" capabilities based
     - `lock_key` - `string` - lock name ;
     - `ts` - `integer`/`epoch` - the time when the lock was obtaiend;
     - `acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+
+## Todo
+
+- CI (github actions);

@@ -14,7 +14,7 @@ module RedisQueuedLocks::Acquier::Try
   #
   # @api private
   # @since 0.1.0
-  # rubocop:disable Metrics/MethodLength, Metrics/PerceivedComplexity
+  # rubocop:disable Metrics/MethodLength
   def try_to_lock(redis, lock_key, lock_key_queue, acquier_id, acquier_position, ttl, queue_ttl)
     # Step X: intermediate invocation results
     inter_result = nil
