@@ -113,8 +113,6 @@ end
 
 #### lock - obtain a lock;
 
-- lock obtaining;
-
 ```ruby
 def lock(
   lock_name,
@@ -163,10 +161,9 @@ Return value:
 
 #### #lock! - exeptional lock obtaining;
 
-- exceptional lock obtaining;
 - fails when:
   - `timeout` limit reached before lock is obtained;
-  - `retry_count` limit  reached before lock is obtained;
+  - `retry_count` limit reached before lock is obtained;
 
 ```ruby
 def lock!(
@@ -228,7 +225,7 @@ Instrumenter object should provide `notify(event, payload)` method with followin
 - `event` - `string`;
 - `payload` - `hash<Symbol,Any>`;
 
-`redis_queued_locks` provides two instrumeters:
+`redis_queued_locks` provides two instrumenters:
 
 - `RedisQueuedLocks::Instrument::ActiveSupport` - `ActiveSupport::Notifications` instrumenter
   that instrument events via `ActiveSupport::Notifications` api;
@@ -271,12 +268,6 @@ By default `RedisQueuedLocks::Client` is configured with the void notifier (whic
     - `rel_time` - `float`/`milliseconds` - time spent on "realese all locks" operation;
     - `at` - `integer`/`epoch` - the time when the operation has ended;
     - `rel_keys` - `integer` - released redis keys count (`released queu keys` + `released lock keys`);
-
----
-
-## Roadmap
-
-- in progress;
 
 ---
 
