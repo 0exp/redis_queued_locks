@@ -40,7 +40,7 @@ module RedisQueuedLocks::Acquier
     # @option ttl [Integer,NilClass]
     #   Lock's time to live (in milliseconds). Nil means "without timeout".
     # @option queue_ttl [Integer]
-    #   Lifetime of the acuier's lock request.
+    #   Lifetime of the acuier's lock request. In seconds.
     # @option timeout [Integer]
     #   Time period whe should try to acquire the lock (in seconds).
     # @option retry_count [Integer]

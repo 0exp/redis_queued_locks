@@ -60,7 +60,7 @@ class RedisQueuedLocks::Client
   # @option ttl [Integer]
   #   Lock's time to live (in milliseconds).
   # @option queue_ttl [Integer]
-  #   Lifetime of the acuier's lock request.
+  #   Lifetime of the acuier's lock request. In seconds.
   # @option timeout [Integer,NilClass]
   #   Time period whe should try to acquire the lock (in seconds). Nil means "without timeout".
   # @option retry_count [Integer]
