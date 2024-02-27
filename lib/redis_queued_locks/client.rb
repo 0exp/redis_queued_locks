@@ -76,7 +76,7 @@ class RedisQueuedLocks::Client
   #   Raise errors on library-related limits such as timeout or failed lock obtain.
   # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
-  # @return [Hash<Symbol,Any>]
+  # @return [Hash<Symbol,Any>,yield]
   #   Format: { ok: true/false, result: Symbol/Hash }.
   #
   # @api public
@@ -148,11 +148,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def unlock(lock_name)
-    RedisQueuedLocks::Acquier.release_lock!(
-      redis_client,
-      lock_name,
-      config[:instrumenter]
-    )
+    RedisQueuedLocks::Acquier.release_lock!(redis_client, lock_name, config[:instrumenter])
   end
 
   # @param lock_name [String]
@@ -197,11 +193,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def clear_locks(batch_size: config[:lock_release_batch_size])
-    RedisQueuedLocks::Acquier.release_all_locks!(
-      redis_client,
-      batch_size,
-      config[:instrumenter]
-    )
+    RedisQueuedLocks::Acquier.release_all_locks!(redis_client, batch_size, config[:instrumenter])
   end
 end
 # rubocop:enable Metrics/ClassLength
