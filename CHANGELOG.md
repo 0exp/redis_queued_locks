@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+## [0.0.8] - 2024-02-27
+### Added
+- `RedisQueuedLock::Client#locked?`
+- `RedisQueuedLock::Client#queued?`
+- `RedisQueuedLock::Client#lock_info`
+- `RedisQueuedLock::Client#queue_info`
+
 ## [0.0.7] - 2024-02-27
 ### Changed
 - Minor documentation updates;

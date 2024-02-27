@@ -95,7 +95,13 @@ module RedisQueuedLocks::Acquier::Try
           )
 
           # Step 6.2: acquire a lock and store an info about the acquier
-          transact.call('HSET', lock_key, 'acq_id', acquier_id, 'ts', (timestamp = Time.now.to_i))
+          transact.call(
+            'HSET',
+            lock_key,
+            'acq_id', acquier_id,
+            'ts', (timestamp = Time.now.to_i),
+            'ini_ttl', ttl
+          )
 
           # Step 6.3: set the lock expiration time in order to prevent "infinite locks"
           transact.call('PEXPIRE', lock_key, ttl) # NOTE: in seconds

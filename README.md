@@ -15,11 +15,15 @@ Each lock request is put into a request queue and processed in order of their pr
 - [Usage](#usage)
   - [lock](#lock---obtain-a-lock)
   - [lock!](#lock---exeptional-lock-obtaining)
+  - [lock_info](#lock_info)
+  - [queue_info](#queue_info)
+  - [locked?](#locked)
+  - [queued?](#queued)
   - [unlock](#unlock---release-a-lock)
   - [clear_locks](#clear_locks---release-all-locks-and-lock-queues)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
-- [Todo](#todo)
+- [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
 - [Authors](#authors)
@@ -124,6 +128,10 @@ end
 
 - [lock](#lock---obtain-a-lock)
 - [lock!](#lock---exeptional-lock-obtaining)
+- [lock_info](#lock_info)
+- [queue_info](#queue_info)
+- [locked?](#locked)
+- [queued?](#queued)
 - [unlock](#unlock---release-a-lock)
 - [clear_locks](#clear_locks---release-all-locks-and-lock-queues)
 
@@ -219,6 +227,83 @@ def lock!(
 ```
 
 See `#lock` method [documentation](#lock---obtain-a-lock).
+
+---
+
+#### #lock_info
+
+- get the lock information;
+- returns `nil` if lock does not exist;
+- lock data (`Hash<Symbol,String|Integer>`):
+  - `lock_key` - `string` - lock key in redis;
+  - `acq_id` - `string` - acquier identifier (process_id/thread_id by default);
+  - `ts` - `integer`/`epoch` - the time lock was obtained;
+  - `init_ttl` - `integer` - (milliseconds) initial lock key ttl;
+  - `rem_ttl` - `integer` - (milliseconds) remaining lock key ttl;
+
+```ruby
+rql.lock_info("your_lock_name")
+
+# =>
+{
+  lock_key: "rql:lock:your_lock_name",
+  acq_id: "rql:acq:123/456",
+  ts: 123456789,
+  ini_ttl: 123456789,
+  rem_ttl: 123456789
+}
+```
+
+---
+
+#### #queue_info
+
+- get the lock queue information;
+- queue represents the ordered set of lock key reqests:
+  - set is ordered by score in ASC manner (inside the Redis Set);
+  - score is represented as a timestamp when the lock request was made;
+  - represents the acquier identifier and their score as an array of hashes;
+- returns `nil` if lock queue does not exist;
+- lock queue data (`Hash<Symbol,String|Array<Hash<Symbol,String|Numeric>>`):
+  - `lock_queue` - `string` - lock queue key in redis;
+  - `queue` - `array` - an array of lock requests (array of hashes):
+    - `acq_id` - `string` - acquier identifier (process_id/thread_id by default);
+    - `score` - `float`/`epoch` - time when the lock request was made (epoch);
+
+```ruby
+rql.queue_info("your_lock_name")
+
+# =>
+{
+  lock_queue: "rql:lock_queue:your_lock_name",
+  queue: [
+    { acq_id: "rql:acq:123/456", score: 1},
+    { acq_id: "rql:acq:123/567", score: 2},
+    { acq_id: "rql:acq:555/329", score: 3},
+    # ...etc
+  ]
+}
+```
+
+---
+
+#### #locked?
+
+- is the lock obtaied or not?
+
+```ruby
+rql.locked?("your_lock_name") # => true/false
+```
+
+---
+
+#### #queued?
+
+- is the lock queued for obtain / has requests for obtain?
+
+```ruby
+rql.queued?("your_lock_name") # => true/false
+```
 
 ---
 
@@ -341,11 +426,14 @@ Detalized event semantics and payload structure:
 
 ---
 
-## Todo
+## Roadmap
 
-- `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
-- `100%` test coverage;
-- better code stylization and interesting refactorings;
+- **Major**
+  - Semantic Error objects for unexpected Redis errors;
+  - `100%` test coverage;
+- **Minor**
+  - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
+  - better code stylization and interesting refactorings;
 
 ---
 

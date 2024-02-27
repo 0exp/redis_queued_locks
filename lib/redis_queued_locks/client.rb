@@ -2,6 +2,7 @@
 
 # @api public
 # @since 0.1.0
+# rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @since 0.1.0
   include Qonfig::Configurable
@@ -173,12 +174,21 @@ class RedisQueuedLocks::Client
   end
 
   # @param lock_name [String]
-  # @return [?]
+  # @return [Hash,NilClass]
   #
   # @api public
   # @since 0.1.0
   def lock_info(lock_name)
     RedisQueuedLocks::Acquier.lock_info(redis_client, lock_name)
+  end
+
+  # @param lock_name [String]
+  # @return [Hash,NilClass]
+  #
+  # @api public
+  # @since 0.1.0
+  def queue_info(lock_name)
+    RedisQueuedLocks::Acquier.queue_info(redis_client, lock_name)
   end
 
   # @option batch_size [Integer]
@@ -194,3 +204,4 @@ class RedisQueuedLocks::Client
     )
   end
 end
+# rubocop:enable Metrics/ClassLength
