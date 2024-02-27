@@ -147,6 +147,10 @@ end
 
 #### #lock - obtain a lock
 
+- If block is passed the obtained lock will be released after the block execution or the lock's ttl (what will happen first);
+- If block is not passed the obtained lock will be released after lock's ttl;
+
+
 ```ruby
 def lock(
   lock_name,
