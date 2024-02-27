@@ -282,7 +282,7 @@ rql.lock_info("your_lock_name")
 | represnts the ordered lock request queue that is ordered by score (Redis sets) and shows
 | lock acquirers and their position in queue. Async nature with redis communcation can lead
 | the situation when the queue becomes empty during the queue data extraction. So sometimes
-| you can receive the lock queue info with empty queue value.
+| you can receive the lock queue info with empty queue value (an empty array).
 ```
 
 ```ruby
