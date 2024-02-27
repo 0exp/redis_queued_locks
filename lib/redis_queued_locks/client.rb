@@ -196,6 +196,16 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Acquier.queue_info(redis_client, lock_name)
   end
 
+  # @param lock_name [String]
+  # @param milliseconds [Integer] How many milliseconds should be added.
+  # @return [?]
+  #
+  # @api public
+  # @since 0.1.0
+  def extend_lock_ttl(lock_name, milliseconds)
+    RedisQueuedLocks::Acquier.extend_lock_ttl(redis_client, lock_name)
+  end
+
   # @option batch_size [Integer]
   # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol/Hash }.
   #

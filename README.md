@@ -60,7 +60,7 @@ require 'redis_queued_locks'
 require 'redis_queued_locks'
 
 # Step 1: initialize RedisClient instance
-redis_clinet = RedisClient.config.new_pool # NOTE: provide your own RedisClient instance
+redis_client = RedisClient.config.new_pool # NOTE: provide your own RedisClient instance
 
 # Step 2: initialize RedisQueuedLock::Client instance
 rq_lock_client = RedisQueuedLocks::Client.new(redis_client) do |config|
