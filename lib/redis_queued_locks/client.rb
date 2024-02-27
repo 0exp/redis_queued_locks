@@ -86,7 +86,8 @@ class RedisQueuedLocks::Client
   # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
   # @return [Hash<Symbol,Any>,yield]
-  #   Format: { ok: true/false, result: Symbol/Hash }.
+  #   - Format: { ok: true/false, result: Symbol/Hash }.
+  #   - If block is given the result of block's yeld will be returned.
   #
   # @api public
   # @since 0.1.0

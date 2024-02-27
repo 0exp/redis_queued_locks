@@ -60,8 +60,9 @@ module RedisQueuedLocks::Acquier
     #   represented as 10 bytes hexstr.
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
-    # @return [Hash<Symbol,Any>]
-    #   Format: { ok: true/false, result: Any }
+    # @return [Hash<Symbol,Any>,yield]
+    #  - Format: { ok: true/false, result: Any }
+    #  - If block is given the result of block's yeld will be returned.
     #
     # @api private
     # @since 0.1.0

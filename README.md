@@ -145,6 +145,8 @@ end
 
 - If block is passed the obtained lock will be released after the block execution or the lock's ttl (what will happen first);
 - If block is not passed the obtained lock will be released after lock's ttl;
+- If block is passed the block's yield result will be returned;
+- If block is not passed the lock information will be returned;
 
 ```ruby
 def lock(
@@ -191,25 +193,30 @@ def lock(
   - If block is **not passed** the obtained lock will be released after it's ttl;
 
 Return value:
-- `[Hash<Symbol,Boolean|Hash<Symbol,Numeric|String>>]` Format: `{ ok: true/false, result: <Hash<Symbol,Hash>> }`;
-- for successful lock obtaining:
-  ```ruby
-  {
-    ok: true,
-    result: {
-      lock_key: String, # acquierd lock key ("rql:lock:your_lock_name")
-      acq_id: String, # acquier identifier ("process_id/thread_id/fiber_id/ractor_id/identity")
-      ts: Integer, # time (epoch) when lock was obtained (integer)
-      ttl: Integer # lock's time to live in milliseconds (integer)
+
+- If block is passed the block's yield result will be returned;
+- If block is not passed the lock information will be returned;
+- Lock information result:
+  - Signature: `[yield, Hash<Symbol,Boolean|Hash<Symbol,Numeric|String>>]`
+  - Format: `{ ok: true/false, result: <Symbol|Hash<Symbol,Hash>> }`;
+  - for successful lock obtaining:
+    ```ruby
+    {
+      ok: true,
+      result: {
+        lock_key: String, # acquierd lock key ("rql:lock:your_lock_name")
+        acq_id: String, # acquier identifier ("process_id/thread_id/fiber_id/ractor_id/identity")
+        ts: Integer, # time (epoch) when lock was obtained (integer)
+        ttl: Integer # lock's time to live in milliseconds (integer)
+      }
     }
-  }
-  ```
-- for failed lock obtaining:
-  ```ruby
-  { ok: false, result: :timeout_reached }
-  { ok: false, result: :retry_count_reached }
-  { ok: false, result: :unknown }
-  ```
+    ```
+  - for failed lock obtaining:
+    ```ruby
+    { ok: false, result: :timeout_reached }
+    { ok: false, result: :retry_count_reached }
+    { ok: false, result: :unknown }
+    ```
 
 ---
 
