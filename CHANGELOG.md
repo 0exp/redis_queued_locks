@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.10] - 2024-02-27
+### Changed
+- Minor documentation updates;
+
 ## [0.0.9] - 2024-02-27
 ### Changed
 - The lock acquier identifier (`acq_id`) now includes the fiber id, the ractor id and an unique per-process
