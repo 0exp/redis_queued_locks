@@ -265,6 +265,13 @@ rql.lock_info("your_lock_name")
 
 #### #queue_info
 
+Returns an information about the required lock queue by the lock name. The result
+represnts the ordered lock request queue that is ordered by score (Redis sets) and shows
+lock acquirers and their position in queue. Async nature with redis communcation can lead
+the situation when the queue becomes empty during the queue data extraction. So sometimes
+you can receive the lock queue info with empty queue value.
+
+TL;DR (Summary):
 - get the lock queue information;
 - queue represents the ordered set of lock key reqests:
   - set is ordered by score in ASC manner (inside the Redis Set);
@@ -276,6 +283,8 @@ rql.lock_info("your_lock_name")
   - `queue` - `array` - an array of lock requests (array of hashes):
     - `acq_id` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
     - `score` - `float`/`epoch` - time when the lock request was made (epoch);
+
+
 
 ```ruby
 rql.queue_info("your_lock_name")

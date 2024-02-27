@@ -363,7 +363,7 @@ module RedisQueuedLocks::Acquier
     # Returns an information about the required lock queue by the lock name. The result
     # represnts the ordered lock request queue that is ordered by score (Redis sets) and shows
     # lock acquirers and their position in queue. Async nature with redis communcation can lead
-    # the sitation when the queue becomes empty during the queue data extraction. So sometimes
+    # the sitaution when the queue becomes empty during the queue data extraction. So sometimes
     # you can receive the lock queue info with empty queue.
     #
     # @param redis_client [RedisClient]
