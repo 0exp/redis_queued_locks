@@ -2,6 +2,7 @@
 
 # @api public
 # @since 0.1.0
+# rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @since 0.1.0
   include Qonfig::Configurable
@@ -16,6 +17,7 @@ class RedisQueuedLocks::Client
     setting :default_queue_ttl, 15 # NOTE: seconds
     setting :lock_release_batch_size, 100
     setting :instrumenter, RedisQueuedLocks::Instrument::VoidNotifier
+    setting :uniq_identifier, -> { RedisQueuedLocks::Resource.calc_uniq_identity }
 
     # TODO: setting :logger, Logger.new(IO::NULL)
     # TODO: setting :debug, true/false
@@ -29,6 +31,7 @@ class RedisQueuedLocks::Client
     validate('default_queue_ttl', :integer)
     validate('lock_release_batch_size', :integer)
     validate('instrumenter') { |val| RedisQueuedLocks::Instrument.valid_interface?(val) }
+    validate('uniq_identifier', :proc)
   end
 
   # @return [RedisClient]
@@ -36,6 +39,12 @@ class RedisQueuedLocks::Client
   # @api private
   # @since 0.1.0
   attr_reader :redis_client
+
+  # @return [String]
+  #
+  # @api private
+  # @since 0.1.0
+  attr_accessor :uniq_identity
 
   # @param redis_client [RedisClient]
   #   Redis connection manager, which will be used for the lock acquierment and distribution.
@@ -48,15 +57,12 @@ class RedisQueuedLocks::Client
   # @since 0.1.0
   def initialize(redis_client, &configs)
     configure(&configs)
+    @uniq_identity = config[:uniq_identifier].call
     @redis_client = redis_client
   end
 
   # @param lock_name [String]
   #   Lock name to be obtained.
-  # @option process_id [Integer,String]
-  #   The process that want to acquire the lock.
-  # @option thread_id [Integer,String]
-  #   The process's thread that want to acquire the lock.
   # @option ttl [Integer]
   #   Lock's time to live (in milliseconds).
   # @option queue_ttl [Integer]
@@ -73,6 +79,10 @@ class RedisQueuedLocks::Client
   #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
   # @option raise_errors [Boolean]
   #   Raise errors on library-related limits such as timeout or failed lock obtain.
+  # @option identity [String]
+  #   Unique acquire identifier that is also should be unique between processes and pods
+  #   on different machines. By default the uniq identity string is
+  #   represented as 10 bytes hexstr.
   # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
   # @return [Hash<Symbol,Any>,yield]
@@ -82,8 +92,6 @@ class RedisQueuedLocks::Client
   # @since 0.1.0
   def lock(
     lock_name,
-    process_id: RedisQueuedLocks::Resource.get_process_id,
-    thread_id: RedisQueuedLocks::Resource.get_thread_id,
     ttl: config[:default_lock_ttl],
     queue_ttl: config[:default_queue_ttl],
     timeout: config[:try_to_lock_timeout],
@@ -91,13 +99,16 @@ class RedisQueuedLocks::Client
     retry_delay: config[:retry_delay],
     retry_jitter: config[:retry_jitter],
     raise_errors: false,
+    identity: uniq_identity,
     &block
   )
     RedisQueuedLocks::Acquier.acquire_lock!(
       redis_client,
       lock_name,
-      process_id:,
-      thread_id:,
+      process_id: RedisQueuedLocks::Resource.get_process_id,
+      thread_id: RedisQueuedLocks::Resource.get_thread_id,
+      fiber_id: RedisQueuedLocks::Resource.get_fiber_id,
+      ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
       ttl:,
       queue_ttl:,
       timeout:,
@@ -106,6 +117,7 @@ class RedisQueuedLocks::Client
       retry_jitter:,
       raise_errors:,
       instrumenter: config[:instrumenter],
+      identity:,
       &block
     )
   end
@@ -116,20 +128,17 @@ class RedisQueuedLocks::Client
   # @since 0.1.0
   def lock!(
     lock_name,
-    process_id: RedisQueuedLocks::Resource.get_process_id,
-    thread_id: RedisQueuedLocks::Resource.get_thread_id,
     ttl: config[:default_lock_ttl],
     queue_ttl: config[:default_queue_ttl],
     timeout: config[:default_timeout],
     retry_count: config[:retry_count],
     retry_delay: config[:retry_delay],
     retry_jitter: config[:retry_jitter],
+    identity: uniq_identity,
     &block
   )
     lock(
       lock_name,
-      process_id:,
-      thread_id:,
       ttl:,
       queue_ttl:,
       timeout:,
@@ -137,6 +146,7 @@ class RedisQueuedLocks::Client
       retry_delay:,
       retry_jitter:,
       raise_errors: true,
+      identity:,
       &block
     )
   end
@@ -195,3 +205,4 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Acquier.release_all_locks!(redis_client, batch_size, config[:instrumenter])
   end
 end
+# rubocop:enable Metrics/ClassLength

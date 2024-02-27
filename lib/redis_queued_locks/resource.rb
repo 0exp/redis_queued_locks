@@ -16,14 +16,29 @@ module RedisQueuedLocks::Resource
   LOCK_QUEUE_PATTERN = 'rql:lock_queue:*'
 
   class << self
-    # @param process_id [Integer,String]
-    # @param thread_id [Integer,String]
+    # Returns 10-byte unique identifier. It is used for uniquely
+    # identify current process between different nodes/pods of your application
+    # during the lock obtaining and self-identifying in the lock queue.
+    #
     # @return [String]
     #
     # @api private
     # @since 0.1.0
-    def acquier_identifier(process_id = get_process_id, thread_id = get_thread_id)
-      "rql:acq:#{process_id}/#{thread_id}"
+    def calc_uniq_identity
+      SecureRandom.hex(5)
+    end
+
+    # @param process_id [Integer,String]
+    # @param thread_id [Integer,String]
+    # @param fiber_id [Integer,String]
+    # @param ractor_id [Integer,String]
+    # @param identity [String]
+    # @return [String]
+    #
+    # @api private
+    # @since 0.1.0
+    def acquier_identifier(process_id, thread_id, fiber_id, ractor_id, identity)
+      "rql:acq:#{process_id}/#{thread_id}/#{fiber_id}/#{ractor_id}/#{identity}"
     end
 
     # @param lock_name [String]
@@ -77,6 +92,22 @@ module RedisQueuedLocks::Resource
     # @since 0.1.0
     def get_thread_id
       ::Thread.current.object_id
+    end
+
+    # @return [Integer]
+    #
+    # @api private
+    # @since 0.1.0
+    def get_fiber_id
+      ::Fiber.current.object_id
+    end
+
+    # @return [Integer]
+    #
+    # @api private
+    # @since 0.1.0
+    def get_ractor_id
+      ::Ractor.current.object_id
     end
 
     # @return [Integer]

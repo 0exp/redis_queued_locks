@@ -34,9 +34,13 @@ module RedisQueuedLocks::Acquier
     # @param lock_name [String]
     #   Lock name to be acquier.
     # @option process_id [Integer,String]
-    #   The process that want to acquire the lock.
+    #   The process that want to acquire a lock.
     # @option thread_id [Integer,String]
-    #   The process's thread that want to acquire the lock.
+    #   The process's thread that want to acquire a lock.
+    # @option fiber_id [Integer,String]
+    #   A current fiber that want to acquire a lock.
+    # @option ractor_id [Integer,String]
+    #   The current ractor that want to acquire a lock.
     # @option ttl [Integer,NilClass]
     #   Lock's time to live (in milliseconds). Nil means "without timeout".
     # @option queue_ttl [Integer]
@@ -53,6 +57,10 @@ module RedisQueuedLocks::Acquier
     #   Raise errors on exceptional cases.
     # @option instrumenter [#notify]
     #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
+    # @option identity [String]
+    #   Unique acquire identifier that is also should be unique between processes and pods
+    #   on different machines. By default the uniq identity string is
+    #   represented as 10 bytes hexstr.
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
     # @return [Hash<Symbol,Any>]
@@ -66,6 +74,8 @@ module RedisQueuedLocks::Acquier
       lock_name,
       process_id:,
       thread_id:,
+      fiber_id:,
+      ractor_id:,
       ttl:,
       queue_ttl:,
       timeout:,
@@ -74,10 +84,17 @@ module RedisQueuedLocks::Acquier
       retry_jitter:,
       raise_errors:,
       instrumenter:,
+      identity:,
       &block
     )
       # Step 1: prepare lock requirements (generate lock name, calc lock ttl, etc).
-      acquier_id = RedisQueuedLocks::Resource.acquier_identifier(process_id, thread_id)
+      acquier_id = RedisQueuedLocks::Resource.acquier_identifier(
+        process_id,
+        thread_id,
+        fiber_id,
+        ractor_id,
+        identity
+      )
       lock_ttl = ttl + REDIS_EXPIRATION_DEVIATION
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)

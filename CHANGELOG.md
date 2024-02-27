@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+## [0.0.9] - 2024-02-27
+### Changed
+- The lock acquier identifier (`acq_id`) now includes the fiber id, the ractor id and an unique per-process
+  10 byte string. It is added in order to prevent collisions between different processes/pods
+  that will have the same procjet id / thread id identifiers (cuz it is an object_id integers) that can lead
+  to the same position with the same `acq_id` for different processes/pods in the lock request queue.
+
 ## [0.0.8] - 2024-02-27
 ### Added
 - `RedisQueuedLock::Client#locked?`

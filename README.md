@@ -60,7 +60,7 @@ require 'redis_queued_locks'
 require 'redis_queued_locks'
 
 # Step 1: initialize RedisClient instance
-redis_clinet = RedisClient.config.new_pool # NOTE: provide your ounw RedisClient instance
+redis_clinet = RedisClient.config.new_pool # NOTE: provide your own RedisClient instance
 
 # Step 2: initialize RedisQueuedLock::Client instance
 rq_lock_client = RedisQueuedLocks::Client.new(redis_client) do |config|
@@ -119,6 +119,12 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - payload: <hash> requried;
   # - disabled by default via VoidNotifier;
   config.instrumenter = RedisQueuedLocks::Instrument::ActiveSupport
+
+  # (default: -> { RedisQueuedLocks::Resource.calc_uniq_identity })
+  # - uniqude client idenfitier that is uniq per process/pod;
+  # - prevents collisions bettween different process/pods tha have identical process id/thread id/fiber id/ractor id;
+  # - it is calculated once per `RedisQueudLocks::Client` instance;
+  config.uniq_identifier = -> { RedisQueuedLocks::Resource.calc_uniq_identity }
 end
 ```
 
@@ -142,8 +148,6 @@ end
 ```ruby
 def lock(
   lock_name,
-  process_id: RedisQueuedLocks::Resource.get_process_id,
-  thread_id: RedisQueuedLocks::Resource.get_thread_id,
   ttl: config[:default_lock_ttl],
   queue_ttl: config[:default_queue_ttl],
   timeout: config[:try_to_lock_timeout],
@@ -151,16 +155,13 @@ def lock(
   retry_delay: config[:retry_delay],
   retry_jitter: config[:retry_jitter],
   raise_errors: false,
+  identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config[:uniq_identifier] proc;
   &block
 )
 ```
 
 - `lock_name` - `[String]`
   - Lock name to be obtained.
-- `process_id` - `[Integer,String]`
-  - The process that want to acquire the lock.
-- `thread_id` - `[Integer,String]`
-  - The process's thread that want to acquire the lock.
 - `ttl` [Integer]
   - Lock's time to live (in milliseconds).
 - `queue_ttl` - `[Integer]`
@@ -177,6 +178,12 @@ def lock(
   - See RedisQueuedLocks::Instrument::ActiveSupport for example.
 - `raise_errors` - `[Boolean]`
   - Raise errors on library-related limits such as timeout or retry count limit.
+- `identity` - `[String]`
+  - An unique string that is unique per `RedisQueuedLock::Client` instance. Resolves the
+    collisions between the same process_id/thread_id/fiber_id/ractor_id identifiers on different
+    pods or/and nodes of your application;
+  - It is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`
+    ivar (accessed via `uniq_dentity` accessor method);
 - `block` - `[Block]`
   - A block of code that should be executed after the successfully acquired lock.
   - If block is **passed** the obtained lock will be released after the block execution or it's ttl (what will happen first);
@@ -214,14 +221,13 @@ Return value:
 ```ruby
 def lock!(
   lock_name,
-  process_id: RedisQueuedLocks::Resource.get_process_id,
-  thread_id: RedisQueuedLocks::Resource.get_thread_id,
   ttl: config[:default_lock_ttl],
   queue_ttl: config[:default_queue_ttl],
   timeout: config[:default_timeout],
   retry_count: config[:retry_count],
   retry_delay: config[:retry_delay],
   retry_jitter: config[:retry_jitter],
+  identity: uniq_identity,
   &block
 )
 ```
@@ -236,7 +242,7 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
 - returns `nil` if lock does not exist;
 - lock data (`Hash<Symbol,String|Integer>`):
   - `lock_key` - `string` - lock key in redis;
-  - `acq_id` - `string` - acquier identifier (process_id/thread_id by default);
+  - `acq_id` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
   - `ts` - `integer`/`epoch` - the time lock was obtained;
   - `init_ttl` - `integer` - (milliseconds) initial lock key ttl;
   - `rem_ttl` - `integer` - (milliseconds) remaining lock key ttl;
@@ -267,7 +273,7 @@ rql.lock_info("your_lock_name")
 - lock queue data (`Hash<Symbol,String|Array<Hash<Symbol,String|Numeric>>`):
   - `lock_queue` - `string` - lock queue key in redis;
   - `queue` - `array` - an array of lock requests (array of hashes):
-    - `acq_id` - `string` - acquier identifier (process_id/thread_id by default);
+    - `acq_id` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
     - `score` - `float`/`epoch` - time when the lock request was made (epoch);
 
 ```ruby
@@ -277,9 +283,9 @@ rql.queue_info("your_lock_name")
 {
   lock_queue: "rql:lock_queue:your_lock_name",
   queue: [
-    { acq_id: "rql:acq:123/456", score: 1},
-    { acq_id: "rql:acq:123/567", score: 2},
-    { acq_id: "rql:acq:555/329", score: 3},
+    { acq_id: "rql:acq:123/456/567/678/fa76df9cc2", score: 1},
+    { acq_id: "rql:acq:123/567/456/679/c7bfcaf4f9", score: 2},
+    { acq_id: "rql:acq:555/329/523/127/7329553b11", score: 3},
     # ...etc
   ]
 }

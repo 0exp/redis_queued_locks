@@ -3,6 +3,7 @@
 require 'redis-client'
 require 'qonfig'
 require 'timeout'
+require 'securerandom'
 
 # @api public
 # @since 0.1.0
