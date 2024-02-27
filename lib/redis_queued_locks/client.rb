@@ -43,6 +43,8 @@ class RedisQueuedLocks::Client
   # @api private
   # @since 0.1.0
   attr_accessor :uniq_identity
+  # NOTE: attr_access is chosen intentionally in order to have an ability to change
+  #  uniq_identity values for debug purposes in runtime;
 
   # @param redis_client [RedisClient]
   #   Redis connection manager, which will be used for the lock acquierment and distribution.
