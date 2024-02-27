@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.11] - 2024-02-27
+### Changed
+- Minor documentation updates;
+
 ## [0.0.10] - 2024-02-27
 ### Changed
 - Minor documentation updates;
