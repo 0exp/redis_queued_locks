@@ -25,7 +25,7 @@ RSpec.describe RedisQueuedLocks do
       lock_key: "rql:lock:#{lock_name}",
       acq_id: be_a(String),
       ts: be_a(Integer),
-      ini_ttl: 10_000 + 2, # 2 is redis expiration deviation
+      ini_ttl: 10_000,
       rem_ttl: be_a(Integer)
     })
 
