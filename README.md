@@ -284,8 +284,6 @@ TL;DR (Summary):
     - `acq_id` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
     - `score` - `float`/`epoch` - time when the lock request was made (epoch);
 
-
-
 ```ruby
 rql.queue_info("your_lock_name")
 
