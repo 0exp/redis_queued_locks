@@ -125,6 +125,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - prevents potential lock-acquirement collisions bettween different process/pods
   #   that have identical process_id/thread_id/fiber_id/ractor_id (identivcal acquier ids);
   # - it is calculated once per `RedisQueudLocks::Client` instance;
+  # - expects the proc object;
   config.uniq_identifier = -> { RedisQueuedLocks::Resource.calc_uniq_identity }
 end
 ```
