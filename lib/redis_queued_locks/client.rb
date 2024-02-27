@@ -2,7 +2,6 @@
 
 # @api public
 # @since 0.1.0
-# rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @since 0.1.0
   include Qonfig::Configurable
@@ -196,4 +195,3 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Acquier.release_all_locks!(redis_client, batch_size, config[:instrumenter])
   end
 end
-# rubocop:enable Metrics/ClassLength
