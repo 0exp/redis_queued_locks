@@ -191,7 +191,7 @@ def lock(
   - If block is **not passed** the obtained lock will be released after it's ttl;
 
 Return value:
-- `[Hash<Symbol,Any>]` Format: `{ ok: true/false, result: Symbol/Hash }`;
+- `[Hash<Symbol,Boolean|Hash<Symbol,Numeric|String>>]` Format: `{ ok: true/false, result: <Hash<Symbol,Hash>> }`;
 - for successful lock obtaining:
   ```ruby
   {
@@ -335,7 +335,7 @@ def unlock(lock_name)
   - the lock name that should be released.
 
 Return:
-- `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Hash<Symbol,Numeric|String> }`;
+- `[Hash<Symbol,Numeric|String>]` - Format: `{ ok: true/false, result: Hash<Symbol,Numeric|String> }`;
 
 ```ruby
 {
@@ -363,7 +363,7 @@ def clear_locks(batch_size: config[:lock_release_batch_size])
   - the size of batch of locks and lock queus that should be cleared under the one pipelined redis command at once;
 
 Return:
-- `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Hash<Symbol,Numeric> }`;
+- `[Hash<Symbol,Numeric>]` - Format: `{ ok: true/false, result: Hash<Symbol,Numeric> }`;
 
 ```ruby
 {
