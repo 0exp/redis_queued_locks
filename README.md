@@ -199,7 +199,7 @@ Return value:
     ok: true,
     result: {
       lock_key: String, # acquierd lock key ("rql:lock:your_lock_name")
-      acq_id: String, # acquier identifier ("your_process_id/your_thread_id")
+      acq_id: String, # acquier identifier ("process_id/thread_id/fiber_id/ractor_id/identity")
       ts: Integer, # time (epoch) when lock was obtained (integer)
       ttl: Integer # lock's time to live in milliseconds (integer)
     }
@@ -244,7 +244,7 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
 - returns `nil` if lock does not exist;
 - lock data (`Hash<Symbol,String|Integer>`):
   - `lock_key` - `string` - lock key in redis;
-  - `acq_id` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
+  - `acq_id` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity);
   - `ts` - `integer`/`epoch` - the time lock was obtained;
   - `init_ttl` - `integer` - (milliseconds) initial lock key ttl;
   - `rem_ttl` - `integer` - (milliseconds) remaining lock key ttl;
@@ -255,7 +255,7 @@ rql.lock_info("your_lock_name")
 # =>
 {
   lock_key: "rql:lock:your_lock_name",
-  acq_id: "rql:acq:123/456",
+  acq_id: "rql:acq:123/456/567/678/374dd74324",
   ts: 123456789,
   ini_ttl: 123456789,
   rem_ttl: 123456789
