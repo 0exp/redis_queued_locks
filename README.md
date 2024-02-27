@@ -430,7 +430,7 @@ Detalized event semantics and payload structure:
   - payload:
     - `rel_time` - `float`/`milliseconds` - time spent on "realese all locks" operation;
     - `at` - `integer`/`epoch` - the time when the operation has ended;
-    - `rel_keys` - `integer` - released redis keys count (`released queu keys` + `released lock keys`);
+    - `rel_keys` - `integer` - released redis keys count (`released queue keys` + `released lock keys`);
 
 ---
 
