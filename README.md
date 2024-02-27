@@ -439,6 +439,7 @@ Detalized event semantics and payload structure:
 - **Major**
   - Semantic Error objects for unexpected Redis errors;
   - `100%` test coverage;
+  - sidecar `Ractor` object and `in progress queue` in RedisDB that will be extend the lock for long-running block of code that invoked "under" the lock;
 - **Minor**
   - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
   - better code stylization and interesting refactorings;
