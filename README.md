@@ -360,7 +360,7 @@ def clear_locks(batch_size: config[:lock_release_batch_size])
 ```
 
 - `batch_size` - `[Integer]`
-  - batch of cleared locks and lock queus unde the one pipelined redis command;
+  - the size of batch of locks and lock queus that should be cleared under the one pipelined redis command at once;
 
 Return:
 - `[Hash<Symbol,Any>]` - Format: `{ ok: true/false, result: Hash<Symbol,Numeric> }`;
