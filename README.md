@@ -2,7 +2,7 @@
 
 Distributed locks with "lock acquisition queue" capabilities based on the Redis Database.
 
-Each lock request is put into the request queue and processed in order of their priority (FIFO). Each lock request live some concrete period of time (RTTL) which guarantees that the request queue will never be stacked.
+Each lock request is put into the request queue and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
 
 ---
 
