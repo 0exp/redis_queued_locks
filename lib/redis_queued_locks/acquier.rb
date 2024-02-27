@@ -18,14 +18,11 @@ module RedisQueuedLocks::Acquier
   # @since 0.1.0
   extend Release
 
-  # @return [Integer]
-  #   Redis expiration deviation in milliseconds:
-  #   -> 1 millisecond: for Redis's deviation;
-  #   -> 1 millisecond: for RubyVM's processing deviation;
+  # @return [Integer] Redis expiration error in milliseconds.
   #
   # @api private
   # @since 0.1.0
-  REDIS_EXPIRATION_DEVIATION = 2 # NOTE: milliseconds
+  REDIS_EXPIRE_ERROR = 1
 
   # rubocop:disable Metrics/ClassLength
   class << self
@@ -95,7 +92,10 @@ module RedisQueuedLocks::Acquier
         ractor_id,
         identity
       )
-      lock_ttl = ttl + REDIS_EXPIRATION_DEVIATION
+      # NOTE:
+      #   - think aobut the redis expiration error
+      #   - (ttl - REDIS_EXPIRE_ERROR).yield_self { |val| (val == 0) ? ttl : val }
+      lock_ttl = ttl
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
       acquier_position = RedisQueuedLocks::Resource.calc_initial_acquier_position
@@ -410,9 +410,7 @@ module RedisQueuedLocks::Acquier
     #
     # @api private
     # @since 0.1.0
-    def extend_lock_ttl(redis_client, lock_name, milliseconds)
-
-    end
+    def extend_lock_ttl(redis_client, lock_name, milliseconds); end
 
     private
 

@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.12] - 2024-02-27
+### Changed
+- Deleted `redis expiration error` (1 millisecond time drift) from lock ttl calculation;
+
 ## [0.0.11] - 2024-02-27
 ### Changed
 - Minor documentation updates;
