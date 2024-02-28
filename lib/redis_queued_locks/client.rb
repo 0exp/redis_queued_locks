@@ -22,8 +22,8 @@ class RedisQueuedLocks::Client
     # TODO: setting :debug, true/false
 
     validate('retry_count') { |val| val == nil || (val.is_a?(::Integer) && val >= 0) }
-    validate('retry_delay', :integer)
-    validate('retry_jitter', :integer)
+    validate('retry_delay') { |val| val.is_a?(::Integer) && val >= 0 }
+    validate('retry_jitter') { |val| val.is_a?(::Integer) && val >= 0 }
     validate('try_to_lock_timeout') { |val| val == nil || (val.is_a?(::Integer) && val >= 0) }
     validate('default_lock_tt', :integer)
     validate('default_queue_ttl', :integer)
@@ -43,6 +43,7 @@ class RedisQueuedLocks::Client
   # @api private
   # @since 0.1.0
   attr_accessor :uniq_identity
+
   # NOTE: attr_access is chosen intentionally in order to have an ability to change
   #  uniq_identity values for debug purposes in runtime;
 
@@ -83,6 +84,11 @@ class RedisQueuedLocks::Client
   #   Unique acquire identifier that is also should be unique between processes and pods
   #   on different machines. By default the uniq identity string is
   #   represented as 10 bytes hexstr.
+  # @option fail_fast [Boolean]
+  #   - Should the required lock to be checked before the try and exit immidietly if lock is
+  #   already obtained;
+  #   - Should the logic exit immidietly after the first try if the lock was obtained
+  #   by another process while the lock request queue was initially empty;
   # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
   # @return [Hash<Symbol,Any>,yield]
@@ -100,6 +106,7 @@ class RedisQueuedLocks::Client
     retry_delay: config[:retry_delay],
     retry_jitter: config[:retry_jitter],
     raise_errors: false,
+    fail_fast: false,
     identity: uniq_identity,
     &block
   )
@@ -119,6 +126,7 @@ class RedisQueuedLocks::Client
       raise_errors:,
       instrumenter: config[:instrumenter],
       identity:,
+      fail_fast:,
       &block
     )
   end
@@ -131,10 +139,11 @@ class RedisQueuedLocks::Client
     lock_name,
     ttl: config[:default_lock_ttl],
     queue_ttl: config[:default_queue_ttl],
-    timeout: config[:default_timeout],
+    timeout: config[:try_to_lock_timeout],
     retry_count: config[:retry_count],
     retry_delay: config[:retry_delay],
     retry_jitter: config[:retry_jitter],
+    fail_fast: false,
     identity: uniq_identity,
     &block
   )
@@ -148,6 +157,7 @@ class RedisQueuedLocks::Client
       retry_jitter:,
       raise_errors: true,
       identity:,
+      fail_fast:,
       &block
     )
   end

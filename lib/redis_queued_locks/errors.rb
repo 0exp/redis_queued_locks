@@ -11,6 +11,10 @@ module RedisQueuedLocks
 
   # @api public
   # @since 0.1.0
+  LockAlreadyObtainedError = Class.new(Error)
+
+  # @api public
+  # @since 0.1.0
   LockAcquiermentTimeoutError = Class.new(Error)
 
   # @api public

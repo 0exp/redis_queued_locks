@@ -3,8 +3,27 @@
 RSpec.describe RedisQueuedLocks do
   before { RedisQueuedLocks.enable_debugger! }
 
-  it 'has a version number' do
-    expect(RedisQueuedLocks::VERSION).not_to be nil
+  specify do
+    redis = RedisClient.config.new_pool(timeout: 5, size: 50)
+    client = RedisQueuedLocks::Client.new(redis)
+
+    client.lock('some-kek-super-pek', ttl: 5_000)
+    res = client.lock('some-kek-super-pek', fail_fast: true)
+    expect(res).to match({ ok: false, result: :fail_fast_no_try })
+
+    expect do
+      client.lock!('some-kek-super-pek', fail_fast: true)
+    end.to raise_error(RedisQueuedLocks::LockAlreadyObtainedError)
+
+    expect do
+      client.lock!('some-kek-super-pek', retry_count: 1)
+    end.to raise_error(RedisQueuedLocks::LockAcquiermentRetryLimitError)
+
+    expect do
+      client.lock!('some-kek-super-pek', retry_count: 1, timeout: 1)
+    end.to raise_error(RedisQueuedLocks::LockAcquiermentRetryLimitError)
+
+    redis.call('FLUSHDB')
   end
 
   specify do

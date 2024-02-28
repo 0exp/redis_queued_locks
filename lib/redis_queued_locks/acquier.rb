@@ -58,6 +58,9 @@ module RedisQueuedLocks::Acquier
     #   Unique acquire identifier that is also should be unique between processes and pods
     #   on different machines. By default the uniq identity string is
     #   represented as 10 bytes hexstr.
+    # @option fail_fast [Boolean]
+    #   Should the required lock to be checked before the try and exit immidetly if lock is
+    #   already obtained.
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
     # @return [Hash<Symbol,Any>,yield]
@@ -83,6 +86,7 @@ module RedisQueuedLocks::Acquier
       raise_errors:,
       instrumenter:,
       identity:,
+      fail_fast:,
       &block
     )
       # Step 1: prepare lock requirements (generate lock name, calc lock ttl, etc).
@@ -127,7 +131,8 @@ module RedisQueuedLocks::Acquier
             acquier_id,
             acquier_position,
             lock_ttl,
-            queue_ttl
+            queue_ttl,
+            fail_fast
           ) => { ok:, result: }
 
           acq_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
@@ -158,21 +163,40 @@ module RedisQueuedLocks::Acquier
             acq_process[:should_try] = false
             acq_process[:acq_time] = acq_time
             acq_process[:acq_end_time] = acq_end_time
+          elsif fail_fast && acq_process[:result] == :fail_fast_no_try
+            acq_process[:should_try] = false
+            if raise_errors
+              raise(RedisQueuedLocks::LockAlreadyObtainedError, <<~ERROR_MESSAGE.strip)
+                Lock "#{lock_key}" is already obtained.
+              ERROR_MESSAGE
+            end
           else
             # Step 2.1.b: failed acquirement => retry
             acq_process[:tries] += 1
 
-            if retry_count != nil && acq_process[:tries] >= retry_count
-              # NOTE: reached the retry limit => quit from the loop
+            if (retry_count != nil && acq_process[:tries] >= retry_count) || fail_fast
+              # NOTE:
+              #   - reached the retry limit => quit from the loop
+              #   - should fail fast => quit from the loop
               acq_process[:should_try] = false
-              acq_process[:result] = :retry_limit_reached
-              # NOTE: reached the retry limit => dequeue from the lock queue
+              acq_process[:result] = fail_fast ? :fail_fast_after_try : :retry_limit_reached
+
+              # NOTE:
+              #   - reached the retry limit => dequeue from the lock queue
+              #   - should fail fast => dequeue from the lock queue
               acq_dequeue.call
+
               # NOTE: check and raise an error
-              raise(LockAcquiermentRetryLimitError, <<~ERROR_MESSAGE.strip) if raise_errors
-                Failed to acquire the lock "#{lock_key}"
-                for the given retry_count limit (#{retry_count} times).
-              ERROR_MESSAGE
+              if fail_fast && raise_errors
+                raise(RedisQueuedLocks::LockAlreadyObtainedError, <<~ERROR_MESSAGE.strip)
+                  Lock "#{lock_key}" is already obtained.
+                ERROR_MESSAGE
+              elsif raise_errors
+                raise(RedisQueuedLocks::LockAcquiermentRetryLimitError, <<~ERROR_MESSAGE.strip)
+                  Failed to acquire the lock "#{lock_key}"
+                  for the given retry_count limit (#{retry_count} times).
+                ERROR_MESSAGE
+              end
             else
               # NOTE:
               #   delay the exceution in order to prevent chaotic attempts
@@ -211,8 +235,10 @@ module RedisQueuedLocks::Acquier
           { ok: true, result: acq_process[:lock_info] }
         end
       else
-        unless acq_process[:result] == :retry_limit_reached
-          # NOTE: we have only two situations if lock is not acquired:
+        if acq_process[:result] != :retry_limit_reached &&
+           acq_process[:result] != :fail_fast_no_try &&
+           acq_process[:result] != :fail_fast_after_try
+          # NOTE: we have only two situations if lock is not acquired withou fast-fail flag:
           #   - time limit is reached
           #   - retry count limit is reached
           #   In other cases the lock obtaining time and tries count are infinite.

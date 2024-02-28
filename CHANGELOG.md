@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.15] - 2024-02-28
+### Added
+- An ability to fail fast if the required lock is already obtained;
+
 ## [0.0.14] - 2024-02-28
 ### Changed
 - Minor documentation updates;

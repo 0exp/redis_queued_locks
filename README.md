@@ -158,6 +158,7 @@ def lock(
   retry_delay: config[:retry_delay],
   retry_jitter: config[:retry_jitter],
   raise_errors: false,
+  fail_fast: false,
   identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config[:uniq_identifier] proc;
   &block
 )
@@ -181,6 +182,11 @@ def lock(
   - See RedisQueuedLocks::Instrument::ActiveSupport for example.
 - `raise_errors` - `[Boolean]`
   - Raise errors on library-related limits such as timeout or retry count limit.
+- `fail_fast` - `[Boolean]`
+    - Should the required lock to be checked before the try and exit immidietly if lock is
+      already obtained;
+    - Should the logic exit immidietly after the first try if the lock was obtained
+      by another process while the lock request queue was initially empty;
 - `identity` - `[String]`
   - An unique string that is unique per `RedisQueuedLock::Client` instance. Resolves the
     collisions between the same process_id/thread_id/fiber_id/ractor_id identifiers on different
@@ -215,6 +221,8 @@ Return value:
     ```ruby
     { ok: false, result: :timeout_reached }
     { ok: false, result: :retry_count_reached }
+    { ok: false, result: :fail_fast_no_try } # see <fail_fast> option
+    { ok: false, result: :fail_fast_after_try } # see <fail_fast> option
     { ok: false, result: :unknown }
     ```
 
@@ -236,6 +244,7 @@ def lock!(
   retry_delay: config[:retry_delay],
   retry_jitter: config[:retry_jitter],
   identity: uniq_identity,
+  fail_fast: false,
   &block
 )
 ```
