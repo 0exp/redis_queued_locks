@@ -32,7 +32,7 @@ Each lock request is put into the request queue and processed in order of their 
 
 ### Algorithm
 
-- soon;
+- soon
 
 ---
 
