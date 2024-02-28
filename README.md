@@ -467,6 +467,7 @@ Detalized event semantics and payload structure:
     whose ttl may expire before the block execution completes);
   - an ability to add custom metadata to the lock and an ability to read this data;
 - **Minor**
+  - GitHub Actions CI;
   - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
   - better code stylization and interesting refactorings;
 
