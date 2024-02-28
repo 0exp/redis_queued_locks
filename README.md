@@ -451,6 +451,7 @@ Detalized event semantics and payload structure:
 ## Roadmap
 
 - **Major**
+  - exit from the lock obtaining process if the lock is already aquired (without any attempts to acquire this lock);
   - Semantic Error objects for unexpected Redis errors;
   - `100%` test coverage;
   - per-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
