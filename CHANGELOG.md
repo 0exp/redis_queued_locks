@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.16] - 2024-02-29
+### Fixed
+- Execution delay formula returns the value "in seconds" (should be "in milliseconds");
+
 ## [0.0.15] - 2024-02-28
 ### Added
 - An ability to fail fast if the required lock is already obtained;

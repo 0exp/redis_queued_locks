@@ -5,6 +5,6 @@ module RedisQueuedLocks
   #
   # @api public
   # @since 0.0.1
-  # @version 0.0.15
-  VERSION = '0.0.15'
+  # @version 0.0.16
+  VERSION = '0.0.16'
 end
