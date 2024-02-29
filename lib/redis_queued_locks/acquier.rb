@@ -437,7 +437,66 @@ module RedisQueuedLocks::Acquier
     #
     # @api private
     # @since 0.1.0
-    def extend_lock_ttl(redis_client, lock_name, milliseconds); end
+    def extend_lock_ttl(redis_client, lock_name, milliseconds)
+      # TODO: realize
+    end
+
+    # @param redis_client [RedisClient]
+    # @option scan_size [Integer]
+    # @return [Set<String>]
+    #
+    # @api private
+    # @since 0.1.0
+    def locks(redis_client, scan_size:)
+      Set.new.tap do |lock_keys|
+        redis_client.scan(
+          'MATCH',
+          RedisQueuedLocks::Resource::LOCK_PATTERN,
+          count: scan_size
+        ) do |lock_key|
+          # TODO: reduce unnecessary iterations
+          lock_keys.add(lock_key)
+        end
+      end
+    end
+
+    # @param redis_client [RedisClient]
+    # @param scan_size [Integer]
+    # @return [Set<String>]
+    #
+    # @api private
+    # @since 0.1.0
+    def queues(redis_client, scan_size:)
+      Set.new.tap do |lock_queues|
+        redis_client.scan(
+          'MATCH',
+          RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
+          count: scan_size
+        ) do |lock_queue|
+          # TODO: reduce unnecessary iterations
+          lock_queues.add(lock_queue)
+        end
+      end
+    end
+
+    # @param redis_client [RedisClient]
+    # @option scan_size [Integer]
+    # @return [Array<String>]
+    #
+    # @api private
+    # @since 0.1.0
+    def keys(redis_client, scan_size:)
+      Set.new.tap do |keys|
+        redis_client.scan(
+          'MATCH',
+          RedisQueuedLocks::Resource::KEY_PATTERN,
+          count: scan_size
+        ) do |key|
+          # TODO: reduce unnecessary iterations
+          keys.add(key)
+        end
+      end
+    end
 
     private
 

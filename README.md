@@ -21,6 +21,10 @@ Each lock request is put into the request queue and processed in order of their 
   - [queued?](#queued)
   - [unlock](#unlock---release-a-lock)
   - [clear_locks](#clear_locks---release-all-locks-and-lock-queues)
+  - [extend_lock_ttl](#extend_lock_ttl)
+  - [locks](#locks---get-list-of-obtained-locks)
+  - [queues](#queues---get-list-of-lock-request-queues)
+  - [keys](#keys---get-list-of-locks-and-queues-from-redis)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
 - [Roadmap](#roadmap)
@@ -104,9 +108,14 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   config.default_queue_ttl = 15
 
   # (default: 100)
-  # - how many items will be released at a time in RedisQueuedLocks::Client#clear_locks logic;
-  # - affects the performancs capabilites (redis, rubyvm);
+  # - how many items will be released at a time in RedisQueuedLocks::Client#clear_locks logic (uses SCAN);
+  # - affects the performancs of your Redis and Ruby Application (configure thoughtfully);
   config.lock_release_batch_size = 100
+
+  # (default: 500)
+  # - how many items should be extracted from redis during the #locks, #queues and #keys operations (uses SCAN);
+  # - affects the performance of your Redis and Ruby Application (configure thoughtfully;)
+  config.key_extraction_batch_size = 500
 
   # (default: RedisQueuedLocks::Instrument::VoidNotifier)
   # - instrumentation layer;
@@ -138,6 +147,10 @@ end
 - [queued?](#queued)
 - [unlock](#unlock---release-a-lock)
 - [clear_locks](#clear_locks---release-all-locks-and-lock-queues)
+- [extend_lock_ttl](#extend_lock_ttl)
+- [locks](#locks---get-list-of-obtained-locks)
+- [queues](#queues---get-list-of-lock-request-queues)
+- [keys](#keys---get-list-of-locks-and-queues-from-redis)
 
 ---
 
@@ -389,6 +402,86 @@ Return:
     rel_key_cnt: 100_500 # released redis keys (released locks + released lock queues)
   }
 }
+```
+
+#### #extend_lock_ttl
+
+- soon
+
+#### #locks - get list of obtained locks
+
+- uses redis `SCAN` under the hood;
+- accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
+- returns `Set<String>`
+
+```ruby
+rql.locks # or rql.locks(scan_size: 123)
+
+=>
+#<Set:
+ {"rql:lock:locklock75",
+  "rql:lock:locklock9",
+  "rql:lock:locklock108",
+  "rql:lock:locklock7",
+  "rql:lock:locklock48",
+  "rql:lock:locklock104",
+  "rql:lock:locklock13",
+  "rql:lock:locklock62",
+  "rql:lock:locklock80",
+  "rql:lock:locklock28",
+  ...}>
+```
+
+#### #queues - get list of lock request queues
+
+- uses redis `SCAN` under the hood;
+- accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
+- returns `Set<String>`
+
+```ruby
+rql.queues # or rql.queues(scan_size: 123)
+
+=>
+#<Set:
+ {"rql:lock_queue:locklock75",
+  "rql:lock_queue:locklock9",
+  "rql:lock_queue:locklock108",
+  "rql:lock_queue:locklock7",
+  "rql:lock_queue:locklock48",
+  "rql:lock_queue:locklock104",
+  "rql:lock_queue:locklock13",
+  "rql:lock_queue:locklock62",
+  "rql:lock_queue:locklock80",
+  "rql:lock_queue:locklock28",
+  ...}>
+```
+
+#### #keys - get list of taken redis keys (both locks and queues)
+
+- uses redis `SCAN` under the hood;
+- accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
+- returns `Set<String>`
+
+```ruby
+rql.keys # or rql.keys(scan_size: 123)
+
+=>
+#<Set:
+ {"rql:lock_queue:locklock75",
+  "rql:lock_queue:locklock9",
+  "rql:lock:locklock9",
+  "rql:lock_queue:locklock108",
+  "rql:lock_queue:locklock7",
+  "rql:lock:locklock7",
+  "rql:lock_queue:locklock48",
+  "rql:lock_queue:locklock104",
+  "rql:lock:locklock104",
+  "rql:lock_queue:locklock13",
+  "rql:lock_queue:locklock62",
+  "rql:lock_queue:locklock80",
+  "rql:lock:locklock80",
+  "rql:lock_queue:locklock28",
+  ...}>
 ```
 
 ---

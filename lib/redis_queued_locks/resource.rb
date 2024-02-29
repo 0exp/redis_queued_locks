@@ -7,6 +7,12 @@ module RedisQueuedLocks::Resource
   #
   # @api private
   # @since 0.1.0
+  KEY_PATTERN = 'rql:lock*'
+
+  # @return [String]
+  #
+  # @api private
+  # @since 0.1.0
   LOCK_PATTERN = 'rql:lock:*'
 
   # @return [String]

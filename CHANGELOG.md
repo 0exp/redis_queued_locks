@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [0.0.17] - 2024-02-29
+### Added
+- `RedisQueuedLocks::Client#locks` - list of obtained locks;
+- `RedisQueuedLocks::Client#queues` - list of existing lock request queus;
+- `RedisQueuedLocks::Client#keys` - get list of taken redis keys (both locks and queues);
+
 ## [0.0.16] - 2024-02-29
 ### Fixed
 - Execution delay formula returns the value "in seconds" (should be "in milliseconds");

@@ -15,6 +15,7 @@ class RedisQueuedLocks::Client
     setting :default_lock_ttl, 5_000 # NOTE: milliseconds
     setting :default_queue_ttl, 15 # NOTE: seconds
     setting :lock_release_batch_size, 100
+    setting :key_extraction_batch_size, 500
     setting :instrumenter, RedisQueuedLocks::Instrument::VoidNotifier
     setting :uniq_identifier, -> { RedisQueuedLocks::Resource.calc_uniq_identity }
 
@@ -224,6 +225,33 @@ class RedisQueuedLocks::Client
   # @since 0.1.0
   def clear_locks(batch_size: config[:lock_release_batch_size])
     RedisQueuedLocks::Acquier.release_all_locks!(redis_client, batch_size, config[:instrumenter])
+  end
+
+  # @option scan_size [Integer]
+  # @return [Set<String>]
+  #
+  # @api public
+  # @since 0.1.0
+  def locks(scan_size: config[:key_extraction_batch_size])
+    RedisQueuedLocks::Acquier.locks(redis_client, scan_size:)
+  end
+
+  # @option scan_size [Integer]
+  # @return [Set<String>]
+  #
+  # @api public
+  # @since 0.1.0
+  def queues(scan_size: config[:key_extraction_batch_size])
+    RedisQueuedLocks::Acquier.queues(redis_client, scan_size:)
+  end
+
+  # @option scan_size [Integer]
+  # @return [Set<String>]
+  #
+  # @api public
+  # @since 0.1.0
+  def keys(scan_size: config[:key_extraction_batch_size])
+    RedisQueuedLocks::Acquier.keys(redis_client, scan_size:)
   end
 end
 # rubocop:enable Metrics/ClassLength

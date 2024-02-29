@@ -37,6 +37,7 @@ module RedisQueuedLocks::Acquier::Release
         RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
         count: batch_size
       ) do |lock_queue|
+        # TODO: reduce unnecessary iterations
         pipeline.call('ZREMRANGEBYSCORE', lock_queue, '-inf', '+inf')
         pipeline.call('EXPIRE', RedisQueuedLocks::Resource.lock_key_from_queue(lock_queue), '0')
       end
@@ -47,6 +48,7 @@ module RedisQueuedLocks::Acquier::Release
         RedisQueuedLocks::Resource::LOCK_PATTERN,
         count: batch_size
       ) do |lock_key|
+        # TODO: reduce unnecessary iterations
         pipeline.call('EXPIRE', lock_key, '0')
       end
     end

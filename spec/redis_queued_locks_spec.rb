@@ -106,6 +106,10 @@ RSpec.describe RedisQueuedLocks do
       end
     end
 
+    client.locks
+    client.queues
+    client.keys
+
     client.unlock('locklock1')
     sleep(3)
     client.clear_locks
