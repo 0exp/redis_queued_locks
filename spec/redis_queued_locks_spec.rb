@@ -8,7 +8,7 @@ RSpec.describe RedisQueuedLocks do
     client = RedisQueuedLocks::Client.new(redis)
 
     client.lock('some-kek-super-pek', ttl: 5_000)
-    res = client.lock('some-kek-super-pek', fail_fast: true)
+    res = client.lock('some-kek-super-pek', fail_fast: true) {}
     expect(res).to match({ ok: false, result: :fail_fast_no_try })
 
     expect do
