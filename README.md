@@ -24,7 +24,7 @@ Each lock request is put into the request queue and processed in order of their 
   - [extend_lock_ttl](#extend_lock_ttl)
   - [locks](#locks---get-list-of-obtained-locks)
   - [queues](#queues---get-list-of-lock-request-queues)
-  - [keys](#keys---get-list-of-locks-and-queues-from-redis)
+  - [keys](#keys---get-list-of-taken-locks-and-queues)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
 - [Roadmap](#roadmap)
@@ -456,7 +456,7 @@ rql.queues # or rql.queues(scan_size: 123)
   ...}>
 ```
 
-#### #keys - get list of taken redis keys (both locks and queues)
+#### #keys - get list of taken locks and queues
 
 - uses redis `SCAN` under the hood;
 - accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
