@@ -150,7 +150,7 @@ end
 - [extend_lock_ttl](#extend_lock_ttl)
 - [locks](#locks---get-list-of-obtained-locks)
 - [queues](#queues---get-list-of-lock-request-queues)
-- [keys](#keys---get-list-of-locks-and-queues-from-redis)
+- [keys](#keys---get-list-of-taken-locks-and-queues)
 
 ---
 
