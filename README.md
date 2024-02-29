@@ -88,8 +88,8 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # (milliseconds) (default: 200)
   config.retry_delay = 200
 
-  # (milliseconds) (default: 50)
-  config.retry_jitter = 50
+  # (milliseconds) (default: 25)
+  config.retry_jitter = 25
 
   # (seconds) (supports nil)
   # - nil means "no timeout" and you are only limited by "retry_count" config;

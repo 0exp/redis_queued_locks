@@ -10,7 +10,7 @@ class RedisQueuedLocks::Client
   configuration do
     setting :retry_count, 3
     setting :retry_delay, 200 # NOTE: milliseconds
-    setting :retry_jitter, 50 # NOTE: milliseconds
+    setting :retry_jitter, 25 # NOTE: milliseconds
     setting :try_to_lock_timeout, 10 # NOTE: seconds
     setting :default_lock_ttl, 5_000 # NOTE: milliseconds
     setting :default_queue_ttl, 15 # NOTE: seconds

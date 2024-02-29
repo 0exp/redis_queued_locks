@@ -12,7 +12,7 @@ module RedisQueuedLocks::Acquier::Delay
   # @api private
   # @since 0.1.0
   def delay_execution(retry_delay, retry_jitter)
-    delay = (retry_delay + rand(retry_jitter)) / 1_000
+    delay = (retry_delay + rand(retry_jitter)).to_f / 1_000
     sleep(delay)
   end
 end
