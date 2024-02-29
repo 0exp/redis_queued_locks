@@ -404,9 +404,13 @@ Return:
 }
 ```
 
+---
+
 #### #extend_lock_ttl
 
 - soon
+
+---
 
 #### #locks - get list of obtained locks
 
@@ -432,6 +436,8 @@ rql.locks # or rql.locks(scan_size: 123)
   ...}>
 ```
 
+---
+
 #### #queues - get list of lock request queues
 
 - uses redis `SCAN` under the hood;
@@ -455,6 +461,8 @@ rql.queues # or rql.queues(scan_size: 123)
   "rql:lock_queue:locklock28",
   ...}>
 ```
+
+---
 
 #### #keys - get list of taken locks and queues
 
