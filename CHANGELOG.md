@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+## [0.0.18] - 2024-03-04
+### Changed
+- Semantic results for methods returning `{ ok: true/false, result: Any }` hash objects.
+  Now these objects are represented as `RedisQueuedLocks::Data` objects inherited from `Hash`;
+
 ## [0.0.17] - 2024-02-29
 ### Added
 - `RedisQueuedLocks::Client#locks` - list of obtained locks;

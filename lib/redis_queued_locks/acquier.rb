@@ -63,7 +63,7 @@ module RedisQueuedLocks::Acquier
     #   already obtained.
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
-    # @return [Hash<Symbol,Any>,yield]
+    # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
     #  - Format: { ok: true/false, result: Any }
     #  - If block is given the result of block's yeld will be returned.
     #
@@ -257,10 +257,14 @@ module RedisQueuedLocks::Acquier
     # It is safe because the lock obtain logic is transactional and
     # watches the original lock for changes.
     #
-    # @param redis [RedisClient] Redis connection client.
-    # @param lock_name [String] The lock name that should be released.
-    # @param isntrumenter [#notify] See RedisQueuedLocks::Instrument::ActiveSupport for example.
-    # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Hash<Symbil,Numeric|String> }
+    # @param redis [RedisClient]
+    #   Redis connection client.
+    # @param lock_name [String]
+    #   The lock name that should be released.
+    # @param isntrumenter [#notify]
+    #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
+    # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
+    #   Format: { ok: true/false, result: Hash<Symbil,Numeric|String> }
     #
     # @api private
     # @since 0.1.0
@@ -293,10 +297,14 @@ module RedisQueuedLocks::Acquier
     # - 1. clear all lock queus: drop them all from Redis database by the lock queue pattern;
     # - 2. delete all locks: drop lock keys from Redis by the lock key pattern;
     #
-    # @param redis [RedisClient] Redis connection client.
-    # @param batch_size [Integer] The number of lock keys that should be released in a time.
-    # @param isntrumenter [#notify] See RedisQueuedLocks::Instrument::ActiveSupport for example.
-    # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Hash<Symbol,Numeric> }
+    # @param redis [RedisClient]
+    #   Redis connection client.
+    # @param batch_size [Integer]
+    #   The number of lock keys that should be released in a time.
+    # @param isntrumenter [#notify]
+    #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
+    # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
+    #   Format: { ok: true/false, result: Hash<Symbol,Numeric> }
     #
     # @api private
     # @since 0.1.0

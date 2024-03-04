@@ -8,7 +8,7 @@ module RedisQueuedLocks::Acquier::Release
   # @param redis [RedisClient]
   # @param lock_key [String]
   # @param lock_key_queue [String]
-  # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
+  # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
   #
   # @api private
   # @since 0.1.0
@@ -25,7 +25,7 @@ module RedisQueuedLocks::Acquier::Release
   #
   # @param redis [RedisClient]
   # @param batch_size [Integer]
-  # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
+  # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
   #
   # @api private
   # @since 0.1.0

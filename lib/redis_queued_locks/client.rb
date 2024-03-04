@@ -92,7 +92,7 @@ class RedisQueuedLocks::Client
   #   by another process while the lock request queue was initially empty;
   # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
-  # @return [Hash<Symbol,Any>,yield]
+  # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
   #   - Format: { ok: true/false, result: Symbol/Hash }.
   #   - If block is given the result of block's yeld will be returned.
   #
@@ -163,8 +163,10 @@ class RedisQueuedLocks::Client
     )
   end
 
-  # @param lock_name [String] The lock name that should be released.
-  # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol/Hash }.
+  # @param lock_name [String]
+  #   The lock name that should be released.
+  # @return [RedisQueuedLocks::Data, Hash<Symbol,Any>]
+  #   Format: { ok: true/false, result: Symbol/Hash }.
   #
   # @api public
   # @since 0.1.0
@@ -219,7 +221,8 @@ class RedisQueuedLocks::Client
   end
 
   # @option batch_size [Integer]
-  # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol/Hash }.
+  # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
+  #   Format: { ok: true/false, result: Symbol/Hash }.
   #
   # @api public
   # @since 0.1.0
