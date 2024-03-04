@@ -130,13 +130,13 @@ module RedisQueuedLocks::Acquier::Try
     case
     when fail_fast && inter_result == :fail_fast_no_try
       # Step 7.a: lock is still acquired and we should exit from the logic as soon as possible
-      { ok: false, result: inter_result }
+      RedisQueuedLocks::Data[ok: false, result: inter_result]
     when inter_result == :lock_is_still_acquired || inter_result == :acquier_is_not_first_in_queue
       # Step 7.b: lock is still acquired by another process => failed to acquire
-      { ok: false, result: inter_result }
+      RedisQueuedLocks::Data[ok: false, result: inter_result]
     when result == nil || (result.is_a?(::Array) && result.empty?)
       # Step 7.c: lock is already acquired durign the acquire race => failed to acquire
-      { ok: false, result: :lock_is_acquired_during_acquire_race }
+      RedisQueuedLocks::Data[ok: false, result: :lock_is_acquired_during_acquire_race]
     when result.is_a?(::Array) && result.size == 3 # NOTE: 3 is a count of redis lock commands
       # TODO:
       #   => (!) analyze the command result and do actions with the depending on it;
@@ -147,10 +147,13 @@ module RedisQueuedLocks::Acquier::Try
       #   3. pexpire should return 1 (expiration time is successfully applied)
 
       # Step 7.d: locked! :) let's go! => successfully acquired
-      { ok: true, result: { lock_key: lock_key, acq_id: acquier_id, ts: timestamp, ttl: ttl } }
+      RedisQueuedLocks::Data[
+        ok: true,
+        result: { lock_key: lock_key, acq_id: acquier_id, ts: timestamp, ttl: ttl }
+      ]
     else
       # Ste 7.3: unknown behaviour :thinking:
-      { ok: false, result: :unknown }
+      RedisQueuedLocks::Data[ok: false, result: :unknown]
     end
     # rubocop:enable Lint/DuplicateBranch
   end
@@ -170,6 +173,6 @@ module RedisQueuedLocks::Acquier::Try
       "Step ~ [СМЕРТЬ ПРОЦЕССА]: [#{acquier_id} :: #{lock_key_queue}] РЕЗУЛЬТАТ: #{result}"
     )
 
-    { ok: true, result: result }
+    RedisQueuedLocks::Data[ok: true, result: result]
   end
 end

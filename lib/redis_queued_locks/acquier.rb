@@ -232,7 +232,7 @@ module RedisQueuedLocks::Acquier
             end
           end
         else
-          { ok: true, result: acq_process[:lock_info] }
+          RedisQueuedLocks::Data[ok: true, result: acq_process[:lock_info]]
         end
       else
         if acq_process[:result] != :retry_limit_reached &&
@@ -245,7 +245,7 @@ module RedisQueuedLocks::Acquier
           acq_process[:result] = :timeout_reached
         end
         # Step 3.b: lock is not acquired (acquier is dequeued by timeout callback)
-        { ok: false, result: acq_process[:result] }
+        RedisQueuedLocks::Data[ok: false, result: acq_process[:result]]
       end
     end
     # rubocop:enable Metrics/MethodLength, Metrics/BlockNesting
@@ -283,7 +283,10 @@ module RedisQueuedLocks::Acquier
         })
       end
 
-      { ok: true, result: { rel_time: rel_time, rel_key: lock_key, rel_queue: lock_key_queue } }
+      RedisQueuedLocks::Data[
+        ok: true,
+        result: { rel_time: rel_time, rel_key: lock_key, rel_queue: lock_key_queue }
+      ]
     end
 
     # Release all locks:
@@ -312,7 +315,10 @@ module RedisQueuedLocks::Acquier
         })
       end
 
-      { ok: true, result: { rel_key_cnt: result[:rel_keys], rel_time: rel_time } }
+      RedisQueuedLocks::Data[
+        ok: true,
+        result: { rel_key_cnt: result[:rel_keys], rel_time: rel_time }
+      ]
     end
 
     # @param redis_client [RedisClient]

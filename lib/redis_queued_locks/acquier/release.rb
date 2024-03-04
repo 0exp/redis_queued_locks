@@ -18,7 +18,7 @@ module RedisQueuedLocks::Acquier::Release
       transact.call('EXPIRE', lock_key, '0')
     end
 
-    { ok: true, result: }
+    RedisQueuedLocks::Data[ok: true, result:]
   end
 
   # Release all locks: clear all lock queus and expire all locks.
@@ -55,6 +55,6 @@ module RedisQueuedLocks::Acquier::Release
 
     rel_keys = result.count { |red_res| red_res == 0 }
 
-    { ok: true, result: { rel_keys: rel_keys } }
+    RedisQueuedLocks::Data[ok: true, result: { rel_keys: rel_keys }]
   end
 end
