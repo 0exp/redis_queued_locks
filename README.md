@@ -36,7 +36,7 @@ Each lock request is put into the request queue and processed in order of their 
 
 ### Algorithm
 
-Each lock request is put into the request queue and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
+> Each lock request is put into the request queue and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
 
 **Soon**: detailed explanation.
 
