@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+## [0.0.19] - 2024-03-12
+### Added
+- An ability to set the invocation time period to the block of code invoked under
+  the obtained lock;
+
 ## [0.0.18] - 2024-03-04
 ### Changed
 - Semantic results for methods returning `{ ok: true/false, result: Any }` hash objects.

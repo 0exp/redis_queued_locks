@@ -167,6 +167,7 @@ def lock(
   ttl: config[:default_lock_ttl],
   queue_ttl: config[:default_queue_ttl],
   timeout: config[:try_to_lock_timeout],
+  timed: false,
   retry_count: config[:retry_count],
   retry_delay: config[:retry_delay],
   retry_jitter: config[:retry_jitter],
@@ -185,6 +186,8 @@ def lock(
   - Lifetime of the acuier's lock request. In seconds.
 - `timeout` - `[Integer,NilClass]`
   - Time period whe should try to acquire the lock (in seconds). Nil means "without timeout".
+- `timed` - `[Boolean]`
+  - Limit the invocation time period of the passed block of code by the lock's TTL.
 - `retry_count` - `[Integer,NilClass]`
   - How many times we should try to acquire a lock. Nil means "infinite retries".
 - `retry_delay` - `[Integer]`

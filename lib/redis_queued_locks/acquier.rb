@@ -6,7 +6,7 @@
 module RedisQueuedLocks::Acquier
   require_relative 'acquier/try'
   require_relative 'acquier/delay'
-  require_relative 'acquier/expire'
+  require_relative 'acquier/yield_expire'
   require_relative 'acquier/release'
 
   # @since 0.1.0
@@ -14,7 +14,7 @@ module RedisQueuedLocks::Acquier
   # @since 0.1.0
   extend Delay
   # @since 0.1.0
-  extend Expire
+  extend YieldExpire
   # @since 0.1.0
   extend Release
 
@@ -44,6 +44,8 @@ module RedisQueuedLocks::Acquier
     #   Lifetime of the acuier's lock request. In seconds.
     # @option timeout [Integer]
     #   Time period whe should try to acquire the lock (in seconds).
+    # @option timed [Boolean]
+    #   Limit the invocation time period of the passed block of code by the lock's TTL.
     # @option retry_count [Integer,NilClass]
     #   How many times we should try to acquire a lock. Nil means "infinite retries".
     # @option retry_delay [Integer]
@@ -80,6 +82,7 @@ module RedisQueuedLocks::Acquier
       ttl:,
       queue_ttl:,
       timeout:,
+      timed:,
       retry_count:,
       retry_delay:,
       retry_jitter:,
@@ -119,7 +122,7 @@ module RedisQueuedLocks::Acquier
       acq_dequeue = -> { dequeue_from_lock_queue(redis, lock_key_queue, acquier_id) }
 
       # Step 2: try to lock with timeout
-      with_timeout(timeout, lock_key, raise_errors, on_timeout: acq_dequeue) do
+      with_acq_timeout(timeout, lock_key, raise_errors, on_timeout: acq_dequeue) do
         acq_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
 
         # Step 2.1: caclically try to obtain the lock
@@ -140,6 +143,7 @@ module RedisQueuedLocks::Acquier
 
           # Step X: save the intermediate results to the result observer
           acq_process[:result] = result
+          acq_process[:acq_end_time] = acq_end_time
 
           # Step 2.1: analyze an acquirement attempt
           if ok
@@ -212,7 +216,9 @@ module RedisQueuedLocks::Acquier
         # Step 3.a: acquired successfully => run logic or return the result of acquirement
         if block_given?
           begin
-            yield_with_expire(redis, lock_key, &block)
+            yield_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
+            ttl_shift = ((yield_time - acq_process[:acq_end_time]) * 1000).ceil(2)
+            yield_with_expire(redis, lock_key, timed, ttl_shift, ttl, &block)
           ensure
             acq_process[:rel_time] = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
             acq_process[:hold_time] = (
@@ -526,7 +532,7 @@ module RedisQueuedLocks::Acquier
     #
     # @api private
     # @since 0.1.0
-    def with_timeout(timeout, lock_key, raise_errors, on_timeout: nil, &block)
+    def with_acq_timeout(timeout, lock_key, raise_errors, on_timeout: nil, &block)
       ::Timeout.timeout(timeout, &block)
     rescue ::Timeout::Error
       on_timeout.call unless on_timeout == nil

@@ -3,7 +3,22 @@
 RSpec.describe RedisQueuedLocks do
   before { RedisQueuedLocks.enable_debugger! }
 
-  specify do
+  specify 'timed lock' do
+    redis = RedisClient.config.new_pool(timeout: 5, size: 50)
+    client = RedisQueuedLocks::Client.new(redis)
+
+    expect do
+      client.lock('some-timed-lock', timed: true, ttl: 5_000) { sleep(6) }
+    end.to raise_error(RedisQueuedLocks::TimedLockTimeoutError)
+
+    expect do
+      client.lock('some-timed-lock', timed: true, ttl: 6_000) { sleep(5.8) }
+    end.not_to raise_error
+
+    redis.call('FLUSHDB')
+  end
+
+  specify 'lock queues' do
     redis = RedisClient.config.new_pool(timeout: 5, size: 50)
     client = RedisQueuedLocks::Client.new(redis)
 

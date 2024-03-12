@@ -71,6 +71,8 @@ class RedisQueuedLocks::Client
   #   Lifetime of the acuier's lock request. In seconds.
   # @option timeout [Integer,NilClass]
   #   Time period whe should try to acquire the lock (in seconds). Nil means "without timeout".
+  # @option timed [Boolean]
+  #   Limit the invocation time period of the passed block of code by the lock's TTL.
   # @option retry_count [Integer,NilClass]
   #   How many times we should try to acquire a lock. Nil means "infinite retries".
   # @option retry_delay [Integer]
@@ -103,6 +105,7 @@ class RedisQueuedLocks::Client
     ttl: config[:default_lock_ttl],
     queue_ttl: config[:default_queue_ttl],
     timeout: config[:try_to_lock_timeout],
+    timed: false,
     retry_count: config[:retry_count],
     retry_delay: config[:retry_delay],
     retry_jitter: config[:retry_jitter],
@@ -121,6 +124,7 @@ class RedisQueuedLocks::Client
       ttl:,
       queue_ttl:,
       timeout:,
+      timed:,
       retry_count:,
       retry_delay:,
       retry_jitter:,
@@ -141,6 +145,7 @@ class RedisQueuedLocks::Client
     ttl: config[:default_lock_ttl],
     queue_ttl: config[:default_queue_ttl],
     timeout: config[:try_to_lock_timeout],
+    timed: false,
     retry_count: config[:retry_count],
     retry_delay: config[:retry_delay],
     retry_jitter: config[:retry_jitter],
@@ -153,6 +158,7 @@ class RedisQueuedLocks::Client
       ttl:,
       queue_ttl:,
       timeout:,
+      timed:,
       retry_count:,
       retry_delay:,
       retry_jitter:,
