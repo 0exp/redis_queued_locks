@@ -11,9 +11,13 @@ RSpec.describe RedisQueuedLocks do
       client.lock('some-timed-lock', timed: true, ttl: 5_000) { sleep(6) }
     end.to raise_error(RedisQueuedLocks::TimedLockTimeoutError)
 
+    expect(client.locked?('some-timed-lock')).to eq(false)
+
     expect do
       client.lock('some-timed-lock', timed: true, ttl: 6_000) { sleep(5.8) }
     end.not_to raise_error
+
+    expect(client.locked?('some-timed-lock')).to eq(false)
 
     redis.call('FLUSHDB')
   end
