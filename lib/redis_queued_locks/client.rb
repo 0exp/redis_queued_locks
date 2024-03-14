@@ -92,6 +92,8 @@ class RedisQueuedLocks::Client
   #   already obtained;
   #   - Should the logic exit immidietly after the first try if the lock was obtained
   #   by another process while the lock request queue was initially empty;
+  # @option metadata [NilClass,Any]
+  #   - A custom metadata wich will be passed to the instrumenter's payload with :meta key;
   # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
   # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -112,6 +114,7 @@ class RedisQueuedLocks::Client
     raise_errors: false,
     fail_fast: false,
     identity: uniq_identity,
+    metadata: nil,
     &block
   )
     RedisQueuedLocks::Acquier.acquire_lock!(
@@ -132,6 +135,7 @@ class RedisQueuedLocks::Client
       instrumenter: config[:instrumenter],
       identity:,
       fail_fast:,
+      metadata:,
       &block
     )
   end
@@ -151,6 +155,7 @@ class RedisQueuedLocks::Client
     retry_jitter: config[:retry_jitter],
     fail_fast: false,
     identity: uniq_identity,
+    metadata: nil,
     &block
   )
     lock(
@@ -165,6 +170,7 @@ class RedisQueuedLocks::Client
       raise_errors: true,
       identity:,
       fail_fast:,
+      metadata:,
       &block
     )
   end

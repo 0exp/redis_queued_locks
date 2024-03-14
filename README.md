@@ -176,6 +176,7 @@ def lock(
   raise_errors: false,
   fail_fast: false,
   identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config[:uniq_identifier] proc;
+  metadata: nil,
   &block
 )
 ```
@@ -211,6 +212,8 @@ def lock(
     pods or/and nodes of your application;
   - It is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`
     ivar (accessed via `uniq_dentity` accessor method);
+- `metadata` - `[NilClass,Any]`
+  - A custom metadata wich will be passed to the instrumenter's payload with :meta key;
 - `block` - `[Block]`
   - A block of code that should be executed after the successfully acquired lock.
   - If block is **passed** the obtained lock will be released after the block execution or it's ttl (what will happen first);
@@ -264,6 +267,7 @@ def lock!(
   retry_jitter: config[:retry_jitter],
   identity: uniq_identity,
   fail_fast: false,
+  metadata: nil,
   &block
 )
 ```
@@ -538,6 +542,7 @@ Detalized event semantics and payload structure:
     - `:lock_key` - `string` - lock name;
     - `:ts` - `integer`/`epoch` - the time when the lock was obtaiend;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+    - `:meta` - `nil`/`Any` - custom metadata passed to the `lock`/`lock!` method;
 - `"redis_queued_locks.lock_hold_and_release"`
   - an event signalizes about the "hold+and+release" process
     when the lock obtained and hold by the block of logic;
@@ -548,6 +553,7 @@ Detalized event semantics and payload structure:
     - `:lock_key` - `string` - lock name;
     - `:ts` - `integer`/`epoch` - the time when lock was obtained;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+    - `:meta` - `nil`/`Any` - custom metadata passed to the `lock`/`lock!` method;
 - `"redis_queued_locks.explicit_lock_release"`
   - an event signalizes about the explicit lock release (invoked via `RedisQueuedLock#unlock`);
   - payload:
@@ -573,6 +579,7 @@ Detalized event semantics and payload structure:
     the acquired lock for long-running blocks of code (that invoked "under" the lock
     whose ttl may expire before the block execution completes);
   - an ability to add custom metadata to the lock and an ability to read this data;
+  - lock prioritization;
 - **Minor**
   - GitHub Actions CI;
   - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;

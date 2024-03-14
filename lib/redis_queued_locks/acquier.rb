@@ -63,6 +63,8 @@ module RedisQueuedLocks::Acquier
     # @option fail_fast [Boolean]
     #   Should the required lock to be checked before the try and exit immidetly if lock is
     #   already obtained.
+    # @option metadata [NilClass,Any]
+    #   - A custom metadata wich will be passed to the instrumenter's payload with :meta key;
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -90,6 +92,7 @@ module RedisQueuedLocks::Acquier
       instrumenter:,
       identity:,
       fail_fast:,
+      metadata:,
       &block
     )
       # Step 1: prepare lock requirements (generate lock name, calc lock ttl, etc).
@@ -153,7 +156,8 @@ module RedisQueuedLocks::Acquier
               ttl: result[:ttl],
               acq_id: result[:acq_id],
               ts: result[:ts],
-              acq_time: acq_time
+              acq_time: acq_time,
+              meta: metadata
             })
 
             # Step 2.1.a: successfully acquired => build the result
@@ -233,7 +237,8 @@ module RedisQueuedLocks::Acquier
                 acq_id: acq_process[:lock_info][:acq_id],
                 ts: acq_process[:lock_info][:ts],
                 lock_key: acq_process[:lock_info][:lock_key],
-                acq_time: acq_process[:acq_time]
+                acq_time: acq_process[:acq_time],
+                meta: metadata
               })
             end
           end

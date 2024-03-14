@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+## [0.0.20] - 2024-03-14
+### Added
+- An ability to provide custom metadata to `lock` and `lock!` methods that will be passed
+  to the instrumentation level inside the `payload` parameter with `:meta` key;
+
 ## [0.0.19] - 2024-03-12
 ### Added
 - An ability to set the invocation time period to the block of code invoked under

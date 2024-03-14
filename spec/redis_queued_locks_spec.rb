@@ -3,6 +3,34 @@
 RSpec.describe RedisQueuedLocks do
   before { RedisQueuedLocks.enable_debugger! }
 
+  specify 'metadata' do
+    redis = RedisClient.config.new_pool(timeout: 5, size: 50)
+
+    test_notifier = Class.new do
+      attr_reader :notifications
+
+      def initialize
+        @notifications = []
+      end
+
+      def notify(event, payload = {})
+        notifications << { event:, payload: }
+      end
+    end.new
+
+    client = RedisQueuedLocks::Client.new(redis) do |conf|
+      conf.instrumenter = test_notifier
+    end
+
+    expect(test_notifier.notifications).to be_empty
+    client.lock('kek-pek-cheburgen', metadata: { test: :ok })
+    expect(test_notifier.notifications.size).to eq(1)
+    expect(test_notifier.notifications[0][:payload][:meta]).to eq({ test: :ok })
+    client.lock('bum-bum-pek-mek')
+    expect(test_notifier.notifications.size).to eq(2)
+    expect(test_notifier.notifications[1][:payload][:meta]).to eq(nil)
+  end
+
   specify 'timed lock' do
     redis = RedisClient.config.new_pool(timeout: 5, size: 50)
     client = RedisQueuedLocks::Client.new(redis)
