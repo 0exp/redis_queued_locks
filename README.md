@@ -213,7 +213,7 @@ def lock(
   - It is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`
     ivar (accessed via `uniq_dentity` accessor method);
 - `metadata` - `[NilClass,Any]`
-  - A custom metadata wich will be passed to the instrumenter's payload with :meta key;
+  - A custom metadata wich will be passed to the instrumenter's payload with `:meta` key;
 - `block` - `[Block]`
   - A block of code that should be executed after the successfully acquired lock.
   - If block is **passed** the obtained lock will be released after the block execution or it's ttl (what will happen first);
