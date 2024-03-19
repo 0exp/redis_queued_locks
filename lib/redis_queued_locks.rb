@@ -10,6 +10,7 @@ require 'securerandom'
 module RedisQueuedLocks
   require_relative 'redis_queued_locks/version'
   require_relative 'redis_queued_locks/errors'
+  require_relative 'redis_queued_locks/utilities'
   require_relative 'redis_queued_locks/data'
   require_relative 'redis_queued_locks/debugger'
   require_relative 'redis_queued_locks/resource'

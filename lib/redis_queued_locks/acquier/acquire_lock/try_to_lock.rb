@@ -2,7 +2,7 @@
 
 # @api private
 # @since 0.1.0
-module RedisQueuedLocks::Acquier::Try
+module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   # @param redis [RedisClient]
   # @param lock_key [String]
   # @param lock_key_queue [String]

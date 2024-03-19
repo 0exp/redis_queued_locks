@@ -2,7 +2,7 @@
 
 # @api private
 # @since 0.1.0
-module RedisQueuedLocks::Acquier::YieldExpire
+module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
   # @param redis [RedisClient] Redis connection manager.
   # @param lock_key [String] Lock key to be expired.
   # @param timed [Boolean] Should the lock be wrapped by Tiemlout with with lock's ttl

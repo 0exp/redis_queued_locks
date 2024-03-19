@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.21] - 2024-03-19
+### Changed
+- `RedisQueuedLocks::Acquire` refactirngs;
+
 ## [0.0.20] - 2024-03-14
 ### Added
 - An ability to provide custom metadata to `lock` and `lock!` methods that will be passed

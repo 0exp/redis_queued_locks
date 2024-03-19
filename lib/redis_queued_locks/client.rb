@@ -117,7 +117,7 @@ class RedisQueuedLocks::Client
     metadata: nil,
     &block
   )
-    RedisQueuedLocks::Acquier.acquire_lock!(
+    RedisQueuedLocks::Acquier::AcquireLock.acquire_lock(
       redis_client,
       lock_name,
       process_id: RedisQueuedLocks::Resource.get_process_id,
@@ -183,7 +183,11 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def unlock(lock_name)
-    RedisQueuedLocks::Acquier.release_lock!(redis_client, lock_name, config[:instrumenter])
+    RedisQueuedLocks::Acquier::ReleaseLock.release_lock(
+      redis_client,
+      lock_name,
+      config[:instrumenter]
+    )
   end
 
   # @param lock_name [String]
@@ -192,7 +196,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def locked?(lock_name)
-    RedisQueuedLocks::Acquier.locked?(redis_client, lock_name)
+    RedisQueuedLocks::Acquier::IsLocked.locked?(redis_client, lock_name)
   end
 
   # @param lock_name [String]
@@ -201,7 +205,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def queued?(lock_name)
-    RedisQueuedLocks::Acquier.queued?(redis_client, lock_name)
+    RedisQueuedLocks::Acquier::IsQueued.queued?(redis_client, lock_name)
   end
 
   # @param lock_name [String]
@@ -210,7 +214,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def lock_info(lock_name)
-    RedisQueuedLocks::Acquier.lock_info(redis_client, lock_name)
+    RedisQueuedLocks::Acquier::LockInfo.lock_info(redis_client, lock_name)
   end
 
   # @param lock_name [String]
@@ -219,7 +223,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def queue_info(lock_name)
-    RedisQueuedLocks::Acquier.queue_info(redis_client, lock_name)
+    RedisQueuedLocks::Acquier::QueueInfo.queue_info(redis_client, lock_name)
   end
 
   # @param lock_name [String]
@@ -229,7 +233,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def extend_lock_ttl(lock_name, milliseconds)
-    RedisQueuedLocks::Acquier.extend_lock_ttl(redis_client, lock_name)
+    RedisQueuedLocks::Acquier::ExtendLockTTL.extend_lock_ttl(redis_client, lock_name)
   end
 
   # @option batch_size [Integer]
@@ -239,7 +243,11 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def clear_locks(batch_size: config[:lock_release_batch_size])
-    RedisQueuedLocks::Acquier.release_all_locks!(redis_client, batch_size, config[:instrumenter])
+    RedisQueuedLocks::Acquier::ReleaseAllLocks.release_all_locks(
+      redis_client,
+      batch_size,
+      config[:instrumenter]
+    )
   end
 
   # @option scan_size [Integer]
@@ -248,7 +256,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def locks(scan_size: config[:key_extraction_batch_size])
-    RedisQueuedLocks::Acquier.locks(redis_client, scan_size:)
+    RedisQueuedLocks::Acquier::Locks.locks(redis_client, scan_size:)
   end
 
   # @option scan_size [Integer]
@@ -257,7 +265,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def queues(scan_size: config[:key_extraction_batch_size])
-    RedisQueuedLocks::Acquier.queues(redis_client, scan_size:)
+    RedisQueuedLocks::Acquier::Queues.queues(redis_client, scan_size:)
   end
 
   # @option scan_size [Integer]
@@ -266,7 +274,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def keys(scan_size: config[:key_extraction_batch_size])
-    RedisQueuedLocks::Acquier.keys(redis_client, scan_size:)
+    RedisQueuedLocks::Acquier::Keys.keys(redis_client, scan_size:)
   end
 end
 # rubocop:enable Metrics/ClassLength
