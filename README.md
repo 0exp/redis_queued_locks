@@ -585,6 +585,7 @@ Detalized event semantics and payload structure:
   - GitHub Actions CI;
   - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
   - better code stylization and interesting refactorings;
+  - lock queue expiration (dead queue cleanup);
 
 ---
 
