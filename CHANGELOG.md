@@ -2,7 +2,7 @@
 
 ## [0.0.21] - 2024-03-19
 ### Changed
-- `RedisQueuedLocks::Acquier` refactirngs;
+- Refactored `RedisQueuedLocks::Acquier`;
 
 ## [0.0.20] - 2024-03-14
 ### Added
