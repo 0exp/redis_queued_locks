@@ -6,7 +6,7 @@ module RedisQueuedLocks::Logging
   require_relative 'logging/void_logger'
 
   class << self
-    # @param logger [#debug]
+    # @param logger [::Logger,#debug]
     # @return [Boolean]
     #
     # @api public

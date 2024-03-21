@@ -19,6 +19,7 @@ class RedisQueuedLocks::Client
     setting :instrumenter, RedisQueuedLocks::Instrument::VoidNotifier
     setting :uniq_identifier, -> { RedisQueuedLocks::Resource.calc_uniq_identity }
     setting :logger, RedisQueuedLocks::Logging::VoidLogger
+    setting :log_lock_try, false
 
     validate('retry_count') { |val| val == nil || (val.is_a?(::Integer) && val >= 0) }
     validate('retry_delay') { |val| val.is_a?(::Integer) && val >= 0 }
@@ -28,8 +29,9 @@ class RedisQueuedLocks::Client
     validate('default_queue_ttl', :integer)
     validate('lock_release_batch_size', :integer)
     validate('instrumenter') { |val| RedisQueuedLocks::Instrument.valid_interface?(val) }
-    validate('logger') { |val| RedisQueuedLocks::Logging.valid_interface?(val) }
     validate('uniq_identifier', :proc)
+    validate('logger') { |val| RedisQueuedLocks::Logging.valid_interface?(val) }
+    validate('log_lock_try', :boolean)
   end
 
   # @return [RedisClient]
@@ -93,6 +95,13 @@ class RedisQueuedLocks::Client
   #   by another process while the lock request queue was initially empty;
   # @option metadata [NilClass,Any]
   #   - A custom metadata wich will be passed to the instrumenter's payload with :meta key;
+  # @option logger [::Logger,#debug]
+  #   - Logger object used from the configuration layer (see config[:logger]);
+  #   - See `RedisQueuedLocks::Logging::VoidLogger` for example;
+  # @option log_lock_try [Boolean]
+  #   - should be logged the each try of lock acquiring (a lot of logs can
+  #     be generated depending on your retry configurations);
+  #   - see `config[:log_lock_try]`;
   # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
   # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -114,6 +123,8 @@ class RedisQueuedLocks::Client
     fail_fast: false,
     identity: uniq_identity,
     metadata: nil,
+    logger: config[:logger],
+    log_lock_try: config[:log_lock_try],
     &block
   )
     RedisQueuedLocks::Acquier::AcquireLock.acquire_lock(
@@ -136,6 +147,7 @@ class RedisQueuedLocks::Client
       fail_fast:,
       metadata:,
       logger: config[:logger],
+      log_lock_try: config[:log_lock_try],
       &block
     )
   end
@@ -156,6 +168,8 @@ class RedisQueuedLocks::Client
     fail_fast: false,
     identity: uniq_identity,
     metadata: nil,
+    logger: config[:logger],
+    log_lock_try: config[:log_lock_try],
     &block
   )
     lock(

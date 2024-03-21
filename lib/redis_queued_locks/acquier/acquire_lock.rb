@@ -69,9 +69,13 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #   already obtained.
     # @option metadata [NilClass,Any]
     #   - A custom metadata wich will be passed to the instrumenter's payload with :meta key;
-    # @option logger [#debug]
-    #   - Logger object used from `configuration` layer (see config[:logger]);
+    # @option logger [::Logger,#debug]
+    #   - Logger object used from the configuration layer (see config[:logger]);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
+    # @option log_lock_try [Boolean]
+    #   - should be logged the each try of lock acquiring (a lot of logs can be generated depending
+    #     on your retry configurations);
+    #   - see `config[:log_lock_try]`;
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -100,6 +104,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
       fail_fast:,
       metadata:,
       logger:,
+      log_lock_try:,
       &block
     )
       # Step 1: prepare lock requirements (generate lock name, calc lock ttl, etc).
@@ -146,6 +151,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
         while acq_process[:should_try]
           try_to_lock(
             redis,
+            logger,
+            log_lock_try,
             lock_key,
             lock_key_queue,
             acquier_id,

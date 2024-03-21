@@ -144,6 +144,11 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - start of the lock expiration after `yield`: "[redis_queud_locks.expire_lock] lock_key => 'rql:lock:your_lock'"
   # - by default uses VoidLogger that does nothing;
   config.logger = RedisQueuedLocks::Logging::VoidLogger
+
+  # (default: false)
+  # - should be logged the each try of lock acquiring (a lot of logs can be generated depending on your retry configurations);
+  # - if logger is not cofnigured this option does not lead to any effect;
+  config.log_lock_try = false
 end
 ```
 
@@ -187,6 +192,8 @@ def lock(
   fail_fast: false,
   identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config[:uniq_identifier] proc;
   metadata: nil,
+  logger: config[:logger],
+  log_lock_try: config[:log_lock_try],
   &block
 )
 ```
@@ -224,6 +231,12 @@ def lock(
     ivar (accessed via `uniq_dentity` accessor method);
 - `metadata` - `[NilClass,Any]`
   - A custom metadata wich will be passed to the instrumenter's payload with `:meta` key;
+- `logger` - `[::Logger,#debug]`
+  - Logger object used from the configuration layer (see config[:logger]);
+  - See `RedisQueuedLocks::Logging::VoidLogger` for example;
+- `log_lock_try` - `[Boolean]`
+  - should be logged the each try of lock acquiring (a lot of logs can be generated depending on your retry configurations);
+  - see `config[:log_lock_try]`;
 - `block` - `[Block]`
   - A block of code that should be executed after the successfully acquired lock.
   - If block is **passed** the obtained lock will be released after the block execution or it's ttl (what will happen first);
@@ -278,6 +291,8 @@ def lock!(
   identity: uniq_identity,
   fail_fast: false,
   metadata: nil,
+  logger: config[:logger],
+  log_lock_try: config[:log_lock_try],
   &block
 )
 ```

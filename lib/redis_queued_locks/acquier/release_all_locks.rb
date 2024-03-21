@@ -17,7 +17,7 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     #   The number of lock keys that should be released in a time.
     # @param isntrumenter [#notify]
     #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
-    # @param logger [#debug]
+    # @param logger [::Logger,#debug]
     #   - Logger object used from `configuration` layer (see config[:logger]);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]

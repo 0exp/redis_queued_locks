@@ -2,8 +2,14 @@
 
 # @api private
 # @since 0.1.0
+# rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
+  # @since 0.1.0
+  extend RedisQueuedLocks::Utilities
+
   # @param redis [RedisClient]
+  # @param logger [::Logger,#debug]
+  # @param log_lock_try [Boolean]
   # @param lock_key [String]
   # @param lock_key_queue [String]
   # @param acquier_id [String]
@@ -18,6 +24,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   # rubocop:disable Metrics/MethodLength
   def try_to_lock(
     redis,
+    logger,
+    log_lock_try,
     lock_key,
     lock_key_queue,
     acquier_id,
@@ -30,8 +38,20 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     inter_result = nil
     timestamp = nil
 
+    if log_lock_try
+      run_non_critical do
+        logger.debug("[redis_queued_locks.try_lock_start] lock_key => '#{lock_key}'")
+      end
+    end
+
     # Step 0: watch the lock key changes (and discard acquirement if lock is already acquired)
     result = redis.with do |rconn|
+      if log_lock_try
+        run_non_critical do
+          logger.debug("[redis_queued_locks.try_lock_rconn_fetched] lock_key => '#{lock_key}'")
+        end
+      end
+
       rconn.multi(watch: [lock_key]) do |transact|
         # Fast-Step X0: fail-fast check
         if fail_fast && rconn.call('HGET', lock_key, 'acq_id')
@@ -182,3 +202,4 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     RedisQueuedLocks::Data[ok: true, result: result]
   end
 end
+# rubocop:enable Metrics/ModuleLength

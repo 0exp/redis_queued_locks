@@ -7,7 +7,7 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
     # @param redis_client [RedisClient]
     # @param lock_name [String]
     # @param milliseconds [Integer]
-    # @param logger [#debug]
+    # @param logger [::Logger,#debug]
     # @return [?]
     #
     # @api private

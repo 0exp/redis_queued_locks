@@ -18,15 +18,50 @@ RSpec.describe RedisQueuedLocks do
       end
     end.new
 
+    # NOTE: with log_lock_try test
     client = RedisQueuedLocks::Client.new(redis) do |conf|
       conf.logger = test_logger
+      conf.log_lock_try = true
+    end
+
+    client.lock('pek.kek.cheburek') { 1 + 1 }
+
+    expect(test_logger.logs.size).to eq(5)
+    aggregate_failures 'logs content (with log_lock_try)' do
+      # NOTE: lock_obtaining
+      expect(test_logger.logs[0]).to include('[redis_queued_locks.start_lock_obtaining]')
+      expect(test_logger.logs[0]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+
+      # NOTE: try to lock - start
+      expect(test_logger.logs[1]).to include('[redis_queued_locks.try_lock_start]')
+      expect(test_logger.logs[1]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+
+      # NOTE: try to lock - rconn fetched
+      expect(test_logger.logs[2]).to include('[redis_queued_locks.try_lock_rconn_fetched]')
+      expect(test_logger.logs[2]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+
+      # NOTE: lock_obtained
+      expect(test_logger.logs[3]).to include('[redis_queued_locks.lock_obtained]')
+      expect(test_logger.logs[3]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+
+      # NOTE: expire_lock
+      expect(test_logger.logs[4]).to include('[redis_queued_locks.expire_lock]')
+      expect(test_logger.logs[4]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+    end
+
+    # NOTE: rollback to the clean initial state in order to test another case
+    test_logger.logs.clear
+
+    # NOTE: without log_lock_try test
+    client = RedisQueuedLocks::Client.new(redis) do |conf|
+      conf.logger = test_logger
+      conf.log_lock_try = false
     end
 
     client.lock('pek.kek.cheburek') { 1 + 1 }
 
     expect(test_logger.logs.size).to eq(3)
-
-    aggregate_failures 'logs content' do
+    aggregate_failures 'logs content (with log_lock_try)' do
       # NOTE: lock_obtaining
       expect(test_logger.logs[0]).to include('[redis_queued_locks.start_lock_obtaining]')
       expect(test_logger.logs[0]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")

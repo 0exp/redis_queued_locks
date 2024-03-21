@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.24] - 2024-03-21
+### Added
+- An optional ability to log each try of lock obtaining (see `RedisQueuedLocks::Acquier::AcquireLock::TryToLock.try_to_lock`);
+
 ## [0.0.23] - 2024-03-21
 ### Changed
 - Composed redis commands are invoked on the one conenction
