@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+## [0.0.27] - 2024-03-21
+### Changed
+- Better acquier position accuracy: acquier position in lock queue
+  should be represented as EPOCH in seconds+microseconds (previously: simply in seconds);
+
 ## [0.0.26] - 2024-03-21
 ### Added
 - Logging: add `acquier_id`;
