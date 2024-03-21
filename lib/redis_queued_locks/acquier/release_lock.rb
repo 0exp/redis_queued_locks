@@ -65,9 +65,11 @@ module RedisQueuedLocks::Acquier::ReleaseLock
     # @api private
     # @since 0.1.0
     def fully_release_lock(redis, lock_key, lock_key_queue)
-      result = redis.multi do |transact|
-        transact.call('ZREMRANGEBYSCORE', lock_key_queue, '-inf', '+inf')
-        transact.call('EXPIRE', lock_key, '0')
+      result = redis.with do |rconn|
+        rconn.multi do |transact|
+          transact.call('ZREMRANGEBYSCORE', lock_key_queue, '-inf', '+inf')
+          transact.call('EXPIRE', lock_key, '0')
+        end
       end
 
       RedisQueuedLocks::Data[ok: true, result:]

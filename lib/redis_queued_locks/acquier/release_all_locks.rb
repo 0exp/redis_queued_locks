@@ -57,26 +57,28 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     # @api private
     # @since 0.1.0
     def fully_release_all_locks(redis, batch_size)
-      result = redis.pipelined do |pipeline|
-        # Step A: release all queus and their related locks
-        redis.scan(
-          'MATCH',
-          RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
-          count: batch_size
-        ) do |lock_queue|
-          # TODO: reduce unnecessary iterations
-          pipeline.call('ZREMRANGEBYSCORE', lock_queue, '-inf', '+inf')
-          pipeline.call('EXPIRE', RedisQueuedLocks::Resource.lock_key_from_queue(lock_queue), '0')
-        end
+      result = redis.with do |rconn|
+        rconn.pipelined do |pipeline|
+          # Step A: release all queus and their related locks
+          rconn.scan(
+            'MATCH',
+            RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
+            count: batch_size
+          ) do |lock_queue|
+            # TODO: reduce unnecessary iterations
+            pipeline.call('ZREMRANGEBYSCORE', lock_queue, '-inf', '+inf')
+            pipeline.call('EXPIRE', RedisQueuedLocks::Resource.lock_key_from_queue(lock_queue), '0')
+          end
 
-        # Step B: release all locks
-        redis.scan(
-          'MATCH',
-          RedisQueuedLocks::Resource::LOCK_PATTERN,
-          count: batch_size
-        ) do |lock_key|
-          # TODO: reduce unnecessary iterations
-          pipeline.call('EXPIRE', lock_key, '0')
+          # Step B: release all locks
+          rconn.scan(
+            'MATCH',
+            RedisQueuedLocks::Resource::LOCK_PATTERN,
+            count: batch_size
+          ) do |lock_key|
+            # TODO: reduce unnecessary iterations
+            pipeline.call('EXPIRE', lock_key, '0')
+          end
         end
       end
 
