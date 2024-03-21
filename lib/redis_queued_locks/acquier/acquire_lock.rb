@@ -174,7 +174,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
             run_non_critical do
               logger.debug(
                 "[redis_queued_locks.lock_obtained] " \
-                "lock_key => '#{result[:lock_key]}'" \
+                "lock_key => '#{result[:lock_key]}' " \
                 "acq_time => #{acq_time} (ms)"
               )
             end
