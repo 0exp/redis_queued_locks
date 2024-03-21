@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.26] - 2024-03-21
+### Added
+- Logging: add `acquier_id`;
+
 ## [0.0.25] - 2024-03-21
 ### Changed
 - Minor logs stylization;
