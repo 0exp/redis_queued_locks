@@ -69,6 +69,9 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #   already obtained.
     # @option metadata [NilClass,Any]
     #   - A custom metadata wich will be passed to the instrumenter's payload with :meta key;
+    # @option logger [#debug]
+    #   - Logger object used from `configuration` layer (see config[:logger]);
+    #   - See RedisQueuedLocks::Logging::VoidLogger for example;
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -96,6 +99,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
       identity:,
       fail_fast:,
       metadata:,
+      logger:,
       &block
     )
       # Step 1: prepare lock requirements (generate lock name, calc lock ttl, etc).
@@ -127,6 +131,13 @@ module RedisQueuedLocks::Acquier::AcquireLock
       }
       acq_dequeue = -> { dequeue_from_lock_queue(redis, lock_key_queue, acquier_id) }
 
+      run_non_critical do
+        logger.debug(
+          "[redis_queued_locks.start_lock_obtaining] " \
+          "lock_key: '#{lock_key}'"
+        )
+      end
+
       # Step 2: try to lock with timeout
       with_acq_timeout(timeout, lock_key, raise_errors, on_timeout: acq_dequeue) do
         acq_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
@@ -153,15 +164,25 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
           # Step 2.1: analyze an acquirement attempt
           if ok
+            run_non_critical do
+              logger.debug(
+                "[redis_queued_locks.lock_obtained] " \
+                "lock_key => '#{result[:lock_key]}'" \
+                "acq_time => #{acq_time} (ms)"
+              )
+            end
+
             # Step X (instrumentation): lock obtained
-            instrumenter.notify('redis_queued_locks.lock_obtained', {
-              lock_key: result[:lock_key],
-              ttl: result[:ttl],
-              acq_id: result[:acq_id],
-              ts: result[:ts],
-              acq_time: acq_time,
-              meta: metadata
-            })
+            run_non_critical do
+              instrumenter.notify('redis_queued_locks.lock_obtained', {
+                lock_key: result[:lock_key],
+                ttl: result[:ttl],
+                acq_id: result[:acq_id],
+                ts: result[:ts],
+                acq_time: acq_time,
+                meta: metadata
+              })
+            end
 
             # Step 2.1.a: successfully acquired => build the result
             acq_process[:lock_info] = {
@@ -225,7 +246,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
           begin
             yield_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
             ttl_shift = ((yield_time - acq_process[:acq_end_time]) * 1000).ceil(2)
-            yield_with_expire(redis, lock_key, timed, ttl_shift, ttl, &block)
+            yield_with_expire(redis, logger, lock_key, timed, ttl_shift, ttl, &block)
           ensure
             acq_process[:rel_time] = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
             acq_process[:hold_time] = (

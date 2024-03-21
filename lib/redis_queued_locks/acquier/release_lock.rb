@@ -20,12 +20,15 @@ module RedisQueuedLocks::Acquier::ReleaseLock
     #   The lock name that should be released.
     # @param isntrumenter [#notify]
     #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
+    # @param logger [#debug]
+    #   - Logger object used from `configuration` layer (see config[:logger]);
+    #   - See RedisQueuedLocks::Logging::VoidLogger for example;
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
     #   Format: { ok: true/false, result: Hash<Symbil,Numeric|String> }
     #
     # @api private
     # @since 0.1.0
-    def release_lock(redis, lock_name, instrumenter)
+    def release_lock(redis, lock_name, instrumenter, logger)
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
 

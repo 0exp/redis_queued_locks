@@ -1,11 +1,47 @@
 # frozen_string_literal: true
 
 RSpec.describe RedisQueuedLocks do
+  let(:redis) { RedisClient.config.new_pool(timeout: 5, size: 50) }
+
   before { RedisQueuedLocks.enable_debugger! }
 
-  specify 'metadata' do
-    redis = RedisClient.config.new_pool(timeout: 5, size: 50)
+  specify 'logger' do
+    test_logger = Class.new do
+      attr_reader :logs
 
+      def initialize
+        @logs = []
+      end
+
+      def debug(progname = nil, &block)
+        logs << "#{progname} : #{yield if block_given?}"
+      end
+    end.new
+
+    client = RedisQueuedLocks::Client.new(redis) do |conf|
+      conf.logger = test_logger
+    end
+
+    client.lock('pek.kek.cheburek') { 1 + 1 }
+
+    expect(test_logger.logs.size).to eq(3)
+
+    aggregate_failures 'logs content' do
+      # NOTE: lock_obtaining
+      expect(test_logger.logs[0]).to include('[redis_queued_locks.start_lock_obtaining]')
+      expect(test_logger.logs[0]).to include("lock_key => 'rq:lock:pek.kek.cheburek'")
+
+      # NOTE: lock_obtained
+      expect(test_logger.logs[0]).to include('[redis_queued_locks.lock_obtained]')
+      expect(test_logger.logs[0]).to include("lock_key => 'rq:lock:pek.kek.cheburek'")
+
+      # NOTE: expire_lock
+      expect(test_logger.logs[0]).to include('[redis_queued_locks.expire_lock]')
+      expect(test_logger.logs[0]).to include("lock_key => 'rq:lock:pek.kek.cheburek'")
+    end
+  end
+
+  specify 'metadata' do
     test_notifier = Class.new do
       attr_reader :notifications
 
@@ -51,7 +87,6 @@ RSpec.describe RedisQueuedLocks do
   end
 
   specify 'lock queues' do
-    redis = RedisClient.config.new_pool(timeout: 5, size: 50)
     client = RedisQueuedLocks::Client.new(redis)
 
     client.lock('some-kek-super-pek', ttl: 5_000)
@@ -74,7 +109,6 @@ RSpec.describe RedisQueuedLocks do
   end
 
   specify do
-    redis = RedisClient.config.new_pool(timeout: 5, size: 50)
     client = RedisQueuedLocks::Client.new(redis)
     lock_name = "kekpek-#{rand(100_000)}"
 
@@ -127,8 +161,6 @@ RSpec.describe RedisQueuedLocks do
         notifications << { event:, payload: }
       end
     end.new
-
-    redis = RedisClient.config.new_pool(timeout: 5, size: 50)
 
     client = RedisQueuedLocks::Client.new(redis) do |config|
       config.retry_count = 3

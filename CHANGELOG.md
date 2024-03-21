@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.22] - 2024-03-21
+### Added
+- Logging infrastructure. Initial implementation includes the only debugging features.
+
 ## [0.0.21] - 2024-03-19
 ### Changed
 - Refactored `RedisQueuedLocks::Acquier`;

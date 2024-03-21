@@ -9,18 +9,16 @@ class RedisQueuedLocks::Client
 
   configuration do
     setting :retry_count, 3
-    setting :retry_delay, 200 # NOTE: milliseconds
-    setting :retry_jitter, 25 # NOTE: milliseconds
-    setting :try_to_lock_timeout, 10 # NOTE: seconds
-    setting :default_lock_ttl, 5_000 # NOTE: milliseconds
-    setting :default_queue_ttl, 15 # NOTE: seconds
+    setting :retry_delay, 200 # NOTE: in milliseconds
+    setting :retry_jitter, 25 # NOTE: in milliseconds
+    setting :try_to_lock_timeout, 10 # NOTE: in seconds
+    setting :default_lock_ttl, 5_000 # NOTE: in milliseconds
+    setting :default_queue_ttl, 15 # NOTE: in seconds
     setting :lock_release_batch_size, 100
     setting :key_extraction_batch_size, 500
     setting :instrumenter, RedisQueuedLocks::Instrument::VoidNotifier
     setting :uniq_identifier, -> { RedisQueuedLocks::Resource.calc_uniq_identity }
-
-    # TODO: setting :logger, Logger.new(IO::NULL)
-    # TODO: setting :debug, true/false
+    setting :logger, RedisQueuedLocks::Logging::VoidLogger
 
     validate('retry_count') { |val| val == nil || (val.is_a?(::Integer) && val >= 0) }
     validate('retry_delay') { |val| val.is_a?(::Integer) && val >= 0 }
@@ -30,6 +28,7 @@ class RedisQueuedLocks::Client
     validate('default_queue_ttl', :integer)
     validate('lock_release_batch_size', :integer)
     validate('instrumenter') { |val| RedisQueuedLocks::Instrument.valid_interface?(val) }
+    validate('logger') { |val| RedisQueuedLocks::Logging.valid_interface?(val) }
     validate('uniq_identifier', :proc)
   end
 
@@ -136,6 +135,7 @@ class RedisQueuedLocks::Client
       identity:,
       fail_fast:,
       metadata:,
+      logger: config[:logger],
       &block
     )
   end
@@ -186,7 +186,8 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Acquier::ReleaseLock.release_lock(
       redis_client,
       lock_name,
-      config[:instrumenter]
+      config[:instrumenter],
+      config[:logger]
     )
   end
 
@@ -233,7 +234,12 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 0.1.0
   def extend_lock_ttl(lock_name, milliseconds)
-    RedisQueuedLocks::Acquier::ExtendLockTTL.extend_lock_ttl(redis_client, lock_name)
+    RedisQueuedLocks::Acquier::ExtendLockTTL.extend_lock_ttl(
+      redis_client,
+      lock_name,
+      milliseconds,
+      config[:logger]
+    )
   end
 
   # @option batch_size [Integer]
@@ -246,7 +252,8 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Acquier::ReleaseAllLocks.release_all_locks(
       redis_client,
       batch_size,
-      config[:instrumenter]
+      config[:instrumenter],
+      config[:logger]
     )
   end
 

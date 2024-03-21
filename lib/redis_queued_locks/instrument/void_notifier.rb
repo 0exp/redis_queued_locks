@@ -8,7 +8,7 @@ module RedisQueuedLocks::Instrument::VoidNotifier
     # @param payload [Hash<String|Symbol,Any>]
     # @return [void]
     #
-    # @api private
+    # @api public
     # @since 0.1.0
     def notify(event, payload = {}); end
   end

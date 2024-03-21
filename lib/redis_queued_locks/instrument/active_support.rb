@@ -8,7 +8,7 @@ module RedisQueuedLocks::Instrument::ActiveSupport
     # @param payload [Hash<String|Symbol,Any>]
     # @return [void]
     #
-    # @api private
+    # @api public
     # @since 0.1.0
     def notify(event, payload = {})
       ::ActiveSupport::Notifications.instrument(event, payload)

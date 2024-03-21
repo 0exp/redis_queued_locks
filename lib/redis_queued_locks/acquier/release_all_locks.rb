@@ -17,12 +17,15 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     #   The number of lock keys that should be released in a time.
     # @param isntrumenter [#notify]
     #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
+    # @param logger [#debug]
+    #   - Logger object used from `configuration` layer (see config[:logger]);
+    #   - See RedisQueuedLocks::Logging::VoidLogger for example;
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
     #   Format: { ok: true/false, result: Hash<Symbol,Numeric> }
     #
     # @api private
     # @since 0.1.0
-    def release_all_locks(redis, batch_size, instrumenter)
+    def release_all_locks(redis, batch_size, instrumenter, logger)
       rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
       fully_release_all_locks(redis, batch_size) => { ok:, result: }
       time_at = Time.now.to_i

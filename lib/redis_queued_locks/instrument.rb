@@ -25,10 +25,10 @@ module RedisQueuedLocks::Instrument
         m_obj = instrumenter.method(:notify)
         m_sig = m_obj.parameters
 
-        f_prm = m_sig[0][0]
-        s_prm = m_sig[1][0]
-
         if m_sig.size == 2
+          f_prm = m_sig[0][0]
+          s_prm = m_sig[1][0]
+
           # rubocop:disable Layout/MultilineOperationIndentation
           # NOTE: check the signature vairants
           f_prm == :req && s_prm == :req ||

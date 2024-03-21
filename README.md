@@ -134,6 +134,16 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - it is calculated once per `RedisQueudLocks::Client` instance;
   # - expects the proc object;
   config.uniq_identifier = -> { RedisQueuedLocks::Resource.calc_uniq_identity }
+
+  # (default: RedisQueuedLocks::Logging::VoidLogger)
+  # - the logger object;
+  # - should implement `debug(progname = nil, &block)` (minimal requirement) or be an instance of Ruby's `::Logger` class/subclass;
+  # - at this moment the only debug logs are realised in 3 cases:
+  #   - start of lock obtaining: "[redis_queud_locks.start_lock_obtaining] lock_key => 'rql:lock:your_lock'"
+  #   - finish of the lock obtaining: "[redis_queued_locks.lock_obtained] lock_key => 'rql:lock:your_lock' acq_time => 123.456 (ms)"
+  #   - start of the lock expiration after `yield`: "[redis_queud_locks.expire_lock] lock_key => 'rql:lock:your_lock'"
+  # - by default uses VoidLogger that does nothing;
+  config.logger = RedisQueuedLocks::Logging::VoidLogger
 end
 ```
 
@@ -581,6 +591,7 @@ Detalized event semantics and payload structure:
   - an ability to add custom metadata to the lock and an ability to read this data;
   - lock prioritization;
   - support for LIFO strategy;
+  - structured logging;
 - **Minor**
   - GitHub Actions CI;
   - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
