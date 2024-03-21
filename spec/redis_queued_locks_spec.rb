@@ -159,7 +159,7 @@ RSpec.describe RedisQueuedLocks do
     expect(lock_info).to match({
       lock_key: "rql:lock:#{lock_name}",
       acq_id: be_a(String),
-      ts: be_a(Integer),
+      ts: be_a(Float),
       ini_ttl: 10_000,
       rem_ttl: be_a(Integer)
     })

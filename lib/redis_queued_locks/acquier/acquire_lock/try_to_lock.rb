@@ -147,7 +147,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
                 'HSET',
                 lock_key,
                 'acq_id', acquier_id,
-                'ts', (timestamp = Time.now.to_i),
+                'ts', (timestamp = Time.now.to_f),
                 'ini_ttl', ttl
               )
 

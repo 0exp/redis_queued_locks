@@ -65,21 +65,21 @@ module RedisQueuedLocks::Resource
       "rql:lock_queue:#{lock_name}"
     end
 
-    # @return [Integer] Redis's <Set> score that is calculated from the time (epoch) as an integer.
+    # @return [Float] Redis's <Set> score that is calculated from the time (epoch) as a float.
     #
     # @api private
     # @since 0.1.0
     def calc_initial_acquier_position
-      Time.now.to_i
+      Time.now.to_f
     end
 
     # @param queue_ttl [Integer] In seconds
-    # @return [Integer] Redis's <Set> score barrier before wich all other acquiers are removed.
+    # @return [Float] Redis's <Set> score barrier for acquiers that should be removed from queue.
     #
     # @api private
     # @since 0.1.0
     def acquier_dead_score(queue_ttl)
-      Time.now.to_i - queue_ttl
+      Time.now.to_f - queue_ttl
     end
 
     # @param lock_queue [String]
