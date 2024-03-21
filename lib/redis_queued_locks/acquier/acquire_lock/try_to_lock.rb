@@ -63,7 +63,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
       rconn.multi(watch: [lock_key]) do |transact|
         # Fast-Step X0: fail-fast check
         if fail_fast && rconn.call('HGET', lock_key, 'acq_id')
-          # Fast-Step X1: is lock already obtained. fail fast - no try.
+          # Fast-Step X1: is lock already obtained. fail fast leads to "no try".
           inter_result = :fail_fast_no_try
         else
           # Step 1: add an acquier to the lock acquirement queue

@@ -147,7 +147,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
 
   # (default: false)
   # - should be logged the each try of lock acquiring (a lot of logs can be generated depending on your retry configurations);
-  # - if logger is not cofnigured this option does not lead to any effect;
+  # - if logger is not configured this option does not lead to any effect;
   config.log_lock_try = false
 end
 ```

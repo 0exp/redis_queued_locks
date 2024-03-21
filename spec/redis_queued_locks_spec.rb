@@ -143,7 +143,7 @@ RSpec.describe RedisQueuedLocks do
     redis.call('FLUSHDB')
   end
 
-  specify do
+  specify 'lock_info, queue_info' do
     client = RedisQueuedLocks::Client.new(redis)
     lock_name = "kekpek-#{rand(100_000)}"
 
@@ -184,7 +184,7 @@ RSpec.describe RedisQueuedLocks do
     redis.call('FLUSHDB')
   end
 
-  specify do
+  specify 'notifications' do
     test_notifier = Class.new do
       attr_reader :notifications
 
