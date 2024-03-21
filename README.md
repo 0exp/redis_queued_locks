@@ -139,14 +139,17 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - the logger object;
   # - should implement `debug(progname = nil, &block)` (minimal requirement) or be an instance of Ruby's `::Logger` class/subclass;
   # - at this moment the only debug logs are realised in 3 cases:
-  #   - start of lock obtaining: "[redis_queud_locks.start_lock_obtaining] lock_key => 'rql:lock:your_lock'"
-  #   - finish of the lock obtaining: "[redis_queued_locks.lock_obtained] lock_key => 'rql:lock:your_lock' acq_time => 123.456 (ms)"
-  #   - start of the lock expiration after `yield`: "[redis_queud_locks.expire_lock] lock_key => 'rql:lock:your_lock'"
+  #   - start of lock obtaining: "[redis_queud_locks.start_lock_obtaining] lock_key => 'rql:lock:your_lock' acq_id => 'rql:acq:54307/3620/3640/3540/c1799ede93'"
+  #   - finish of the lock obtaining: "[redis_queued_locks.lock_obtained] lock_key => 'rql:lock:your_lock' acq_id => 'rql:acq:54307/3620/3640/3540/c1799ede93' acq_time => 123.456 (ms)"
+  #   - start of the lock expiration after `yield`: "[redis_queud_locks.expire_lock] lock_key => 'rql:lock:your_lock' acq_id => 'rql:acq:54307/3620/3640/3540/c1799ede93'"
   # - by default uses VoidLogger that does nothing;
   config.logger = RedisQueuedLocks::Logging::VoidLogger
 
   # (default: false)
-  # - should be logged the each try of lock acquiring (a lot of logs can be generated depending on your retry configurations);
+  # - should be logged the each internal try-retry lock acquire (a lot of logs can be generated depending on your retry configurations);
+  # - it adds 2 cases to the log in addition to the existing 3:
+  #   - start of a try: "[redis_queud_locks.try_lock_start] lock_key => 'rql:lock:your_lock' acq_id => 'rql:acq:54307/3620/3640/3540/c1799ede93'"
+  #   - redis connection is feteched from the pool after "start of a try": "[redis_queued_locks.try_lock_rconn_fetched] lock_key => 'rql:lock:your_lock' acq_id => 'rql:acq:54307/3620/3640/3540/c1799ede93'"
   # - if logger is not configured this option does not lead to any effect;
   config.log_lock_try = false
 end

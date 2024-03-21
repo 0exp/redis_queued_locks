@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+## [0.0.28] - 2024-03-21
+### Added
+- Logging: added `acq_id` to every log message;
+- Logging: updated documentation;
+
 ## [0.0.27] - 2024-03-21
 ### Changed
 - Better acquier position accuracy: acquier position in lock queue

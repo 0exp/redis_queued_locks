@@ -2,6 +2,7 @@
 
 require 'redis_queued_locks'
 require 'pry'
+require 'securerandom'
 
 RSpec.configure do |config|
   Kernel.srand config.seed

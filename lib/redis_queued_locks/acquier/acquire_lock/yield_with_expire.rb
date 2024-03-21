@@ -9,6 +9,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
   # @param redis [RedisClient] Redis connection manager.
   # @param logger [::Logger,#debug] Logger object.
   # @param lock_key [String] Lock key to be expired.
+  # @param acquier_id [String] Acquier identifier.
   # @param timed [Boolean] Should the lock be wrapped by Tiemlout with with lock's ttl
   # @param ttl_shift [Float] Lock's TTL shifting. Should affect block's ttl. In millisecodns.
   # @param ttl [Integer,NilClass] Lock's time to live (in ms). Nil means "without timeout".
@@ -17,7 +18,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
   #
   # @api private
   # @since 0.1.0
-  def yield_with_expire(redis, logger, lock_key, timed, ttl_shift, ttl, &block)
+  def yield_with_expire(redis, logger, lock_key, acquier_id, timed, ttl_shift, ttl, &block)
     if block_given?
       if timed && ttl != nil
         timeout = ((ttl - ttl_shift) / 1000.0).yield_self { |time| (time < 0) ? 0.0 : time }
@@ -28,7 +29,11 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
     end
   ensure
     run_non_critical do
-      logger.debug("[redis_queued_locks.expire_lock] lock_key => '#{lock_key}'")
+      logger.debug(
+        "[redis_queued_locks.expire_lock] " \
+        "lock_key => '#{lock_key}' " \
+        "acq_id => '#{acquier_id}'"
+      )
     end
     redis.call('EXPIRE', lock_key, '0')
   end

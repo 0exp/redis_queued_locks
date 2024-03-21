@@ -31,22 +31,28 @@ RSpec.describe RedisQueuedLocks do
       # NOTE: lock_obtaining
       expect(test_logger.logs[0]).to include('[redis_queued_locks.start_lock_obtaining]')
       expect(test_logger.logs[0]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[0]).to include('acq_id =>')
 
       # NOTE: try to lock - start
       expect(test_logger.logs[1]).to include('[redis_queued_locks.try_lock_start]')
       expect(test_logger.logs[1]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[1]).to include('acq_id =>')
 
       # NOTE: try to lock - rconn fetched
       expect(test_logger.logs[2]).to include('[redis_queued_locks.try_lock_rconn_fetched]')
       expect(test_logger.logs[2]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[2]).to include('acq_id =>')
 
       # NOTE: lock_obtained
       expect(test_logger.logs[3]).to include('[redis_queued_locks.lock_obtained]')
       expect(test_logger.logs[3]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[3]).to include('acq_id =>')
+      expect(test_logger.logs[3]).to include('acq_time =>')
 
       # NOTE: expire_lock
       expect(test_logger.logs[4]).to include('[redis_queued_locks.expire_lock]')
       expect(test_logger.logs[4]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[4]).to include('acq_id =>')
     end
 
     # NOTE: rollback to the clean initial state in order to test another case
@@ -65,14 +71,18 @@ RSpec.describe RedisQueuedLocks do
       # NOTE: lock_obtaining
       expect(test_logger.logs[0]).to include('[redis_queued_locks.start_lock_obtaining]')
       expect(test_logger.logs[0]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[0]).to include('acq_id =>')
 
       # NOTE: lock_obtained
       expect(test_logger.logs[1]).to include('[redis_queued_locks.lock_obtained]')
       expect(test_logger.logs[1]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[1]).to include('acq_id =>')
+      expect(test_logger.logs[1]).to include('acq_time =>')
 
       # NOTE: expire_lock
       expect(test_logger.logs[2]).to include('[redis_queued_locks.expire_lock]')
       expect(test_logger.logs[2]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[2]).to include('acq_id =>')
     end
   end
 

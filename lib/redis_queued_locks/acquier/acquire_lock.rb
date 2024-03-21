@@ -176,7 +176,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               logger.debug(
                 "[redis_queued_locks.lock_obtained] " \
                 "lock_key => '#{result[:lock_key]}' " \
-                "acq_id: => '#{acquier_id}' " \
+                "acq_id => '#{acquier_id}' " \
                 "acq_time => #{acq_time} (ms)"
               )
             end
@@ -255,7 +255,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
           begin
             yield_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
             ttl_shift = ((yield_time - acq_process[:acq_end_time]) * 1000).ceil(2)
-            yield_with_expire(redis, logger, lock_key, timed, ttl_shift, ttl, &block)
+            yield_with_expire(redis, logger, lock_key, acquier_id, timed, ttl_shift, ttl, &block)
           ensure
             acq_process[:rel_time] = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
             acq_process[:hold_time] = (
