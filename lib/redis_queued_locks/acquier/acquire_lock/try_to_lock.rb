@@ -40,7 +40,11 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
     if log_lock_try
       run_non_critical do
-        logger.debug("[redis_queued_locks.try_lock_start] lock_key => '#{lock_key}'")
+        logger.debug(
+          "[redis_queued_locks.try_lock_start] " \
+          "lock_key => '#{lock_key}' " \
+          "acq_id => '#{acquier_id}'"
+        )
       end
     end
 
@@ -48,7 +52,11 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     result = redis.with do |rconn|
       if log_lock_try
         run_non_critical do
-          logger.debug("[redis_queued_locks.try_lock_rconn_fetched] lock_key => '#{lock_key}'")
+          logger.debug(
+            "[redis_queued_locks.try_lock_rconn_fetched] " \
+            "lock_key => '#{lock_key}' " \
+            "acq_id => '#{acquier_id}'"
+          )
         end
       end
 
