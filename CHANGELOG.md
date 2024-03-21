@@ -14,7 +14,7 @@
 
 ## [0.0.23] - 2024-03-21
 ### Changed
-- Composed redis commands are invoked on the one conenction
+- Composed redis commands are invoked from the same *one* conenction
   (instead of mutiple connection fetching from redis connection pool on each redis command);
 
 ## [0.0.22] - 2024-03-21
