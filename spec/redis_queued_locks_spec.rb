@@ -29,15 +29,15 @@ RSpec.describe RedisQueuedLocks do
     aggregate_failures 'logs content' do
       # NOTE: lock_obtaining
       expect(test_logger.logs[0]).to include('[redis_queued_locks.start_lock_obtaining]')
-      expect(test_logger.logs[0]).to include("lock_key => 'rq:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[0]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
 
       # NOTE: lock_obtained
-      expect(test_logger.logs[0]).to include('[redis_queued_locks.lock_obtained]')
-      expect(test_logger.logs[0]).to include("lock_key => 'rq:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[1]).to include('[redis_queued_locks.lock_obtained]')
+      expect(test_logger.logs[1]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
 
       # NOTE: expire_lock
-      expect(test_logger.logs[0]).to include('[redis_queued_locks.expire_lock]')
-      expect(test_logger.logs[0]).to include("lock_key => 'rq:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[2]).to include('[redis_queued_locks.expire_lock]')
+      expect(test_logger.logs[2]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
     end
   end
 

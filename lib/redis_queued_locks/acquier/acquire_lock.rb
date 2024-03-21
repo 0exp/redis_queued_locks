@@ -134,7 +134,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
       run_non_critical do
         logger.debug(
           "[redis_queued_locks.start_lock_obtaining] " \
-          "lock_key: '#{lock_key}'"
+          "lock_key => '#{lock_key}'"
         )
       end
 
