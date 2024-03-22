@@ -600,23 +600,21 @@ Detalized event semantics and payload structure:
 
 ## Roadmap
 
-- **Major**
-  - Semantic Error objects for unexpected Redis errors;
-  - `100%` test coverage;
-  - per-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
-    the acquired lock for long-running blocks of code (that invoked "under" the lock
-    whose ttl may expire before the block execution completes);
-  - an ability to add custom metadata to the lock and an ability to read this data;
-  - lock prioritization;
-  - support for LIFO strategy;
-  - structured logging;
-- **Minor**
-  - GitHub Actions CI;
-  - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
-  - better code stylization and interesting refactorings;
-  - lock queue expiration (dead queue cleanup);
-  - support for `Dragonfly` DB backend;
-  - support for `Garnet` DB backend;
+- Semantic Error objects for unexpected Redis errors;
+- `100%` test coverage;
+- per-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
+  the acquired lock for long-running blocks of code (that invoked "under" the lock
+  whose ttl may expire before the block execution completes);
+- an ability to add custom metadata to the lock and an ability to read this data;
+- lock prioritization;
+- support for LIFO strategy;
+- structured logging;
+- GitHub Actions CI;
+- `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
+- better code stylization and interesting refactorings;
+- dead queue cleanup;
+- support for `Dragonfly` DB backend;
+- support for `Garnet` DB backend;
 
 ---
 
