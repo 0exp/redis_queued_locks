@@ -140,6 +140,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
         logger.debug(
           "[redis_queued_locks.start_lock_obtaining] " \
           "lock_key => '#{lock_key}' " \
+          "queue_ttl => #{queue_ttl} " \
           "acq_id => '#{acquier_id}'"
         )
       end
@@ -150,6 +151,33 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
         # Step 2.1: caclically try to obtain the lock
         while acq_process[:should_try]
+          run_non_critical do
+            logger.debug(
+              "[redis_queued_locks.start_try_to_lock_cycle] " \
+              "lock_key => '#{lock_key}' " \
+              "queue_ttl => #{queue_ttl} " \
+              "acq_id => '{#{acquier_id}'"
+            )
+          end
+
+          # Step 2.X: check the actual score: is it in queue ttl limit or not?
+          if RedisQueuedLocks::Resource.dead_score_reached?(acquier_position, queue_ttl)
+            # Step 2.X.X:
+            #   - dead score reached => we should re-queue our lock request
+            #   - "lock request requeue" means "reset/recalculate acquier
+            #     position => calc initial new as if this request made now"
+            acquier_position = RedisQueuedLocks::Resource.calc_initial_acquier_position
+
+            run_non_critical do
+              logger.debug(
+                "[redis_queued_locks.dead_score_reached__reset_acquier_position] " \
+                "lock_key => '#{lock_key} " \
+                "queue_ttl => #{queue_ttl} " \
+                "acq_id => '#{acquier_id}'"
+              )
+            end
+          end
+
           try_to_lock(
             redis,
             logger,
@@ -176,6 +204,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               logger.debug(
                 "[redis_queued_locks.lock_obtained] " \
                 "lock_key => '#{result[:lock_key]}' " \
+                "queue_ttl => #{queue_ttl} " \
                 "acq_id => '#{acquier_id}' " \
                 "acq_time => #{acq_time} (ms)"
               )
@@ -240,7 +269,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               end
             else
               # NOTE:
-              #   delay the exceution in order to prevent chaotic attempts
+              #   delay the exceution in order to prevent chaotic lock-acquire attempts
               #   and to allow other processes and threads to obtain the lock too.
               delay_execution(retry_delay, retry_jitter)
             end
@@ -255,7 +284,17 @@ module RedisQueuedLocks::Acquier::AcquireLock
           begin
             yield_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
             ttl_shift = ((yield_time - acq_process[:acq_end_time]) * 1000).ceil(2)
-            yield_with_expire(redis, logger, lock_key, acquier_id, timed, ttl_shift, ttl, &block)
+            yield_with_expire(
+              redis,
+              logger,
+              lock_key,
+              acquier_id,
+              timed,
+              ttl_shift,
+              ttl,
+              queue_ttl,
+              &block
+            )
           ensure
             acq_process[:rel_time] = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
             acq_process[:hold_time] = (

@@ -43,23 +43,26 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
         logger.debug(
           "[redis_queued_locks.try_lock.start] " \
           "lock_key => '#{lock_key}' " \
-          "acq_id => '#{acquier_id}'"
+          "queue_ttl => #{queue_ttl} " \
+          "acq_id => '#{acquier_id}' "
         )
       end
     end
 
-    # Step 0: watch the lock key changes (and discard acquirement if lock is already acquired)
+    # Step X: start to work with lock acquiring
     result = redis.with do |rconn|
       if log_lock_try
         run_non_critical do
           logger.debug(
             "[redis_queued_locks.try_lock.rconn_fetched] " \
             "lock_key => '#{lock_key}' " \
+            "queue_ttl => #{queue_ttl} " \
             "acq_id => '#{acquier_id}'"
           )
         end
       end
 
+      # Step 0: watch the lock key changes (and discard acquirement if lock is already acquired)
       rconn.multi(watch: [lock_key]) do |transact|
         # Fast-Step X0: fail-fast check
         if fail_fast && rconn.call('HGET', lock_key, 'acq_id')
@@ -74,6 +77,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
               logger.debug(
                 "[redis_queued_locks.try_lock.acq_added_to_queue] " \
                 "lock_key => '#{lock_key}' " \
+                "queue_ttl => #{queue_ttl} " \
                 "acq_id => '#{acquier_id}'"
               )
             end
@@ -96,6 +100,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
               logger.debug(
                 "[redis_queued_locks.try_lock.remove_expired_acqs] " \
                 "lock_key => '#{lock_key}' " \
+                "queue_ttl => #{queue_ttl} " \
                 "acq_id => '#{acquier_id}'"
               )
             end
@@ -113,6 +118,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
               logger.debug(
                 "[redis_queued_locks.try_lock.get_first_from_queue] " \
                 "lock_key => '#{lock_key}' " \
+                "queue_ttl => #{queue_ttl} " \
                 "acq_id => '#{acquier_id}' " \
                 "first_acq_id_in_queue => '#{waiting_acquier}'"
               )
@@ -124,8 +130,28 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
             "[ZRANGE <следующий процесс>: #{waiting_acquier} :: <текущий процесс>: #{acquier_id}]"
           )
 
+          # Step PRE-4.x: check if the request time limit is reached
+          #   (when the current try self-removes itself from queue (queue ttl has come))
+          if waiting_acquier == nil
+            if log_lock_try
+              run_non_critical do
+                logger.debug(
+                  "[redis_queued_locks.try_lock.exit__queue_ttl_reached] " \
+                  "lock_key => '#{lock_key}' " \
+                  "queue_ttl => #{queue_ttl} " \
+                  "acq_id => '#{acquier_id}'"
+                )
+              end
+            end
+
+            RedisQueuedLocks.debug(
+              "Step PRE-ROLLBACK №0: достигли лимита времени эквайра лока (queue ttl). выходим. " \
+              "[Наша позиция: #{acquier_id}. queue_ttl: #{queue_ttl}]"
+            )
+
+            inter_result = :dead_score_reached
           # Step 4: check the actual acquier: is it ours? are we aready to lock?
-          unless waiting_acquier == acquier_id
+          elsif waiting_acquier != acquier_id
             # Step ROLLBACK 1.1: our time hasn't come yet. retry!
 
             if log_lock_try
@@ -133,6 +159,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
                 logger.debug(
                   "[redis_queued_locks.try_lock.exit__no_first] " \
                   "lock_key => '#{lock_key}' " \
+                  "queue_ttl => #{queue_ttl} " \
                   "acq_id => '#{acquier_id}' " \
                   "first_acq_id_in_queue => '#{waiting_acquier}'"
                 )
@@ -167,6 +194,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
                   logger.debug(
                     "[redis_queued_locks.try_lock.exit__still_obtained] " \
                     "lock_key => '#{lock_key}' " \
+                    "queue_ttl => #{queue_ttl} " \
                     "acq_id => '#{acquier_id}' " \
                     "first_acq_id_in_queue => '#{waiting_acquier}' " \
                     "locked_by_acq_id => '#{locked_by_acquier}'"
@@ -213,6 +241,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
                   logger.debug(
                     "[redis_queued_locks.try_lock.run__free_to_acquire] " \
                     "lock_key => '#{lock_key}' " \
+                    "queue_ttl => #{queue_ttl} " \
                     "acq_id => '#{acquier_id}'"
                   )
                 end
@@ -228,6 +257,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     case
     when fail_fast && inter_result == :fail_fast_no_try
       # Step 7.a: lock is still acquired and we should exit from the logic as soon as possible
+      RedisQueuedLocks::Data[ok: false, result: inter_result]
+    when inter_result == :dead_score_reached
       RedisQueuedLocks::Data[ok: false, result: inter_result]
     when inter_result == :lock_is_still_acquired || inter_result == :acquier_is_not_first_in_queue
       # Step 7.b: lock is still acquired by another process => failed to acquire

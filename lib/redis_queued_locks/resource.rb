@@ -82,6 +82,20 @@ module RedisQueuedLocks::Resource
       Time.now.to_f - queue_ttl
     end
 
+    # @param acquier_position [Float]
+    #   A time (epoch, seconds.microseconds) that represents
+    #   the acquier position in lock request queue.
+    # @parma queue_ttl [Integer]
+    #   In second.
+    # @return [Boolean]
+    #   Is the lock request time limit has reached or not.
+    #
+    # @api private
+    # @since 0.1.0
+    def dead_score_reached?(acquier_position, queue_ttl)
+      (acquier_position + queue_ttl) < Time.now.to_f
+    end
+
     # @param lock_queue [String]
     # @return [String]
     #

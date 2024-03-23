@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+## [0.0.30] - 2024-03-23
+### Fixed
+- Re-enqueue problem: fixed a problem when the expired lock requests were infinitly re-added to the lock queue
+  and immediately removed from the lock queue rather than being re-positioned. It happens when the lock request
+  ttl reached the queue ttl, and the new request now had the dead score forever (fix: it's score now will be correctly
+  recalculated from the current time at the dead score time moment);
+### Added
+- Logging: more detailed logs to the `RedisQueuedLocks::Acquier::AcquierLock` logic and it's sub-modules:
+  - added new logs;
+  - added `queue_ttl` to each log;
+
 ## [0.0.29] - 2024-03-23
 ### Added
 - Logging: added more detailed logs to `RedisQueuedLocks::Acquier::AcquireLock::TryToLock`;
