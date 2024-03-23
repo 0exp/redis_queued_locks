@@ -26,7 +26,7 @@ RSpec.describe RedisQueuedLocks do
 
     client.lock('pek.kek.cheburek') { 1 + 1 }
 
-    expect(test_logger.logs.size).to eq(5)
+    expect(test_logger.logs.size).to eq(9)
     aggregate_failures 'logs content (with log_lock_try)' do
       # NOTE: lock_obtaining
       expect(test_logger.logs[0]).to include('[redis_queued_locks.start_lock_obtaining]')
@@ -34,25 +34,46 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[0]).to include('acq_id =>')
 
       # NOTE: try to lock - start
-      expect(test_logger.logs[1]).to include('[redis_queued_locks.try_lock_start]')
+      expect(test_logger.logs[1]).to include('[redis_queued_locks.try_lock.start]')
       expect(test_logger.logs[1]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[1]).to include('acq_id =>')
 
       # NOTE: try to lock - rconn fetched
-      expect(test_logger.logs[2]).to include('[redis_queued_locks.try_lock_rconn_fetched]')
+      expect(test_logger.logs[2]).to include('[redis_queued_locks.try_lock.rconn_fetched]')
       expect(test_logger.logs[2]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[2]).to include('acq_id =>')
 
-      # NOTE: lock_obtained
-      expect(test_logger.logs[3]).to include('[redis_queued_locks.lock_obtained]')
+      # NOTE: try to lock - acq added to queue
+      expect(test_logger.logs[3]).to include('[redis_queued_locks.try_lock.acq_added_to_queue]')
       expect(test_logger.logs[3]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[3]).to include('acq_id =>')
-      expect(test_logger.logs[3]).to include('acq_time =>')
 
-      # NOTE: expire_lock
-      expect(test_logger.logs[4]).to include('[redis_queued_locks.expire_lock]')
+      # NOTE: try to lock - remove expired acqs
+      expect(test_logger.logs[4]).to include('[redis_queued_locks.try_lock.remove_expired_acqs]')
       expect(test_logger.logs[4]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[4]).to include('acq_id =>')
+
+      # NOTE: try to lock - get first from queue
+      expect(test_logger.logs[5]).to include('[redis_queued_locks.try_lock.get_first_from_queue]')
+      expect(test_logger.logs[5]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[5]).to include('acq_id =>')
+      expect(test_logger.logs[5]).to include('first_acq_id_in_queue =>')
+
+      # NOTE: try to lock - fre to acquire
+      expect(test_logger.logs[6]).to include('[redis_queued_locks.try_lock.run__free_to_acquire]')
+      expect(test_logger.logs[6]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[6]).to include('acq_id =>')
+
+      # NOTE: lock_obtained
+      expect(test_logger.logs[7]).to include('[redis_queued_locks.lock_obtained]')
+      expect(test_logger.logs[7]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[7]).to include('acq_id =>')
+      expect(test_logger.logs[7]).to include('acq_time =>')
+
+      # NOTE: expire_lock
+      expect(test_logger.logs[8]).to include('[redis_queued_locks.expire_lock]')
+      expect(test_logger.logs[8]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
+      expect(test_logger.logs[8]).to include('acq_id =>')
     end
 
     # NOTE: rollback to the clean initial state in order to test another case

@@ -2,7 +2,7 @@
 
 # @api private
 # @since 0.1.0
-# rubocop:disable Metrics/ModuleLength
+# rubocop:disable Metrics/ModuleLength, Metrics/BlockNesting
 module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   # @since 0.1.0
   extend RedisQueuedLocks::Utilities
@@ -41,7 +41,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     if log_lock_try
       run_non_critical do
         logger.debug(
-          "[redis_queued_locks.try_lock_start] " \
+          "[redis_queued_locks.try_lock.start] " \
           "lock_key => '#{lock_key}' " \
           "acq_id => '#{acquier_id}'"
         )
@@ -53,7 +53,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
       if log_lock_try
         run_non_critical do
           logger.debug(
-            "[redis_queued_locks.try_lock_rconn_fetched] " \
+            "[redis_queued_locks.try_lock.rconn_fetched] " \
             "lock_key => '#{lock_key}' " \
             "acq_id => '#{acquier_id}'"
           )
@@ -69,6 +69,16 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
           # Step 1: add an acquier to the lock acquirement queue
           res = rconn.call('ZADD', lock_key_queue, 'NX', acquier_position, acquier_id)
 
+          if log_lock_try
+            run_non_critical do
+              logger.debug(
+                "[redis_queued_locks.try_lock.acq_added_to_queue] " \
+                "lock_key => '#{lock_key}' " \
+                "acq_id => '#{acquier_id}'"
+              )
+            end
+          end
+
           RedisQueuedLocks.debug(
             "Step №1: добавление в очередь (#{acquier_id}). [ZADD to the queue: #{res}]"
           )
@@ -81,12 +91,33 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
             RedisQueuedLocks::Resource.acquier_dead_score(queue_ttl)
           )
 
+          if log_lock_try
+            run_non_critical do
+              logger.debug(
+                "[redis_queued_locks.try_lock.remove_expired_acqs] " \
+                "lock_key => '#{lock_key}' " \
+                "acq_id => '#{acquier_id}'"
+              )
+            end
+          end
+
           RedisQueuedLocks.debug(
             "Step №2: дропаем из очереди просроченных ожидающих. [ZREMRANGE: #{res}]"
           )
 
           # Step 3: get the actual acquier waiting in the queue
           waiting_acquier = Array(rconn.call('ZRANGE', lock_key_queue, '0', '0')).first
+
+          if log_lock_try
+            run_non_critical do
+              logger.debug(
+                "[redis_queued_locks.try_lock.get_first_from_queue] " \
+                "lock_key => '#{lock_key}' " \
+                "acq_id => '#{acquier_id}' " \
+                "first_acq_id_in_queue => '#{waiting_acquier}'"
+              )
+            end
+          end
 
           RedisQueuedLocks.debug(
             "Step №3: какой процесс в очереди сейчас ждет. " \
@@ -96,6 +127,17 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
           # Step 4: check the actual acquier: is it ours? are we aready to lock?
           unless waiting_acquier == acquier_id
             # Step ROLLBACK 1.1: our time hasn't come yet. retry!
+
+            if log_lock_try
+              run_non_critical do
+                logger.debug(
+                  "[redis_queued_locks.try_lock.exit__no_first] " \
+                  "lock_key => '#{lock_key}' " \
+                  "acq_id => '#{acquier_id}' " \
+                  "first_acq_id_in_queue => '#{waiting_acquier}'"
+                )
+              end
+            end
 
             RedisQueuedLocks.debug(
               "Step ROLLBACK №1: не одинаковые ключи. выходим. " \
@@ -119,6 +161,18 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
             if locked_by_acquier
               # Step ROLLBACK 2: required lock is stil acquired. retry!
+
+              if log_lock_try
+                run_non_critical do
+                  logger.debug(
+                    "[redis_queued_locks.try_lock.exit__still_obtained] " \
+                    "lock_key => '#{lock_key}' " \
+                    "acq_id => '#{acquier_id}' " \
+                    "first_acq_id_in_queue => '#{waiting_acquier}' " \
+                    "locked_by_acq_id => '#{locked_by_acquier}'"
+                  )
+                end
+              end
 
               RedisQueuedLocks.debug(
                 "Step ROLLBACK №2: Ключ уже занят. Ничего не делаем. " \
@@ -153,6 +207,16 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
               # Step 6.3: set the lock expiration time in order to prevent "infinite locks"
               transact.call('PEXPIRE', lock_key, ttl) # NOTE: in milliseconds
+
+              if log_lock_try
+                run_non_critical do
+                  logger.debug(
+                    "[redis_queued_locks.try_lock.run__free_to_acquire] " \
+                    "lock_key => '#{lock_key}' " \
+                    "acq_id => '#{acquier_id}'"
+                  )
+                end
+              end
             end
           end
         end
@@ -210,4 +274,4 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     RedisQueuedLocks::Data[ok: true, result: result]
   end
 end
-# rubocop:enable Metrics/ModuleLength
+# rubocop:enable Metrics/ModuleLength, Metrics/BlockNesting
