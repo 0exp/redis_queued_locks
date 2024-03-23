@@ -2,7 +2,7 @@
 
 ## [0.0.29] - 2024-03-23
 ### Added
-- Logging: more detailed logs to `RedisQueuedLocks::Acquier::AcquireLock::TryToLock`;
+- Logging: added more detailed logs to `RedisQueuedLocks::Acquier::AcquireLock::TryToLock`;
 
 ## [0.0.28] - 2024-03-21
 ### Added
