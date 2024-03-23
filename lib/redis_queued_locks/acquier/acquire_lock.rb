@@ -162,10 +162,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
           # Step 2.X: check the actual score: is it in queue ttl limit or not?
           if RedisQueuedLocks::Resource.dead_score_reached?(acquier_position, queue_ttl)
-            # Step 2.X.X:
-            #   - dead score reached => we should re-queue our lock request
-            #   - "lock request requeue" means "reset/recalculate acquier
-            #     position => calc initial new as if this request made now"
+            # Step 2.X.X: dead score reached => re-queue the lock request with the new score;
             acquier_position = RedisQueuedLocks::Resource.calc_initial_acquier_position
 
             run_non_critical do
