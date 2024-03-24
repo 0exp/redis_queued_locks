@@ -14,7 +14,7 @@ Each lock request is put into the request queue and processed in order of their 
 - [Configuration](#configuration)
 - [Usage](#usage)
   - [lock](#lock---obtain-a-lock)
-  - [lock!](#lock---exeptional-lock-obtaining)
+  - [lock!](#lock---exceptional-lock-obtaining)
   - [lock_info](#lock_info)
   - [queue_info](#queue_info)
   - [locked?](#locked)
