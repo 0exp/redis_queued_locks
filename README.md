@@ -2,6 +2,8 @@
 
 Distributed locks with "lock acquisition queue" capabilities based on the Redis Database.
 
+Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttls, queue ttls, fast failing, etc), logging and instrumentation.
+
 Each lock request is put into the request queue and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
 
 ---
