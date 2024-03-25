@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+## [0.0.32] - 2024-03-26
+### Added
+- Support for custom metadata that merged to the lock data. This data also returned from `RedisQueudLocks::Client#lock_info` method;
+  - Custom metadata shou;d be represented as a `key => value` `Hash` data (or `NilClass` instead);
+  - Custom metadata values is returned as raw data from Redis (commonly as strings);
+  - Custom metadata can not contain reserved lock data keys;
+- Reduced some memory consuption;
+### Changed
+- `RedisQueuedLocks::Client#lock_info` - has keys is changed from `Symbol` type to `String` type;
+- `RedisQueuedLocks::Client#queue_info` - hash keys is changed from `Symbol` type to `String` type;
+
 ## [0.0.31] - 2024-03-25
 ### Changed
 - `:metadata` renamed to `:instrument` in order to reflect it's domain area;

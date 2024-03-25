@@ -196,7 +196,8 @@ def lock(
   raise_errors: false,
   fail_fast: false,
   identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config[:uniq_identifier] proc;
-  metadata: nil,
+  meta: nil,
+  instrument: nil,
   logger: config[:logger],
   log_lock_try: config[:log_lock_try],
   &block
@@ -234,8 +235,11 @@ def lock(
     pods or/and nodes of your application;
   - It is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`
     ivar (accessed via `uniq_dentity` accessor method);
-- `metadata` - `[NilClass,Any]`
-  - A custom metadata wich will be passed to the instrumenter's payload with `:meta` key;
+- `meta` - `[NilClass,Hash<String|Symbol,Any>]`
+  - A custom metadata wich will be passed to the lock data in addition to the existing data;
+  - Custom metadata can not contain reserved lock data keys (such as `lock_key`, `acq_id`, `ts`, `ini_ttl`, `rem_ttl`);
+- `instrument` - `[NilClass,Any]`
+  - Custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
 - `logger` - `[::Logger,#debug]`
   - Logger object used from the configuration layer (see config[:logger]);
   - See `RedisQueuedLocks::Logging::VoidLogger` for example;
@@ -295,7 +299,8 @@ def lock!(
   retry_jitter: config[:retry_jitter],
   identity: uniq_identity,
   fail_fast: false,
-  metadata: nil,
+  meta: nil,
+  instrument: nil,
   logger: config[:logger],
   log_lock_try: config[:log_lock_try],
   &block
@@ -311,22 +316,42 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
 - get the lock information;
 - returns `nil` if lock does not exist;
 - lock data (`Hash<Symbol,String|Integer>`):
-  - `lock_key` - `string` - lock key in redis;
-  - `acq_id` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity);
-  - `ts` - `integer`/`epoch` - the time lock was obtained;
-  - `init_ttl` - `integer` - (milliseconds) initial lock key ttl;
-  - `rem_ttl` - `integer` - (milliseconds) remaining lock key ttl;
+  - `"lock_key"` - `string` - lock key in redis;
+  - `"acq_id"` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity);
+  - `"ts"` - `integer`/`epoch` - the time lock was obtained;
+  - `"init_ttl"` - `integer` - (milliseconds) initial lock key ttl;
+  - `"rem_ttl"` - `integer` - (milliseconds) remaining lock key ttl;
+  - custom metadata keys - `String` - custom metadata passed to the `lock`/`lock!`
+    methods via `meta:` keyword argument (see [lock]((#lock---obtain-a-lock)) method documentation);
 
 ```ruby
+# without custom metadata
 rql.lock_info("your_lock_name")
 
 # =>
 {
-  lock_key: "rql:lock:your_lock_name",
-  acq_id: "rql:acq:123/456/567/678/374dd74324",
-  ts: 123456789,
-  ini_ttl: 123456789,
-  rem_ttl: 123456789
+  "lock_key" => "rql:lock:your_lock_name",
+  "acq_id" => "rql:acq:123/456/567/678/374dd74324",
+  "ts" => 123456789,
+  "ini_ttl" => 123456789,
+  "rem_ttl" => 123456789
+}
+```
+
+```ruby
+# with custom metadata
+rql.lock("your_lock_name", meta: { "kek" => "pek", "bum" => 123 })
+rql.lock_info("your_lock_name")
+
+# =>
+{
+  "lock_key" => "rql:lock:your_lock_name",
+  "acq_id" => "rql:acq:123/456/567/678/374dd74324",
+  "ts" => 123456789,
+  "ini_ttl" => 123456789,
+  "rem_ttl" => 123456789,
+  "kek" => "pek",
+  "bum" => "123" # NOTE: returned as a raw string directly from Redis
 }
 ```
 
@@ -341,10 +366,10 @@ rql.lock_info("your_lock_name")
   - represents the acquier identifier and their score as an array of hashes;
 - returns `nil` if lock queue does not exist;
 - lock queue data (`Hash<Symbol,String|Array<Hash<Symbol,String|Numeric>>`):
-  - `lock_queue` - `string` - lock queue key in redis;
-  - `queue` - `array` - an array of lock requests (array of hashes):
-    - `acq_id` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
-    - `score` - `float`/`epoch` - time when the lock request was made (epoch);
+  - `"lock_queue"` - `string` - lock queue key in redis;
+  - `"queue"` - `array` - an array of lock requests (array of hashes):
+    - `"acq_id"` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
+    - `"score"` - `float`/`epoch` - time when the lock request was made (epoch);
 
 ```
 | Returns an information about the required lock queue by the lock name. The result
@@ -359,11 +384,11 @@ rql.queue_info("your_lock_name")
 
 # =>
 {
-  lock_queue: "rql:lock_queue:your_lock_name",
-  queue: [
-    { acq_id: "rql:acq:123/456/567/678/fa76df9cc2", score: 1},
-    { acq_id: "rql:acq:123/567/456/679/c7bfcaf4f9", score: 2},
-    { acq_id: "rql:acq:555/329/523/127/7329553b11", score: 3},
+  "lock_queue" => "rql:lock_queue:your_lock_name",
+  "queue" => [
+    { "acq_id" => "rql:acq:123/456/567/678/fa76df9cc2", "score" => 1},
+    { "acq_id" => "rql:acq:123/567/456/679/c7bfcaf4f9", "score" => 2},
+    { "acq_id" => "rql:acq:555/329/523/127/7329553b11", "score" => 3},
     # ...etc
   ]
 }

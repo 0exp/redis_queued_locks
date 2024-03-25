@@ -21,9 +21,11 @@ module RedisQueuedLocks::Acquier::AcquireLock::WithAcqTimeout
     on_timeout.call unless on_timeout == nil
 
     if raise_errors
-      raise(RedisQueuedLocks::LockAcquiermentTimeoutError, <<~ERROR_MESSAGE.strip)
-        Failed to acquire the lock "#{lock_key}" for the given timeout (#{timeout} seconds).
-      ERROR_MESSAGE
+      raise(
+        RedisQueuedLocks::LockAcquiermentTimeoutError,
+        "Failed to acquire the lock \"#{lock_key}\" " \
+        "for the given timeout (#{timeout} seconds)."
+      )
     end
   end
 end

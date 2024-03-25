@@ -69,7 +69,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #   already obtained.
     # @option meta [NilClass,Hash<String|Symbol,Any>]
     #   - A custom metadata wich will be passed to the lock data in addition to the existing data;
-    #   - Metadata keys can not overlap reserved technical lock data keys;
+    #   - Metadata can not contain reserved lock data keys;
     # @option logger [::Logger,#debug]
     #   - Logger object used from the configuration layer (see config[:logger]);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
@@ -114,18 +114,28 @@ module RedisQueuedLocks::Acquier::AcquireLock
     )
       # Step 0: Prevent argument type incompatabilities
       # Step 0.1: prevent :meta incompatabiltiies (type)
-      if meta != nil && meta != ::Hash
-        raise(RedisQueuedLocks::ArgumentError, <<~ERROR_MESSAGE.strip)
-          `:meta` argument should be a type of NilClass or Hash, got #{meta.class}.
-        ERROR_MESSAGE
+      case meta # NOTE: do not ask why case/when is used here
+      when Hash, NilClass then nil
+      else
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:meta` argument should be a type of NilClass or Hash, got #{meta.class}."
+        )
       end
+
       # Step 0.2: prevent :meta incompatabiltiies (structure)
-      if meta == ::Hash && (
-        meta.keys.any? { |key| key == 'acq_id' || key == 'ts' || key == 'ini_ttl' }
-      )
-        raise(RedisQueuedLocks::ArgumentError, <<~ERROR_MESSAGE.strip)
-          `:meta` keys can not overlap reserved lock data keys "acq_id", "ts", "ini_ttl".
-        ERROR_MESSAGE
+      if meta == ::Hash && (meta.keys.any? do |key|
+        key == 'acq_id' ||
+        key == 'ts' ||
+        key == 'ini_ttl' ||
+        key == 'lock_key' ||
+        key == 'rem_ttl'
+      end)
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          '`:meta` keys can not overlap reserved lock data keys' \
+          '"acq_id", "ts", "ini_ttl", "lock_key", "rem_ttl"'
+        )
       end
 
       # Step 1: prepare lock requirements (generate lock name, calc lock ttl, etc).
@@ -255,9 +265,10 @@ module RedisQueuedLocks::Acquier::AcquireLock
           elsif fail_fast && acq_process[:result] == :fail_fast_no_try
             acq_process[:should_try] = false
             if raise_errors
-              raise(RedisQueuedLocks::LockAlreadyObtainedError, <<~ERROR_MESSAGE.strip)
-                Lock "#{lock_key}" is already obtained.
-              ERROR_MESSAGE
+              raise(
+                RedisQueuedLocks::LockAlreadyObtainedError,
+                "Lock \"#{lock_key}\" is already obtained."
+              )
             end
           else
             # Step 2.1.b: failed acquirement => retry
@@ -277,14 +288,16 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
               # NOTE: check and raise an error
               if fail_fast && raise_errors
-                raise(RedisQueuedLocks::LockAlreadyObtainedError, <<~ERROR_MESSAGE.strip)
-                  Lock "#{lock_key}" is already obtained.
-                ERROR_MESSAGE
+                raise(
+                  RedisQueuedLocks::LockAlreadyObtainedError,
+                  "Lock \"#{lock_key}\" is already obtained."
+                )
               elsif raise_errors
-                raise(RedisQueuedLocks::LockAcquiermentRetryLimitError, <<~ERROR_MESSAGE.strip)
-                  Failed to acquire the lock "#{lock_key}"
-                  for the given retry_count limit (#{retry_count} times).
-                ERROR_MESSAGE
+                raise(
+                  RedisQueuedLocks::LockAcquiermentRetryLimitError,
+                  "Failed to acquire the lock \"#{lock_key}\" " \
+                  "for the given retry_count limit (#{retry_count} times)."
+                )
               end
             else
               # NOTE:

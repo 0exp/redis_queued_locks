@@ -4,6 +4,7 @@ RSpec.describe RedisQueuedLocks do
   let(:redis) { RedisClient.config.new_pool(timeout: 5, size: 50) }
 
   before { RedisQueuedLocks.enable_debugger! }
+  after { redis.call('FLUSHDB') }
 
   specify 'logger' do
     test_logger = Class.new do
@@ -135,6 +136,23 @@ RSpec.describe RedisQueuedLocks do
     end
   end
 
+  specify ':meta' do
+    # NOTE: with log_lock_try test
+    client = RedisQueuedLocks::Client.new(redis)
+    client.lock('kek.pek.lock.pock', ttl: 5_000, meta: { 'chuk' => '321', 'buk' => 123 })
+    lock_info = client.lock_info('kek.pek.lock.pock')
+
+    expect(lock_info).to match({
+      'acq_id' => be_a(String), # reserved
+      'ts' => be_a(Numeric), # reserved
+      'ini_ttl' => be_a(Integer), # reserved
+      'lock_key' => be_a(String), # reserved
+      'rem_ttl' => be_a(Numeric), # reserved
+      'chuk' => '321', # <custom meta> (expectation)
+      'buk' => '123' # <custom meta> (expectation)
+    })
+  end
+
   specify ':instrument' do
     test_notifier = Class.new do
       attr_reader :notifications
@@ -176,8 +194,6 @@ RSpec.describe RedisQueuedLocks do
     end.not_to raise_error
 
     expect(client.locked?('some-timed-lock')).to eq(false)
-
-    redis.call('FLUSHDB')
   end
 
   specify 'lock queues' do
@@ -198,8 +214,6 @@ RSpec.describe RedisQueuedLocks do
     expect do
       client.lock!('some-kek-super-pek', retry_count: 1, timeout: 1)
     end.to raise_error(RedisQueuedLocks::LockAcquiermentRetryLimitError)
-
-    redis.call('FLUSHDB')
   end
 
   specify 'lock_info, queue_info' do
@@ -216,11 +230,11 @@ RSpec.describe RedisQueuedLocks do
     lock_info = client.lock_info(lock_name)
 
     expect(lock_info).to match({
-      lock_key: "rql:lock:#{lock_name}",
-      acq_id: be_a(String),
-      ts: be_a(Float),
-      ini_ttl: 10_000,
-      rem_ttl: be_a(Integer)
+      'lock_key' => "rql:lock:#{lock_name}",
+      'acq_id' => be_a(String),
+      'ts' => be_a(Float),
+      'ini_ttl' => 10_000,
+      'rem_ttl' => be_a(Integer)
     })
 
     expect(client.locked?(lock_name)).to eq(true)
@@ -233,14 +247,12 @@ RSpec.describe RedisQueuedLocks do
 
     expect(client.queued?(lock_name)).to eq(true)
     expect(client.queue_info(lock_name)).to match({
-      lock_queue: "rql:lock_queue:#{lock_name}",
-      queue: match_array([
-        match({ acq_id: be_a(String), score: be_a(Numeric) }),
-        match({ acq_id: be_a(String), score: be_a(Numeric) })
+      'lock_queue' => "rql:lock_queue:#{lock_name}",
+      'queue' => match_array([
+        match({ 'acq_id' => be_a(String), 'score' => be_a(Numeric) }),
+        match({ 'acq_id' => be_a(String), 'score' => be_a(Numeric) })
       ])
     })
-
-    redis.call('FLUSHDB')
   end
 
   specify 'notifications' do
@@ -288,6 +300,5 @@ RSpec.describe RedisQueuedLocks do
     client.clear_locks
 
     puts test_notifier.notifications
-    redis.call('FLUSHDB')
   end
 end

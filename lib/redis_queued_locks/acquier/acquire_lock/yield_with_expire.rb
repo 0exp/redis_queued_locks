@@ -63,8 +63,10 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
   def yield_with_timeout(timeout, lock_key, lock_ttl, &block)
     ::Timeout.timeout(timeout, &block)
   rescue ::Timeout::Error
-    raise(RedisQueuedLocks::TimedLockTimeoutError, <<~ERROR_MESSAGE)
-      Passed <timed> block of code exceeded the lock TTL (lock: "#{lock_key}", ttl: #{lock_ttl})
-    ERROR_MESSAGE
+    raise(
+      RedisQueuedLocks::TimedLockTimeoutError,
+      "Passed <timed> block of code exceeded " \
+      "the lock TTL (lock: \"#{lock_key}\", ttl: #{lock_ttl})"
+    )
   end
 end

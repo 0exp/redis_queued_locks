@@ -6,14 +6,14 @@ module RedisQueuedLocks::Acquier::LockInfo
   class << self
     # @param redis_client [RedisClient]
     # @param lock_name [String]
-    # @return [Hash<Symbol,String|Numeric>,NilClass]
+    # @return [Hash<String,String|Numeric>,NilClass]
     #   - `nil` is returned when lock key does not exist or expired;
     #   - result format: {
-    #     lock_key: "rql:lock:your_lockname", # acquired lock key
-    #     acq_id: "rql:acq:process_id/thread_id", # lock acquier identifier
-    #     ts: 123456789.2649841, # <locked at> time stamp (epoch, seconds.microseconds)
-    #     ini_ttl: 123456789, # initial lock key ttl (milliseconds),
-    #     rem_ttl: 123456789, # remaining lock key ttl (milliseconds)
+    #     'lock_key' => "rql:lock:your_lockname", # acquired lock key
+    #     'acq_id' => "rql:acq:process_id/thread_id", # lock acquier identifier
+    #     'ts' => 123456789.2649841, # <locked at> time stamp (epoch, seconds.microseconds)
+    #     'ini_ttl' => 123456789, # initial lock key ttl (milliseconds),
+    #     'rem_ttl' => 123456789, # remaining lock key ttl (milliseconds)
     #   }
     #
     # @api private
@@ -43,13 +43,12 @@ module RedisQueuedLocks::Acquier::LockInfo
           # NOTE: the result of MULTI-command is an array of results of each internal command
           #   - result[0] (HGETALL) (Hash<String,String>)
           #   - result[1] (PTTL) (Integer)
-          {
-            lock_key: lock_key,
-            acq_id: hget_cmd_res['acq_id'],
-            ts: Float(hget_cmd_res['ts']),
-            ini_ttl: Integer(hget_cmd_res['ini_ttl']),
-            rem_ttl: ((pttl_cmd_res == -1) ? Infinity : pttl_cmd_res)
-          }
+          hget_cmd_res.tap do |lock_data|
+            lock_data['lock_key'] = lock_key
+            lock_data['ts'] = Float(lock_data['ts'])
+            lock_data['ini_ttl'] = Integer(lock_data['ini_ttl'])
+            lock_data['rem_ttl'] = ((pttl_cmd_res == -1) ? Infinity : pttl_cmd_res)
+          end
         end
       end
     end

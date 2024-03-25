@@ -12,13 +12,13 @@ module RedisQueuedLocks::Acquier::QueueInfo
     #
     # @param redis_client [RedisClient]
     # @param lock_name [String]
-    # @return [Hash<Symbol,String|Array<Hash<Symbol,String|Float>>,NilClass]
+    # @return [Hash<String|Array<Hash<String,String|Numeric>>,NilClass]
     #   - `nil` is returned when lock queue does not exist;
     #   - result format: {
-    #     lock_queue: "rql:lock_queue:your_lock_name", # lock queue key in redis,
+    #     "lock_queue" => "rql:lock_queue:your_lock_name", # lock queue key in redis,
     #     queue: [
-    #       { acq_id: "rql:acq:process_id/thread_id", score: 123 },
-    #       { acq_id: "rql:acq:process_id/thread_id", score: 456 },
+    #       { "acq_id" => "rql:acq:process_id/thread_id", "score" => 123 },
+    #       { "acq_id" => "rql:acq:process_id/thread_id", "score" => 456 },
     #     ] # ordered set (by score) with information about an acquier and their position in queue
     #   }
     #
@@ -38,8 +38,8 @@ module RedisQueuedLocks::Acquier::QueueInfo
       if exists_cmd_res == 1
         # NOTE: queue existed during the piepline invocation
         {
-          lock_queue: lock_key_queue,
-          queue: zrange_cmd_res.map { |val| { acq_id: val[0], score: val[1] } }
+          'lock_queue' => lock_key_queue,
+          'queue' => zrange_cmd_res.map { |val| { 'acq_id' => val[0], 'score' => val[1] } }
         }
       else
         # NOTE: queue did not exist during the pipeline invocation

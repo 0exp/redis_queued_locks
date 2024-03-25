@@ -95,7 +95,7 @@ class RedisQueuedLocks::Client
   #   by another process while the lock request queue was initially empty;
   # @option meta [NilClass,Hash<String|Symbol,Any>]
   #   - A custom metadata wich will be passed to the lock data in addition to the existing data;
-  #   - Metadata keys can not overlap reserved technical lock data keys;
+  #   - Metadata can not contain reserved lock data keys;
   # @option logger [::Logger,#debug]
   #   - Logger object used from the configuration layer (see config[:logger]);
   #   - See `RedisQueuedLocks::Logging::VoidLogger` for example;
@@ -232,7 +232,7 @@ class RedisQueuedLocks::Client
   end
 
   # @param lock_name [String]
-  # @return [Hash,NilClass]
+  # @return [Hash<String,String|Numeric>,NilClass]
   #
   # @api public
   # @since 0.1.0
@@ -241,7 +241,7 @@ class RedisQueuedLocks::Client
   end
 
   # @param lock_name [String]
-  # @return [Hash,NilClass]
+  # @return [Hash<String|Array<Hash<String,String|Numeric>>,NilClass]
   #
   # @api public
   # @since 0.1.0
