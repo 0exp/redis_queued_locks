@@ -616,6 +616,7 @@ Detalized event semantics and payload structure:
 - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
 - better code stylization and interesting refactorings;
 - dead queue cleanup;
+- statistics with ui interface;
 - support for `Dragonfly` DB backend;
 - support for `Garnet` DB backend;
 
