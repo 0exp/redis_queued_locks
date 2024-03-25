@@ -135,7 +135,7 @@ RSpec.describe RedisQueuedLocks do
     end
   end
 
-  specify 'metadata' do
+  specify ':instrument' do
     test_notifier = Class.new do
       attr_reader :notifications
 
@@ -153,12 +153,12 @@ RSpec.describe RedisQueuedLocks do
     end
 
     expect(test_notifier.notifications).to be_empty
-    client.lock('kek-pek-cheburgen', metadata: { test: :ok })
+    client.lock('kek-pek-cheburgen', instrument: { test: :ok })
     expect(test_notifier.notifications.size).to eq(1)
-    expect(test_notifier.notifications[0][:payload][:meta]).to eq({ test: :ok })
+    expect(test_notifier.notifications[0][:payload][:instrument]).to eq({ test: :ok })
     client.lock('bum-bum-pek-mek')
     expect(test_notifier.notifications.size).to eq(2)
-    expect(test_notifier.notifications[1][:payload][:meta]).to eq(nil)
+    expect(test_notifier.notifications[1][:payload][:instrument]).to eq(nil)
   end
 
   specify 'timed lock' do

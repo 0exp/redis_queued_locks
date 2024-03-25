@@ -17,6 +17,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   # @param ttl [Integer]
   # @param queue_ttl [Integer]
   # @param fail_fast [Boolean]
+  # @param meta [NilClass,Hash<String|Symbol,Any>]
   # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol|Hash<Symbol,Any> }
   #
   # @api private
@@ -32,7 +33,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     acquier_position,
     ttl,
     queue_ttl,
-    fail_fast
+    fail_fast,
+    meta
   )
     # Step X: intermediate invocation results
     inter_result = nil
@@ -230,7 +232,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
                 lock_key,
                 'acq_id', acquier_id,
                 'ts', (timestamp = Time.now.to_f),
-                'ini_ttl', ttl
+                'ini_ttl', ttl,
+                *(meta.to_a if meta != nil)
               )
 
               # Step 6.3: set the lock expiration time in order to prevent "infinite locks"

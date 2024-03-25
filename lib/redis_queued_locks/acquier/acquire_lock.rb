@@ -67,8 +67,9 @@ module RedisQueuedLocks::Acquier::AcquireLock
     # @option fail_fast [Boolean]
     #   Should the required lock to be checked before the try and exit immidetly if lock is
     #   already obtained.
-    # @option metadata [NilClass,Any]
-    #   - A custom metadata wich will be passed to the instrumenter's payload with :meta key;
+    # @option meta [NilClass,Hash<String|Symbol,Any>]
+    #   - A custom metadata wich will be passed to the lock data in addition to the existing data;
+    #   - Metadata keys can not overlap reserved technical lock data keys;
     # @option logger [::Logger,#debug]
     #   - Logger object used from the configuration layer (see config[:logger]);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
@@ -76,6 +77,9 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #   - should be logged the each try of lock acquiring (a lot of logs can be generated depending
     #     on your retry configurations);
     #   - see `config[:log_lock_try]`;
+    # @option instrument [NilClass,Any]
+    #    - Custom instrumentation data wich will be passed to the instrumenter's payload
+    #      with :instrument key;
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -102,11 +106,28 @@ module RedisQueuedLocks::Acquier::AcquireLock
       instrumenter:,
       identity:,
       fail_fast:,
-      metadata:,
+      meta:,
+      instrument:,
       logger:,
       log_lock_try:,
       &block
     )
+      # Step 0: Prevent argument type incompatabilities
+      # Step 0.1: prevent :meta incompatabiltiies (type)
+      if meta != nil && meta != ::Hash
+        raise(RedisQueuedLocks::ArgumentError, <<~ERROR_MESSAGE.strip)
+          `:meta` argument should be a type of NilClass or Hash, got #{meta.class}.
+        ERROR_MESSAGE
+      end
+      # Step 0.2: prevent :meta incompatabiltiies (structure)
+      if meta == ::Hash && (
+        meta.keys.any? { |key| key == 'acq_id' || key == 'ts' || key == 'ini_ttl' }
+      )
+        raise(RedisQueuedLocks::ArgumentError, <<~ERROR_MESSAGE.strip)
+          `:meta` keys can not overlap reserved lock data keys "acq_id", "ts", "ini_ttl".
+        ERROR_MESSAGE
+      end
+
       # Step 1: prepare lock requirements (generate lock name, calc lock ttl, etc).
       acquier_id = RedisQueuedLocks::Resource.acquier_identifier(
         process_id,
@@ -185,7 +206,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
             acquier_position,
             lock_ttl,
             queue_ttl,
-            fail_fast
+            fail_fast,
+            meta
           ) => { ok:, result: }
 
           acq_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
@@ -215,7 +237,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                 acq_id: result[:acq_id],
                 ts: result[:ts],
                 acq_time: acq_time,
-                meta: metadata
+                instrument:
               })
             end
 
@@ -307,7 +329,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                 ts: acq_process[:lock_info][:ts],
                 lock_key: acq_process[:lock_info][:lock_key],
                 acq_time: acq_process[:acq_time],
-                meta: metadata
+                instrument:
               })
             end
           end
