@@ -140,18 +140,27 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # (default: RedisQueuedLocks::Logging::VoidLogger)
   # - the logger object;
   # - should implement `debug(progname = nil, &block)` (minimal requirement) or be an instance of Ruby's `::Logger` class/subclass;
-  # - at this moment the only debug logs are realised in 3 cases:
-  #   - start of lock obtaining: "[redis_queud_locks.start_lock_obtaining] lock_key => 'rql:lock:your_lock' acq_id => 'rql:acq:54307/3620/3640/3540/c1799ede93'"
-  #   - finish of the lock obtaining: "[redis_queued_locks.lock_obtained] lock_key => 'rql:lock:your_lock' acq_id => 'rql:acq:54307/3620/3640/3540/c1799ede93' acq_time => 123.456 (ms)"
-  #   - start of the lock expiration after `yield`: "[redis_queud_locks.expire_lock] lock_key => 'rql:lock:your_lock' acq_id => 'rql:acq:54307/3620/3640/3540/c1799ede93'"
+  # - at this moment the only debug logs are realised in following cases:
+  #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.dead_score_reached__reset_acquier_position]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.lock_obtained]" (logs "lockkey", "queue_ttl", "acq_id", "acq_time");
   # - by default uses VoidLogger that does nothing;
   config.logger = RedisQueuedLocks::Logging::VoidLogger
 
   # (default: false)
-  # - should be logged the each internal try-retry lock acquire (a lot of logs can be generated depending on your retry configurations);
-  # - it adds 2 cases to the log in addition to the existing 3:
-  #   - start of a try: "[redis_queud_locks.try_lock_start] lock_key => 'rql:lock:your_lock' acq_id => 'rql:acq:54307/3620/3640/3540/c1799ede93'"
-  #   - redis connection is feteched from the pool after "start of a try": "[redis_queued_locks.try_lock_rconn_fetched] lock_key => 'rql:lock:your_lock' acq_id => 'rql:acq:54307/3620/3640/3540/c1799ede93'"
+  # - adds additional debug logs;
+  # - enables additional logs for each internal try-retry lock acquiring (a lot of logs can be generated depending on your retry configurations);
+  # - it adds following logs in addition to the existing:
+  #   - "[redis_queued_locks.try_lock.start]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.try_lock.rconn_fetched]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id)";
+  #   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue");
+  #   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "<current_lock_data>");
+  #   - "[redis_queued_locks.try_lock.exit__still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
+  #   - "[redis_queued_locks.try_lock.run__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id");
   # - if logger is not configured this option does not lead to any effect;
   config.log_lock_try = false
 end

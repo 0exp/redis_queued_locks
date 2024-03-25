@@ -46,7 +46,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
           "[redis_queued_locks.try_lock.start] " \
           "lock_key => '#{lock_key}' " \
           "queue_ttl => #{queue_ttl} " \
-          "acq_id => '#{acquier_id}' "
+          "acq_id => '#{acquier_id}'"
         )
       end
     end
@@ -163,7 +163,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
                   "lock_key => '#{lock_key}' " \
                   "queue_ttl => #{queue_ttl} " \
                   "acq_id => '#{acquier_id}' " \
-                  "first_acq_id_in_queue => '#{waiting_acquier}'"
+                  "first_acq_id_in_queue => '#{waiting_acquier}' " \
+                  "<current_lock_data> => <<#{rconn.call('HGETALL', lock_key).to_h}>>"
                 )
               end
             end
@@ -199,7 +200,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
                     "queue_ttl => #{queue_ttl} " \
                     "acq_id => '#{acquier_id}' " \
                     "first_acq_id_in_queue => '#{waiting_acquier}' " \
-                    "locked_by_acq_id => '#{locked_by_acquier}'"
+                    "locked_by_acq_id => '#{locked_by_acquier}' " \
+                    "<current_lock_data> => <<#{rconn.call('HGETALL', lock_key).to_h}>>"
                   )
                 end
               end

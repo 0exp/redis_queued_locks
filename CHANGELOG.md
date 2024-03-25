@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [0.0.33] - 2024-03-26
+### Added
+- Logging: added current lock data info to the detailed `#try_to_lock` log to the cases when lock is still obtained. It is suitable
+  when you pass a custom metadata with lock obtainer (for example: the current string of code) and want to see this information
+  in logs when you can not acquire the concrete lock long time;
+
 ## [0.0.32] - 2024-03-26
 ### Added
 - Support for custom metadata that merged to the lock data. This data also returned from `RedisQueudLocks::Client#lock_info` method;
