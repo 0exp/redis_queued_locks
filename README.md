@@ -4,7 +4,7 @@ Distributed locks with "lock acquisition queue" capabilities based on the Redis 
 
 Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttls, queue ttls, fast failing, etc), logging and instrumentation.
 
-Each lock request is put into the request queue and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees the request queue will never be stacked.
+Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees the request queue will never be stacked.
 
 ---
 
@@ -38,7 +38,7 @@ Each lock request is put into the request queue and processed in order of their 
 
 ### Algorithm
 
-> Each lock request is put into the request queue and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
+> Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
 
 **Soon**: detailed explanation.
 
