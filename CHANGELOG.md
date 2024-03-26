@@ -6,7 +6,7 @@
 
 ## [0.0.34] - 2024-03-26
 ### Changed
-- Removing the acquirer from the request queue during a lock obtaining logic now using more proper and accurate `ZREM` instead of `ZPOPMIN` for this;
+- Removing the acquirer from the request queue during a lock obtaining logic is using more proper and accurate `ZREM` now instead of `ZPOPMIN`;
 
 ## [0.0.33] - 2024-03-26
 ### Added
