@@ -135,6 +135,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   that have identical process_id/thread_id/fiber_id/ractor_id (identivcal acquier ids);
   # - it is calculated once per `RedisQueudLocks::Client` instance;
   # - expects the proc object;
+  # - `SecureRandom.hex(8)` by default;
   config.uniq_identifier = -> { RedisQueuedLocks::Resource.calc_uniq_identity }
 
   # (default: RedisQueuedLocks::Logging::VoidLogger)
