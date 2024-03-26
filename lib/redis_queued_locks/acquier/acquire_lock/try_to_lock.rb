@@ -279,7 +279,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
       #   => (*) at this moment we accept that all comamnds are completed successfully;
       #   => (!) need to analyze:
       #   1. zrem shoud return ? (?)
-      #   2. hset should return 2 (lock key is added to the redis as a hashmap with 2 fields)
+      #   2. hset should return 3 as minimum (lock key is added to the redis as a hashmap with 3 fields as minimum)
       #   3. pexpire should return 1 (expiration time is successfully applied)
 
       # Step 7.d: locked! :) let's go! => successfully acquired
