@@ -329,7 +329,7 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
   - `"ts"` - `integer`/`epoch` - the time lock was obtained;
   - `"init_ttl"` - `integer` - (milliseconds) initial lock key ttl;
   - `"rem_ttl"` - `integer` - (milliseconds) remaining lock key ttl;
-  - `custom metadata`- `String` - custom metadata passed to the `lock`/`lock!` methods via `meta:` keyword argument (see [lock]((#lock---obtain-a-lock)) method documentation);
+  - `custom metadata`- `string`/`integer` - custom metadata passed to the `lock`/`lock!` methods via `meta:` keyword argument (see [lock]((#lock---obtain-a-lock)) method documentation);
 
 ```ruby
 # without custom metadata
