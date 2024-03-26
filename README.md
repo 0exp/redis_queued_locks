@@ -108,7 +108,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   config.default_lock_ttl = 5_000
 
   # (seconds) (default: 15)
-  # - lock request timeout. after this timeout your lock request in queue will be requeued;
+  # - lock request timeout. after this timeout your lock request in queue will be requeued with new position (at the end of the queue);
   config.default_queue_ttl = 15
 
   # (default: 100)
