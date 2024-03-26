@@ -64,7 +64,9 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
         end
       end
 
-      # Step 0: watch the lock key changes (and discard acquirement if lock is already acquired)
+      # Step 0:
+      #   watch the lock key changes (and discard acquirement if lock is already
+      #   obtained by another acquier during the current lock acquiremntt)
       rconn.multi(watch: [lock_key]) do |transact|
         # Fast-Step X0: fail-fast check
         if fail_fast && rconn.call('HGET', lock_key, 'acq_id')
