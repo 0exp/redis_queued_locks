@@ -20,7 +20,7 @@
 ## [0.0.31] - 2024-03-25
 ### Changed
 - `:metadata` renamed to `:instrument` in order to reflect it's domain area;
-- `:metadata` is renamed to `:meta` and reserved for the future updates;
+- `:metadata` is renamed to `:meta` and reserved for future updates;
 
 ## [0.0.30] - 2024-03-23
 ### Fixed
