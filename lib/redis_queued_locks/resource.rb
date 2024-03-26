@@ -22,7 +22,7 @@ module RedisQueuedLocks::Resource
   LOCK_QUEUE_PATTERN = 'rql:lock_queue:*'
 
   class << self
-    # Returns 10-byte unique identifier. It is used for uniquely
+    # Returns 16-byte unique identifier. It is used for uniquely
     # identify current process between different nodes/pods of your application
     # during the lock obtaining and self-identifying in the lock queue.
     #
@@ -31,7 +31,7 @@ module RedisQueuedLocks::Resource
     # @api private
     # @since 0.1.0
     def calc_uniq_identity
-      SecureRandom.hex(5)
+      SecureRandom.hex(8)
     end
 
     # @param process_id [Integer,String]

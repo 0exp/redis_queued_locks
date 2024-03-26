@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.35] - 2024-03-26
+### Changed
+- The random unique client instance identifier now uses 16-byte strings instead of 10-btes in order to prevent potential collisions;
+
 ## [0.0.34] - 2024-03-26
 ### Changed
 - Removing the acquirer from the request queue during a lock obtaining logic now using more proper and accurate `ZREM` instead of `ZPOPMIN` for this;
