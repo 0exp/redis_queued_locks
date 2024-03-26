@@ -9,7 +9,7 @@
 ## [0.0.32] - 2024-03-26
 ### Added
 - Support for custom metadata that merged to the lock data. This data also returned from `RedisQueudLocks::Client#lock_info` method;
-  - Custom metadata shou;d be represented as a `key => value` `Hash` data (or `NilClass` instead);
+  - Custom metadata should be represented as a `key => value` `Hash` (`nil` by default);
   - Custom metadata values is returned as raw data from Redis (commonly as strings);
   - Custom metadata can not contain reserved lock data keys;
 - Reduced some memory consuption;
