@@ -161,7 +161,6 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "<current_lock_data>");
   #   - "[redis_queued_locks.try_lock.exit__still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
   #   - "[redis_queued_locks.try_lock.run__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id");
-  # - if logger is not configured this option does not lead to any effect;
   config.log_lock_try = false
 end
 ```
