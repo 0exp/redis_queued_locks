@@ -638,16 +638,14 @@ Detalized event semantics and payload structure:
 - `100%` test coverage;
 - per-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
   the acquired lock for long-running blocks of code (that invoked "under" the lock
-  whose ttl may expire before the block execution completes). It only makes sens for non-`timed` locks
-  (for those locks where otaned with `timed: false` option);
-- an ability to add custom metadata to the lock and an ability to read this data;
+  whose ttl may expire before the block execution completes). It only makes sense for non-`timed` locks;
 - lock prioritization;
 - support for LIFO strategy;
-- structured logging;
+- structured logging (separated docs);
 - GitHub Actions CI;
 - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
 - better code stylization and interesting refactorings;
-- dead queue cleanup;
+- dead queue keys cleanup (empty queues);
 - statistics with UI;
 - support for `Dragonfly` DB backend;
 - support for `Garnet` DB backend;
