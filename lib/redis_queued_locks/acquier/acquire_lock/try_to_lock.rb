@@ -221,7 +221,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
               transact.call('ZREM', lock_key_queue, acquier_id)
 
               RedisQueuedLocks.debug(
-                'Step №4: Забираем наш текущий процесс из очереди. [ZPOPMIN]'
+                'Step №4: Забираем наш текущий процесс из очереди. [ZREM]'
               )
 
               # rubocop:disable Layout/LineLength
@@ -278,7 +278,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
       #   => (!) analyze the command result and do actions with the depending on it;
       #   => (*) at this moment we accept that all comamnds are completed successfully;
       #   => (!) need to analyze:
-      #   1. zpopmin should return our process (array with <acq_id> and <score>)
+      #   1. zrem shoud return ? (?)
       #   2. hset should return 2 (lock key is added to the redis as a hashmap with 2 fields)
       #   3. pexpire should return 1 (expiration time is successfully applied)
 
