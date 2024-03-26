@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.34] - 2024-03-26
+### Changed
+- Removing the acquirer from the request queue during a lock obtaining logic now using more proper and accurate `ZREM` instead of `ZPOPMIN` for this;
+
 ## [0.0.33] - 2024-03-26
 ### Added
 - Logging: added current lock data info to the detailed `#try_to_lock` log to the cases when lock is still obtained. It is suitable

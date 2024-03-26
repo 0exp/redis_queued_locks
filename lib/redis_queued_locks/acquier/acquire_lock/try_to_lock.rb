@@ -218,7 +218,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
               # NOTE: required lock is free and ready to be acquired! acquire!
 
               # Step 6.1: remove our acquier from waiting queue
-              transact.call('ZPOPMIN', lock_key_queue, '1')
+              transact.call('ZREM', lock_key_queue, acquier_id)
 
               RedisQueuedLocks.debug(
                 'Step №4: Забираем наш текущий процесс из очереди. [ZPOPMIN]'
