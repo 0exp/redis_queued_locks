@@ -14,8 +14,8 @@
   - Custom metadata can not contain reserved lock data keys;
 - Reduced some memory consuption;
 ### Changed
-- `RedisQueuedLocks::Client#lock_info` - has keys is changed from `Symbol` type to `String` type;
-- `RedisQueuedLocks::Client#queue_info` - hash keys is changed from `Symbol` type to `String` type;
+- `RedisQueuedLocks::Client#lock_info`: hash key types of method result is changed from `Symbol` type to `String` type;
+- `RedisQueuedLocks::Client#queue_info`: hash key types of method result is changed from `Symbol` type to `String` type;
 
 ## [0.0.31] - 2024-03-25
 ### Changed
