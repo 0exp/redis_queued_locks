@@ -2,7 +2,7 @@
 
 ## [0.0.35] - 2024-03-26
 ### Changed
-- The random unique client instance identifier now uses 16-byte strings instead of 10-btes in order to prevent potential collisions;
+- The random unique client instance identifier now uses 16-byte strings instead of 10-bytes in order to prevent potential collisions;
 
 ## [0.0.34] - 2024-03-26
 ### Changed
