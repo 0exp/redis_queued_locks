@@ -505,7 +505,7 @@ Return:
   - `:with_info` - `Boolean` - `false` by default (for details see [#locks_info](#locks_info---get-list-of-locks-with-their-info));
 - returns:
   - `Set<String>` (for `with_info: false`);
-  - `Set<Hash<Symbol,Any>>` (for `with_info: true`). See `#locks_info` for details;
+  - `Set<Hash<Symbol,Any>>` (for `with_info: true`). See [#locks_info](#locks_info---get-list-of-locks-with-their-info) for details;
 
 ```ruby
 rql.locks # or rql.locks(scan_size: 123)
