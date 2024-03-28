@@ -10,6 +10,7 @@ Each lock request is put into the request queue (each lock is hosted by it's own
 
 ## Table of Contents
 
+- [Requirements](#requirements)
 - [Algorithm](#algorithm)
 - [Installation](#installation)
 - [Setup](#setup)
@@ -27,6 +28,8 @@ Each lock request is put into the request queue (each lock is hosted by it's own
   - [locks](#locks---get-list-of-obtained-locks)
   - [queues](#queues---get-list-of-lock-request-queues)
   - [keys](#keys---get-list-of-taken-locks-and-queues)
+  - [locks_info](#locks_info---get-list-of-locks-with-their-info)
+  - [queues_info](#queues_info---get-list-of-queues-with-their-info)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
 - [Roadmap](#roadmap)
@@ -35,6 +38,11 @@ Each lock request is put into the request queue (each lock is hosted by it's own
 - [Authors](#authors)
 
 ---
+
+### Requirements
+
+- Redis Version: `~> 7.x`;
+- Redis Protocol: `RESP3`;
 
 ### Algorithm
 
@@ -182,6 +190,8 @@ end
 - [locks](#locks---get-list-of-obtained-locks)
 - [queues](#queues---get-list-of-lock-request-queues)
 - [keys](#keys---get-list-of-taken-locks-and-queues)
+- [locks_info](#locks_info---get-list-of-locks-with-their-info)
+- [queues_info](#queues_info---get-list-of-queues-with-their-info)
 
 ---
 
@@ -488,8 +498,12 @@ Return:
 #### #locks - get list of obtained locks
 
 - uses redis `SCAN` under the hood;
-- accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
-- returns `Set<String>`
+- accepts:
+  - `:scan_size` - `Integer` - (`config[:key_extraction_batch_size]` by default);
+  - `:with_info` - `Boolean` - `false` by default. For details see `#queues_info`;
+- returns:
+  - `Set<String>` (for `with_info: false`);
+  - `Set<Hash<Symbol,Any>>` (for `with_info: true`). See `#locks_info` for details;
 
 ```ruby
 rql.locks # or rql.locks(scan_size: 123)
@@ -514,8 +528,13 @@ rql.locks # or rql.locks(scan_size: 123)
 #### #queues - get list of lock request queues
 
 - uses redis `SCAN` under the hood;
-- accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
-- returns `Set<String>`
+- accepts
+  - `:scan_size` - `Integer` - (`config[:key_extraction_batch_size]` by default);
+  - `:with_info` - `Boolean` - `false` by default. For details see `#locks_info`;
+- returns:
+  - `Set<String>` (for `with_info: false`);
+  - `Set<Hash<Symbol,Any>>` (for `with_info: true`). See `#locks_info` for details;
+
 
 ```ruby
 rql.queues # or rql.queues(scan_size: 123)
@@ -540,8 +559,9 @@ rql.queues # or rql.queues(scan_size: 123)
 #### #keys - get list of taken locks and queues
 
 - uses redis `SCAN` under the hood;
-- accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
-- returns `Set<String>`
+- accepts:
+  `:scan_size` - `Integer` - (`config[:key_extraction_batch_size]` by default);
+- returns: `Set<String>`
 
 ```ruby
 rql.keys # or rql.keys(scan_size: 123)
@@ -563,6 +583,66 @@ rql.keys # or rql.keys(scan_size: 123)
   "rql:lock:locklock80",
   "rql:lock_queue:locklock28",
   ...}>
+```
+
+---
+
+#### #locks_info - get list of locks with their info
+
+- uses redis `SCAN` under the hod;
+- accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
+- returns `Set<Hash<Symbol,Any>>` (see [#lock_info](#lock_info) and examples below for details).
+  - contained data: `{ lock: String, status: Symbol, info: Hash<String,Any> }`;
+  - `:lock` - `String` - lock key in Redis;
+  - `:status` - `Symbol`- `:released` or `:alive`. The lock may become relased durign the lock info extractio process;
+  - `:info` - `Hash<String,Any>` - lock data stored in the lock key in Redis. See [#lock_info](#lock_info) for details;
+
+```ruby
+rql.locks_info # or rql.locks_info(scan_size: 123)
+
+# =>
+=> #<Set:
+ {{:lock=>"rql:lock:some-lock-123",
+   :status=>:alive,
+   :info=>{
+    "acq_id"=>"rql:acq:41478/4320/4340/4360/848818f09d8c3420",
+    "ts"=>1711607112.670343,
+    "ini_ttl"=>15000,
+    "rem_ttl"=>13998}},
+  {:lock=>"rql:lock:some-lock-456",
+   :status=>:released,
+   :info=>{
+    "acq_id"=>"rql:acq:41478/4500/4520/4360/848818f09d8c3420",
+    "ts"=>1711607112.67106,
+    "ini_ttl"=>15000,
+    "rem_ttl"=>13999}}}>
+```
+
+---
+
+#### #queues_info - get list of queues with their info
+
+- uses redis `SCAN` under the hod;
+- accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
+- returns `Set<Hash<Symbol,Any>>` (see [#queue_info](#queue_info) and examples below for details).
+  - contained data: `{ queue: String, contains: Array<Hash<String,Any>> }`
+  - `:queue` - `String` - lock key queue in Redis;
+  - `:contains` - `Array<Hash<String,Any>>` - lock requests in the que with their acquier id and score.
+
+```ruby
+rql.queues_info # or rql.qeuues_info(scan_size: 123)
+
+=> #<Set:
+ {{:queue=>"rql:lock_queue:some-lock-123",
+   :contains=>
+    [{"acq_id"=>"rql:acq:38529/4500/4520/4360/66093702f24a3129", "score"=>1711606640.540842},
+     {"acq_id"=>"rql:acq:38529/4580/4600/4360/66093702f24a3129", "score"=>1711606640.540906},
+     {"acq_id"=>"rql:acq:38529/4620/4640/4360/66093702f24a3129", "score"=>1711606640.5409632}]},
+  {:queue=>"rql:lock_queue:some-lock-456",
+   :contains=>
+    [{"acq_id"=>"rql:acq:38529/4380/4400/4360/66093702f24a3129", "score"=>1711606640.540722},
+     {"acq_id"=>"rql:acq:38529/4420/4440/4360/66093702f24a3129", "score"=>1711606640.5407748},
+     {"acq_id"=>"rql:acq:38529/4460/4480/4360/66093702f24a3129", "score"=>1711606640.540808}]}}>
 ```
 
 ---
@@ -648,8 +728,6 @@ Detalized event semantics and payload structure:
 - better code stylization and interesting refactorings;
 - dead queue keys cleanup (empty queues);
 - statistics with UI;
-- support for `Dragonfly` DB backend;
-- support for `Garnet` DB backend;
 
 ---
 

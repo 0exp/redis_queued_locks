@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+## [0.0.36] - 2024-03-28
+### Added
+- Requirements:
+  - redis version: `>= 7.x`;
+  - redis protocol: `RESP3`;
+- Additional debugging methods:
+  - `#locks_info` (or `#locks(with_info: true)`) - get obtained locks with their info;
+  - `#queus_info` (or `#queues(with_info: true`) - get active lock queues with their info;
+
 ## [0.0.35] - 2024-03-26
 ### Changed
 - The random unique client instance identifier now uses 16-byte strings instead of 10-bytes in order to prevent potential collisions;

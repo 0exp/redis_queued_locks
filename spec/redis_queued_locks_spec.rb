@@ -1,9 +1,13 @@
 # frozen_string_literal: true
 
 RSpec.describe RedisQueuedLocks do
-  let(:redis) { RedisClient.config.new_pool(timeout: 5, size: 50) }
+  let(:redis) { RedisClient.config(db: 0).new_pool(timeout: 5, size: 50) }
 
-  before { RedisQueuedLocks.enable_debugger! }
+  before do
+    redis.call('FLUSHDB')
+    # RedisQueuedLocks.enable_debugger!
+  end
+
   after { redis.call('FLUSHDB') }
 
   specify 'logger' do
@@ -273,6 +277,99 @@ RSpec.describe RedisQueuedLocks do
       config.instrumenter = test_notifier
     end
 
+    redis_for_info = RedisClient.config(db: 1).new_pool(timeout: 5, size: 50)
+    client_for_info = RedisQueuedLocks::Client.new(redis) do |config|
+      config.retry_count = 3
+      config.instrumenter = test_notifier
+    end
+
+    Array.new(4) do |kek|
+      Thread.new do
+        client_for_info.lock(
+          'locklock-pekpek-123',
+          ttl: 30_000,
+          timeout: nil,
+          retry_count: nil,
+          meta: { 'kek' => 'pek', 'a' => 123 }
+        ) { sleep(3) }
+      end
+    end
+    Array.new(4) do |kek|
+      Thread.new do
+        client_for_info.lock(
+          'locklock-pekpek-567',
+          ttl: 30_000,
+          timeout: nil,
+          retry_count: nil,
+          meta: { 'pek' => 'mek', 'b' => 55.66 }
+        ) { sleep(3) }
+      end
+    end
+
+    sleep(1)
+
+    # NOTE: 2 locks is obtained, 6 - in queues
+    locks_info_a = client_for_info.locks_info
+    locks_info_b = client_for_info.locks(with_info: true)
+
+    queue_info_a = client_for_info.queues_info
+    queue_info_b = client_for_info.queues(with_info: true)
+
+    # TODO: more time for work => better spec
+    expect(locks_info_a).to be_a(Set)
+    expect(locks_info_b).to be_a(Set)
+    expect(locks_info_a.size).to eq(2)
+    expect(locks_info_a.map { |val| val[:lock] }).to contain_exactly(
+      'rql:lock:locklock-pekpek-123',
+      'rql:lock:locklock-pekpek-567'
+    )
+    expect(locks_info_a.map { |val| val[:status] }).to contain_exactly(
+      :alive,
+      :alive
+    )
+    expect(locks_info_a.map { |val| val[:info].keys }).to contain_exactly(
+      contain_exactly(*%w[acq_id ts ini_ttl rem_ttl kek a]),
+      contain_exactly(*%w[acq_id ts ini_ttl rem_ttl pek b])
+    )
+    expect(locks_info_b.size).to eq(2)
+    expect(locks_info_b.map { |val| val[:lock] }).to contain_exactly(
+      'rql:lock:locklock-pekpek-123',
+      'rql:lock:locklock-pekpek-567'
+    )
+    expect(locks_info_b.map { |val| val[:status] }).to contain_exactly(
+      :alive,
+      :alive
+    )
+    expect(locks_info_b.map { |val| val[:info].keys }).to contain_exactly(
+      contain_exactly(*%w[acq_id ts ini_ttl rem_ttl kek a]),
+      contain_exactly(*%w[acq_id ts ini_ttl rem_ttl pek b])
+    )
+
+    # TODO: more time for work => better spec
+    expect(queue_info_a).to be_a(Set)
+    expect(queue_info_b).to be_a(Set)
+    expect(queue_info_a).to eq(queue_info_b)
+
+    expect(queue_info_a.size).to eq(2)
+    expect(queue_info_a.map { |val| val[:queue] }).to contain_exactly(
+      'rql:lock_queue:locklock-pekpek-123',
+      'rql:lock_queue:locklock-pekpek-567'
+    )
+    expect(queue_info_a.map { |val| val[:contains].map(&:keys) }).to contain_exactly(
+      contain_exactly(
+        contain_exactly(*%w[acq_id score]),
+        contain_exactly(*%w[acq_id score]),
+        contain_exactly(*%w[acq_id score])
+      ),
+      contain_exactly(
+        contain_exactly(*%w[acq_id score]),
+        contain_exactly(*%w[acq_id score]),
+        contain_exactly(*%w[acq_id score])
+      )
+    )
+
+    redis_for_info.call('FLUSHDB')
+
     Array.new(5) do |kek|
       Thread.new do
         client.lock!("locklock#{kek}", retry_count: nil, timeout: nil)
@@ -300,5 +397,7 @@ RSpec.describe RedisQueuedLocks do
     client.clear_locks
 
     puts test_notifier.notifications
+
+    redis.call('FLUSHDB')
   end
 end

@@ -280,21 +280,68 @@ class RedisQueuedLocks::Client
   end
 
   # @option scan_size [Integer]
-  # @return [Set<String>]
+  #   The batch of scanned keys for Redis'es SCAN command.
+  # @option with_info [Boolean]
+  #   Extract lock info or not. If you want to extract a lock info too you have to consider
+  #   that during info extration the lock key may expire. The keys extraction (SCAN) without
+  #   any info extraction is doing first.
+  #   Possible options:
+  #   - `true` => returns a set of hashes that represents the lock state: <lock:, status:, info:>
+  #     - :lock (String) - the lock key in Redis database;
+  #     - :status (Symbol) - lock key state in redis. possible values:
+  #       - :released - the lock is expired/released during the info extraction;
+  #       - :alive - the lock still obtained;
+  #     - :info (Hash) - see #lock_info method for detals;
+  #   - `false` => returns a set of strings that represents an active locks
+  #     at the moment of Redis'es SCAN;
+  # @return [Set<String>,Set<Hash<Symbol,Any>>]
   #
   # @api public
   # @since 0.1.0
-  def locks(scan_size: config[:key_extraction_batch_size])
-    RedisQueuedLocks::Acquier::Locks.locks(redis_client, scan_size:)
+  def locks(scan_size: config[:key_extraction_batch_size], with_info: false)
+    RedisQueuedLocks::Acquier::Locks.locks(redis_client, scan_size:, with_info:)
+  end
+
+  # Extracts lock keys with their info. See #locks(with_info: true) for details.
+  #
+  # @option scan_size [Integer]
+  # @return [Set<Hash<String,Any>>]
+  #
+  # @api public
+  # @since 0.1.0
+  def locks_info(scan_size: config[:key_extraction_batch_size])
+    locks(scan_size:, with_info: true)
   end
 
   # @option scan_size [Integer]
-  # @return [Set<String>]
+  #   The batch of scanned keys for Redis'es SCAN command.
+  # @option with_info [Boolean]
+  #   Extract lock qeue info or not. If you want to extract a lock queue info too you have to
+  #   consider that during info extration the lock queue may become empty. The queue key extraction
+  #   (SCAN) without queue info extraction is doing first.
+  #   Possible options:
+  #   - `true` => returns a set of hashes that represents the queue state: <queue:, containing:>
+  #     - :queue (String) - the lock queue key in Redis database;
+  #     - :contains (Array<Hash<String,Any>>) - queue state in redis. see #queue_info for details;
+  #   - `false` => returns a set of strings that represents an active queues
+  #     at the moment of Redis'es SCAN;
+  # @return [Set<String>,String<Hash<Symbol,Any>>]
   #
   # @api public
   # @since 0.1.0
-  def queues(scan_size: config[:key_extraction_batch_size])
-    RedisQueuedLocks::Acquier::Queues.queues(redis_client, scan_size:)
+  def queues(scan_size: config[:key_extraction_batch_size], with_info: false)
+    RedisQueuedLocks::Acquier::Queues.queues(redis_client, scan_size:, with_info:)
+  end
+
+  # Extracts lock queues with their info. See #queues(with_info: true) for details.
+  #
+  # @option scan_size [Integer]
+  # @return [Set<Hash<Symbol,Any>>]
+  #
+  # @api public
+  # @since 0.1.0
+  def queues_info(scan_size: config[:key_extraction_batch_size])
+    queues(scan_size:, with_info: true)
   end
 
   # @option scan_size [Integer]
