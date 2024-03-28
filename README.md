@@ -44,6 +44,8 @@ Each lock request is put into the request queue (each lock is hosted by it's own
 - Redis Version: `~> 7.x`;
 - Redis Protocol: `RESP3`;
 
+---
+
 ### Algorithm
 
 > Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
