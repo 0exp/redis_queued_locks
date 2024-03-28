@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.0.38] - 2024-03-28
+### Changed
+- Minor update (dropped useless constant);
+
 ## [0.0.37] - 2024-03-28
 ### Changed
 - `#queues_info`: `:contains` is renamed to `:reqeusts` in order to reflect it's domain area;

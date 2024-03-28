@@ -3,12 +3,6 @@
 # @api private
 # @since 0.1.0
 module RedisQueuedLocks::Acquier::Locks
-  # @return [Hash]
-  #
-  # @api private
-  # @since 0.1.0
-  NO_LOCK_INFO = {}.freeze
-
   class << self
     # @param redis_client [RedisClient]
     # @option scan_size [Integer]
