@@ -595,7 +595,9 @@ rql.keys # or rql.keys(scan_size: 123)
 - returns `Set<Hash<Symbol,Any>>` (see [#lock_info](#lock_info) and examples below for details).
   - contained data: `{ lock: String, status: Symbol, info: Hash<String,Any> }`;
   - `:lock` - `String` - lock key in Redis;
-  - `:status` - `Symbol`- `:released` or `:alive`. The lock may become relased durign the lock info extractio process;
+  - `:status` - `Symbol`- `:released` or `:alive`
+    - the lock may become relased durign the lock info extraction process;
+    - `:info` for `:released` keys is empty (`{}`);
   - `:info` - `Hash<String,Any>` - lock data stored in the lock key in Redis. See [#lock_info](#lock_info) for details;
 
 ```ruby
@@ -612,11 +614,7 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
     "rem_ttl"=>13998}},
   {:lock=>"rql:lock:some-lock-456",
    :status=>:released,
-   :info=>{
-    "acq_id"=>"rql:acq:41478/4500/4520/4360/848818f09d8c3420",
-    "ts"=>1711607112.67106,
-    "ini_ttl"=>15000,
-    "rem_ttl"=>13999}},
+   :info=>{},
   ...}>
 ```
 
