@@ -67,7 +67,7 @@ module RedisQueuedLocks::Acquier::Queues
           # Step 3: push the lock queue info to the result store
           seeded_queues << {
             queue: lock_queue,
-            contains: queue_info
+            requests: queue_info
           }
         end
       end

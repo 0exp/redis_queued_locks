@@ -5,7 +5,7 @@ RSpec.describe RedisQueuedLocks do
 
   before do
     redis.call('FLUSHDB')
-    # RedisQueuedLocks.enable_debugger!
+    RedisQueuedLocks.enable_debugger!
   end
 
   after { redis.call('FLUSHDB') }
@@ -355,7 +355,7 @@ RSpec.describe RedisQueuedLocks do
       'rql:lock_queue:locklock-pekpek-123',
       'rql:lock_queue:locklock-pekpek-567'
     )
-    expect(queue_info_a.map { |val| val[:contains].map(&:keys) }).to contain_exactly(
+    expect(queue_info_a.map { |val| val[:requests].map(&:keys) }).to contain_exactly(
       contain_exactly(
         contain_exactly(*%w[acq_id score]),
         contain_exactly(*%w[acq_id score]),

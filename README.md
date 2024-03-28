@@ -625,21 +625,21 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
 - uses redis `SCAN` under the hod;
 - accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
 - returns `Set<Hash<Symbol,Any>>` (see [#queue_info](#queue_info) and examples below for details).
-  - contained data: `{ queue: String, contains: Array<Hash<String,Any>> }`
+  - contained data: `{ queue: String, requests: Array<Hash<String,Any>> }`
   - `:queue` - `String` - lock key queue in Redis;
-  - `:contains` - `Array<Hash<String,Any>>` - lock requests in the que with their acquier id and score.
+  - `:requests` - `Array<Hash<String,Any>>` - lock requests in the que with their acquier id and score.
 
 ```ruby
 rql.queues_info # or rql.qeuues_info(scan_size: 123)
 
 => #<Set:
  {{:queue=>"rql:lock_queue:some-lock-123",
-   :contains=>
+   :requests=>
     [{"acq_id"=>"rql:acq:38529/4500/4520/4360/66093702f24a3129", "score"=>1711606640.540842},
      {"acq_id"=>"rql:acq:38529/4580/4600/4360/66093702f24a3129", "score"=>1711606640.540906},
      {"acq_id"=>"rql:acq:38529/4620/4640/4360/66093702f24a3129", "score"=>1711606640.5409632}]},
   {:queue=>"rql:lock_queue:some-lock-456",
-   :contains=>
+   :requests=>
     [{"acq_id"=>"rql:acq:38529/4380/4400/4360/66093702f24a3129", "score"=>1711606640.540722},
      {"acq_id"=>"rql:acq:38529/4420/4440/4360/66093702f24a3129", "score"=>1711606640.5407748},
      {"acq_id"=>"rql:acq:38529/4460/4480/4360/66093702f24a3129", "score"=>1711606640.540808}]},

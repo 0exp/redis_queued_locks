@@ -322,7 +322,7 @@ class RedisQueuedLocks::Client
   #   Possible options:
   #   - `true` => returns a set of hashes that represents the queue state: <queue:, containing:>
   #     - :queue (String) - the lock queue key in Redis database;
-  #     - :contains (Array<Hash<String,Any>>) - queue state in redis. see #queue_info for details;
+  #     - :requests (Array<Hash<String,Any>>) - queue state in redis. see #queue_info for details;
   #   - `false` => returns a set of strings that represents an active queues
   #     at the moment of Redis'es SCAN;
   # @return [Set<String>,String<Hash<Symbol,Any>>]
