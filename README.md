@@ -532,10 +532,10 @@ rql.locks # or rql.locks(scan_size: 123)
 - uses redis `SCAN` under the hood;
 - accepts
   - `:scan_size` - `Integer` - (`config[:key_extraction_batch_size]` by default);
-  - `:with_info` - `Boolean` - `false` by default (for details see [queues_info](#queues_info---get-list-of-queues-with-their-info));
+  - `:with_info` - `Boolean` - `false` by default (for details see [#queues_info](#queues_info---get-list-of-queues-with-their-info));
 - returns:
   - `Set<String>` (for `with_info: false`);
-  - `Set<Hash<Symbol,Any>>` (for `with_info: true`). See `#locks_info` for details;
+  - `Set<Hash<Symbol,Any>>` (for `with_info: true`). See [#locks_info](#locks_info---get-list-of-locks-with-their-info) for details;
 
 ```ruby
 rql.queues # or rql.queues(scan_size: 123)
