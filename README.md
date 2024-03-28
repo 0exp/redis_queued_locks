@@ -650,6 +650,8 @@ rql.queues_info # or rql.qeuues_info(scan_size: 123)
 
 ## Instrumentation
 
+- [Instrumentation Events](#instrumentation-events)
+
 An instrumentation layer is incapsulated in `instrumenter` object stored in [config](#configuration) (`RedisQueuedLocks::Client#config[:instrumenter]`).
 
 Instrumenter object should provide `notify(event, payload)` method with the following signarue:
