@@ -686,7 +686,7 @@ Detalized event semantics and payload structure:
     - `:lock_key` - `string` - lock name;
     - `:ts` - `integer`/`epoch` - the time when the lock was obtaiend;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:meta` - `nil`/`Any` - custom metadata passed to the `lock`/`lock!` method;
+    - `:instrument` - `nil`/`Any` - custom data passed to the `lock`/`lock!` method as `:instrument` attribute;
 - `"redis_queued_locks.lock_hold_and_release"`
   - an event signalizes about the "hold+and+release" process
     when the lock obtained and hold by the block of logic;
@@ -697,7 +697,7 @@ Detalized event semantics and payload structure:
     - `:lock_key` - `string` - lock name;
     - `:ts` - `integer`/`epoch` - the time when lock was obtained;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:meta` - `nil`/`Any` - custom metadata passed to the `lock`/`lock!` method;
+    - `:instrument` - `nil`/`Any` - custom data passed to the `lock`/`lock!` method as `:instrument` attribute;
 - `"redis_queued_locks.explicit_lock_release"`
   - an event signalizes about the explicit lock release (invoked via `RedisQueuedLock#unlock`);
   - payload:
