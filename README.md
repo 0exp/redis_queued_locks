@@ -77,7 +77,6 @@ require 'redis_queued_locks'
 
 ```ruby
 require 'redis_queued_locks'
-require 'redis-client'
 
 # Step 1: initialize RedisClient instance
 redis_client = RedisClient.config.new_pool # NOTE: provide your own RedisClient instance
