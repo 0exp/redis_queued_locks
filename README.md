@@ -1,4 +1,4 @@
-# RedisQueuedLocks
+# RedisQueuedLocks &middot; [![Gem Version](https://badge.fury.io/rb/redis_queued_locks.svg)](https://badge.fury.io/rb/redis_queued_locks)
 
 Distributed locks with "lock acquisition queue" capabilities based on the Redis Database.
 
