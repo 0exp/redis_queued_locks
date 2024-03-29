@@ -43,6 +43,7 @@ Each lock request is put into the request queue (each lock is hosted by it's own
 
 - Redis Version: `~> 7.x`;
 - Redis Protocol: `RESP3`;
+- gem `redis-client`: `~> 0.20`;
 
 ---
 
@@ -76,6 +77,7 @@ require 'redis_queued_locks'
 
 ```ruby
 require 'redis_queued_locks'
+require 'redis-client'
 
 # Step 1: initialize RedisClient instance
 redis_client = RedisClient.config.new_pool # NOTE: provide your own RedisClient instance
