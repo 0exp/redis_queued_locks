@@ -42,12 +42,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
     if log_lock_try
       run_non_critical do
-        logger.debug(
+        logger.debug do
           "[redis_queued_locks.try_lock.start] " \
           "lock_key => '#{lock_key}' " \
           "queue_ttl => #{queue_ttl} " \
           "acq_id => '#{acquier_id}'"
-        )
+        end
       end
     end
 
@@ -55,12 +55,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     result = redis.with do |rconn|
       if log_lock_try
         run_non_critical do
-          logger.debug(
+          logger.debug do
             "[redis_queued_locks.try_lock.rconn_fetched] " \
             "lock_key => '#{lock_key}' " \
             "queue_ttl => #{queue_ttl} " \
             "acq_id => '#{acquier_id}'"
-          )
+          end
         end
       end
 
@@ -78,12 +78,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
           if log_lock_try
             run_non_critical do
-              logger.debug(
+              logger.debug do
                 "[redis_queued_locks.try_lock.acq_added_to_queue] " \
                 "lock_key => '#{lock_key}' " \
                 "queue_ttl => #{queue_ttl} " \
                 "acq_id => '#{acquier_id}'"
-              )
+              end
             end
           end
 
@@ -97,12 +97,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
           if log_lock_try
             run_non_critical do
-              logger.debug(
+              logger.debug do
                 "[redis_queued_locks.try_lock.remove_expired_acqs] " \
                 "lock_key => '#{lock_key}' " \
                 "queue_ttl => #{queue_ttl} " \
                 "acq_id => '#{acquier_id}'"
-              )
+              end
             end
           end
 
@@ -111,13 +111,13 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
           if log_lock_try
             run_non_critical do
-              logger.debug(
+              logger.debug do
                 "[redis_queued_locks.try_lock.get_first_from_queue] " \
                 "lock_key => '#{lock_key}' " \
                 "queue_ttl => #{queue_ttl} " \
                 "acq_id => '#{acquier_id}' " \
                 "first_acq_id_in_queue => '#{waiting_acquier}'"
-              )
+              end
             end
           end
 
@@ -126,12 +126,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
           if waiting_acquier == nil
             if log_lock_try
               run_non_critical do
-                logger.debug(
+                logger.debug do
                   "[redis_queued_locks.try_lock.exit__queue_ttl_reached] " \
                   "lock_key => '#{lock_key}' " \
                   "queue_ttl => #{queue_ttl} " \
                   "acq_id => '#{acquier_id}'"
-                )
+                end
               end
             end
 
@@ -142,14 +142,14 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
             if log_lock_try
               run_non_critical do
-                logger.debug(
+                logger.debug do
                   "[redis_queued_locks.try_lock.exit__no_first] " \
                   "lock_key => '#{lock_key}' " \
                   "queue_ttl => #{queue_ttl} " \
                   "acq_id => '#{acquier_id}' " \
                   "first_acq_id_in_queue => '#{waiting_acquier}' " \
                   "<current_lock_data> => <<#{rconn.call('HGETALL', lock_key).to_h}>>"
-                )
+                end
               end
             end
 
@@ -165,7 +165,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
               if log_lock_try
                 run_non_critical do
-                  logger.debug(
+                  logger.debug do
                     "[redis_queued_locks.try_lock.exit__lock_still_obtained] " \
                     "lock_key => '#{lock_key}' " \
                     "queue_ttl => #{queue_ttl} " \
@@ -173,7 +173,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
                     "first_acq_id_in_queue => '#{waiting_acquier}' " \
                     "locked_by_acq_id => '#{locked_by_acquier}' " \
                     "<current_lock_data> => <<#{rconn.call('HGETALL', lock_key).to_h}>>"
-                  )
+                  end
                 end
               end
 
@@ -199,12 +199,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
               if log_lock_try
                 run_non_critical do
-                  logger.debug(
+                  logger.debug do
                     "[redis_queued_locks.try_lock.obtain_free_to_acquire] " \
                     "lock_key => '#{lock_key}' " \
                     "queue_ttl => #{queue_ttl} " \
                     "acq_id => '#{acquier_id}'"
-                  )
+                  end
                 end
               end
             end
@@ -264,12 +264,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     result = redis.call('ZREM', lock_key_queue, acquier_id)
 
     run_non_critical do
-      logger.debug(
+      logger.debug do
         "[redis_queued_locks.fail_fast_or_limits_reached__dequeue] " \
         "lock_key => '#{lock_key}' " \
         "queue_ttl => '#{queue_ttl}' " \
         "acq_id => '#{acquier_id}'"
-      )
+      end
     end
 
     RedisQueuedLocks::Data[ok: true, result: result]

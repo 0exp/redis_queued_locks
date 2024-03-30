@@ -9,6 +9,7 @@
   `"redis_queued_locks.explicit_all_locks_release"` events changed from `Integer` to `Float` (see `Time#.to_f` in Ruby docs);
 - Lock information: the lock infrmation extracting now uses `RedisClient#pipelined` instead of `RedisClient#mutli` cuz
   it is more reasonable for information-oriented logic (queue information is extracteed via `pipelined` invocations already);
+- Logging: log message is used as a `message` according to `Logger#debug` signature;
 
 ## [0.0.38] - 2024-03-28
 ### Changed

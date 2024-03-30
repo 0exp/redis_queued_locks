@@ -177,12 +177,12 @@ module RedisQueuedLocks::Acquier::AcquireLock
       end
 
       run_non_critical do
-        logger.debug(
+        logger.debug do
           "[redis_queued_locks.start_lock_obtaining] " \
           "lock_key => '#{lock_key}' " \
           "queue_ttl => #{queue_ttl} " \
           "acq_id => '#{acquier_id}'"
-        )
+        end
       end
 
       # Step 2: try to lock with timeout
@@ -192,12 +192,12 @@ module RedisQueuedLocks::Acquier::AcquireLock
         # Step 2.1: caclically try to obtain the lock
         while acq_process[:should_try]
           run_non_critical do
-            logger.debug(
+            logger.debug do
               "[redis_queued_locks.start_try_to_lock_cycle] " \
               "lock_key => '#{lock_key}' " \
               "queue_ttl => #{queue_ttl} " \
               "acq_id => '{#{acquier_id}'"
-            )
+            end
           end
 
           # Step 2.X: check the actual score: is it in queue ttl limit or not?
@@ -206,12 +206,12 @@ module RedisQueuedLocks::Acquier::AcquireLock
             acquier_position = RedisQueuedLocks::Resource.calc_initial_acquier_position
 
             run_non_critical do
-              logger.debug(
+              logger.debug do
                 "[redis_queued_locks.dead_score_reached__reset_acquier_position] " \
                 "lock_key => '#{lock_key} " \
                 "queue_ttl => #{queue_ttl} " \
                 "acq_id => '#{acquier_id}'"
-              )
+              end
             end
           end
 
@@ -239,13 +239,13 @@ module RedisQueuedLocks::Acquier::AcquireLock
           # Step 2.1: analyze an acquirement attempt
           if ok
             run_non_critical do
-              logger.debug(
+              logger.debug do
                 "[redis_queued_locks.lock_obtained] " \
                 "lock_key => '#{result[:lock_key]}' " \
                 "queue_ttl => #{queue_ttl} " \
                 "acq_id => '#{acquier_id}' " \
                 "acq_time => #{acq_time} (ms)"
-              )
+              end
             end
 
             # Step X (instrumentation): lock obtained

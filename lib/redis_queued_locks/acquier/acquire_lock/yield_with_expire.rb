@@ -40,12 +40,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
     end
   ensure
     run_non_critical do
-      logger.debug(
+      logger.debug do
         "[redis_queued_locks.expire_lock] " \
         "lock_key => '#{lock_key}' " \
         "queue_ttl => #{queue_ttl} " \
         "acq_id => '#{acquier_id}'"
-      )
+      end
     end
     redis.call('EXPIRE', lock_key, '0')
   end
