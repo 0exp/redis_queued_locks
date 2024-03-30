@@ -21,9 +21,9 @@ module RedisQueuedLocks::Acquier::LockInfo
     def lock_info(redis_client, lock_name)
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
 
-      result = redis_client.multi(watch: [lock_key]) do |transact|
-        transact.call('HGETALL', lock_key)
-        transact.call('PTTL', lock_key)
+      result = redis_client.pipelined do |pipeline|
+        pipeline.call('HGETALL', lock_key)
+        pipeline.call('PTTL', lock_key)
       end
 
       if result == nil
