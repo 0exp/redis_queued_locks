@@ -11,6 +11,7 @@ Each lock request is put into the request queue (each lock is hosted by it's own
 ## Table of Contents
 
 - [Requirements](#requirements)
+- [Experience](#experience)
 - [Algorithm](#algorithm)
 - [Installation](#installation)
 - [Setup](#setup)
@@ -44,6 +45,13 @@ Each lock request is put into the request queue (each lock is hosted by it's own
 - Redis Version: `~> 7.x`;
 - Redis Protocol: `RESP3`;
 - gem `redis-client`: `~> 0.20`;
+
+---
+
+### Experience
+
+- Battle-tested on huge projects in production: `~1500` locks-per-second are obtained and released;
+- Works well with `hiredis` driver enabled (it is enabled by default on our projects where `redis_queued_locks` are used);
 
 ---
 
