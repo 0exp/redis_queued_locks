@@ -50,7 +50,7 @@ module RedisQueuedLocks::Acquier::Locks
         # Step X: iterate each lock and extract their info
         lock_keys.each do |lock_key|
           # Step 1: extract lock info from redis
-          lock_info = redis_client.pipelined(watch: [lock_key]) do |pipeline|
+          lock_info = redis_client.pipelined do |pipeline|
             pipeline.call('HGETALL', lock_key)
             pipeline.call('PTTL', lock_key)
           end.yield_self do |result| # Step 2: format the result
