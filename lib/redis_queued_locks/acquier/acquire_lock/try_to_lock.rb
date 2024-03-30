@@ -74,7 +74,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
           inter_result = :fail_fast_no_try
         else
           # Step 1: add an acquier to the lock acquirement queue
-          res = rconn.call('ZADD', lock_key_queue, 'NX', acquier_position, acquier_id)
+          rconn.call('ZADD', lock_key_queue, 'NX', acquier_position, acquier_id)
 
           if log_lock_try
             run_non_critical do
@@ -87,12 +87,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
             end
           end
 
-          RedisQueuedLocks.debug(
-            "Step №1: добавление в очередь (#{acquier_id}). [ZADD to the queue: #{res}]"
-          )
-
           # Step 2.1: drop expired acquiers from the lock queue
-          res = rconn.call(
+          rconn.call(
             'ZREMRANGEBYSCORE',
             lock_key_queue,
             '-inf',
@@ -110,10 +106,6 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
             end
           end
 
-          RedisQueuedLocks.debug(
-            "Step №2: дропаем из очереди просроченных ожидающих. [ZREMRANGE: #{res}]"
-          )
-
           # Step 3: get the actual acquier waiting in the queue
           waiting_acquier = Array(rconn.call('ZRANGE', lock_key_queue, '0', '0')).first
 
@@ -129,11 +121,6 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
             end
           end
 
-          RedisQueuedLocks.debug(
-            "Step №3: какой процесс в очереди сейчас ждет. " \
-            "[ZRANGE <следующий процесс>: #{waiting_acquier} :: <текущий процесс>: #{acquier_id}]"
-          )
-
           # Step PRE-4.x: check if the request time limit is reached
           #   (when the current try self-removes itself from queue (queue ttl has come))
           if waiting_acquier == nil
@@ -147,11 +134,6 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
                 )
               end
             end
-
-            RedisQueuedLocks.debug(
-              "Step PRE-ROLLBACK №0: достигли лимита времени эквайра лока (queue ttl). выходим. " \
-              "[Наша позиция: #{acquier_id}. queue_ttl: #{queue_ttl}]"
-            )
 
             inter_result = :dead_score_reached
           # Step 4: check the actual acquier: is it ours? are we aready to lock?
@@ -171,25 +153,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
               end
             end
 
-            RedisQueuedLocks.debug(
-              "Step ROLLBACK №1: не одинаковые ключи. выходим. " \
-              "[Ждет: #{waiting_acquier}. А нужен: #{acquier_id}]"
-            )
-
             inter_result = :acquier_is_not_first_in_queue
           else
             # NOTE: our time has come! let's try to acquire the lock!
 
-            # Step 5: check if the our lock is already acquired
+            # Step 5: find the lock -> check if the our lock is already acquired
             locked_by_acquier = rconn.call('HGET', lock_key, 'acq_id')
-
-            # rubocop:disable Layout/LineLength
-            RedisQueuedLocks.debug(
-              "Ste №5: Ищем требуемый лок. " \
-              "[HGET<#{lock_key}>: " \
-              "#{(locked_by_acquier == nil) ? 'не занят' : "занят процессом <#{locked_by_acquier}>"}"
-            )
-            # rubocop:enable Layout/LineLength
 
             if locked_by_acquier
               # Step ROLLBACK 2: required lock is stil acquired. retry!
@@ -197,7 +166,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
               if log_lock_try
                 run_non_critical do
                   logger.debug(
-                    "[redis_queued_locks.try_lock.exit__still_obtained] " \
+                    "[redis_queued_locks.try_lock.exit__lock_still_obtained] " \
                     "lock_key => '#{lock_key}' " \
                     "queue_ttl => #{queue_ttl} " \
                     "acq_id => '#{acquier_id}' " \
@@ -208,27 +177,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
                 end
               end
 
-              RedisQueuedLocks.debug(
-                "Step ROLLBACK №2: Ключ уже занят. Ничего не делаем. " \
-                "[Занят процессом: #{locked_by_acquier}]"
-              )
-
               inter_result = :lock_is_still_acquired
             else
               # NOTE: required lock is free and ready to be acquired! acquire!
 
               # Step 6.1: remove our acquier from waiting queue
               transact.call('ZREM', lock_key_queue, acquier_id)
-
-              RedisQueuedLocks.debug(
-                'Step №4: Забираем наш текущий процесс из очереди. [ZREM]'
-              )
-
-              # rubocop:disable Layout/LineLength
-              RedisQueuedLocks.debug(
-                "===> <FINAL> Step №6: закрепляем лок за процессом [HSET<#{lock_key}>: #{acquier_id}]"
-              )
-              # rubocop:enable Layout/LineLength
 
               # Step 6.2: acquire a lock and store an info about the acquier
               transact.call(
@@ -246,7 +200,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
               if log_lock_try
                 run_non_critical do
                   logger.debug(
-                    "[redis_queued_locks.try_lock.run__free_to_acquire] " \
+                    "[redis_queued_locks.try_lock.obtain_free_to_acquire] " \
                     "lock_key => '#{lock_key}' " \
                     "queue_ttl => #{queue_ttl} " \
                     "acq_id => '#{acquier_id}'"
@@ -297,18 +251,26 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   # rubocop:enable Metrics/MethodLength, Metrics/PerceivedComplexity
 
   # @param redis [RedisClient]
+  # @param logger [::Logger,#debug]
+  # @param lock_key [String]
   # @param lock_key_queue [String]
+  # @param queue_ttl [Integer]
   # @param acquier_id [String]
   # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
   #
   # @api private
   # @since 0.1.0
-  def dequeue_from_lock_queue(redis, lock_key_queue, acquier_id)
+  def dequeue_from_lock_queue(redis, logger, lock_key, lock_key_queue, queue_ttl, acquier_id)
     result = redis.call('ZREM', lock_key_queue, acquier_id)
 
-    RedisQueuedLocks.debug(
-      "Step ~ [СМЕРТЬ ПРОЦЕССА]: [#{acquier_id} :: #{lock_key_queue}] РЕЗУЛЬТАТ: #{result}"
-    )
+    run_non_critical do
+      logger.debug(
+        "[redis_queued_locks.fail_fast_or_limits_reached__dequeue] " \
+        "lock_key => '#{lock_key}' " \
+        "queue_ttl => '#{queue_ttl}' " \
+        "acq_id => '#{acquier_id}'"
+      )
+    end
 
     RedisQueuedLocks::Data[ok: true, result: result]
   end

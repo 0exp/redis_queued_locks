@@ -165,7 +165,16 @@ module RedisQueuedLocks::Acquier::AcquireLock
         hold_time: nil, # NOTE: in milliseconds
         rel_time: nil # NOTE: in milliseconds
       }
-      acq_dequeue = -> { dequeue_from_lock_queue(redis, lock_key_queue, acquier_id) }
+
+      acq_dequeue = proc do
+        dequeue_from_lock_queue(
+          redis, logger,
+          lock_key,
+          lock_key_queue,
+          queue_ttl,
+          acquier_id
+        )
+      end
 
       run_non_critical do
         logger.debug(

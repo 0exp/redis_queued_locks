@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+# NOTE: these specs will be totally reworked
 RSpec.describe RedisQueuedLocks do
   let(:redis) { RedisClient.config(db: 0).new_pool(timeout: 5, size: 50) }
 
@@ -80,7 +81,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[6]).to include('first_acq_id_in_queue =>')
 
       # NOTE: try to lock - fre to acquire
-      expect(test_logger.logs[7]).to include('[redis_queued_locks.try_lock.run__free_to_acquire]')
+      expect(test_logger.logs[7]).to include('[redis_queued_locks.try_lock.obtain_free_to_acquire]')
       expect(test_logger.logs[7]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[7]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[7]).to include('acq_id =>')
@@ -245,8 +246,8 @@ RSpec.describe RedisQueuedLocks do
     expect(client.queued?(lock_name)).to eq(false)
 
     # NOTE: two new requests
-    Thread.new { client.lock(lock_name, ttl: 10_000, timeout: nil, retry_count: nil) }
-    Thread.new { client.lock(lock_name, ttl: 10_000, timeout: nil, retry_count: nil) }
+    thread_a = Thread.new { client.lock(lock_name, ttl: 10_000, timeout: nil, retry_count: nil) }
+    thread_b = Thread.new { client.lock(lock_name, ttl: 10_000, timeout: nil, retry_count: nil) }
     sleep(1)
 
     expect(client.queued?(lock_name)).to eq(true)
@@ -257,6 +258,9 @@ RSpec.describe RedisQueuedLocks do
         match({ 'acq_id' => be_a(String), 'score' => be_a(Numeric) })
       ])
     })
+
+    thread_a.join
+    thread_b.join
   end
 
   specify 'notifications' do
@@ -278,12 +282,14 @@ RSpec.describe RedisQueuedLocks do
     end
 
     redis_for_info = RedisClient.config(db: 1).new_pool(timeout: 5, size: 50)
+    redis_for_info.call('FLUSHDB')
+
     client_for_info = RedisQueuedLocks::Client.new(redis) do |config|
       config.retry_count = 3
       config.instrumenter = test_notifier
     end
 
-    Array.new(4) do |kek|
+    inf_threads1 = Array.new(4) do |kek|
       Thread.new do
         client_for_info.lock(
           'locklock-pekpek-123',
@@ -291,10 +297,10 @@ RSpec.describe RedisQueuedLocks do
           timeout: nil,
           retry_count: nil,
           meta: { 'kek' => 'pek', 'a' => 123 }
-        ) { sleep(3) }
+        ) { sleep(4) }
       end
     end
-    Array.new(4) do |kek|
+    inf_threads2 = Array.new(4) do |kek|
       Thread.new do
         client_for_info.lock(
           'locklock-pekpek-567',
@@ -302,7 +308,7 @@ RSpec.describe RedisQueuedLocks do
           timeout: nil,
           retry_count: nil,
           meta: { 'pek' => 'mek', 'b' => 55.66 }
-        ) { sleep(3) }
+        ) { sleep(4) }
       end
     end
 
@@ -314,6 +320,8 @@ RSpec.describe RedisQueuedLocks do
 
     queue_info_a = client_for_info.queues_info
     queue_info_b = client_for_info.queues(with_info: true)
+
+    redis_for_info.call('FLUSHDB')
 
     # TODO: more time for work => better spec
     expect(locks_info_a).to be_a(Set)
@@ -368,21 +376,19 @@ RSpec.describe RedisQueuedLocks do
       )
     )
 
-    redis_for_info.call('FLUSHDB')
-
-    Array.new(5) do |kek|
+    a_threads = Array.new(5) do |kek|
       Thread.new do
         client.lock!("locklock#{kek}", retry_count: nil, timeout: nil)
       end
     end
 
-    Array.new(5) do |kek|
+    b_threads = Array.new(5) do |kek|
       Thread.new do
         client.lock!("locklock#{kek}", retry_count: nil, timeout: nil) { 'some_logic' }
       end
     end.each(&:join)
 
-    Array.new(120) do |kek|
+    c_threads = Array.new(120) do |kek|
       Thread.new do
         client.lock!("locklock#{kek}", ttl: 10_000, retry_count: nil, timeout: nil)
       end
@@ -397,6 +403,13 @@ RSpec.describe RedisQueuedLocks do
     client.clear_locks
 
     puts test_notifier.notifications
+
+    a_threads.each(&:join)
+    b_threads.each(&:join)
+    c_threads.each(&:join)
+
+    inf_threads1.each(&:join)
+    inf_threads2.each(&:join)
 
     redis.call('FLUSHDB')
   end
