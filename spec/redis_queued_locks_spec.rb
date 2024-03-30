@@ -141,6 +141,10 @@ RSpec.describe RedisQueuedLocks do
     end
   end
 
+  specify 'extend_lock_ttl' do
+
+  end
+
   specify ':meta' do
     # NOTE: with log_lock_try test
     client = RedisQueuedLocks::Client.new(redis)

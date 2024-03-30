@@ -31,7 +31,7 @@ Each lock request is put into the request queue (each lock is hosted by it's own
   - [keys](#keys---get-list-of-taken-locks-and-queues)
   - [locks_info](#locks_info---get-list-of-locks-with-their-info)
   - [queues_info](#queues_info---get-list-of-queues-with-their-info)
-  - [clear_dead_queues](#clear_dead_queues---cleanup-queues-with-dead-requests)
+  - [clear_dead_requests](#clear_dead_requests)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
 - [Roadmap](#roadmap)
@@ -205,7 +205,7 @@ end
 - [keys](#keys---get-list-of-taken-locks-and-queues)
 - [locks_info](#locks_info---get-list-of-locks-with-their-info)
 - [queues_info](#queues_info---get-list-of-queues-with-their-info)
-- [clear_dead_queues](#clear_dead_queues---cleanup-queues-with-dead-requests)
+- [clear_dead_requests](#clear_dead_requests)
 
 ---
 
@@ -683,7 +683,7 @@ rql.queues_info # or rql.qeuues_info(scan_size: 123)
 ```
 ---
 
-#### #clear_dead_queues - cleanup queues with dead requests
+#### #clear_dead_requests
 
 - soon
 
@@ -770,7 +770,7 @@ Detalized event semantics and payload structure:
 - GitHub Actions CI;
 - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
 - better code stylization and interesting refactorings (observers);
-- dead queue keys cleanup (queues with dead requests);
+- dead requests cleanup;
 - statistics with UI;
 
 ---
