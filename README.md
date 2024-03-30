@@ -505,7 +505,31 @@ Return:
 
 #### #extend_lock_ttl
 
-- soon
+- Extend the lock's TTL (in milliseconds);
+- returns `{ ok: true, result: :ttl_extended }` when ttl is extended;
+- returns `{ ok: false, result: :async_expire_or_no_lock }` when lock not found or lock is expired during
+  some steps of invocation (see **Important** section below);
+- **Important**:
+  - the method is non-atomic cuz redis does not provide an atomic function for TTL/PTTL extension;
+  - the method consists of two commands:
+    - (1) read current pttl;
+    - (2) set new ttl that is calculated as "current pttl + additional milliseconds";
+  - what can happen during these steps:
+    - lock is expired between commands or before the first command;
+    - lock is expired before the second command;
+    - lock is expired AND newly acquired by another process (so you will extend the
+      totally new lock with fresh PTTL);
+  - use it at your own risk and consider the async nature when calling this method;
+
+```ruby
+rql.extend_lock_ttl("my_lock", 5_000) # NOTE: add 5_000 milliseconds
+
+# => `ok` case
+{ ok: true, result: :ttl_extended }
+
+# => `failed` case
+{ ok: false, result: :async_expire_or_no_lock }
+```
 
 ---
 

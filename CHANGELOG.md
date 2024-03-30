@@ -3,6 +3,7 @@
 ## [0.0.39] - 2024-03-31
 ### Added
 - Logging: added new log `[redis_queued_locks.fail_fast_or_limits_reached__dequeue]`;
+- `#extend_lock_ttl` implementation;
 ### Changed
 - Removed `RadisQueuedLocks::Debugger.debug(...)` injections;
 - Instrumentation events: `:at` payload field of `"redis_queued_locks.explicit_lock_release"` and

@@ -249,9 +249,22 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Acquier::QueueInfo.queue_info(redis_client, lock_name)
   end
 
+  # This method is non-atomic cuz redis does not provide an atomic function for TTL/PTTL extension.
+  # So the methid is spliited into the two commands:
+  #   (1) read current pttl
+  #   (2) set new ttl that is calculated as "current pttl + additional milliseconds"
+  # What can happen during these steps
+  # - lock is expired between commands or before the first command;
+  # - lock is expired before the second command;
+  # - lock is expired AND newly acquired by another process (so you will extend the
+  #   totally new lock with fresh PTTL);
+  # Use it at your own risk and consider async nature when calling this method.
+  #
   # @param lock_name [String]
   # @param milliseconds [Integer] How many milliseconds should be added.
-  # @return [?]
+  # @return [Hash<Symbol,Boolean|Symbol>]
+  #   - { ok: true, result: :ttl_extended }
+  #   - { ok: false, result: :async_expire_or_no_lock }
   #
   # @api public
   # @since 0.1.0
@@ -259,8 +272,7 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Acquier::ExtendLockTTL.extend_lock_ttl(
       redis_client,
       lock_name,
-      milliseconds,
-      config[:logger]
+      milliseconds
     )
   end
 
