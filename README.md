@@ -50,7 +50,7 @@ Each lock request is put into the request queue (each lock is hosted by it's own
 
 ### Experience
 
-- Battle-tested on huge projects in production: `~1500` locks-per-second are obtained and released;
+- Battle-tested on huge projects in production: `~1500` locks-per-second are obtained and released on an ongoing basis;
 - Works well with `hiredis` driver enabled (it is enabled by default on our projects where `redis_queued_locks` are used);
 
 ---
