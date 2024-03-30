@@ -31,7 +31,7 @@ Each lock request is put into the request queue (each lock is hosted by it's own
   - [keys](#keys---get-list-of-taken-locks-and-queues)
   - [locks_info](#locks_info---get-list-of-locks-with-their-info)
   - [queues_info](#queues_info---get-list-of-queues-with-their-info)
-  - [clear_dead_queues](#clear_dead_queus---cleanup-queues-with-dead–requests)
+  - [clear_dead_queues](#clear_dead_queues---cleanup-queues-with-dead-requests)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
 - [Roadmap](#roadmap)
@@ -204,6 +204,7 @@ end
 - [keys](#keys---get-list-of-taken-locks-and-queues)
 - [locks_info](#locks_info---get-list-of-locks-with-their-info)
 - [queues_info](#queues_info---get-list-of-queues-with-their-info)
+- [clear_dead_queues](#clear_dead_queues---cleanup-queues-with-dead-requests)
 
 ---
 
@@ -630,12 +631,6 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
 
 ---
 
-#### #clear_dead_queues - cleanup queues with dead requests
-
-- soon
-
----
-
 #### #queues_info - get list of queues with their info
 
 - uses redis `SCAN` under the hod;
@@ -661,6 +656,11 @@ rql.queues_info # or rql.qeuues_info(scan_size: 123)
      {"acq_id"=>"rql:acq:38529/4460/4480/4360/66093702f24a3129", "score"=>1711606640.540808}]},
   ...}>
 ```
+---
+
+#### #clear_dead_queues - cleanup queues with dead requests
+
+- soon
 
 ---
 
