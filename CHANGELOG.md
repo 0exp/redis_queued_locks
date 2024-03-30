@@ -2,15 +2,21 @@
 
 ## [0.0.39] - 2024-03-31
 ### Added
-- Logging: added new log `[redis_queued_locks.fail_fast_or_limits_reached__dequeue]`;
-- `#extend_lock_ttl` implementation;
+- Logging:
+  - added new log `[redis_queued_locks.fail_fast_or_limits_reached__dequeue]`;
+- Client:
+  - `#extend_lock_ttl` implementation;
 ### Changed
 - Removed `RadisQueuedLocks::Debugger.debug(...)` injections;
-- Instrumentation events: `:at` payload field of `"redis_queued_locks.explicit_lock_release"` and
-  `"redis_queued_locks.explicit_all_locks_release"` events changed from `Integer` to `Float` (see `Time#.to_f` in Ruby docs);
-- Lock information: the lock infrmation extracting now uses `RedisClient#pipelined` instead of `RedisClient#mutli` cuz
-  it is more reasonable for information-oriented logic (queue information is extracteed via `pipelined` invocations already);
-- Logging: log message is used as a `message` according to `Logger#debug` signature;
+- Instrumentation:
+  - the `:at` payload field of `"redis_queued_locks.explicit_lock_release"` event and
+  `"redis_queued_locks.explicit_all_locks_release"` event is changed from `Integer` to `Float`
+  in order to reflect micro/nano seconds too for more accurate time value;
+- Lock information:
+  - the lock infrmation extracting now uses `RedisClient#pipelined` instead of `RedisClient#mutli` cuz
+    it is more reasonable for information-oriented logic (the queue information extraction works via `pipelined` invocations for example);
+- Logging:
+  - log message is used as a `message` (not `pragma`) according to `Logger#debug` signature;
 
 ## [0.0.38] - 2024-03-28
 ### Changed
