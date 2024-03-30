@@ -28,7 +28,7 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     def release_all_locks(redis, batch_size, instrumenter, logger)
       rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
       fully_release_all_locks(redis, batch_size) => { ok:, result: }
-      time_at = Time.now.to_i
+      time_at = Time.now.to_f
       rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
       rel_time = ((rel_end_time - rel_start_time) * 1_000).ceil(2)
 

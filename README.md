@@ -720,7 +720,7 @@ Detalized event semantics and payload structure:
 - `"redis_queued_locks.explicit_lock_release"`
   - an event signalizes about the explicit lock release (invoked via `RedisQueuedLock#unlock`);
   - payload:
-    - `:at` - `integer`/`epoch` - the time when the lock was released;
+    - `:at` - `float`/`epoch` - the time when the lock was released;
     - `:rel_time` - `float`/`milliseconds` - time spent on lock releasing;
     - `:lock_key` - `string` - released lock (lock name);
     - `:lock_key_queue` - `string` - released lock queue (lock queue name);
@@ -728,7 +728,7 @@ Detalized event semantics and payload structure:
   - an event signalizes about the explicit all locks release (invoked via `RedisQueuedLock#clear_locks`);
   - payload:
     - `:rel_time` - `float`/`milliseconds` - time spent on "realese all locks" operation;
-    - `:at` - `integer`/`epoch` - the time when the operation has ended;
+    - `:at` - `float`/`epoch` - the time when the operation has ended;
     - `:rel_keys` - `integer` - released redis keys count (`released queue keys` + `released lock keys`);
 
 ---
@@ -746,7 +746,7 @@ Detalized event semantics and payload structure:
 - GitHub Actions CI;
 - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
 - better code stylization and interesting refactorings (observers);
-- dead queue keys cleanup (empty queues);
+- dead queue keys cleanup (queues with dead requests);
 - statistics with UI;
 
 ---

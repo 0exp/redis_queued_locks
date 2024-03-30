@@ -5,6 +5,8 @@
 - Logging: added new log `[redis_queued_locks.fail_fast_or_limits_reached__dequeue]`;
 ### Changed
 - Removed `RadisQueuedLocks::Debugger.debug(...)` injections;
+- Instrumentation events: `:at` payload field of `"redis_queued_locks.explicit_lock_release"` and
+  `"redis_queued_locks.explicit_all_locks_release"` events changed from `Integer` to `Float` (see `Time#.to_f` in Ruby docs);
 
 ## [0.0.38] - 2024-03-28
 ### Changed
