@@ -760,7 +760,7 @@ Detalized event semantics and payload structure:
 ## Roadmap
 
 - Semantic Error objects for unexpected Redis errors;
-- `100%` test coverage;
+- better specs :) with 100% test coverage;
 - per-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
   the acquired lock for long-running blocks of code (that invoked "under" the lock
   whose ttl may expire before the block execution completes). It only makes sense for non-`timed` locks;
