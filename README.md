@@ -31,6 +31,7 @@ Each lock request is put into the request queue (each lock is hosted by it's own
   - [keys](#keys---get-list-of-taken-locks-and-queues)
   - [locks_info](#locks_info---get-list-of-locks-with-their-info)
   - [queues_info](#queues_info---get-list-of-queues-with-their-info)
+  - [clear_dead_queues](#clear_dead_queus---cleanup-queues-with-dead–requests)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
 - [Roadmap](#roadmap)
@@ -626,6 +627,12 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
    :info=>{},
   ...}>
 ```
+
+---
+
+#### #clear_dead_queues - cleanup queues with dead requests
+
+- soon
 
 ---
 
