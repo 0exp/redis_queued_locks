@@ -7,7 +7,7 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
   #
   # @api private
   # @since 0.1.0
-  EXTEND_LOCK_PTTL = <<~LUA_SCRIPT.strip.tr("\n", "")
+  EXTEND_LOCK_PTTL = <<~LUA_SCRIPT.strip.tr("\n", '').freeze
     local new_lock_pttl = redis.call("PTTL", KEYS[1]) + ARGV[1];
     return redis.call("PEXPIRE", KEYS[1], new_lock_pttl);
   LUA_SCRIPT
@@ -25,6 +25,7 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
 
       # NOTE: EVAL signature -> <lua script>, (keys number), *(keys), *(arguments)
       result = redis_client.call('EVAL', EXTEND_LOCK_PTTL, 1, lock_key, milliseconds)
+      # TODO: upload scripts to the redis
 
       if result == 1
         RedisQueuedLocks::Data[ok: true, result: :ttl_extended]
