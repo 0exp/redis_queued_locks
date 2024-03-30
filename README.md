@@ -347,7 +347,7 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
 
 - get the lock information;
 - returns `nil` if lock does not exist;
-- lock data (`Hash<Symbol,String|Integer>`):
+- lock data (`Hash<String,String|Integer>`):
   - `"lock_key"` - `string` - lock key in redis;
   - `"acq_id"` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity);
   - `"ts"` - `integer`/`epoch` - the time lock was obtained;
@@ -396,7 +396,7 @@ rql.lock_info("your_lock_name")
   - score is represented as a timestamp when the lock request was made;
   - represents the acquier identifier and their score as an array of hashes;
 - returns `nil` if lock queue does not exist;
-- lock queue data (`Hash<Symbol,String|Array<Hash<Symbol,String|Numeric>>`):
+- lock queue data (`Hash<String,String|Array<Hash<String|Numeric>>`):
   - `"lock_queue"` - `string` - lock queue key in redis;
   - `"queue"` - `array` - an array of lock requests (array of hashes):
     - `"acq_id"` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
