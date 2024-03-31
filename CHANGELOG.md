@@ -10,6 +10,7 @@
   what happened inside (`:released` or `:nothing_to_release`) and to adopt to the case when you trying
   to unlock the non-existent lock;
 - More docs;
+- Github CI Workflow;
 ### Changed
 - `:rel_key_cnt` result of `#clear_locks` is more accurate now;
 
