@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
-# NOTE: these specs will be totally reworked
+# NOTE:
+#   - these specs will be totally reworked;
+#   - this code is not ideal, it is written only for behavior testing and funcionality checking;
 RSpec.describe RedisQueuedLocks do
   let(:redis) { RedisClient.config(db: 0).new_pool(timeout: 5, size: 50) }
 
@@ -142,7 +144,28 @@ RSpec.describe RedisQueuedLocks do
   end
 
   specify 'extend_lock_ttl' do
+    client = RedisQueuedLocks::Client.new(redis)
+    client.lock('super_mega_kek_lock', ttl: 15_000)
+    lock_info = client.lock_info('super_mega_kek_lock')
+    expect(lock_info['rem_ttl'] <= 15_000 && lock_info['rem_ttl'] > 0).to eq(true)
 
+    # NOTE: extend ttl of existing lock
+    result = client.extend_lock_ttl('super_mega_kek_lock', 100_000)
+    expect(result[:ok]).to eq(true)
+    expect(result[:result]).to eq(:ttl_extended)
+    lock_info = client.lock_info('super_mega_kek_lock')
+    expect(lock_info['rem_ttl'] > 100_000).to eq(true)
+
+    # NOTE: extend ttl of non existing lock
+    result = client.extend_lock_ttl('no_super_no_mega_no_lock', 100_000)
+    expect(result[:ok]).to eq(false)
+    expect(result[:result]).to eq(:async_expire_or_no_lock)
+
+    # NOTE: extend expired lock (it is not reasonable, but just for visualisation for developers)
+    result = client.unlock('super_mega_kek_lock')
+    result = client.extend_lock_ttl('super_mega_kek_lock', 100_000)
+    expect(result[:ok]).to eq(false)
+    expect(result[:result]).to eq(:async_expire_or_no_lock)
   end
 
   specify ':meta' do
