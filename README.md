@@ -470,7 +470,17 @@ rql.queued?("your_lock_name") # => true/false
 
 - release the concrete lock with lock request queue;
 - queue will be relased first;
-- accepts: `lock_name` - (required) `[String]` - the lock name that should be released.
+- accepts:
+  - `lock_name` - (required) `[String]` - the lock name that should be released.
+  - `:logger` - (optional) `[::Logger,#debug]`
+    - custom logger object;
+    - pre-configured in `config[:logger]`;
+  - `:instrumenter` - (optional) `[#notify]`
+    - custom instrumenter object;
+    - pre-configured in `config[:instrumetner]`;
+  - `:instrument` - (optional) `[NilClass,Any]`;
+    - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
+    - `nil` by default (no additional data);
 - if you try to unlock non-existent lock you will receive `ok: true` result with operation timings
   and `:nothing_to_release` result factor inside;
 
@@ -507,18 +517,26 @@ rql.unlock("your_lock_name")
 
 - release all obtained locks and related lock request queues;
 - queues will be released first;
+- accepts:
+  - `:batch_size` - (optional) `[Integer]`
+    - the size of batch of locks and lock queus that should be cleared under the one pipelined redis command at once;
+    - pre-configured in `config[:lock_release_batch_size]`;
+  - `:logger` - (optional) `[::Logger,#debug]`
+    - custom logger object;
+    - has a preconfigured value in `config[:logger]`;
+  - `:instrumenter` - (optional) `[#notify]`
+    - custom instrumenter object;
+    - has a preconfigured value in `config[:isntrumenter]`;
+  - `:instrument` - (optional) `[NilClass,Any]`
+    - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
+
+- returns:
+ - `[Hash<Symbol,Numeric>]` - Format: `{ ok: true/false, result: Hash<Symbol,Numeric> }`;
 
 ```ruby
-def clear_locks(batch_size: config[:lock_release_batch_size])
-```
+rql.clear_locks
 
-- `batch_size` - `[Integer]`
-  - the size of batch of locks and lock queus that should be cleared under the one pipelined redis command at once;
-
-Return:
-- `[Hash<Symbol,Numeric>]` - Format: `{ ok: true/false, result: Hash<Symbol,Numeric> }`;
-
-```ruby
+# =>
 {
   ok: true,
   result: {
@@ -534,6 +552,14 @@ Return:
 
 - extends lock ttl by the required number of milliseconds;
 - expects the lock name and the number of milliseconds;
+- accepts:
+  - `lock_name` - (required) `[String]`
+    - the lock name which ttl should be extended;
+  - `milliseconds` - (required) `[Integer]`
+    - how many milliseconds should be added to the lock's TTL;
+  - `:logger` - (optional) `[::Logger,#debug]`
+    - custom logger object;
+    - pre-configured in `config[:logger]`;
 - returns `{ ok: true, result: :ttl_extended }` when ttl is extended;
 - returns `{ ok: false, result: :async_expire_or_no_lock }` when lock not found or lock is expired during
   some steps of invocation (see **Important** section below);
@@ -726,20 +752,21 @@ is dead now and is it really dead cuz each request queue can host their requests
 a custom queue ttl for each request differently.
 
 Accepts:
-- `dead_ttl` - (optional) `[Integer]`
+- `:dead_ttl` - (optional) `[Integer]`
   - lock request ttl after which a lock request is considered dead;
   - has a preconfigured value in `config[:dead_request_ttl]` (1 day by default);
-- `sacn_size` - (optional) `[Integer]`
+- `:sacn_size` - (optional) `[Integer]`
   - the batch of scanned keys for Redis'es SCAN command;
   - has a preconfigured valie in `config[:key_extraction_batch_size]`;
-- `logger` - (optional) `[::Logger,#debug]`
+- `:logger` - (optional) `[::Logger,#debug]`
   - custom logger object;
-  - has a preconfigured value in `config[:logger]`;
-- `instrumenter` - (optional) `[#notify]`
+  - pre-configured in `config[:logger]`;
+- `:instrumenter` - (optional) `[#notify]`
   - custom instrumenter object;
-  - has a preconfigured value in `config[:isntrumenter]`;
-- `instrument` - (optional) `[NilClass,Any]`
+  - pre-configured in `config[:isntrumenter]`;
+- `:instrument` - (optional) `[NilClass,Any]`
   - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
+  - `nil` by default (no additional data);
 
 Returns: `{ ok: true, processed_queues: Set<String> }` returns the list of processed lock queues;
 
