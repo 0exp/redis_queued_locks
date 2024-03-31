@@ -200,7 +200,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
               if log_lock_try
                 run_non_critical do
                   logger.debug do
-                    "[redis_queued_locks.try_lock.obtain_free_to_acquire] " \
+                    "[redis_queued_locks.try_lock.obtain__free_to_acquire] " \
                     "lock_key => '#{lock_key}' " \
                     "queue_ttl => #{queue_ttl} " \
                     "acq_id => '#{acquier_id}'"

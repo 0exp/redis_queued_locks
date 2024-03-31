@@ -187,7 +187,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "<current_lock_data>");
   #   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
-  #   - "[redis_queued_locks.try_lock.obtain_free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id");
   config.log_lock_try = false
 end
 ```
@@ -215,6 +215,7 @@ end
 ---
 
 #### #lock - obtain a lock
+<small>[move to top](#usage)</small>
 
 - If block is passed the obtained lock will be released after the block execution or the lock's ttl (what will happen first);
 - If block is not passed the obtained lock will be released after lock's ttl;
