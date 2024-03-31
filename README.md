@@ -1034,7 +1034,7 @@ Detalized event semantics and payload structure:
   whose ttl may expire before the block execution completes). It makes sense for non-`timed` locks *only*;
 - lock request prioritization;
 - support for LIFO strategy;
-- structured logging (separated docs);
+- more structured logging (separated docs);
 - GitHub Actions CI;
 - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
 - better code stylization (+ some refactorings);
