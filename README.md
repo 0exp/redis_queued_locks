@@ -306,8 +306,25 @@ def lock(
 
 Return value:
 
-- If block is passed the block's yield result will be returned;
-- If block is not passed the lock information will be returned;
+- If block is passed the block's yield result will be returned:
+  ```ruby
+  result = rql.lock("my_lock") { 1 + 1 }
+  result # => 2
+  ```
+- If block is not passed the lock information will be returned:
+  ```ruby
+  result = rql.lock("my_lock")
+  result # =>
+  { :ok=>true,
+    :result=>
+    {
+      :lock_key=>"rql:lock:my_lock",
+      :acq_id=>"rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
+      :ts=>1711909612.653696,
+      :ttl=>10000
+    }
+  }
+  ```
 - Lock information result:
   - Signature: `[yield, Hash<Symbol,Boolean|Hash<Symbol,Numeric|String>>]`
   - Format: `{ ok: true/false, result: <Symbol|Hash<Symbol,Hash>> }`;
@@ -341,6 +358,8 @@ Return value:
     { ok: false, result: :unknown }
     ```
 
+Examples:
+
 - obtain a lock:
 
 ```ruby
@@ -360,10 +379,10 @@ rql.lock("my_lock", ttl: 5_000, timed: true) { sleep(4) }
 # => OK
 
 rql.lock("my_lock", ttl: 5_000, timed: true) { sleep(6) }
-# => fails with RedisQueuedLocks::TimedLockTimeoutError,
+# => fails with RedisQueuedLocks::TimedLockTimeoutError
 ```
 
-- obtain a lock with inifnite retry counts:
+- infinite lock obtaining (no retry limit, no timeout limit):
 
 ```ruby
 rql.lock("my_lock", retry_count: nil, timeout: nil)
@@ -384,17 +403,8 @@ rql.lock("my_lock", timeout: 2) # try to acquire but wait for a 2 seconds maximu
 - obtain a lock and immediatly continue working (the lock will live in the background in Redis with the passed ttl)
 
 ```ruby
-rql.lock("my_lock", ttl: 6_500)
-# =>
-{
-  ok: true,
-  result: {
-    lock_key: "rql:lock:my_lock",
-    acq_id: "rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
-    ts: 1711909612.653696,
-    ttl: 10000
-  }
-}
+rql.lock("my_lock", ttl: 6_500) # blocks execution until the lock is obtained
+puts "Let's go" # will be called immediately after the lock is obtained
 ```
 
 ---
