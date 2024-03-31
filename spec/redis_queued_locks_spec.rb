@@ -198,10 +198,12 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[6]).to include('first_acq_id_in_queue =>')
 
       # NOTE: try to lock - fre to acquire
+      # rubocop:disable Layout/LineLength
       expect(test_logger.logs[7]).to include('[redis_queued_locks.try_lock.obtain__free_to_acquire]')
       expect(test_logger.logs[7]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[7]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[7]).to include('acq_id =>')
+      # rubocop:enable Layout/LineLength
 
       # NOTE: lock_obtained
       expect(test_logger.logs[8]).to include('[redis_queued_locks.lock_obtained]')

@@ -1,0 +1,20 @@
+name: Build (Linter + Specs)
+on: [push, pull_request]
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby_version: ["3.1", "3.2", "3.3"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supercharge/redis-github-action@1.7.0
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby_version }}
+          bundler-cache: true
+      - name: Linter
+        run: bundle exec rake rubocop
+      - name: Specs
+        run: bundle exec rake
