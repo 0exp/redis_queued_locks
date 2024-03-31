@@ -1035,7 +1035,6 @@ Detalized event semantics and payload structure:
 - lock request prioritization;
 - support for LIFO strategy;
 - more structured logging (separated docs);
-- GitHub Actions CI;
 - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
 - better code stylization (+ some refactorings);
 - statistics with UI;
