@@ -715,7 +715,7 @@ Accepts:
 - `instrument` - (optional) `[NilClass,Any]`
   - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
 
-Returns: `{ ok: true, processed_queues: Set<String> }`
+Returns: `{ ok: true, processed_queues: Set<String> }` returns the list of processed lock queues;
 
 ```ruby
 rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
