@@ -17,7 +17,7 @@ module RedisQueuedLocks::Acquier::ClearDeadRequests
     def clear_dead_requests(redis_client, scan_size, dead_ttl, logger, instrumenter, instrument)
       dead_score = Time.now.to_f - dead_ttl
 
-      Set.new do |processed_queues|
+      result = Set.new do |processed_queues|
         redis_client.with do |rconn|
           each_lock_queue(rconn, scan_size) do |lock_queue|
             rconn.call('ZREMRANGEBYSCORE', lock_queue, '-inf', dead_score)
@@ -26,7 +26,7 @@ module RedisQueuedLocks::Acquier::ClearDeadRequests
         end
       end
 
-      RedisQueuedLocks::Data[ok: true, result: { processed_queues: }]
+      RedisQueuedLocks::Data[ok: true, result: { processed_queues: result }]
     end
 
     private

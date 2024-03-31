@@ -20,7 +20,7 @@ class RedisQueuedLocks::Client
     setting :uniq_identifier, -> { RedisQueuedLocks::Resource.calc_uniq_identity }
     setting :logger, RedisQueuedLocks::Logging::VoidLogger
     setting :log_lock_try, false
-    setting :dead_request_ttl, (1 * 24 * 60 * 60 * 1000) # NOTE: 1 day in milliseconds :)
+    setting :dead_request_ttl, (1 * 24 * 60 * 60 * 1000) # NOTE: 1 day in milliseconds
 
     validate('retry_count') { |val| val == nil || (val.is_a?(::Integer) && val >= 0) }
     validate('retry_delay') { |val| val.is_a?(::Integer) && val >= 0 }
@@ -402,7 +402,8 @@ class RedisQueuedLocks::Client
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify]
   # @option instrument [NilClass,Any]
-  # @return [?]
+  # @return [Hash<Symbol,Boolean|Hash<Symbol,Set<String>>>]
+  #   Format: { ok: true, result: { processed_queus: Set<String> } }
   #
   # @api public
   # @since 0.1.0

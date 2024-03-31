@@ -24,7 +24,7 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
     def extend_lock_ttl(redis_client, lock_name, milliseconds, logger)
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
 
-      # NOTE: EVAL signature -> <lua script>, (keys number), *(keys), *(arguments)
+      # NOTE: EVAL signature -> <lua script>, (number of keys), *(keys), *(arguments)
       result = redis_client.call('EVAL', EXTEND_LOCK_PTTL, 1, lock_key, milliseconds)
       # TODO: upload scripts to the redis
 
