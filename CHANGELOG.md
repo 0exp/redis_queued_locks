@@ -1,6 +1,6 @@
 ## [Unreleased]
 
-## [0.0.40] - 2024-03-31
+## [0.0.40] - 2024-04-01
 ### Added
 - `RedisQueuedLocks::Client#clear_dead_requests` implementation;
 - Logger and instrumentation are passed everywhere where any changes in Redis (with locks and queus)
