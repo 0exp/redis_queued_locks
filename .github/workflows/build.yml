@@ -17,4 +17,4 @@ jobs:
       - name: Linter
         run: bundle exec rake rubocop
       - name: Specs
-        run: bundle exec rake
+        run: bundle exec rake rspec
