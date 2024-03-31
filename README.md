@@ -132,6 +132,10 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - lock request timeout. after this timeout your lock request in queue will be requeued with new position (at the end of the queue);
   config.default_queue_ttl = 15
 
+  # (boolean) (default: false)
+  # - should be all blocks of code are timed by default;
+  config.is_timed_by_default = false
+
   # (default: 100)
   # - how many items will be released at a time in RedisQueuedLocks::Client#clear_locks logic (uses SCAN);
   # - affects the performancs of your Redis and Ruby Application (configure thoughtfully);
@@ -238,49 +242,63 @@ def lock(
 )
 ```
 
-- `lock_name` - `[String]`
+- `lock_name` - (required) `[String]`
   - Lock name to be obtained.
 - `ttl` - (optional) - [Integer]
   - Lock's time to live (in milliseconds);
-  - preconfigured in `config[:default_lock_ttl]`;
-- `queue_ttl` - `[Integer]`
+  - pre-configured in `config[:default_lock_ttl]`;
+- `queue_ttl` - (optional) `[Integer]`
   - Lifetime of the acuier's lock request. In seconds.
-- `timeout` - `[Integer,NilClass]`
-  - Time period whe should try to acquire the lock (in seconds). Nil means "without timeout".
-- `timed` - `[Boolean]`
+  - pre-configured in `config[:default_queue_ttl]`;
+- `timeout` - (optional) `[Integer,NilClass]`
+  - Time period a client should try to acquire the lock (in seconds). Nil means "without timeout".
+  - pre-configured in `config[:try_to_lock_timeout]`;
+- `timed` - (optiona) `[Boolean]`
   - Limit the invocation time period of the passed block of code by the lock's TTL.
-- `retry_count` - `[Integer,NilClass]`
+  - pre-configured in `config[:is_timed_by_default]`;
+- `retry_count` - (optional) `[Integer,NilClass]`
   - How many times we should try to acquire a lock. Nil means "infinite retries".
-- `retry_delay` - `[Integer]`
+  - pre-configured in `config[:retry_count]`;
+- `retry_delay` - (optional) `[Integer]`
   - A time-interval between the each retry (in milliseconds).
-- `retry_jitter` - `[Integer]`
-  - Time-shift range for retry-delay (in milliseconds).
-- `instrumenter` - `[#notify]`
-  - See RedisQueuedLocks::Instrument::ActiveSupport for example.
-- `raise_errors` - `[Boolean]`
-  - Raise errors on library-related limits such as timeout or retry count limit.
-- `fail_fast` - `[Boolean]`
+  - pre-configured in `config[:retry_delay]`;
+- `retry_jitter` - (optional) `[Integer]`
+  - Time-shift range for retry-delay (in milliseconds);
+  - pre-configured in `config[:retry_jitter]`;
+- `instrumenter` - (optional) `[#notify]`
+  - See RedisQueuedLocks::Instrument::ActiveSupport for example;
+  - See [Instrumentation](#instrumentation) section of docs;
+  - pre-configured in `config[:isntrumenter]` with void notifier (`RedisQueuedLocks::Instrumenter::VoidNotifier`);
+- `raise_errors` - (optional) `[Boolean]`
+  - Raise errors on library-related limits such as timeout or retry count limit;
+  - `false` by default;
+- `fail_fast` - (optional) `[Boolean]`
     - Should the required lock to be checked before the try and exit immidietly if lock is
       already obtained;
     - Should the logic exit immidietly after the first try if the lock was obtained
       by another process while the lock request queue was initially empty;
-- `identity` - `[String]`
+    - `false` by default;
+- `identity` - (optional) `[String]`
   - An unique string that is unique per `RedisQueuedLock::Client` instance. Resolves the
     collisions between the same process_id/thread_id/fiber_id/ractor_id identifiers on different
     pods or/and nodes of your application;
   - It is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`
     ivar (accessed via `uniq_dentity` accessor method);
-- `meta` - `[NilClass,Hash<String|Symbol,Any>]`
+  - Identity calculator is pre-configured in `config[:uniq_identifier]`;
+- `meta` - (optional) `[NilClass,Hash<String|Symbol,Any>]`
   - A custom metadata wich will be passed to the lock data in addition to the existing data;
   - Custom metadata can not contain reserved lock data keys (such as `lock_key`, `acq_id`, `ts`, `ini_ttl`, `rem_ttl`);
-- `instrument` - `[NilClass,Any]`
+  - `nil` by default (means "no metadata");
+- `instrument` - (optional) `[NilClass,Any]`
   - Custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
-- `logger` - `[::Logger,#debug]`
-  - Logger object used from the configuration layer (see config[:logger]);
-  - See `RedisQueuedLocks::Logging::VoidLogger` for example;
-- `log_lock_try` - `[Boolean]`
+  - `nil` by default (means "no custom instrumentation data");
+- `logger` - (optional) `[::Logger,#debug]`
+  - Logger object used for loggin internal mutation oeprations and opertioan results / process progress;
+  - pre-configured in `config[:logger]` with void logger `RedisQueuedLocks::Logging::VoidLogger`;
+- `log_lock_try` - (optional) `[Boolean]`
   - should be logged the each try of lock acquiring (a lot of logs can be generated depending on your retry configurations);
-  - see `config[:log_lock_try]`;
+  - pre-configured in `config[:log_lock_try]`;
+  - `false` by default;
 - `block` - `[Block]`
   - A block of code that should be executed after the successfully acquired lock.
   - If block is **passed** the obtained lock will be released after the block execution or it's ttl (what will happen first);
@@ -393,6 +411,12 @@ rql.lock_info("your_lock_name")
 
 #### #queue_info
 
+Returns an information about the required lock queue by the lock name. The result
+represnts the ordered lock request queue that is ordered by score (Redis Sets) and shows
+lock acquirers and their position in queue. Async nature with redis communcation can lead
+the situation when the queue becomes empty during the queue data extraction. So sometimes
+you can receive the lock queue info with empty queue value (an empty array).
+
 - get the lock queue information;
 - queue represents the ordered set of lock key reqests:
   - set is ordered by score in ASC manner (inside the Redis Set);
@@ -404,14 +428,6 @@ rql.lock_info("your_lock_name")
   - `"queue"` - `array` - an array of lock requests (array of hashes):
     - `"acq_id"` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
     - `"score"` - `float`/`epoch` - time when the lock request was made (epoch);
-
-```
-| Returns an information about the required lock queue by the lock name. The result
-| represnts the ordered lock request queue that is ordered by score (Redis sets) and shows
-| lock acquirers and their position in queue. Async nature with redis communcation can lead
-| the situation when the queue becomes empty during the queue data extraction. So sometimes
-| you can receive the lock queue info with empty queue value (an empty array).
-```
 
 ```ruby
 rql.queue_info("your_lock_name")
@@ -454,24 +470,33 @@ rql.queued?("your_lock_name") # => true/false
 
 - release the concrete lock with lock request queue;
 - queue will be relased first;
-
-```ruby
-def unlock(lock_name)
-```
-
-- `lock_name` - `[String]`
-  - the lock name that should be released.
+- accepts: `lock_name` - (required) `[String]` - the lock name that should be released.
+- if you try to unlock non-existent lock you will receive `ok: true` result with operation timings
+  and `:nothing_to_release` result factor inside;
 
 Return:
-- `[Hash<Symbol,Numeric|String>]` - Format: `{ ok: true/false, result: Hash<Symbol,Numeric|String> }`;
+- `[Hash<Symbol,Boolean|Hash<Symbol,Numeric|String|Symbol>>]` (`{ ok: true/false, result: Hasn }`);
+- `:result` format;
+  - `:rel_time` - `Float` - time spent to process redis commands (in seconds);
+  - `:rel_key` - `String` - released lock key (RedisQueudLocks-internal lock key name from Redis);
+  - `:rel_queue` - `String` - released lock queue key (RedisQueuedLocks-internal queue key name from Redis);
+  - `:queue_res` - `Symbol` - `:released` (or `:nothing_to_release` if the required queue does not exist);
+  - `:lock_res` - `Symbol` - `:released` (or `:nothing_to_release` if the required lock does not exist);
+
+Consider that `lock_res` and `queue_res` can have different value because of the async nature of invoked Redis'es commands.
 
 ```ruby
+rql.unlock("your_lock_name")
+
+# =>
 {
   ok: true,
   result: {
     rel_time: 0.02, # time spent to lock release (in seconds)
     rel_key: "rql:lock:your_lock_name", # released lock key
     rel_queue: "rql:lock_queue:your_lock_name" # released lock key queue
+    queue_res: :released, # or :nothing_to_release
+    lock_res: :released # or :nothing_to_release
   }
 }
 ```
@@ -816,7 +841,6 @@ Detalized event semantics and payload structure:
 - GitHub Actions CI;
 - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
 - better code stylization and interesting refactorings (observers);
-- dead requests cleanup;
 - statistics with UI;
 
 ---

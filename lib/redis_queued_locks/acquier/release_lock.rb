@@ -23,8 +23,8 @@ module RedisQueuedLocks::Acquier::ReleaseLock
     # @param logger [::Logger,#debug]
     #   - Logger object used from `configuration` layer (see config[:logger]);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
-    # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
-    #   Format: { ok: true/false, result: Hash<Symbil,Numeric|String> }
+    # @return [RedisQueuedLocks::Data,Hash<Symbol,Boolean<Hash<Symbol,Numeric|String|Symbol>>]
+    #   Format: { ok: true/false, result: Hash<Symbol,Numeric|String|Symbol> }
     #
     # @api private
     # @since 0.1.0
@@ -49,7 +49,13 @@ module RedisQueuedLocks::Acquier::ReleaseLock
 
       RedisQueuedLocks::Data[
         ok: true,
-        result: { rel_time: rel_time, rel_key: lock_key, rel_queue: lock_key_queue }
+        result: {
+          rel_time: rel_time,
+          rel_key: lock_key,
+          rel_queue: lock_key_queue,
+          queue_res: result[:queue],
+          lock_res: result[:lock]
+        }
       ]
     end
 
@@ -60,7 +66,14 @@ module RedisQueuedLocks::Acquier::ReleaseLock
     # @param redis [RedisClient]
     # @param lock_key [String]
     # @param lock_key_queue [String]
-    # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
+    # @return [RedisQueuedLocks::Data,Hash<Symbol,Boolean|Hash<Symbol,Symbol>>]
+    #   Format: {
+    #     ok: true/false,
+    #     result: {
+    #       queue: :released/:nothing_to_release,
+    #       lock: :released/:nothing_to_release
+    #     }
+    #   }
     #
     # @api private
     # @since 0.1.0
@@ -72,7 +85,13 @@ module RedisQueuedLocks::Acquier::ReleaseLock
         end
       end
 
-      RedisQueuedLocks::Data[ok: true, result:]
+      RedisQueuedLocks::Data[
+        ok: true,
+        result: {
+          queue: (result[0] == 1) ? :released : :nothing_to_release,
+          lock: (result[1] == 1) ? :released : :nothing_to_release
+        }
+      ]
     end
   end
 end

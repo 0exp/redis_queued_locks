@@ -13,6 +13,10 @@ RSpec.describe RedisQueuedLocks do
 
   after { redis.call('FLUSHDB') }
 
+  specify 'clear_dead_queus' do
+    RedisQueuedLocks::Client.new(redis)
+  end
+
   specify 'logger' do
     test_logger = Class.new do
       attr_reader :logs
@@ -166,6 +170,44 @@ RSpec.describe RedisQueuedLocks do
     result = client.extend_lock_ttl('super_mega_kek_lock', 100_000)
     expect(result[:ok]).to eq(false)
     expect(result[:result]).to eq(:async_expire_or_no_lock)
+  end
+
+  specify '#unlock' do
+    client = RedisQueuedLocks::Client.new(redis)
+    client.lock('unlock_check_lock_pock', ttl: 10_000)
+    lockers = Array.new(2) { Thread.new { client.lock('unlock_check_lock_pock', ttl: 10_000) } }
+
+    aggregate_failures 'unlock existing lock' do
+      unlock_result = client.unlock('unlock_check_lock_pock')
+
+      expect(unlock_result).to match({
+        ok: true,
+        result: match({
+          rel_time: be_a(Numeric),
+          rel_key: 'rql:lock:unlock_check_lock_pock',
+          rel_queue: 'rql:lock_queue:unlock_check_lock_pock',
+          lock_res: :released,
+          queue_res: :released
+        })
+      })
+    end
+
+    aggregate_failures 'unlock non-existing lock' do
+      unlock_result = client.unlock('kek_pek_lock_uberok')
+
+      expect(unlock_result).to match({
+        ok: true,
+        result: match({
+          rel_time: be_a(Numeric),
+          rel_key: 'rql:lock:kek_pek_lock_uberok',
+          rel_queue: 'rql:lock_queue:kek_pek_lock_uberok',
+          lock_res: :nothing_to_release,
+          queue_res: :nothing_to_release
+        })
+      })
+    end
+
+    lockers.each(&:join)
   end
 
   specify ':meta' do

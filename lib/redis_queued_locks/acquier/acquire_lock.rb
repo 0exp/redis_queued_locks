@@ -23,11 +23,11 @@ module RedisQueuedLocks::Acquier::AcquireLock
   # @since 0.1.0
   extend RedisQueuedLocks::Utilities
 
-  # @return [Integer] Redis expiration error (in milliseconds).
+  # @return [Integer] Redis time error (in milliseconds).
   #
   # @api private
   # @since 0.1.0
-  REDIS_EXPIRE_ERROR = 1
+  REDIS_TIMESHIFT_ERROR = 2
 
   class << self
     # @param redis [RedisClient]
@@ -146,9 +146,6 @@ module RedisQueuedLocks::Acquier::AcquireLock
         ractor_id,
         identity
       )
-      # NOTE:
-      #   - think aobut the redis expiration error
-      #   - (ttl - REDIS_EXPIRE_ERROR).yield_self { |val| (val == 0) ? ttl : val }
       lock_ttl = ttl
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
@@ -324,7 +321,11 @@ module RedisQueuedLocks::Acquier::AcquireLock
         if block_given?
           begin
             yield_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
-            ttl_shift = ((yield_time - acq_process[:acq_end_time]) * 1000).ceil(2)
+
+            ttl_shift = (
+              (yield_time - acq_process[:acq_end_time]) * 1000 - REDIS_TIMESHIFT_ERROR
+            ).ceil(2)
+
             yield_with_expire(
               redis,
               logger,

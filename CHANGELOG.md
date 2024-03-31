@@ -5,6 +5,10 @@
 - `RedisQueuedLocks::Client#clear_dead_requests` implementation;
 - Logger and instrumentation are passed everywhere where any changes in Redis (with locks and queus)
   are expected;
+- New config `is_timed_by_default` (boolean, `false` by default) that reflects the `timed` option of `#lock` and `#lock!` methods;
+- Ther result of `#unlock` is changed: added `:lock_res` and `:queue_res` result data in order to reflect
+  what happened inside (`:released` or `:nothing_to_release`) and to adopt to the case when you trying
+  to unlock the non-existent lock;
 
 ## [0.0.39] - 2024-03-31
 ### Added

@@ -21,6 +21,7 @@ class RedisQueuedLocks::Client
     setting :logger, RedisQueuedLocks::Logging::VoidLogger
     setting :log_lock_try, false
     setting :dead_request_ttl, (1 * 24 * 60 * 60 * 1000) # NOTE: 1 day in milliseconds
+    setting :is_timed_by_default, false
 
     validate('retry_count') { |val| val == nil || (val.is_a?(::Integer) && val >= 0) }
     validate('retry_delay') { |val| val.is_a?(::Integer) && val >= 0 }
@@ -34,6 +35,7 @@ class RedisQueuedLocks::Client
     validate('logger') { |val| RedisQueuedLocks::Logging.valid_interface?(val) }
     validate('log_lock_try', :boolean)
     validate('dead_request_ttl') { |val| val.is_a?(::Integer) && val > 0 }
+    validate('is_timed_by_default', :boolean)
   end
 
   # @return [RedisClient]
@@ -120,7 +122,7 @@ class RedisQueuedLocks::Client
     ttl: config[:default_lock_ttl],
     queue_ttl: config[:default_queue_ttl],
     timeout: config[:try_to_lock_timeout],
-    timed: false,
+    timed: config[:is_timed_by_default],
     retry_count: config[:retry_count],
     retry_delay: config[:retry_delay],
     retry_jitter: config[:retry_jitter],
@@ -168,7 +170,7 @@ class RedisQueuedLocks::Client
     ttl: config[:default_lock_ttl],
     queue_ttl: config[:default_queue_ttl],
     timeout: config[:try_to_lock_timeout],
-    timed: false,
+    timed: config[:is_timed_by_default],
     retry_count: config[:retry_count],
     retry_delay: config[:retry_delay],
     retry_jitter: config[:retry_jitter],
