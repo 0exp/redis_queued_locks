@@ -44,6 +44,8 @@ Each lock request is put into the request queue (each lock is hosted by it's own
 
 ### Requirements
 
+<sup>\[[back to top](#table-of-contents)\]</sup>
+
 - Redis Version: `~> 7.x`;
 - Redis Protocol: `RESP3`;
 - gem `redis-client`: `~> 0.20`;
@@ -53,12 +55,16 @@ Each lock request is put into the request queue (each lock is hosted by it's own
 
 ### Experience
 
+<sup>\[[back to top](#table-of-contents)\]</sup>
+
 - Battle-tested on huge ruby projects in production: `~1500` locks-per-second are obtained and released on an ongoing basis;
 - Works well with `hiredis` driver enabled (it is enabled by default on our projects where `redis_queued_locks` are used);
 
 ---
 
 ### Algorithm
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
 
 > Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
 
@@ -67,6 +73,8 @@ Each lock request is put into the request queue (each lock is hosted by it's own
 ---
 
 ### Installation
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
 
 ```ruby
 gem 'redis_queued_locks'
@@ -85,6 +93,8 @@ require 'redis_queued_locks'
 ---
 
 ### Setup
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
 
 ```ruby
 require 'redis_queued_locks'
@@ -106,6 +116,8 @@ rq_lock_client.lock("some-lock") { puts "Hello, lock!" }
 ---
 
 ### Configuration
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
 
 ```ruby
 redis_client = RedisClient.config.new_pool # NOTE: provide your own RedisClient instance
@@ -197,6 +209,8 @@ end
 ---
 
 ### Usage
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
 
 - [lock](#lock---obtain-a-lock)
 - [lock!](#lock---exeptional-lock-obtaining)
@@ -910,7 +924,7 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 "[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id");
 ```
 
-- additional logs (raised from `#lock`/`#lock!` with `confg[:log_lock_try] == true`)
+- additional logs (raised from `#lock`/`#lock!` with `confg[:log_lock_try] == true`):
 
 ```ruby
 "[redis_queued_locks.try_lock.start]" # (logs "lock_key", "queue_ttl", "acq_id");
@@ -1035,8 +1049,12 @@ Detalized event semantics and payload structure:
 
 ## License
 
+<sup>\[[back to top](#table-of-contents)\]</sup>
+
 Released under MIT License.
 
 ## Authors
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
 
 [Rustam Ibragimov](https://github.com/0exp)
