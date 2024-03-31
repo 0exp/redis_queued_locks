@@ -505,7 +505,8 @@ Return:
 
 #### #extend_lock_ttl
 
-- Extend the lock's TTL (in milliseconds);
+- extends lock ttl by the required number of milliseconds;
+- expects the lock name and the number of milliseconds;
 - returns `{ ok: true, result: :ttl_extended }` when ttl is extended;
 - returns `{ ok: false, result: :async_expire_or_no_lock }` when lock not found or lock is expired during
   some steps of invocation (see **Important** section below);
