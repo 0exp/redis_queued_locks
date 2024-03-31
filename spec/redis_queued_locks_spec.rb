@@ -162,7 +162,7 @@ RSpec.describe RedisQueuedLocks do
     expect(result[:result]).to eq(:async_expire_or_no_lock)
 
     # NOTE: extend expired lock (it is not reasonable, but just for visualisation for developers)
-    result = client.unlock('super_mega_kek_lock')
+    client.unlock('super_mega_kek_lock')
     result = client.extend_lock_ttl('super_mega_kek_lock', 100_000)
     expect(result[:ok]).to eq(false)
     expect(result[:result]).to eq(:async_expire_or_no_lock)

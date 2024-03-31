@@ -239,8 +239,9 @@ def lock(
 
 - `lock_name` - `[String]`
   - Lock name to be obtained.
-- `ttl` [Integer]
-  - Lock's time to live (in milliseconds).
+- `ttl` - (optional) - [Integer]
+  - Lock's time to live (in milliseconds);
+  - preconfigured in `config[:default_lock_ttl]`;
 - `queue_ttl` - `[Integer]`
   - Lifetime of the acuier's lock request. In seconds.
 - `timeout` - `[Integer,NilClass]`
@@ -686,7 +687,50 @@ rql.queues_info # or rql.qeuues_info(scan_size: 123)
 
 #### #clear_dead_requests
 
-- soon
+In some cases your lock requests may become "dead". It can happen when your processs
+that are enqueeud to the lock queue is failed unexpectedly (for some reason) before the lock acquire moment
+and when no any other process does not need this lock anymore. For this case your lock will be cleared only when any process
+will try to acquire this lock again (cuz lock acquirement triggers the removement of expired requests).
+
+In order to help with these dead requests you may periodically call `#clear_dead_requests`
+with corresponding `dead_ttl` option, that is pre-configured by default via `config[:dead_request_ttl]`.
+
+An option is required because of it is no any **fast** way to understand which request
+is dead now and is it really dead cuz each request queue can host their requests with
+a custom queue ttl for each request differently.
+
+Accepts:
+- `dead_ttl` - (optional) `[Integer]`
+  - lock request ttl after which a request is considered dead;
+  - has a preconfigured value in `config[:dead_request_ttl]` (1 day by default);
+- `sacn_size` - (optional) `[Integer]`
+  - the batch of scanned keys for Redis'es SCAN command;
+  - has a preconfigured valie in `config[:key_extraction_batch_size]`;
+- `logger` - (optional) `[::Logger,#debug]`
+  - custom logger object;
+  - has a preconfigured value in `config[:logger]`;
+- `instrumenter` - (optional) `[#notify]`
+  - custom instrumenter object;
+  - has a preconfigured value in `config[:isntrumenter]`;
+- `instrument` - (optional) `[NilClass,Any]`
+  - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
+
+Returns: `{ ok: true, processed_queues: Set<String> }`
+
+```ruby
+rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
+
+# =>
+{
+  ok: true,
+  processed_queues: [
+    "rql:lock_queue:some-lock-123",
+    "rql:lock_queue:some-lock-456",
+    "rql:lock_queue:your-other-lock",
+    ...
+  ]
+}
+```
 
 ---
 
