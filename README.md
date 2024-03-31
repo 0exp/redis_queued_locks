@@ -46,6 +46,7 @@ Each lock request is put into the request queue (each lock is hosted by it's own
 - Redis Version: `~> 7.x`;
 - Redis Protocol: `RESP3`;
 - gem `redis-client`: `~> 0.20`;
+- Ruby: '>= 3.1';
 
 ---
 
