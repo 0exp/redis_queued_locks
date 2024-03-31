@@ -955,8 +955,8 @@ Instrumenter object should provide `notify(event, payload)` method with the foll
 
 `redis_queued_locks` provides two instrumenters:
 
-- `RedisQueuedLocks::Instrument::ActiveSupport` - `ActiveSupport::Notifications` instrumenter
-  that instrument events via `ActiveSupport::Notifications` API;
+- `RedisQueuedLocks::Instrument::ActiveSupport` - **ActiveSupport::Notifications** instrumenter
+  that instrument events via **ActiveSupport::Notifications** API;
 - `RedisQueuedLocks::Instrument::VoidNotifier` - instrumenter that does nothing;
 
 By default `RedisQueuedLocks::Client` is configured with the void notifier (which means "instrumentation is disabled").
