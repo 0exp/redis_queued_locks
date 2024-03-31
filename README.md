@@ -215,7 +215,8 @@ end
 ---
 
 #### #lock - obtain a lock
-<small>[move to top](#usage)</small>
+
+[back_to_top](#usage)
 
 - If block is passed the obtained lock will be released after the block execution or the lock's ttl (what will happen first);
 - If block is not passed the obtained lock will be released after lock's ttl;
@@ -412,6 +413,8 @@ puts "Let's go" # will be called immediately after the lock is obtained
 
 #### #lock! - exceptional lock obtaining
 
+[back_to_top](#usage)
+
 - fails when (and with):
   - (`RedisQueuedLocks::LockAlreadyObtainedError`) when `fail_fast` is `true` and lock is already obtained;
   - (`RedisQueuedLocks::LockAcquiermentTimeoutError`) `timeout` limit reached before lock is obtained;
@@ -441,6 +444,8 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
 ---
 
 #### #lock_info
+
+[back_to_top](#usage)
 
 - get the lock information;
 - returns `nil` if lock does not exist;
@@ -487,6 +492,8 @@ rql.lock_info("your_lock_name")
 
 #### #queue_info
 
+[back_to_top](#usage)
+
 Returns an information about the required lock queue by the lock name. The result
 represnts the ordered lock request queue that is ordered by score (Redis Sets) and shows
 lock acquirers and their position in queue. Async nature with redis communcation can lead
@@ -524,6 +531,8 @@ rql.queue_info("your_lock_name")
 
 #### #locked?
 
+[back_to_top](#usage)
+
 - is the lock obtaied or not?
 
 ```ruby
@@ -543,6 +552,8 @@ rql.queued?("your_lock_name") # => true/false
 ---
 
 #### #unlock - release a lock
+
+[back_to_top](#usage)
 
 - release the concrete lock with lock request queue;
 - queue will be relased first;
@@ -591,6 +602,8 @@ rql.unlock("your_lock_name")
 
 #### #clear_locks - release all locks and lock queues
 
+[back_to_top](#usage)
+
 - release all obtained locks and related lock request queues;
 - queues will be released first;
 - accepts:
@@ -625,6 +638,8 @@ rql.clear_locks
 ---
 
 #### #extend_lock_ttl
+
+[back_to_top](#usage)
 
 - extends lock ttl by the required number of milliseconds;
 - expects the lock name and the number of milliseconds;
@@ -665,6 +680,8 @@ rql.extend_lock_ttl("my_lock", 5_000) # NOTE: add 5_000 milliseconds
 
 #### #locks - get list of obtained locks
 
+[back_to_top](#usage)
+
 - uses redis `SCAN` under the hood;
 - accepts:
   - `:scan_size` - `Integer` - (`config[:key_extraction_batch_size]` by default);
@@ -694,6 +711,8 @@ rql.locks # or rql.locks(scan_size: 123)
 ---
 
 #### #queues - get list of lock request queues
+
+[back_to_top](#usage)
 
 - uses redis `SCAN` under the hood;
 - accepts
@@ -725,6 +744,8 @@ rql.queues # or rql.queues(scan_size: 123)
 
 #### #keys - get list of taken locks and queues
 
+[back_to_top](#usage)
+
 - uses redis `SCAN` under the hood;
 - accepts:
   `:scan_size` - `Integer` - (`config[:key_extraction_batch_size]` by default);
@@ -755,6 +776,8 @@ rql.keys # or rql.keys(scan_size: 123)
 ---
 
 #### #locks_info - get list of locks with their info
+
+[back_to_top](#usage)
 
 - uses redis `SCAN` under the hod;
 - accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
@@ -788,6 +811,8 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
 
 #### #queues_info - get list of queues with their info
 
+[back_to_top](#usage)
+
 - uses redis `SCAN` under the hod;
 - accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
 - returns `Set<Hash<Symbol,Any>>` (see [#queue_info](#queue_info) and examples below for details).
@@ -814,6 +839,8 @@ rql.queues_info # or rql.qeuues_info(scan_size: 123)
 ---
 
 #### #clear_dead_requests
+
+[back_to_top](#usage)
 
 In some cases your lock requests may become "dead". It can happen when your processs
 that are enqueeud to the lock queue is failed unexpectedly (for some reason) before the lock acquire moment
