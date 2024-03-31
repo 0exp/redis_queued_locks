@@ -12,8 +12,10 @@ module RedisQueuedLocks::Acquier::Locks
     # @api private
     # @since 0.1.0
     def locks(redis_client, scan_size:, with_info:)
-      lock_keys = scan_locks(redis_client, scan_size)
-      with_info ? extract_locks_info(redis_client, lock_keys) : lock_keys
+      redis_client.with do |rconn|
+        lock_keys = scan_locks(rconn, scan_size)
+        with_info ? extract_locks_info(rconn, lock_keys) : lock_keys
+      end
     end
 
     private

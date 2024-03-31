@@ -20,6 +20,7 @@ class RedisQueuedLocks::Client
     setting :uniq_identifier, -> { RedisQueuedLocks::Resource.calc_uniq_identity }
     setting :logger, RedisQueuedLocks::Logging::VoidLogger
     setting :log_lock_try, false
+    setting :dead_request_ttl, (1 * 24 * 60 * 60 * 1000) # NOTE: 1 day in milliseconds :)
 
     validate('retry_count') { |val| val == nil || (val.is_a?(::Integer) && val >= 0) }
     validate('retry_delay') { |val| val.is_a?(::Integer) && val >= 0 }
@@ -32,6 +33,7 @@ class RedisQueuedLocks::Client
     validate('uniq_identifier', :proc)
     validate('logger') { |val| RedisQueuedLocks::Logging.valid_interface?(val) }
     validate('log_lock_try', :boolean)
+    validate('dead_request_ttl') { |val| val.is_a?(::Integer) && val > 0 }
   end
 
   # @return [RedisClient]
@@ -40,14 +42,13 @@ class RedisQueuedLocks::Client
   # @since 0.1.0
   attr_reader :redis_client
 
+  # NOTE: attr_access here is chosen intentionally in order to have an ability to change
+  #  uniq_identity value for debug purposes in runtime;
   # @return [String]
   #
   # @api private
   # @since 0.1.0
   attr_accessor :uniq_identity
-
-  # NOTE: attr_access is chosen intentionally in order to have an ability to change
-  #  uniq_identity values for debug purposes in runtime;
 
   # @param redis_client [RedisClient]
   #   Redis connection manager, which will be used for the lock acquierment and distribution.
@@ -191,6 +192,8 @@ class RedisQueuedLocks::Client
       raise_errors: true,
       identity:,
       fail_fast:,
+      logger:,
+      log_lock_try:,
       meta:,
       instrument:,
       &block
@@ -199,12 +202,27 @@ class RedisQueuedLocks::Client
 
   # @param lock_name [String]
   #   The lock name that should be released.
+  # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify]
+  # @option instrument [NilClass,Any]
   # @return [RedisQueuedLocks::Data, Hash<Symbol,Any>]
-  #   Format: { ok: true/false, result: Symbol/Hash }.
+  #   Format: {
+  #     ok: true/false,
+  #     result: {
+  #       rel_time: Integer, # <millisecnds>
+  #       rel_key: String, # lock key
+  #       rel_queue: String # lock queue
+  #     }
+  #   }
   #
   # @api public
   # @since 0.1.0
-  def unlock(lock_name)
+  def unlock(
+    lock_name,
+    logger: config[:logger],
+    instrumenter: config[:instrumenter],
+    instrument: nil
+  )
     RedisQueuedLocks::Acquier::ReleaseLock.release_lock(
       redis_client,
       lock_name,
@@ -268,26 +286,36 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 0.1.0
-  def extend_lock_ttl(lock_name, milliseconds)
+  def extend_lock_ttl(lock_name, milliseconds, logger: config[:logger])
     RedisQueuedLocks::Acquier::ExtendLockTTL.extend_lock_ttl(
       redis_client,
       lock_name,
-      milliseconds
+      milliseconds,
+      logger
     )
   end
 
   # @option batch_size [Integer]
+  # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify]
+  # @option instrument [NilClass,Any]
   # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
   #   Format: { ok: true/false, result: Symbol/Hash }.
   #
   # @api public
   # @since 0.1.0
-  def clear_locks(batch_size: config[:lock_release_batch_size])
+  def clear_locks(
+    batch_size: config[:lock_release_batch_size],
+    logger: config[:logger],
+    instrumenter: config[:instrumenter],
+    instrument: nil
+  )
     RedisQueuedLocks::Acquier::ReleaseAllLocks.release_all_locks(
       redis_client,
       batch_size,
-      config[:instrumenter],
-      config[:logger]
+      logger,
+      instrumenter,
+      instrument
     )
   end
 
@@ -363,6 +391,36 @@ class RedisQueuedLocks::Client
   # @since 0.1.0
   def keys(scan_size: config[:key_extraction_batch_size])
     RedisQueuedLocks::Acquier::Keys.keys(redis_client, scan_size:)
+  end
+
+  # @option dead_ttl [Integer]
+  #  - the time period (in millsiecnds) after whcih the lock request is
+  #    considered as dead;
+  #  - `config[:dead_request_ttl]` is used by default;
+  # @option scan_size [Integer]
+  #   The batch of scanned keys for Redis'es SCAN command.
+  # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify]
+  # @option instrument [NilClass,Any]
+  # @return [?]
+  #
+  # @api public
+  # @since 0.1.0
+  def clear_dead_requests(
+    dead_ttl: config[:dead_request_ttl],
+    scan_size: config[:key_extraction_batch_size],
+    logger: config[:logger],
+    instrumenter: config[:instrumenter],
+    instrument: nil
+  )
+    RedisQueuedLocks::Acquier::ClearDeadRequests.clear_dead_requests(
+      redis_client,
+      scan_size,
+      dead_ttl,
+      logger,
+      instrumenter,
+      instrument
+    )
   end
 end
 # rubocop:enable Metrics/ClassLength

@@ -12,8 +12,10 @@ module RedisQueuedLocks::Acquier::Queues
     # @api private
     # @since 0.1.0
     def queues(redis_client, scan_size:, with_info:)
-      lock_queues = scan_queues(redis_client, scan_size)
-      with_info ? extract_queues_info(redis_client, lock_queues) : lock_queues
+      redis_client.with do |rconn|
+        lock_queues = scan_queues(rconn, scan_size)
+        with_info ? extract_queues_info(rconn, lock_queues) : lock_queues
+      end
     end
 
     private

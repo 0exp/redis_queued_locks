@@ -16,11 +16,12 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
     # @param redis_client [RedisClient]
     # @param lock_name [String]
     # @param milliseconds [Integer]
+    # @param logger [::Logger,#debug]
     # @return [Hash<Symbol,Boolean|Symbol>]
     #
     # @api private
     # @since 0.1.0
-    def extend_lock_ttl(redis_client, lock_name, milliseconds)
+    def extend_lock_ttl(redis_client, lock_name, milliseconds, logger)
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
 
       # NOTE: EVAL signature -> <lua script>, (keys number), *(keys), *(arguments)
