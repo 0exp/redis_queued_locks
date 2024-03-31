@@ -288,9 +288,10 @@ RSpec.describe RedisQueuedLocks do
     client.lock('unlock_check_lock_pock', ttl: 10_000)
     lockers = Array.new(2) do
       Thread.new do
-        client.lock('unlock_check_lock_pock', ttl: 10_000, retry_count: nil, retry_delay: 1_000)
+        client.lock('unlock_check_lock_pock', ttl: 10_000, retry_count: nil, retry_delay: 10)
       end
     end
+    sleep(1)
 
     aggregate_failures 'unlock existing lock' do
       unlock_result = client.unlock('unlock_check_lock_pock')
