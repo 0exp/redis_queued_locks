@@ -701,7 +701,7 @@ a custom queue ttl for each request differently.
 
 Accepts:
 - `dead_ttl` - (optional) `[Integer]`
-  - lock request ttl after which a request is considered dead;
+  - lock request ttl after which a lock request is considered dead;
   - has a preconfigured value in `config[:dead_request_ttl]` (1 day by default);
 - `sacn_size` - (optional) `[Integer]`
   - the batch of scanned keys for Redis'es SCAN command;
