@@ -32,6 +32,7 @@ Each lock request is put into the request queue (each lock is hosted by it's own
   - [locks_info](#locks_info---get-list-of-locks-with-their-info)
   - [queues_info](#queues_info---get-list-of-queues-with-their-info)
   - [clear_dead_requests](#clear_dead_requests)
+- [Logging](#logging)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
 - [Roadmap](#roadmap)
@@ -172,6 +173,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.dead_score_reached__reset_acquier_position]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.lock_obtained]" (logs "lockkey", "queue_ttl", "acq_id", "acq_time");
   #   - "[redis_queued_locks.fail_fast_or_limits_reached__dequeue] (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id");
   # - by default uses VoidLogger that does nothing;
   config.logger = RedisQueuedLocks::Logging::VoidLogger
 
@@ -893,7 +895,40 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 
 ---
 
+## Logging
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
+
+- default logs (raised from `#lock`/`#lock!`):
+
+```ruby
+"[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.dead_score_reached__reset_acquier_position]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.lock_obtained]" # (logs "lockkey", "queue_ttl", "acq_id", "acq_time");
+"[redis_queued_locks.fail_fast_or_limits_reached__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id");
+```
+
+- additional logs (raised from `#lock`/`#lock!` with `confg[:log_lock_try] == true`)
+
+```ruby
+"[redis_queued_locks.try_lock.start]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.try_lock.rconn_fetched]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.try_lock.acq_added_to_queue]" # (logs "lock_key", "queue_ttl", "acq_id)";
+"[redis_queued_locks.try_lock.remove_expired_acqs]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.try_lock.get_first_from_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue");
+"[redis_queued_locks.try_lock.exit__queue_ttl_reached]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.try_lock.exit__no_first]" # (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "<current_lock_data>");
+"[redis_queued_locks.try_lock.exit__lock_still_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
+"[redis_queued_locks.try_lock.obtain__free_to_acquire]" # (logs "lock_key", "queue_ttl", "acq_id");
+```
+
+---
+
 ## Instrumentation
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
 
 - [Instrumentation Events](#instrumentation-events)
 
@@ -920,15 +955,16 @@ By default `RedisQueuedLocks::Client` is configured with the void notifier (whic
 
 List of instrumentation events
 
-- `redis_queued_locks.lock_obtained`
-- `redis_queued_locks.lock_hold_and_release`
-- `redis_queued_locks.explicit_lock_release`
-- `redis_queued_locks.explicit_all_locks_release`
+- `redis_queued_locks.lock_obtained`;
+- `redis_queued_locks.lock_hold_and_release`;
+- `redis_queued_locks.explicit_lock_release`;
+- `redis_queued_locks.explicit_all_locks_release`;
 
 Detalized event semantics and payload structure:
 
 - `"redis_queued_locks.lock_obtained"`
   - a moment when the lock was obtained;
+  - raised from `#lock`/`#lock!`;
   - payload:
     - `:ttl` - `integer`/`milliseconds` - lock ttl;
     - `:acq_id` - `string` - lock acquier identifier;
@@ -936,9 +972,10 @@ Detalized event semantics and payload structure:
     - `:ts` - `integer`/`epoch` - the time when the lock was obtaiend;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
     - `:instrument` - `nil`/`Any` - custom data passed to the `lock`/`lock!` method as `:instrument` attribute;
+
 - `"redis_queued_locks.lock_hold_and_release"`
-  - an event signalizes about the "hold+and+release" process
-    when the lock obtained and hold by the block of logic;
+  - an event signalizes about the "hold+and+release" process is finished;
+  - raised from `#lock`/`#lock!` when invoked with a block of code;
   - payload:
     - `:hold_time` - `float`/`milliseconds` - lock hold time;
     - `:ttl` - `integer`/`milliseconds` - lock ttl;
@@ -947,15 +984,19 @@ Detalized event semantics and payload structure:
     - `:ts` - `integer`/`epoch` - the time when lock was obtained;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
     - `:instrument` - `nil`/`Any` - custom data passed to the `lock`/`lock!` method as `:instrument` attribute;
+
 - `"redis_queued_locks.explicit_lock_release"`
   - an event signalizes about the explicit lock release (invoked via `RedisQueuedLock#unlock`);
+  - raised from `#unlock`;
   - payload:
     - `:at` - `float`/`epoch` - the time when the lock was released;
     - `:rel_time` - `float`/`milliseconds` - time spent on lock releasing;
     - `:lock_key` - `string` - released lock (lock name);
     - `:lock_key_queue` - `string` - released lock queue (lock queue name);
+
 - `"redis_queued_locks.explicit_all_locks_release"`
   - an event signalizes about the explicit all locks release (invoked via `RedisQueuedLock#clear_locks`);
+  - raised from `#clear_locks`;
   - payload:
     - `:rel_time` - `float`/`milliseconds` - time spent on "realese all locks" operation;
     - `:at` - `float`/`epoch` - the time when the operation has ended;
@@ -964,6 +1005,8 @@ Detalized event semantics and payload structure:
 ---
 
 ## Roadmap
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
 
 - Semantic Error objects for unexpected Redis errors;
 - better specs :) with 100% test coverage;
@@ -981,6 +1024,8 @@ Detalized event semantics and payload structure:
 ---
 
 ## Contributing
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
 
 - Fork it ( https://github.com/0exp/redis_queued_locks )
 - Create your feature branch (`git checkout -b feature/my-new-feature`)
