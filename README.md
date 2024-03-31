@@ -317,13 +317,13 @@ Return value:
   ```ruby
   result = rql.lock("my_lock")
   result # =>
-  { :ok=>true,
-    :result=>
-    {
-      :lock_key=>"rql:lock:my_lock",
-      :acq_id=>"rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
-      :ts=>1711909612.653696,
-      :ttl=>10000
+  {
+    ok: true,
+    result: {
+      lock_key: "rql:lock:my_lock",
+      acq_id: "rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
+      ts: 1711909612.653696,
+      ttl: 10000
     }
   }
   ```
@@ -344,12 +344,15 @@ Return value:
     ```
     ```ruby
     # example:
-    {:ok=>true,
-     :result=>
-      {:lock_key=>"rql:lock:my_lock",
-       :acq_id=>"rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
-       :ts=>1711909612.653696,
-       :ttl=>10000}}
+    {
+      ok: true,
+      result: {
+        lock_key: "rql:lock:my_lock",
+        acq_id: "rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
+        ts: 1711909612.653696,
+        ttl: 10000
+      }
+    }
     ```
   - for failed lock obtaining:
     ```ruby
