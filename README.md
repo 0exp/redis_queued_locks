@@ -1032,7 +1032,7 @@ Detalized event semantics and payload structure:
 - (non-`timed` locks): per-ruby-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
   the acquired lock for long-running blocks of code (that invoked "under" the lock
   whose ttl may expire before the block execution completes). It makes sense for non-`timed` locks *only*;
-- lock prioritization;
+- lock request prioritization;
 - support for LIFO strategy;
 - structured logging (separated docs);
 - GitHub Actions CI;
