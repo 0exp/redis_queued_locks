@@ -14,4 +14,5 @@ module RedisQueuedLocks::Acquier
   require_relative 'acquier/queues'
   require_relative 'acquier/keys'
   require_relative 'acquier/extend_lock_ttl'
+  require_relative 'acquier/clear_dead_requests'
 end

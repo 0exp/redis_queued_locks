@@ -274,6 +274,7 @@ def lock(
 - `timed` - (optiona) `[Boolean]`
   - Limit the invocation time period of the passed block of code by the lock's TTL.
   - pre-configured in `config[:is_timed_by_default]`;
+  - `false` by default;
 - `retry_count` - (optional) `[Integer,NilClass]`
   - How many times we should try to acquire a lock. Nil means "infinite retries".
   - pre-configured in `config[:retry_count]`;

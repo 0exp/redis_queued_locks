@@ -13,8 +13,118 @@ RSpec.describe RedisQueuedLocks do
 
   after { redis.call('FLUSHDB') }
 
-  specify 'clear_dead_queus' do
-    RedisQueuedLocks::Client.new(redis)
+  specify 'clear_dead_queues' do
+    client = RedisQueuedLocks::Client.new(redis)
+    client.lock('kek.dead.lock1', ttl: 30_000)
+    client.lock('kek.dead.lock2', ttl: 30_000)
+
+    # seed requests - make them dead
+    lockers1 = Array.new(10) do
+      # seed dead short-living requests
+      Thread.new do
+        client.lock('kek.dead.lock1', ttl: 50_000, queue_ttl: 60, timeout: nil, retry_count: nil)
+      end
+    end
+    lockers2 = Array.new(6) do
+      # seed dead short-living requests
+      Thread.new do
+        client.lock('kek.dead.lock2', ttl: 50_000, queue_ttl: 60, timeout: nil, retry_count: nil)
+      end
+    end
+    sleep(4)
+    # seed super long-living request
+    locker3 = Thread.new do
+      client.lock('kek.dead.lock1', ttl: 50_000, queue_ttl: 60, timeout: nil, retry_count: nil)
+    end
+    # seed super long-living request
+    locker4 = Thread.new do
+      client.lock('kek.dead.lock2', ttl: 50_000, queue_ttl: 60, timeout: nil, retry_count: nil)
+    end
+    sleep(1)
+    # kill acquiers => requests will live in redis now (zombie requests! bu!)
+    lockers1.each(&:kill)
+    lockers2.each(&:kill)
+    locker3.kill
+    locker4.kill
+
+    expect(client.queues).to contain_exactly(
+      'rql:lock_queue:kek.dead.lock1',
+      'rql:lock_queue:kek.dead.lock2'
+    )
+    expect(client.queues_info.size).to eq(2)
+
+    queue_info1 = client.queue_info('kek.dead.lock1')
+    expect(queue_info1['queue'].size).to eq(11)
+    queue_info2 = client.queue_info('kek.dead.lock2')
+    expect(queue_info2['queue'].size).to eq(7)
+
+    expect(client.queue_info('kek.dead.lock1')).to match({
+      'lock_queue' => 'rql:lock_queue:kek.dead.lock1',
+      'queue' => contain_exactly(
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) }
+      )
+    })
+
+    expect(client.queue_info('kek.dead.lock2')).to match({
+      'lock_queue' => 'rql:lock_queue:kek.dead.lock2',
+      'queue' => contain_exactly(
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) }
+      )
+    })
+
+    # drop short living requests
+    result = client.clear_dead_requests(dead_ttl: 3_500)
+    expect(result).to match({
+      ok: true,
+      result: match({
+        processed_queues: contain_exactly(
+          'rql:lock_queue:kek.dead.lock1',
+          'rql:lock_queue:kek.dead.lock2'
+        )
+      })
+    })
+
+    # long-living requests remain
+    expect(client.queues).to contain_exactly(
+      'rql:lock_queue:kek.dead.lock1',
+      'rql:lock_queue:kek.dead.lock2'
+    )
+    expect(client.queues_info.size).to eq(2)
+
+    queue_info1 = client.queue_info('kek.dead.lock1')
+    expect(queue_info1['queue'].size).to eq(1) # long-living requests
+    queue_info2 = client.queue_info('kek.dead.lock2')
+    expect(queue_info2['queue'].size).to eq(1) # long-living requests
+
+    # drop long-living requests
+    result = client.clear_dead_requests(dead_ttl: 1_000)
+    expect(result).to match({
+      ok: true,
+      result: match({
+        processed_queues: contain_exactly(
+          'rql:lock_queue:kek.dead.lock1',
+          'rql:lock_queue:kek.dead.lock2'
+        )
+      })
+    })
+    expect(client.queues).to be_empty
+    redis.call('FLUSHDB')
   end
 
   specify 'logger' do

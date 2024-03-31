@@ -202,8 +202,7 @@ class RedisQueuedLocks::Client
     )
   end
 
-  # @param lock_name [String]
-  #   The lock name that should be released.
+  # @param lock_name [String] The lock name that should be released.
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify]
   # @option instrument [NilClass,Any]
@@ -213,7 +212,9 @@ class RedisQueuedLocks::Client
   #     result: {
   #       rel_time: Integer, # <millisecnds>
   #       rel_key: String, # lock key
-  #       rel_queue: String # lock queue
+  #       rel_queue: String, # lock queue
+  #       queue_res: Symbol, # :released or :nothing_to_release
+  #       lock_res: Symbol # :released or :nothing_to_release
   #     }
   #   }
   #
