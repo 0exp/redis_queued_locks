@@ -88,8 +88,8 @@ module RedisQueuedLocks::Acquier::ReleaseLock
       RedisQueuedLocks::Data[
         ok: true,
         result: {
-          queue: (result[0] == 1) ? :released : :nothing_to_release,
-          lock: (result[1] == 1) ? :released : :nothing_to_release
+          queue: (result[0] != 0) ? :released : :nothing_to_release,
+          lock: (result[1] != 0) ? :released : :nothing_to_release
         }
       ]
     end

@@ -10,6 +10,8 @@
   what happened inside (`:released` or `:nothing_to_release`) and to adopt to the case when you trying
   to unlock the non-existent lock;
 - More docs;
+### Changed
+- `:rel_key_cnt` result of `#clear_locks` is more accurate now;
 
 ## [0.0.39] - 2024-03-31
 ### Added

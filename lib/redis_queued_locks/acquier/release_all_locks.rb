@@ -24,7 +24,7 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     #    - Custom instrumentation data wich will be passed to the instrumenter's payload
     #      with :instrument key;
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
-    #   Format: { ok: true/false, result: Hash<Symbol,Numeric> }
+    #   Format: { ok: true, result: Hash<Symbol,Numeric> }
     #
     # @api private
     # @since 0.1.0
@@ -39,13 +39,13 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
         instrumenter.notify('redis_queued_locks.explicit_all_locks_release', {
           at: time_at,
           rel_time: rel_time,
-          rel_keys: result[:rel_keys]
+          rel_key_cnt: result[:rel_key_cnt]
         })
       end
 
       RedisQueuedLocks::Data[
         ok: true,
-        result: { rel_key_cnt: result[:rel_keys], rel_time: rel_time }
+        result: { rel_key_cnt: result[:rel_key_cnt], rel_time: rel_time }
       ]
     end
 
@@ -55,7 +55,8 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     #
     # @param redis [RedisClient]
     # @param batch_size [Integer]
-    # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
+    # @return [RedisQueuedLocks::Data,Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
+    #   - Exmaple: { ok: true, result: { rel_key_cnt: 12345 } }
     #
     # @api private
     # @since 0.1.0
@@ -69,8 +70,7 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
             count: batch_size
           ) do |lock_queue|
             # TODO: reduce unnecessary iterations
-            pipeline.call('ZREMRANGEBYSCORE', lock_queue, '-inf', '+inf')
-            pipeline.call('EXPIRE', RedisQueuedLocks::Resource.lock_key_from_queue(lock_queue), '0')
+            pipeline.call('EXPIRE', lock_queue, '0')
           end
 
           # Step B: release all locks
@@ -85,9 +85,7 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
         end
       end
 
-      rel_keys = result.count { |red_res| red_res == 0 }
-
-      RedisQueuedLocks::Data[ok: true, result: { rel_keys: rel_keys }]
+      RedisQueuedLocks::Data[ok: true, result: { rel_key_cnt: result.sum }]
     end
   end
 end

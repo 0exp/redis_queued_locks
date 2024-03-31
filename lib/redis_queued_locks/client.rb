@@ -298,12 +298,17 @@ class RedisQueuedLocks::Client
     )
   end
 
+  # Releases all queues and locks.
+  # Returns:
+  #   - :rel_time - (milliseconds) - time spent to release all locks and queues;
+  #   - :rel_key_cnt - (integer) - the number of released redis keys (queus+locks);
+  #
   # @option batch_size [Integer]
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify]
   # @option instrument [NilClass,Any]
-  # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
-  #   Format: { ok: true/false, result: Symbol/Hash }.
+  # @return [RedisQueuedLocks::Data,Hash<Symbol,Boolean|Hash<Symbol,Numeric>>]
+  #   Example: { ok: true, result { rel_key_cnt: 100, rel_time: 0.01 } }
   #
   # @api public
   # @since 0.1.0

@@ -2,7 +2,8 @@
 
 # NOTE:
 #   - these specs will be totally reworked;
-#   - this code is not ideal, it is written only for behavior testing and funcionality checking;
+#   - this code is not ideal and final,
+#     it is written only for behavior testing and funcionality checking;
 RSpec.describe RedisQueuedLocks do
   let(:redis) { RedisClient.config(db: 0).new_pool(timeout: 5, size: 50) }
 
@@ -285,7 +286,11 @@ RSpec.describe RedisQueuedLocks do
   specify '#unlock' do
     client = RedisQueuedLocks::Client.new(redis)
     client.lock('unlock_check_lock_pock', ttl: 10_000)
-    lockers = Array.new(2) { Thread.new { client.lock('unlock_check_lock_pock', ttl: 10_000) } }
+    lockers = Array.new(2) do
+      Thread.new do
+        client.lock('unlock_check_lock_pock', ttl: 10_000, retry_count: nil, retry_delay: 1_000)
+      end
+    end
 
     aggregate_failures 'unlock existing lock' do
       unlock_result = client.unlock('unlock_check_lock_pock')
@@ -318,6 +323,7 @@ RSpec.describe RedisQueuedLocks do
     end
 
     lockers.each(&:join)
+    redis.call('FLUSHDB')
   end
 
   specify ':meta' do
@@ -442,7 +448,7 @@ RSpec.describe RedisQueuedLocks do
     thread_b.join
   end
 
-  specify 'notifications' do
+  specify 'all in + notifications' do
     test_notifier = Class.new do
       attr_reader :notifications
 
@@ -573,15 +579,31 @@ RSpec.describe RedisQueuedLocks do
       end
     end
 
-    client.locks
-    client.queues
-    client.keys
+    lock_list = client.locks
+    expect(lock_list).not_to be_empty
+    expect(lock_list.all? { |lock| lock.match?(/\Arql:lock:.*?\z/) }).to eq(true)
+    queue_list = client.queues
+    expect(queue_list).not_to be_empty
+    expect(queue_list.all? { |lock| lock.match?(/\Arql:lock_queue:.*?\z/) }).to eq(true)
+    key_list = client.keys
+    expect(key_list).not_to be_empty
+    expect(key_list.all? do |key|
+      key.match?(/\Arql:(lock|lock_queue):.*?\z/)
+    end).to eq(true)
 
     client.unlock('locklock1')
     sleep(3)
-    client.clear_locks
+    cleared_locks = client.clear_locks
+    expect(cleared_locks).to match({
+      ok: true,
+      result: {
+        rel_key_cnt: satisfy { |cnt| cnt > 0 },
+        rel_time: be_a(Numeric)
+      }
+    })
 
     puts test_notifier.notifications
+    expect(test_notifier.notifications).not_to be_empty
 
     a_threads.each(&:join)
     b_threads.each(&:join)

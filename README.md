@@ -640,7 +640,10 @@ rql.unlock("your_lock_name")
     - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
 
 - returns:
- - `[Hash<Symbol,Numeric>]` - Format: `{ ok: true/false, result: Hash<Symbol,Numeric> }`;
+ - `[Hash<Symbol,Numeric>]` - Format: `{ ok: true, result: Hash<Symbol,Numeric> }`;
+ - result data:
+  - `:rel_time` - `Numeric` - time spent to release all locks and related queus;
+  - `:rel_key_cnt` - `Integer` - the number of released Redis keys (queues+locks);
 
 ```ruby
 rql.clear_locks
@@ -649,8 +652,8 @@ rql.clear_locks
 {
   ok: true,
   result: {
-    rel_time: 3.07, # time spent to release all locks and related lock queues
-    rel_key_cnt: 100_500 # released redis keys (released locks + released lock queues)
+    rel_time: 3.07,
+    rel_key_cnt: 1234
   }
 }
 ```
@@ -1024,7 +1027,7 @@ Detalized event semantics and payload structure:
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - Semantic Error objects for unexpected Redis errors;
-- better specs :) with 100% test coverage;
+- better specs with 100% test coverage;
 - per-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
   the acquired lock for long-running blocks of code (that invoked "under" the lock
   whose ttl may expire before the block execution completes). It only makes sense for non-`timed` locks;
@@ -1033,7 +1036,7 @@ Detalized event semantics and payload structure:
 - structured logging (separated docs);
 - GitHub Actions CI;
 - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
-- better code stylization and interesting refactorings (observers);
+- better code stylization (+ some refactorings);
 - statistics with UI;
 
 ---
