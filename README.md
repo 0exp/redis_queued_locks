@@ -318,10 +318,19 @@ Return value:
       result: {
         lock_key: String, # acquierd lock key ("rql:lock:your_lock_name")
         acq_id: String, # acquier identifier ("process_id/thread_id/fiber_id/ractor_id/identity")
-        ts: Integer, # time (epoch) when lock was obtained (integer)
+        ts: Float, # time (epoch) when lock was obtained (float, Time#to_f)
         ttl: Integer # lock's time to live in milliseconds (integer)
       }
     }
+    ```
+    ```ruby
+    # example:
+    {:ok=>true,
+     :result=>
+      {:lock_key=>"rql:lock:my_lock",
+       :acq_id=>"rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
+       :ts=>1711909612.653696,
+       :ttl=>10000}}
     ```
   - for failed lock obtaining:
     ```ruby
@@ -331,6 +340,62 @@ Return value:
     { ok: false, result: :fail_fast_after_try } # see <fail_fast> option
     { ok: false, result: :unknown }
     ```
+
+- obtain a lock:
+
+```ruby
+rql.lock("my_lock") { print "Hello!" }
+```
+
+- obtain a lock with custom lock TTL:
+
+```ruby
+rql.lock("my_lock", ttl: 5_000) { print "Hello!" } # for 5 seconds
+```
+
+- obtain a lock and limit the passed block of code TTL with lock's TTL:
+
+```ruby
+rql.lock("my_lock", ttl: 5_000, timed: true) { sleep(4) }
+# => OK
+
+rql.lock("my_lock", ttl: 5_000, timed: true) { sleep(6) }
+# => fails with RedisQueuedLocks::TimedLockTimeoutError,
+```
+
+- obtain a lock with inifnite retry counts:
+
+```ruby
+rql.lock("my_lock", retry_count: nil, timeout: nil)
+```
+
+- try to obtain with a custom waiting timeout:
+
+```ruby
+# First Ruby Process:
+rql.lock("my_lock", ttl: 5_000) { sleep(4) } # acquire a long living lock
+
+# Another Ruby Process:
+rql.lock("my_lock", timeout: 2) # try to acquire but wait for a 2 seconds maximum
+# =>
+{ ok: false, result: :timeout_reached }
+```
+
+- obtain a lock and immediatly continue working (the lock will live in the background in Redis with the passed ttl)
+
+```ruby
+rql.lock("my_lock", ttl: 6_500)
+# =>
+{
+  ok: true,
+  result: {
+    lock_key: "rql:lock:my_lock",
+    acq_id: "rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
+    ts: 1711909612.653696,
+    ttl: 10000
+  }
+}
+```
 
 ---
 
