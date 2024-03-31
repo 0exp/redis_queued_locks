@@ -9,7 +9,7 @@
 - Ther result of `#unlock` is changed: added `:lock_res` and `:queue_res` result data in order to reflect
   what happened inside (`:released` or `:nothing_to_release`) and to adopt to the case when you trying
   to unlock the non-existent lock;
-- More docs;
+- A lot of documentation updates;
 - Github CI Workflow;
 ### Changed
 - `:rel_key_cnt` result of `#clear_locks` is more accurate now;
