@@ -865,10 +865,11 @@ rql.queues_info # or rql.qeuues_info(scan_size: 123)
 
 <sup>\[[back to top](#usage)\]</sup>
 
-In some cases your lock requests may become "dead". It can happen when your processs
-that are enqueeud to the lock queue is failed unexpectedly (for some reason) before the lock acquire moment
-and when no any other process does not need this lock anymore. For this case your lock will be cleared only when any process
-will try to acquire this lock again (cuz lock acquirement triggers the removement of expired requests).
+In some cases your lock requests may become "dead". It means that your lock request lives in lock queue in Redis without
+any processing. It can happen when your processs that are enqueeud to the lock queue is failed unexpectedly (for some reason)
+before the lock acquire moment occurs and when no any other process does not need this lock anymore.
+For this case your lock reuquest will be cleared only when any process will try
+to acquire this lock again (cuz lock acquirement triggers the removement of expired requests).
 
 In order to help with these dead requests you may periodically call `#clear_dead_requests`
 with corresponding `dead_ttl` option, that is pre-configured by default via `config[:dead_request_ttl]`.
