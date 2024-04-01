@@ -872,9 +872,9 @@ For this case your lock reuquest will be cleared only when any process will try
 to acquire this lock again (cuz lock acquirement triggers the removement of expired requests).
 
 In order to help with these dead requests you may periodically call `#clear_dead_requests`
-with corresponding `dead_ttl` option, that is pre-configured by default via `config[:dead_request_ttl]`.
+with corresponding `:dead_ttl` option, that is pre-configured by default via `config[:dead_request_ttl]`.
 
-An option is required because of it is no any **fast** way to understand which request
+`:dead_ttl` option is required because of it is no any **fast** way to understand which request
 is dead now and is it really dead cuz each request queue can host their requests with
 a custom queue ttl for each request differently.
 
