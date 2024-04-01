@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+## [1.0.0] - 2024-04-01
+- First Major Release;
+
 ## [0.0.40] - 2024-04-01
 ### Added
 - `RedisQueuedLocks::Client#clear_dead_requests` implementation;
