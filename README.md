@@ -632,12 +632,12 @@ rql.unlock("your_lock_name")
     - pre-configured in `config[:lock_release_batch_size]`;
   - `:logger` - (optional) `[::Logger,#debug]`
     - custom logger object;
-    - has a preconfigured value in `config[:logger]`;
+    - pre-configured value in `config[:logger]`;
   - `:instrumenter` - (optional) `[#notify]`
     - custom instrumenter object;
-    - has a preconfigured value in `config[:isntrumenter]`;
+    - pre-configured value in `config[:isntrumenter]`;
   - `:instrument` - (optional) `[NilClass,Any]`
-    - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
+    - custom instrumentation data wich will be passed to the instrumenter's payload with `:instrument` key;
 
 - returns:
  - `[Hash<Symbol,Numeric>]` - Format: `{ ok: true, result: Hash<Symbol,Numeric> }`;
