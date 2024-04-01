@@ -429,6 +429,24 @@ rql.lock("my_lock", ttl: 6_500) # blocks execution until the lock is obtained
 puts "Let's go" # will be called immediately after the lock is obtained
 ```
 
+- add custom metadata to the lock (via `:meta` option):
+
+```ruby
+rql.lock("my_lock", ttl: 123456, meta: { "some" => "data", key: 123.456 })
+
+rql.lock_info("my_lock")
+# =>
+{
+  "lock_key" => "rql:lock:my_lock",
+  "acq_id" => "rql:acq:123/456/567/678/374dd74324",
+  "ts" => 123456789,
+  "ini_ttl" => 123456,
+  "rem_ttl" => 123440,
+  "some" => "data",
+  "key" => "123.456" # NOTE: returned as a raw string directly from Redis
+}
+```
+
 ---
 
 #### #lock! - exceptional lock obtaining

@@ -1,6 +1,8 @@
 ## [Unreleased]
 ### Added
-- Minor documentation updates;
+- Documentation updates:
+  - more `#lock` examples;
+  - some minor updates;
 
 ## [1.0.0] - 2024-04-01
 - First Major Release;
