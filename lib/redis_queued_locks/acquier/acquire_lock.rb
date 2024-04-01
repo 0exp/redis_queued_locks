@@ -186,7 +186,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
       with_acq_timeout(timeout, lock_key, raise_errors, on_timeout: acq_dequeue) do
         acq_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
 
-        # Step 2.1: caclically try to obtain the lock
+        # Step 2.1: cyclically try to obtain the lock
         while acq_process[:should_try]
           run_non_critical do
             logger.debug do
