@@ -245,7 +245,7 @@ def lock(
   ttl: config[:default_lock_ttl],
   queue_ttl: config[:default_queue_ttl],
   timeout: config[:try_to_lock_timeout],
-  timed: false,
+  timed: config[:is_timed_by_default],
   retry_count: config[:retry_count],
   retry_delay: config[:retry_delay],
   retry_jitter: config[:retry_jitter],
