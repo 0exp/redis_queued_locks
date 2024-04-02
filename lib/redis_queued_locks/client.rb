@@ -402,11 +402,12 @@ class RedisQueuedLocks::Client
   end
 
   # @option dead_ttl [Integer]
-  #  - the time period (in millsiecnds) after whcih the lock request is
-  #    considered as dead;
-  #  - `config[:dead_request_ttl]` is used by default;
+  #   - the time period (in millsiecnds) after whcih the lock request is
+  #     considered as dead;
+  #   - `config[:dead_request_ttl]` is used by default;
   # @option scan_size [Integer]
-  #   The batch of scanned keys for Redis'es SCAN command.
+  #   - the batch of scanned keys for Redis'es SCAN command;
+  #   - `config[:lock_release_batch_size]` is used by default;
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify]
   # @option instrument [NilClass,Any]
@@ -417,7 +418,7 @@ class RedisQueuedLocks::Client
   # @since 0.1.0
   def clear_dead_requests(
     dead_ttl: config[:dead_request_ttl],
-    scan_size: config[:key_extraction_batch_size],
+    scan_size: config[:lock_release_batch_size],
     logger: config[:logger],
     instrumenter: config[:instrumenter],
     instrument: nil

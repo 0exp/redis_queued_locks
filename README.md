@@ -155,9 +155,15 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   config.lock_release_batch_size = 100
 
   # (default: 500)
-  # - how many items should be extracted from redis during the #locks, #queues and #keys operations (uses SCAN);
+  # - how many items should be extracted from redis during the #locks, #queues, #keys
+  #   #locks_info, and #queues_info operations (uses SCAN);
   # - affects the performance of your Redis and Ruby Application (configure thoughtfully;)
   config.key_extraction_batch_size = 500
+
+  # (default: 1 day)
+  # - the default period of time (in milliseconds) after which a lock request is considered dead;
+  # - used for `#clear_dead_requests` as default vaule of `:dead_ttl` option;
+  config.dead_request_ttl = (1 * 24 * 60 * 60 * 1000) # one day in milliseconds
 
   # (default: RedisQueuedLocks::Instrument::VoidNotifier)
   # - instrumentation layer;
