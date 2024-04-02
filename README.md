@@ -699,7 +699,6 @@ rql.unlock("your_lock_name")
     - pre-configured value in `config[:isntrumenter]`;
   - `:instrument` - (optional) `[NilClass,Any]`
     - custom instrumentation data wich will be passed to the instrumenter's payload with `:instrument` key;
-
 - returns:
   - `[Hash<Symbol,Numeric>]` - Format: `{ ok: true, result: Hash<Symbol,Numeric> }`;
   - result data:
