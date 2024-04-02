@@ -701,10 +701,10 @@ rql.unlock("your_lock_name")
     - custom instrumentation data wich will be passed to the instrumenter's payload with `:instrument` key;
 
 - returns:
- - `[Hash<Symbol,Numeric>]` - Format: `{ ok: true, result: Hash<Symbol,Numeric> }`;
- - result data:
-  - `:rel_time` - `Numeric` - time spent to release all locks and related queus;
-  - `:rel_key_cnt` - `Integer` - the number of released Redis keys (queues+locks);
+  - `[Hash<Symbol,Numeric>]` - Format: `{ ok: true, result: Hash<Symbol,Numeric> }`;
+  - result data:
+    - `:rel_time` - `Numeric` - time spent to release all locks and related queus;
+    - `:rel_key_cnt` - `Integer` - the number of released Redis keys (queues+locks);
 
 ```ruby
 rql.clear_locks
