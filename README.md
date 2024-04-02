@@ -453,14 +453,14 @@ rql.lock_info("my_lock")
 }
 ```
 
-- setting a short limit of time to the lock request queue position (if a process fails to acquire
+- (`:queue_ttl`) setting a short limit of time to the lock request queue position (if a process fails to acquire
   the lock within this period of time (and before timeout/retry_count limits occurs of course) -
-  it's lock request will move to the end of queue):
+  it's lock request will be moved to the end of queue):
 
 ```ruby
-rql.lock("my_lock", queue_ttl: 5, timeout: nil, retry_count: nil)
-# "queue_ttl: 5" means "within this period of time your request will be
-# "timeout: nil, retry_count: nil" is representative "endles try" example to show the lock queue behavior;
+rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
+# "queue_ttl: 5": 5 seconds time slot before the lock request moves to the end of queue;
+# "timeout" and "retry_count" is used as "endless lock try attempts" example to show the lock queue behavior;
 
 # lock queue: =>
 [
