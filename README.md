@@ -467,7 +467,7 @@ rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
  "rql:acq:123/456/567/676/374dd74324", 
  "rql:acq:123/456/567/677/374dd74322", # <- long living lock
  "rql:acq:123/456/567/679/374dd74321",
- "rql:acq:123/456/567/683/374dd74322", # we are here
+ "rql:acq:123/456/567/683/374dd74322", # <== we are here
  "rql:acq:123/456/567/685/374dd74329", # some other waiting process
 ]
 
@@ -476,7 +476,7 @@ rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
 [
  "rql:acq:123/456/567/677/374dd74322", # <- long living lock
  "rql:acq:123/456/567/679/374dd74321",
- "rql:acq:123/456/567/683/374dd74322", # we are here
+ "rql:acq:123/456/567/683/374dd74322", # <== we are here
  "rql:acq:123/456/567/685/374dd74329", # some other waiting process
 ]
 
@@ -485,7 +485,7 @@ rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
 # lock queue: =>
 [
  "rql:acq:123/456/567/685/374dd74329", # some other waiting process
- "rql:acq:123/456/567/683/374dd74322", # we are here (moved to the end of the queue)
+ "rql:acq:123/456/567/683/374dd74322", # <== we are here (moved to the end of the queue)
 ]
 
 ```
