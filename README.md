@@ -453,6 +453,43 @@ rql.lock_info("my_lock")
 }
 ```
 
+- setting a short limit of time to the lock request queue position (if a process fails to acquire
+  the lock within this period of time (and before timeout/retry_count limits occurs of course) -
+  it's lock request will move to the end of queue):
+
+```ruby
+rql.lock("my_lock", queue_ttl: 5, timeout: nil, retry_count: nil)
+# "queue_ttl: 5" means "within this period of time your request will be
+# "timeout: nil, retry_count: nil" is representative "endles try" example to show the lock queue behavior;
+
+# lock queue: =>
+[
+ "rql:acq:123/456/567/676/374dd74324", 
+ "rql:acq:123/456/567/677/374dd74322", # <- long living lock
+ "rql:acq:123/456/567/679/374dd74321",
+ "rql:acq:123/456/567/683/374dd74322", # we are here
+ "rql:acq:123/456/567/685/374dd74329", # some other waiting process
+]
+
+# ... some period of time (2 seconds later)
+# lock queue: =>
+[
+ "rql:acq:123/456/567/677/374dd74322", # <- long living lock
+ "rql:acq:123/456/567/679/374dd74321",
+ "rql:acq:123/456/567/683/374dd74322", # we are here
+ "rql:acq:123/456/567/685/374dd74329", # some other waiting process
+]
+
+# ... some period of time (3 seconds later)
+# ... queue_ttl time limit is reached
+# lock queue: =>
+[
+ "rql:acq:123/456/567/685/374dd74329", # some other waiting process
+ "rql:acq:123/456/567/683/374dd74322", # we are here (moved to the end of the queue)
+]
+
+```
+
 ---
 
 #### #lock! - exceptional lock obtaining
