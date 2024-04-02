@@ -7,8 +7,7 @@
   - added missing docs for `config.dead_request_ttl`;
   - some minor updates;
 ### Changed
-- `#clear_dead_requests`: `:scan_size` is equal to `config[:lock_release_batch_size]` now (instead of to `config[:key_extraction_batch_size]`);
-  cuz `#clear_dead_requests` works with lock releasing;
+- `#clear_dead_requests`: `:scan_size` is equal to `config[:lock_release_batch_size]` now (instead of to `config[:key_extraction_batch_size]`), cuz `#clear_dead_requests` works with lock releasing;
 
 ## [1.0.0] - 2024-04-01
 - First Major Release;
