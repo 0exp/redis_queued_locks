@@ -150,8 +150,8 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   config.is_timed_by_default = false
 
   # (default: 100)
-  # - how many items will be released at a time in RedisQueuedLocks::Client#clear_locks logic (uses SCAN);
-  # - affects the performancs of your Redis and Ruby Application (configure thoughtfully);
+  # - how many items will be released at a time in #clear_locks and in #clear_dead_requests (uses SCAN);
+  # - affects the performance of your Redis and Ruby Application (configure thoughtfully);
   config.lock_release_batch_size = 100
 
   # (default: 500)
@@ -944,7 +944,7 @@ Accepts:
   - has a preconfigured value in `config[:dead_request_ttl]` (1 day by default);
 - `:sacn_size` - (optional) `[Integer]`
   - the batch of scanned keys for Redis'es SCAN command;
-  - has a preconfigured valie in `config[:key_extraction_batch_size]`;
+  - has a preconfigured valie in `config[:lock_release_batch_size]`;
 - `:logger` - (optional) `[::Logger,#debug]`
   - custom logger object;
   - pre-configured in `config[:logger]`;
