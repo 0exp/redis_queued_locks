@@ -328,6 +328,8 @@ def lock(
   - A block of code that should be executed after the successfully acquired lock.
   - If block is **passed** the obtained lock will be released after the block execution or it's ttl (what will happen first);
   - If block is **not passed** the obtained lock will be released after it's ttl;
+  - If you want the block to have a TTL too and this TTL to be the same as TTL of the lock
+    use `timed: true` option (`rql.lock("my_lock", timed: true, ttl: 5_000) { ... }`)
 
 Return value:
 
