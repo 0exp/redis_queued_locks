@@ -324,7 +324,7 @@ def lock(
   - should be logged the each try of lock acquiring (a lot of logs can be generated depending on your retry configurations);
   - pre-configured in `config[:log_lock_try]`;
   - `false` by default;
-- `block` - `[Block]`
+- `block` - (optional) `[Block]`
   - A block of code that should be executed after the successfully acquired lock.
   - If block is **passed** the obtained lock will be released after the block execution or it's ttl (what will happen first);
   - If block is **not passed** the obtained lock will be released after it's ttl;
