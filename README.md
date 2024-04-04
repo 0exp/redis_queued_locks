@@ -674,7 +674,7 @@ rql.unlock("your_lock_name")
   result: {
     rel_time: 0.02, # time spent to lock release (in seconds)
     rel_key: "rql:lock:your_lock_name", # released lock key
-    rel_queue: "rql:lock_queue:your_lock_name" # released lock key queue
+    rel_queue: "rql:lock_queue:your_lock_name", # released lock key queue
     queue_res: :released, # or :nothing_to_release
     lock_res: :released # or :nothing_to_release
   }
