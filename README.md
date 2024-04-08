@@ -1091,7 +1091,7 @@ Detalized event semantics and payload structure:
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - **strict redlock algorithm support** (support for many `RedisClient` instances);
-- deadlock detection (with some options to auto-correction);
+- deadlock detection (with some options for auto-resolving);
 - Semantic Error objects for unexpected Redis errors;
 - better specs with 100% test coverage (total rework);
 - (non-`timed` locks): per-ruby-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
