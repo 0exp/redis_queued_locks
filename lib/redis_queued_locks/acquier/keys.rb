@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Acquier::Keys
   class << self
     # @param redis_client [RedisClient]
@@ -9,7 +9,7 @@ module RedisQueuedLocks::Acquier::Keys
     # @return [Array<String>]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def keys(redis_client, scan_size:)
       Set.new.tap do |keys|
         redis_client.scan(

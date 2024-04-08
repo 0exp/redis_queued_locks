@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 # rubocop:disable Metrics/ModuleLength, Metrics/BlockNesting
 module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
-  # @since 0.1.0
+  # @since 1.0.0
   extend RedisQueuedLocks::Utilities
 
   # @param redis [RedisClient]
@@ -21,7 +21,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol|Hash<Symbol,Any> }
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   # rubocop:disable Metrics/MethodLength
   def try_to_lock(
     redis,
@@ -259,7 +259,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   def dequeue_from_lock_queue(redis, logger, lock_key, lock_key_queue, queue_ttl, acquier_id)
     result = redis.call('ZREM', lock_key_queue, acquier_id)
 

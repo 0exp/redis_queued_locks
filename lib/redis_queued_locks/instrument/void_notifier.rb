@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # @api public
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Instrument::VoidNotifier
   class << self
     # @param event [String]
@@ -9,7 +9,7 @@ module RedisQueuedLocks::Instrument::VoidNotifier
     # @return [void]
     #
     # @api public
-    # @since 0.1.0
+    # @since 1.0.0
     def notify(event, payload = {}); end
   end
 end

@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Debugger::Interface
   # @param message [String]
   # @return [void]
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   def debug(message)
     RedisQueuedLocks::Debugger.debug(message)
   end
@@ -15,7 +15,7 @@ module RedisQueuedLocks::Debugger::Interface
   # @return [void]
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   def enable_debugger!
     RedisQueuedLocks::Debugger.enable!
   end
@@ -23,7 +23,7 @@ module RedisQueuedLocks::Debugger::Interface
   # @return [void]
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   def disable_debugger!
     RedisQueuedLocks::Debugger.disable!
   end

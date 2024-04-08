@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Acquier::ReleaseLock
-  # @since 0.1.0
+  # @since 1.0.0
   extend RedisQueuedLocks::Utilities
 
   class << self
@@ -27,7 +27,7 @@ module RedisQueuedLocks::Acquier::ReleaseLock
     #   Format: { ok: true/false, result: Hash<Symbol,Numeric|String|Symbol> }
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def release_lock(redis, lock_name, instrumenter, logger)
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
@@ -76,7 +76,7 @@ module RedisQueuedLocks::Acquier::ReleaseLock
     #   }
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def fully_release_lock(redis, lock_key, lock_key_queue)
       result = redis.with do |rconn|
         rconn.multi do |transact|

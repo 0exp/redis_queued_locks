@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
-  # @since 0.1.0
+  # @since 1.0.0
   extend RedisQueuedLocks::Utilities
 
   # @param redis [RedisClient] Redis connection manager.
@@ -18,7 +18,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
   # @return [Any,NilClass] nil is returned no block parametr is provided.
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   def yield_with_expire(
     redis,
     logger,
@@ -59,7 +59,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
   # @return [Any]
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   def yield_with_timeout(timeout, lock_key, lock_ttl, &block)
     ::Timeout.timeout(timeout, &block)
   rescue ::Timeout::Error

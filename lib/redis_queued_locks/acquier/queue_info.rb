@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Acquier::QueueInfo
   class << self
     # Returns an information about the required lock queue by the lock name. The result
@@ -23,7 +23,7 @@ module RedisQueuedLocks::Acquier::QueueInfo
     #   }
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def queue_info(redis_client, lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
 

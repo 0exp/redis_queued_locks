@@ -7,7 +7,7 @@ require 'securerandom'
 require 'logger'
 
 # @api public
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks
   require_relative 'redis_queued_locks/version'
   require_relative 'redis_queued_locks/errors'
@@ -20,6 +20,6 @@ module RedisQueuedLocks
   require_relative 'redis_queued_locks/instrument'
   require_relative 'redis_queued_locks/client'
 
-  # @since 0.1.0
+  # @since 1.0.0
   extend RedisQueuedLocks::Debugger::Interface
 end

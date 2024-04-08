@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Utilities
   module_function
 
@@ -9,7 +9,7 @@ module RedisQueuedLocks::Utilities
   # @return [Any]
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   def run_non_critical(&block)
     yield rescue nil
   end

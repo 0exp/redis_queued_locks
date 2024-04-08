@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 # rubocop:disable Metrics/ModuleLength
 # rubocop:disable Metrics/MethodLength
 # rubocop:disable Metrics/ClassLength
@@ -12,21 +12,21 @@ module RedisQueuedLocks::Acquier::AcquireLock
   require_relative 'acquire_lock/yield_with_expire'
   require_relative 'acquire_lock/try_to_lock'
 
-  # @since 0.1.0
+  # @since 1.0.0
   extend TryToLock
-  # @since 0.1.0
+  # @since 1.0.0
   extend DelayExecution
-  # @since 0.1.0
+  # @since 1.0.0
   extend YieldWithExpire
-  # @since 0.1.0
+  # @since 1.0.0
   extend WithAcqTimeout
-  # @since 0.1.0
+  # @since 1.0.0
   extend RedisQueuedLocks::Utilities
 
   # @return [Integer] Redis time error (in milliseconds).
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   REDIS_TIMESHIFT_ERROR = 2
 
   class << self
@@ -87,7 +87,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #  - If block is given the result of block's yeld will be returned.
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def acquire_lock(
       redis,
       lock_name,

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Acquier
   require_relative 'acquier/acquire_lock'
   require_relative 'acquier/release_lock'

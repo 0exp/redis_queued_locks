@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Acquier::ReleaseAllLocks
-  # @since 0.1.0
+  # @since 1.0.0
   extend RedisQueuedLocks::Utilities
 
   class << self
@@ -27,7 +27,7 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     #   Format: { ok: true, result: Hash<Symbol,Numeric> }
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def release_all_locks(redis, batch_size, logger, instrumenter, instrument)
       rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
       fully_release_all_locks(redis, batch_size) => { ok:, result: }
@@ -59,7 +59,7 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     #   - Exmaple: { ok: true, result: { rel_key_cnt: 12345 } }
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def fully_release_all_locks(redis, batch_size)
       result = redis.with do |rconn|
         rconn.pipelined do |pipeline|

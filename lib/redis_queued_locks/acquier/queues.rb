@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Acquier::Queues
   class << self
     # @param redis_client [RedisClient]
@@ -10,7 +10,7 @@ module RedisQueuedLocks::Acquier::Queues
     # @return [Set<String>,Set<Hash<Symbol,Any>>]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def queues(redis_client, scan_size:, with_info:)
       redis_client.with do |rconn|
         lock_queues = scan_queues(rconn, scan_size)
@@ -25,7 +25,7 @@ module RedisQueuedLocks::Acquier::Queues
     # @return [Set<String>]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def scan_queues(redis_client, scan_size)
       Set.new.tap do |lock_queues|
         redis_client.scan(
@@ -44,7 +44,7 @@ module RedisQueuedLocks::Acquier::Queues
     # @return [Set<Hash<Symbol,Any>>]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def extract_queues_info(redis_client, lock_queues)
       # TODO: refactor with RedisQueuedLocks::Acquier::QueueInfo
       Set.new.tap do |seeded_queues|

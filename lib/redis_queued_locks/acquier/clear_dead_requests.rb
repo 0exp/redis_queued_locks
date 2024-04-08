@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Acquier::ClearDeadRequests
   class << self
     # @param redis_client [RedisClient]
@@ -13,7 +13,7 @@ module RedisQueuedLocks::Acquier::ClearDeadRequests
     # @return [Hash<Symbol,Boolean|Hash<Symbol,Set<String>>>]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def clear_dead_requests(redis_client, scan_size, dead_ttl, logger, instrumenter, instrument)
       dead_score = RedisQueuedLocks::Resource.acquier_dead_score(dead_ttl / 1000.0)
 
@@ -39,7 +39,7 @@ module RedisQueuedLocks::Acquier::ClearDeadRequests
     # @return [Enumerator]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def each_lock_queue(redis_client, scan_size, &block)
       redis_client.scan(
         'MATCH',

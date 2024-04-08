@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Debugger
   require_relative 'debugger/interface'
 
   # @return [String]
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   DEBUG_ENABLED_METHOD = <<~METHOD_DECLARATION.strip.freeze
     def debug(message) = STDOUT.write("#\{message}\n")
   METHOD_DECLARATION
@@ -16,20 +16,20 @@ module RedisQueuedLocks::Debugger
   # @return [String]
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   DEBUG_DISABLED_MEHTOD = <<~METHOD_DECLARATION.strip.freeze
     def debug(message); end
   METHOD_DECLARATION
 
   class << self
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     instance_variable_set(:@enabled, false)
 
     # @return [void]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def enable!
       @enabled = true
       eval(DEBUG_ENABLED_METHOD)
@@ -38,7 +38,7 @@ module RedisQueuedLocks::Debugger
     # @return [void]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def disable!
       @enabled = false
       eval(DEBUG_DISABLED_MEHTOD)
@@ -47,7 +47,7 @@ module RedisQueuedLocks::Debugger
     # @return [Boolean]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def enabled?
       @enabled
     end
@@ -56,7 +56,7 @@ module RedisQueuedLocks::Debugger
     # @return [void]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def debug(message); end
   end
 end

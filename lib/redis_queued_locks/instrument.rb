@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # @api public
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Instrument
   require_relative 'instrument/void_notifier'
   require_relative 'instrument/active_support'
@@ -11,7 +11,7 @@ module RedisQueuedLocks::Instrument
     # @return [Boolean]
     #
     # @api public
-    # @since 0.1.0
+    # @since 1.0.0
     def valid_interface?(instrumenter)
       if instrumenter == RedisQueuedLocks::Instrument::ActiveSupport
         # NOTE: active_support should be required in your app

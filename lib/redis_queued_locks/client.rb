@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 # @api public
-# @since 0.1.0
+# @since 1.0.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
-  # @since 0.1.0
+  # @since 1.0.0
   include Qonfig::Configurable
 
   configuration do
@@ -41,7 +41,7 @@ class RedisQueuedLocks::Client
   # @return [RedisClient]
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   attr_reader :redis_client
 
   # NOTE: attr_access here is chosen intentionally in order to have an ability to change
@@ -49,7 +49,7 @@ class RedisQueuedLocks::Client
   # @return [String]
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   attr_accessor :uniq_identity
 
   # @param redis_client [RedisClient]
@@ -60,7 +60,7 @@ class RedisQueuedLocks::Client
   # @return [void]
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def initialize(redis_client, &configs)
     configure(&configs)
     @uniq_identity = config[:uniq_identifier].call
@@ -116,7 +116,7 @@ class RedisQueuedLocks::Client
   #   - If block is given the result of block's yeld will be returned.
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def lock(
     lock_name,
     ttl: config[:default_lock_ttl],
@@ -164,7 +164,7 @@ class RedisQueuedLocks::Client
   # @note See #lock method signature.
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def lock!(
     lock_name,
     ttl: config[:default_lock_ttl],
@@ -219,7 +219,7 @@ class RedisQueuedLocks::Client
   #   }
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def unlock(
     lock_name,
     logger: config[:logger],
@@ -238,7 +238,7 @@ class RedisQueuedLocks::Client
   # @return [Boolean]
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def locked?(lock_name)
     RedisQueuedLocks::Acquier::IsLocked.locked?(redis_client, lock_name)
   end
@@ -247,7 +247,7 @@ class RedisQueuedLocks::Client
   # @return [Boolean]
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def queued?(lock_name)
     RedisQueuedLocks::Acquier::IsQueued.queued?(redis_client, lock_name)
   end
@@ -256,7 +256,7 @@ class RedisQueuedLocks::Client
   # @return [Hash<String,String|Numeric>,NilClass]
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def lock_info(lock_name)
     RedisQueuedLocks::Acquier::LockInfo.lock_info(redis_client, lock_name)
   end
@@ -265,7 +265,7 @@ class RedisQueuedLocks::Client
   # @return [Hash<String|Array<Hash<String,String|Numeric>>,NilClass]
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def queue_info(lock_name)
     RedisQueuedLocks::Acquier::QueueInfo.queue_info(redis_client, lock_name)
   end
@@ -288,7 +288,7 @@ class RedisQueuedLocks::Client
   #   - { ok: false, result: :async_expire_or_no_lock }
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def extend_lock_ttl(lock_name, milliseconds, logger: config[:logger])
     RedisQueuedLocks::Acquier::ExtendLockTTL.extend_lock_ttl(
       redis_client,
@@ -311,7 +311,7 @@ class RedisQueuedLocks::Client
   #   Example: { ok: true, result { rel_key_cnt: 100, rel_time: 0.01 } }
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def clear_locks(
     batch_size: config[:lock_release_batch_size],
     logger: config[:logger],
@@ -345,7 +345,7 @@ class RedisQueuedLocks::Client
   # @return [Set<String>,Set<Hash<Symbol,Any>>]
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def locks(scan_size: config[:key_extraction_batch_size], with_info: false)
     RedisQueuedLocks::Acquier::Locks.locks(redis_client, scan_size:, with_info:)
   end
@@ -356,7 +356,7 @@ class RedisQueuedLocks::Client
   # @return [Set<Hash<String,Any>>]
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def locks_info(scan_size: config[:key_extraction_batch_size])
     locks(scan_size:, with_info: true)
   end
@@ -376,7 +376,7 @@ class RedisQueuedLocks::Client
   # @return [Set<String>,String<Hash<Symbol,Any>>]
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def queues(scan_size: config[:key_extraction_batch_size], with_info: false)
     RedisQueuedLocks::Acquier::Queues.queues(redis_client, scan_size:, with_info:)
   end
@@ -387,7 +387,7 @@ class RedisQueuedLocks::Client
   # @return [Set<Hash<Symbol,Any>>]
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def queues_info(scan_size: config[:key_extraction_batch_size])
     queues(scan_size:, with_info: true)
   end
@@ -396,7 +396,7 @@ class RedisQueuedLocks::Client
   # @return [Set<String>]
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   def keys(scan_size: config[:key_extraction_batch_size])
     RedisQueuedLocks::Acquier::Keys.keys(redis_client, scan_size:)
   end
@@ -415,7 +415,7 @@ class RedisQueuedLocks::Client
   #   Format: { ok: true, result: { processed_queus: Set<String> } }
   #
   # @api public
-  # @since 0.1.0
+  # @since 1.0.0
   # @version 1.1.0
   def clear_dead_requests(
     dead_ttl: config[:dead_request_ttl],

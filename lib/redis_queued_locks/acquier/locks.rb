@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Acquier::Locks
   class << self
     # @param redis_client [RedisClient]
@@ -10,7 +10,7 @@ module RedisQueuedLocks::Acquier::Locks
     # @return [Set<String>,Set<Hash<Symbol,Any>>]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def locks(redis_client, scan_size:, with_info:)
       redis_client.with do |rconn|
         lock_keys = scan_locks(rconn, scan_size)
@@ -25,7 +25,7 @@ module RedisQueuedLocks::Acquier::Locks
     # @return [Set<String>]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def scan_locks(redis_client, scan_size)
       Set.new.tap do |lock_keys|
         redis_client.scan(
@@ -44,7 +44,7 @@ module RedisQueuedLocks::Acquier::Locks
     # @return [Set<Hash<Symbol,Any>>]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     # rubocop:disable Metrics/MethodLength
     def extract_locks_info(redis_client, lock_keys)
       # TODO: refactor with RedisQueuedLocks::Acquier::LockInfo

@@ -1,24 +1,24 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Resource
   # @return [String]
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   KEY_PATTERN = 'rql:lock*'
 
   # @return [String]
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   LOCK_PATTERN = 'rql:lock:*'
 
   # @return [String]
   #
   # @api private
-  # @since 0.1.0
+  # @since 1.0.0
   LOCK_QUEUE_PATTERN = 'rql:lock_queue:*'
 
   class << self
@@ -29,7 +29,7 @@ module RedisQueuedLocks::Resource
     # @return [String]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def calc_uniq_identity
       SecureRandom.hex(8)
     end
@@ -42,7 +42,7 @@ module RedisQueuedLocks::Resource
     # @return [String]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def acquier_identifier(process_id, thread_id, fiber_id, ractor_id, identity)
       "rql:acq:#{process_id}/#{thread_id}/#{fiber_id}/#{ractor_id}/#{identity}"
     end
@@ -51,7 +51,7 @@ module RedisQueuedLocks::Resource
     # @return [String]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def prepare_lock_key(lock_name)
       "rql:lock:#{lock_name}"
     end
@@ -60,7 +60,7 @@ module RedisQueuedLocks::Resource
     # @return [String]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def prepare_lock_queue(lock_name)
       "rql:lock_queue:#{lock_name}"
     end
@@ -68,7 +68,7 @@ module RedisQueuedLocks::Resource
     # @return [Float] Redis's <Set> score that is calculated from the time (epoch) as a float.
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def calc_initial_acquier_position
       Time.now.to_f
     end
@@ -77,7 +77,7 @@ module RedisQueuedLocks::Resource
     # @return [Float] Redis's <Set> score barrier for acquiers that should be removed from queue.
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def acquier_dead_score(queue_ttl)
       Time.now.to_f - queue_ttl
     end
@@ -91,7 +91,7 @@ module RedisQueuedLocks::Resource
     #   Is the lock request time limit has reached or not.
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def dead_score_reached?(acquier_position, queue_ttl)
       (acquier_position + queue_ttl) < Time.now.to_f
     end
@@ -100,7 +100,7 @@ module RedisQueuedLocks::Resource
     # @return [String]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def lock_key_from_queue(lock_queue)
       # NOTE: 15 is a start position of the lock name
       "rql:lock:#{lock_queue[15..]}"
@@ -109,7 +109,7 @@ module RedisQueuedLocks::Resource
     # @return [Integer]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def get_thread_id
       ::Thread.current.object_id
     end
@@ -117,7 +117,7 @@ module RedisQueuedLocks::Resource
     # @return [Integer]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def get_fiber_id
       ::Fiber.current.object_id
     end
@@ -125,7 +125,7 @@ module RedisQueuedLocks::Resource
     # @return [Integer]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def get_ractor_id
       ::Ractor.current.object_id
     end
@@ -133,7 +133,7 @@ module RedisQueuedLocks::Resource
     # @return [Integer]
     #
     # @api private
-    # @since 0.1.0
+    # @since 1.0.0
     def get_process_id
       ::Process.pid
     end

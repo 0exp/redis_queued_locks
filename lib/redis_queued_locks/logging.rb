@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # @api public
-# @since 0.1.0
+# @since 1.0.0
 module RedisQueuedLocks::Logging
   require_relative 'logging/void_logger'
 
@@ -10,7 +10,7 @@ module RedisQueuedLocks::Logging
     # @return [Boolean]
     #
     # @api public
-    # @since 0.1.0
+    # @since 1.0.0
     def valid_interface?(logger)
       return true if logger.is_a?(::Logger)
 
