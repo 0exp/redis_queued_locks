@@ -602,9 +602,9 @@ rql.queue_info("your_lock_name")
 {
   "lock_queue" => "rql:lock_queue:your_lock_name",
   "queue" => [
-    { "acq_id" => "rql:acq:123/456/567/678/fa76df9cc2", "score" => 1},
-    { "acq_id" => "rql:acq:123/567/456/679/c7bfcaf4f9", "score" => 2},
-    { "acq_id" => "rql:acq:555/329/523/127/7329553b11", "score" => 3},
+    { "acq_id" => "rql:acq:123/456/567/678/fa76df9cc2", "score" => 1711606640.540842},
+    { "acq_id" => "rql:acq:123/567/456/679/c7bfcaf4f9", "score" => 1711606640.540906},
+    { "acq_id" => "rql:acq:555/329/523/127/7329553b11", "score" => 1711606640.540963},
     # ...etc
   ]
 }
