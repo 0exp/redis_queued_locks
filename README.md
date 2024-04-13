@@ -626,6 +626,8 @@ rql.locked?("your_lock_name") # => true/false
 
 #### #queued?
 
+<sup>\[[back to top](#usage)\]</sup>
+
 - is the lock queued for obtain / has requests for obtain?
 
 ```ruby
