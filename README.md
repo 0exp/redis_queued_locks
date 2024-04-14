@@ -1035,7 +1035,7 @@ By default `RedisQueuedLocks::Client` is configured with the void notifier (whic
 
 ### Instrumentation Events
 
-<sup>\[[back to top](#instrumentation-events)\]</sup>
+<sup>\[[back to top](#instrumentation)\]</sup>
 
 List of instrumentation events
 
