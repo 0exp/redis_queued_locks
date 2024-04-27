@@ -102,6 +102,7 @@ class RedisQueuedLocks::Client
   # @option logger [::Logger,#debug]
   #   - Logger object used from the configuration layer (see config[:logger]);
   #   - See `RedisQueuedLocks::Logging::VoidLogger` for example;
+  #   - Supports `SemanticLogger::Logger` (see "semantic_logger" gem)
   # @option log_lock_try [Boolean]
   #   - should be logged the each try of lock acquiring (a lot of logs can
   #     be generated depending on your retry configurations);

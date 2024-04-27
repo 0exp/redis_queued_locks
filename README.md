@@ -185,6 +185,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # (default: RedisQueuedLocks::Logging::VoidLogger)
   # - the logger object;
   # - should implement `debug(progname = nil, &block)` (minimal requirement) or be an instance of Ruby's `::Logger` class/subclass;
+  # - supports `SemanticLogger::Logger` (see "semantic_logger" gem)
   # - at this moment the only debug logs are realised in following cases:
   #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id");
