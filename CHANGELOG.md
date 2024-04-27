@@ -1,6 +1,9 @@
 ## [Unreleased]
+
+## [1.2.0] - 2024-04-27
 ### Added
 - Documentation updates;
+- Logging: support for `semantic_logger` loggers (see: https://logger.rocketjob.io/) (https://github.com/reidmorrison/semantic_logger)
 
 ## [1.1.0] - 2024-04-01
 ### Added

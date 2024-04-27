@@ -6,13 +6,20 @@ module RedisQueuedLocks::Logging
   require_relative 'logging/void_logger'
 
   class << self
-    # @param logger [::Logger,#debug]
+    # @param logger [::Logger,#debug,::SemanticLogger::Logger]
     # @return [Boolean]
     #
     # @api public
     # @since 1.0.0
+    # @version 1.2.0
     def valid_interface?(logger)
       return true if logger.is_a?(::Logger)
+
+      # NOTE:
+      #   - convinient/conventional way to support the popular`semantic_logger` library
+      #   - see https://logger.rocketjob.io/
+      #   - see https://github.com/reidmorrison/semantic_logger
+      return true if defined?(::SemanticLogger::Logger) && logger.is_a?(::SemanticLogger::Logger)
 
       # NOTE: should provide `#debug` method.
       return false unless logger.respond_to?(:debug)
