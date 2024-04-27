@@ -16,7 +16,7 @@ module RedisQueuedLocks::Logging
       return true if logger.is_a?(::Logger)
 
       # NOTE:
-      #   - convinient/conventional way to support the popular`semantic_logger` library
+      #   - convinient/conventional way to support the popular `semantic_logger` library
       #   - see https://logger.rocketjob.io/
       #   - see https://github.com/reidmorrison/semantic_logger
       return true if defined?(::SemanticLogger::Logger) && logger.is_a?(::SemanticLogger::Logger)
