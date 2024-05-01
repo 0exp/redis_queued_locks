@@ -57,7 +57,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
-- Battle-tested on huge ruby projects in production: `~1500` locks-per-second are obtained and released on an ongoing basis;
+- Battle-tested on huge ruby projects in production: `~3000` locks-per-second are obtained and released on an ongoing basis;
 - Works well with `hiredis` driver enabled (it is enabled by default on our projects where `redis_queued_locks` are used);
 
 ---
