@@ -6,11 +6,11 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   # @since 1.3.0
   extend RedisQueuedLocks::Utilities
 
-  # @param redis [RedisClient] Redis connection manager.
+  # @param redis [RedisClient] Redis connection.
   # @param logger [::Logger,#debug] Logger object.
-  # @param lock_key [String] Lock key to be expired.
+  # @param lock_key [String] Obtained lock key that should be expired.
   # @param acquier_id [String] Acquier identifier.
-  # @param timed [Boolean] Should the lock be wrapped by Tiemlout with with lock's ttl
+  # @param timed [Boolean] Should the lock be wrapped by Timeout with with lock's ttl
   # @param ttl_shift [Float] Lock's TTL shifting. Should affect block's ttl. In millisecodns.
   # @param ttl [Integer,NilClass] Lock's time to live (in ms). Nil means "without timeout".
   # @param queue_ttl [Integer] Lock request lifetime.
