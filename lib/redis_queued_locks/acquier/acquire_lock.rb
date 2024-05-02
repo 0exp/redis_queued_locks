@@ -349,7 +349,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               ttl_shift,
               ttl,
               queue_ttl,
-              true,
+              true, # NOTE: should expire after the block execution
               &block
             )
           ensure
