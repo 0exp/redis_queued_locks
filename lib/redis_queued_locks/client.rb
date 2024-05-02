@@ -22,6 +22,7 @@ class RedisQueuedLocks::Client
     setting :log_lock_try, false
     setting :dead_request_ttl, (1 * 24 * 60 * 60 * 1000) # NOTE: 1 day in milliseconds
     setting :is_timed_by_default, false
+    setting :default_conflict_strategy, :wait_for_lock
 
     validate('retry_count') { |val| val == nil || (val.is_a?(::Integer) && val >= 0) }
     validate('retry_delay') { |val| val.is_a?(::Integer) && val >= 0 }
@@ -36,6 +37,14 @@ class RedisQueuedLocks::Client
     validate('log_lock_try', :boolean)
     validate('dead_request_ttl') { |val| val.is_a?(::Integer) && val > 0 }
     validate('is_timed_by_default', :boolean)
+    validate('default_conflict_strategy') do |val|
+      # rubocop:disable Layout/MultilineOperationIndentation
+      val == :work_through ||
+      val == :extendable_work_through ||
+      val == :wait_for_lock ||
+      val == :dead_locking
+      # rubocop:enable Layout/MultilineOperationIndentation
+    end
   end
 
   # @return [RedisClient]
@@ -108,8 +117,18 @@ class RedisQueuedLocks::Client
   #     be generated depending on your retry configurations);
   #   - see `config[:log_lock_try]`;
   # @option instrument [NilClass,Any]
-  #    - Custom instrumentation data wich will be passed to the instrumenter's payload
-  #      with :instrument key;
+  #   - Custom instrumentation data wich will be passed to the instrumenter's payload
+  #     with :instrument key;
+  # @option conflict_strategy [Symbol]
+  #   - The conflict strategy mode for cases when the process that obtained the lock
+  #     want to acquire this lock again;
+  #   - By default uses `:wait_for_lock` strategy;
+  #   - pre-confured in `config[:default_conflict_strategy]`;
+  #   - Supports:
+  #     - `:work_through`;
+  #     - `:extendable_work_through`;
+  #     - `:wait_for_lock`;
+  #     - `:dead_locking`;
   # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
   # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -118,6 +137,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
+  # @version 1.3.0
   def lock(
     lock_name,
     ttl: config[:default_lock_ttl],
@@ -134,6 +154,7 @@ class RedisQueuedLocks::Client
     logger: config[:logger],
     log_lock_try: config[:log_lock_try],
     instrument: nil,
+    conflict_strategy: config[:default_conflict_strategy],
     &block
   )
     RedisQueuedLocks::Acquier::AcquireLock.acquire_lock(
@@ -158,6 +179,7 @@ class RedisQueuedLocks::Client
       logger: config[:logger],
       log_lock_try: config[:log_lock_try],
       instrument:,
+      conflict_strategy:,
       &block
     )
   end
@@ -166,6 +188,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
+  # @version 1.3.0
   def lock!(
     lock_name,
     ttl: config[:default_lock_ttl],
@@ -181,6 +204,7 @@ class RedisQueuedLocks::Client
     logger: config[:logger],
     log_lock_try: config[:log_lock_try],
     instrument: nil,
+    conflict_strategy: config[:default_conflict_strategy],
     &block
   )
     lock(
@@ -199,6 +223,7 @@ class RedisQueuedLocks::Client
       log_lock_try:,
       meta:,
       instrument:,
+      conflict_strategy:,
       &block
     )
   end

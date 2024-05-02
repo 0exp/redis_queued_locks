@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 1.0.0
-module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
-  # @since 1.0.0
+# @since 1.3.0
+module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
+  # @since 1.3.0
   extend RedisQueuedLocks::Utilities
 
   # @param redis [RedisClient] Redis connection manager.
@@ -15,11 +15,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
   # @param ttl [Integer,NilClass] Lock's time to live (in ms). Nil means "without timeout".
   # @param queue_ttl [Integer] Lock request lifetime.
   # @param block [Block] Custom logic that should be invoked unter the obtained lock.
+  # @param should_expire [Block] Should the lock be expired after the block invocation.
   # @return [Any,NilClass] nil is returned no block parametr is provided.
   #
   # @api private
-  # @since 1.0.0
-  def yield_with_expire(
+  # @since 1.3.0
+  def yield_expire(
     redis,
     logger,
     lock_key,
@@ -28,6 +29,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
     ttl_shift,
     ttl,
     queue_ttl,
+    should_expire,
     &block
   )
     if block_given?
@@ -39,15 +41,17 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
       end
     end
   ensure
-    run_non_critical do
-      logger.debug do
-        "[redis_queued_locks.expire_lock] " \
-        "lock_key => '#{lock_key}' " \
-        "queue_ttl => #{queue_ttl} " \
-        "acq_id => '#{acquier_id}'"
+    if should_expire
+      run_non_critical do
+        logger.debug do
+          "[redis_queued_locks.expire_lock] " \
+          "lock_key => '#{lock_key}' " \
+          "queue_ttl => #{queue_ttl} " \
+          "acq_id => '#{acquier_id}'"
+        end
       end
+      redis.call('EXPIRE', lock_key, '0')
     end
-    redis.call('EXPIRE', lock_key, '0')
   end
 
   private
@@ -59,7 +63,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldWithExpire
   # @return [Any]
   #
   # @api private
-  # @since 1.0.0
+  # @since 1.3.0
   def yield_with_timeout(timeout, lock_key, lock_ttl, &block)
     ::Timeout.timeout(timeout, &block)
   rescue ::Timeout::Error

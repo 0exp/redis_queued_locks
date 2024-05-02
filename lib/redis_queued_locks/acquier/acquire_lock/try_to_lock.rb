@@ -17,11 +17,13 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   # @param ttl [Integer]
   # @param queue_ttl [Integer]
   # @param fail_fast [Boolean]
+  # @param conflict_strategy [Symbol]
   # @param meta [NilClass,Hash<String|Symbol,Any>]
   # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol|Hash<Symbol,Any> }
   #
   # @api private
   # @since 1.0.0
+  # @version 1.3.0
   # rubocop:disable Metrics/MethodLength
   def try_to_lock(
     redis,
@@ -34,6 +36,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     ttl,
     queue_ttl,
     fail_fast,
+    conflict_strategy,
     meta
   )
     # Step X: intermediate invocation results

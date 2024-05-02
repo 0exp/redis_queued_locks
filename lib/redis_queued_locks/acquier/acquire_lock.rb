@@ -9,15 +9,15 @@
 module RedisQueuedLocks::Acquier::AcquireLock
   require_relative 'acquire_lock/delay_execution'
   require_relative 'acquire_lock/with_acq_timeout'
-  require_relative 'acquire_lock/yield_with_expire'
+  require_relative 'acquire_lock/yield_expire'
   require_relative 'acquire_lock/try_to_lock'
 
   # @since 1.0.0
   extend TryToLock
   # @since 1.0.0
   extend DelayExecution
-  # @since 1.0.0
-  extend YieldWithExpire
+  # @since 1.3.0
+  extend YieldExpire
   # @since 1.0.0
   extend WithAcqTimeout
   # @since 1.0.0
@@ -79,8 +79,18 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #     on your retry configurations);
     #   - see `config[:log_lock_try]`;
     # @option instrument [NilClass,Any]
-    #    - Custom instrumentation data wich will be passed to the instrumenter's payload
-    #      with :instrument key;
+    #   - Custom instrumentation data wich will be passed to the instrumenter's payload
+    #     with :instrument key;
+    # @option conflict_strategy [Symbol]
+    #   - The conflict strategy mode for cases when the process that obtained the lock
+    #     want to acquire this lock again;
+    #   - By default uses `:wait_for_lock` strategy;
+    #   - pre-confured in `config[:default_conflict_strategy]`;
+    #   - Supports:
+    #     - `:work_through`;
+    #     - `:extendable_work_through`;
+    #     - `:wait_for_lock`;
+    #     - `:dead_locking`;
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -89,6 +99,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #
     # @api private
     # @since 1.0.0
+    # @version 1.3.0
     def acquire_lock(
       redis,
       lock_name,
@@ -111,6 +122,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
       instrument:,
       logger:,
       log_lock_try:,
+      conflict_strategy:,
       &block
     )
       # Step 0: Prevent argument type incompatabilities
@@ -224,6 +236,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
             lock_ttl,
             queue_ttl,
             fail_fast,
+            conflict_strategy,
             meta
           ) => { ok:, result: }
 
@@ -327,7 +340,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               (yield_time - acq_process[:acq_end_time]) * 1000 - REDIS_TIMESHIFT_ERROR
             ).ceil(2)
 
-            yield_with_expire(
+            yield_expire(
               redis,
               logger,
               lock_key,
@@ -336,6 +349,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               ttl_shift,
               ttl,
               queue_ttl,
+              true,
               &block
             )
           ensure
