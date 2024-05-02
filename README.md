@@ -1107,6 +1107,7 @@ Detalized event semantics and payload structure:
 - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
 - better code stylization (+ some refactorings);
 - statistics with UI;
+- JSON log formatter;
 - `#lock_series` - acquire a series of locks:
   ```ruby
   rql.lock_series('lock_a', 'lock_b', 'lock_c') { puts 'locked' }
