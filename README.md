@@ -1,6 +1,6 @@
 # RedisQueuedLocks &middot; ![Gem Version](https://img.shields.io/gem/v/redis_queued_locks) ![build](https://github.com/0exp/redis_queued_locks/actions/workflows/build.yml/badge.svg??branch=master)
 
-<a href="https://redis.io/docs/manual/patterns/distributed-locks/">Distributed locks</a> with "lock acquisition queue" capabilities based on the Redis Database.
+<a href="https://redis.io/docs/manual/patterns/distributed-locks/">Distributed locks</a> with "prioritized lock acquisition queue" capabilities based on the Redis Database.
 
 Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) (with requeue capabilities) which guarantees the request queue will never be stacked.
 
