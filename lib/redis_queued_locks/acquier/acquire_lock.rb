@@ -378,7 +378,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
         if acq_process[:result] != :retry_limit_reached &&
            acq_process[:result] != :fail_fast_no_try &&
            acq_process[:result] != :fail_fast_after_try
-          # NOTE: we have only two situations if lock is not acquired withou fast-fail flag:
+          # NOTE: we have only two situations if lock is not acquired without fast-fail flag:
           #   - time limit is reached
           #   - retry count limit is reached
           #   In other cases the lock obtaining time and tries count are infinite.

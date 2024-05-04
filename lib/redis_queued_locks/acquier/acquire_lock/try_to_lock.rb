@@ -7,6 +7,15 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   # @since 1.0.0
   extend RedisQueuedLocks::Utilities
 
+  # @return [String]
+  #
+  # @api private
+  # @since 1.3.0
+  EXTEND_LOCK_PTTL = <<~LUA_SCRIPT.strip.tr("\n", '').freeze
+    local new_lock_pttl = redis.call("PTTL", KEYS[1]) + ARGV[1];
+    return redis.call("PEXPIRE", KEYS[1], new_lock_pttl);
+  LUA_SCRIPT
+
   # @param redis [RedisClient]
   # @param logger [::Logger,#debug]
   # @param log_lock_try [Boolean]
@@ -71,6 +80,60 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
       #   watch the lock key changes (and discard acquirement if lock is already
       #   obtained by another acquier during the current lock acquiremntt)
       rconn.multi(watch: [lock_key]) do |transact|
+        # SP-Conflict status PREPARING: get the current lock obtainer
+        current_lock_obtainer = rconn.call('HGET', lock_key, 'acq_id')
+        # SP-Conflict status PREPARING: status flag variable
+        sp_conflict_status = nil
+
+        # SP-Conflict Step X1: calculate the current deadlock status
+        if current_lock_obtainer != nil && acquier_id == current_lock_obtainer
+          if log_lock_try
+            run_non_critical do
+              logger.debug do
+                "[redis_queued_locks.try_lock.same_process_conflict_detected] " \
+                "lock_key => '#{lock_key}' " \
+                "queue_ttl => #{queue_ttl} " \
+                "acq_id => '#{acquier_id}'"
+              end
+            end
+          end
+
+          # SP-Conflict Step X2: self-process dead lock moment started.
+          # SP-Conflict CHECK (Step CHECK): check chosen strategy and flag the current status
+          case conflict_strategy
+          when :work_through
+            # <SP-Conflict Moment>: work through => exit
+            sp_conflict_status = :conflict_work_through
+          when :extendable_work_through
+            # <SP-Conflict Moment>: extendable_work_through => extend the lock pttl and exit
+            sp_conflict_status = :extendable_conflict_work_through
+          when :wait_for_lock
+            # <SP-Conflict Moment>: wait_for_lock => obtain a lock in classic way
+            sp_conflict_status = :conflict_wait_for_lock
+          when :dead_locking
+            # <SP-Conflict Moment>: dead_locking => exit and fail
+            sp_conflict_status = :conflict_dead_lock
+          else
+            # <SP-Conflict Moment>:
+            #   - unknown status => work in classic way <wait_for_lock>
+            #   - it is a case when the new status is added to the code base in the past
+            #     but is forgotten to be added here;
+            sp_conflict_status = :conflict_wait_for_lock
+          end
+
+          if log_lock_try
+            run_non_critical do
+              logger.debug do
+                "[redis_queued_locks.try_lock.same_process_conflict_analyzed] " \
+                "lock_key => '#{lock_key}' " \
+                "queue_ttl => #{queue_ttl} " \
+                "acq_id => '#{acquier_id}' " \
+                "spc_status => '#{sp_conflict_status}'"
+              end
+            end
+          end
+        end
+
         # Fast-Step X0: fail-fast check
         if fail_fast && rconn.call('HGET', lock_key, 'acq_id')
           # Fast-Step X1: is lock already obtained. fail fast leads to "no try".
