@@ -1112,6 +1112,7 @@ Detalized event semantics and payload structure:
   ```ruby
   rql.lock_series('lock_a', 'lock_b', 'lock_c') { puts 'locked' }
   ```
+- support for `Dragonfly' database backend (https://github.com/dragonflydb/dragonfly) (https://www.dragonflydb.io/);
 
 ---
 
