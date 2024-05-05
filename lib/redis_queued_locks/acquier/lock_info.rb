@@ -18,6 +18,8 @@ module RedisQueuedLocks::Acquier::LockInfo
     #
     # @api private
     # @since 1.0.0
+    # @version 1.3.0
+    # rubocop:disable Metrics/MethodLength
     def lock_info(redis_client, lock_name)
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
 
@@ -48,9 +50,16 @@ module RedisQueuedLocks::Acquier::LockInfo
             lock_data['ts'] = Float(lock_data['ts'])
             lock_data['ini_ttl'] = Integer(lock_data['ini_ttl'])
             lock_data['rem_ttl'] = ((pttl_cmd_res == -1) ? Infinity : pttl_cmd_res)
+            lock_data['spc_cnt'] = Integer(lock_data['spc_cnt']) if lock_data['spc_cnt']
+            lock_data['spc_ext_ttl'] = Integer(lock_data['spc_ext_ttl']) if lock_data['spc_ext_ttl']
+            lock_data['l_spc_ext_ini_ttl'] =
+              Integer(lock_data['l_spc_ext_ini_ttl']) if lock_data.key?('l_spc_ext_ini_ttl')
+            lock_data['l_spc_ext_ts'] =
+              Float(lock_data['l_spc_ext_ts']) if lock_data['l_spc_ext_ts']
           end
         end
       end
     end
+    # rubocop:enable Metrics/MethodLength
   end
 end

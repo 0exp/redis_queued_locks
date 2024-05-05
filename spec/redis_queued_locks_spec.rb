@@ -14,6 +14,133 @@ RSpec.describe RedisQueuedLocks do
 
   after { redis.call('FLUSHDB') }
 
+  specify 'reentrant locks - :extendable_work_trhough' do
+    client = RedisQueuedLocks::Client.new(redis) do |config|
+      config.default_conflict_strategy = :extendable_work_through
+      config.log_lock_try = true
+      # config.logger = Logger.new(STDOUT)
+    end
+    # Current Lock TTL: 5000
+    result1 = client.lock('pek', ttl: 5000)
+    lock_state1 = client.lock_info('pek')
+    # Current Lock TTL: 10_000
+    result2 = client.lock('pek', ttl: 5000) # NOTE: <reentrant lock> extension!
+    lock_state2 = client.lock_info('pek')
+
+    expect(result1).to match({
+      ok: true,
+      result: match({
+        lock_key: eq('rql:lock:pek'),
+        acq_id: be_a(String),
+        ts: be_a(Float),
+        ttl: eq(5000),
+        process: eq(:lock_obtaining)
+      })
+    })
+    expect(lock_state1.keys).to contain_exactly(
+      'acq_id', 'ts', 'ini_ttl', 'lock_key', 'rem_ttl'
+    )
+    expect(lock_state1).to match({
+      'acq_id' => be_a(String),
+      'ts' => be_a(Float),
+      'ini_ttl' => eq(5000),
+      'lock_key' => eq('rql:lock:pek'),
+      'rem_ttl' => be_a(Integer)
+    })
+
+    expect(result2).to match({
+      ok: true,
+      result: match({
+        lock_key: eq('rql:lock:pek'),
+        acq_id: be_a(String),
+        ts: be_a(Float),
+        ttl: eq(5000),
+        process: eq(:extendable_conflict_work_through)
+      })
+    })
+    expect(lock_state2.keys).to contain_exactly(
+      'acq_id',
+      'ts',
+      'ini_ttl',
+      'lock_key',
+      'rem_ttl',
+      'spc_ext_ttl',
+      'spc_cnt',
+      'l_spc_ext_ts',
+      'l_spc_ext_ini_ttl'
+    )
+    expect(lock_state2).to match({
+      'acq_id' => be_a(String),
+      'ini_ttl' => eq(5000),
+      'ts' => be_a(Float),
+      'spc_ext_ttl' => eq(5000), # NOTE: the sum of added TTL of the all reenters
+      'spc_cnt' => eq(1), # NOTE: reenter count
+      'l_spc_ext_ts' => be_a(Float), # NOTE: the last extension time
+      'l_spc_ext_ini_ttl' => eq(5000), # NOTE: the ttl attribute of the last extension time
+      'lock_key' => eq('rql:lock:pek'),
+      'rem_ttl' => be_a(Integer)
+    })
+    # NOTE: new remaing ttl should be greater than initial)
+    expect(lock_state2['rem_ttl'] > 9000).to eq(true)
+
+    # Current Lock TTL: 14_500
+    result3 = client.lock('pek', ttl: 4500) # NOTE: reenter (extend) again!
+    lock_state3 = client.lock_info('pek')
+    expect(result3).to match({
+      ok: true,
+      result: match({
+        lock_key: eq('rql:lock:pek'),
+        acq_id: be_a(String),
+        ts: be_a(Float),
+        ttl: eq(4500),
+        process: eq(:extendable_conflict_work_through)
+      })
+    })
+    expect(lock_state3.keys).to contain_exactly(
+      'acq_id',
+      'ts',
+      'ini_ttl',
+      'lock_key',
+      'rem_ttl',
+      'spc_ext_ttl',
+      'spc_cnt',
+      'l_spc_ext_ts',
+      'l_spc_ext_ini_ttl'
+    )
+    expect(lock_state3).to match({
+      'acq_id' => be_a(String),
+      'ini_ttl' => eq(5000),
+      'ts' => be_a(Float),
+      'spc_ext_ttl' => eq(9500), # NOTE: the sum of added TTL of the all reenters
+      'spc_cnt' => eq(2), # NOTE: reenter count (two times at this moment)
+      'l_spc_ext_ts' => be_a(Float), # NOTE: the last extension time
+      'l_spc_ext_ini_ttl' => eq(4500), # NOTE: the ttl attribute of the last extension time
+      'lock_key' => eq('rql:lock:pek'),
+      'rem_ttl' => be_a(Integer)
+    })
+    # NOTE: new remaing ttl should be greater than initial)
+    expect(lock_state3['rem_ttl'] > 13_000).to eq(true)
+
+    # Current Lock TTL: 19_000
+    client.lock('pek', ttl: 5500) { sleep(0.5) }
+    # But npw: ~ 14_500 (is> 14_000 and<)
+    # NOTE: the reentrant lock should not be released after the block execution
+    expect(client.locked?('pek')).to eq(true)
+    lock_state4 = client.lock_info('pek')
+    expect(lock_state4).to match({
+      'acq_id' => be_a(String),
+      'ini_ttl' => eq(5000),
+      'ts' => be_a(Float),
+      'spc_ext_ttl' => eq(15_000), # NOTE: the sum of added TTL of the all reenters
+      'spc_cnt' => eq(3), # NOTE: reenter count (two times at this moment)
+      'l_spc_ext_ts' => be_a(Float), # NOTE: the last extension time
+      'l_spc_ext_ini_ttl' => eq(5500), # NOTE: the ttl attribute of the last extension time
+      'lock_key' => eq('rql:lock:pek'),
+      'rem_ttl' => be_a(Integer)
+    })
+    expect(client.lock_info('pek')['rem_ttl'] > 14_000).to eq(true)
+  end
+
   specify 'clear_dead_queues' do
     client = RedisQueuedLocks::Client.new(redis)
     client.lock('kek.dead.lock1', ttl: 30_000)

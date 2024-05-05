@@ -21,6 +21,12 @@ module RedisQueuedLocks::Resource
   # @since 1.0.0
   LOCK_QUEUE_PATTERN = 'rql:lock_queue:*'
 
+  # @return [Integer] Redis time error (in milliseconds).
+  #
+  # @api private
+  # @since 1.3.0
+  REDIS_TIMESHIFT_ERROR = 2
+
   class << self
     # Returns 16-byte unique identifier. It is used for uniquely
     # identify current process between different nodes/pods of your application
