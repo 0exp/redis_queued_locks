@@ -204,7 +204,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.dead_score_reached__reset_acquier_position]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.lock_obtained]" (logs "lockkey", "queue_ttl", "acq_id", "acq_time");
   #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs lock_key "queue_ttl", "acq_id", "acq_time");
-  #   - "[redis_queued_locks.fail_fast_or_limits_reached__dequeue] (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.fail_fast_or_limits_reached__dequeue]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id");
   # - by default uses VoidLogger that does nothing;
@@ -1057,8 +1057,10 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 "[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id");
 "[redis_queued_locks.dead_score_reached__reset_acquier_position]" # (logs "lock_key", "queue_ttl", "acq_id");
 "[redis_queued_locks.lock_obtained]" # (logs "lockkey", "queue_ttl", "acq_id", "acq_time");
+"[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs lock_key "queue_ttl", "acq_id", "acq_time");
 "[redis_queued_locks.fail_fast_or_limits_reached__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id");
 "[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.decrease_lock]" # (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id");
 ```
 
 - additional logs (raised from `#lock`/`#lock!` with `confg[:log_lock_try] == true`):
@@ -1066,6 +1068,9 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 ```ruby
 "[redis_queued_locks.try_lock.start]" # (logs "lock_key", "queue_ttl", "acq_id");
 "[redis_queued_locks.try_lock.rconn_fetched]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.try_lock.same_process_conflict_detected]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.try_lock.same_process_conflict_analyzed]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status");
+"[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status", "last_ext_ttl", "last_ext_ts");
 "[redis_queued_locks.try_lock.acq_added_to_queue]" # (logs "lock_key", "queue_ttl", "acq_id)";
 "[redis_queued_locks.try_lock.remove_expired_acqs]" # (logs "lock_key", "queue_ttl", "acq_id");
 "[redis_queued_locks.try_lock.get_first_from_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue");
