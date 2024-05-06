@@ -25,7 +25,9 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   # @param queue_ttl [Integer] Lock request lifetime.
   # @param block [Block] Custom logic that should be invoked unter the obtained lock.
   # @param should_expire [Boolean] Should the lock be expired after the block invocation.
-  # @param should_decrease [Boolean] Should decrease the lock TTL after the lock invocation.
+  # @param should_decrease [Boolean]
+  #   - Should decrease the lock TTL after the lock invocation;
+  #   - It is suitable for extendable reentrant locks;
   # @return [Any,NilClass] nil is returned no block parametr is provided.
   #
   # @api private
