@@ -1,5 +1,6 @@
 ## [Unreleased]
 ### Added
+- **Major Feature**: support for **Reentrant Locks** (super strong and diffcult feature);
 - Documentation updates;
 
 ## [1.2.0] - 2024-04-27
