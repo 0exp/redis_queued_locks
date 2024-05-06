@@ -105,6 +105,17 @@ class RedisQueuedLocks::Client
   #   already obtained;
   #   - Should the logic exit immidietly after the first try if the lock was obtained
   #   by another process while the lock request queue was initially empty;
+  # @option conflict_strategy [Symbol]
+  #   - The conflict strategy mode for cases when the process that obtained the lock
+  #     want to acquire this lock again;
+  #   - By default uses `:wait_for_lock` strategy;
+  #   - pre-confured in `config[:default_conflict_strategy]`;
+  #   - Supports:
+  #     - `:work_through` - continue working under the lock without lock's TTL extension;
+  #     - `:extendable_work_through` - continue working under the lock with lock's TTL extension;
+  #     - `:wait_for_lock` - (default) - work in classic way
+  #       (with timeouts, retry delays, retry limits, etc - in classic way :));
+  #     - `:dead_locking` - fail with deadlock exception;
   # @option meta [NilClass,Hash<String|Symbol,Any>]
   #   - A custom metadata wich will be passed to the lock data in addition to the existing data;
   #   - Metadata can not contain reserved lock data keys;
@@ -119,16 +130,6 @@ class RedisQueuedLocks::Client
   # @option instrument [NilClass,Any]
   #   - Custom instrumentation data wich will be passed to the instrumenter's payload
   #     with :instrument key;
-  # @option conflict_strategy [Symbol]
-  #   - The conflict strategy mode for cases when the process that obtained the lock
-  #     want to acquire this lock again;
-  #   - By default uses `:wait_for_lock` strategy;
-  #   - pre-confured in `config[:default_conflict_strategy]`;
-  #   - Supports:
-  #     - `:work_through`;
-  #     - `:extendable_work_through`;
-  #     - `:wait_for_lock`;
-  #     - `:dead_locking`;
   # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
   # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -149,12 +150,12 @@ class RedisQueuedLocks::Client
     retry_jitter: config[:retry_jitter],
     raise_errors: false,
     fail_fast: false,
+    conflict_strategy: config[:default_conflict_strategy],
     identity: uniq_identity,
     meta: nil,
     logger: config[:logger],
     log_lock_try: config[:log_lock_try],
     instrument: nil,
-    conflict_strategy: config[:default_conflict_strategy],
     &block
   )
     RedisQueuedLocks::Acquier::AcquireLock.acquire_lock(
@@ -175,11 +176,11 @@ class RedisQueuedLocks::Client
       instrumenter: config[:instrumenter],
       identity:,
       fail_fast:,
+      conflict_strategy:,
       meta:,
       logger: config[:logger],
       log_lock_try: config[:log_lock_try],
       instrument:,
-      conflict_strategy:,
       &block
     )
   end
@@ -199,12 +200,12 @@ class RedisQueuedLocks::Client
     retry_delay: config[:retry_delay],
     retry_jitter: config[:retry_jitter],
     fail_fast: false,
+    conflict_strategy: config[:default_conflict_strategy],
     identity: uniq_identity,
     meta: nil,
     logger: config[:logger],
     log_lock_try: config[:log_lock_try],
     instrument: nil,
-    conflict_strategy: config[:default_conflict_strategy],
     &block
   )
     lock(

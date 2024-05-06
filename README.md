@@ -149,6 +149,18 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - should be all blocks of code are timed by default;
   config.is_timed_by_default = false
 
+  # (symbol) (default: :wait_for_lock)
+  # - The conflict strategy mode for cases when the process that obtained the lock want to acquire this lock again;
+  # - Realizes "reentrant locks" abstraction (same process conflict / same process deadlock);
+  # - By default uses `:wait_for_lock` strategy (classic way);
+  # - Strategies:
+  #   - `:work_through` - continue working under the lock <without> lock's TTL extension;
+  #   - `:extendable_work_through` - continue working under the lock <with> lock's TTL extension;
+  #   - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
+  #   - `:dead_locking` - fail with deadlock exception;
+  # - Can be customized in methods via `:conflict_strategy` attribute (see method signatures of #lock and #lock! methods);
+  config.default_conflict_strategy = :wait_for_lock
+
   # (default: 100)
   # - how many items will be released at a time in #clear_locks and in #clear_dead_requests (uses SCAN);
   # - affects the performance of your Redis and Ruby Application (configure thoughtfully);
@@ -258,6 +270,7 @@ def lock(
   retry_jitter: config[:retry_jitter],
   raise_errors: false,
   fail_fast: false,
+  conflict_strategy: config[:default_conflict_strategy],
   identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config[:uniq_identifier] proc;
   meta: nil,
   instrument: nil,
@@ -304,6 +317,16 @@ def lock(
     - Should the logic exit immidietly after the first try if the lock was obtained
       by another process while the lock request queue was initially empty;
     - `false` by default;
+- `conflict_strategy` - (optional) - `[Symbol]``
+  - The conflict strategy mode for cases when the process that obtained the lock
+    want to acquire this lock again;
+  - By default uses `:wait_for_lock` strategy;
+  - pre-confured in `config[:default_conflict_strategy]`;
+  - Strategies:
+    - `:work_through` - continue working under the lock **without** lock's TTL extension;
+    - `:extendable_work_through` - continue working under the lock **with** lock's TTL extension;
+    - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
+    - `:dead_locking` - fail with deadlock exception;
 - `identity` - (optional) `[String]`
   - An unique string that is unique per `RedisQueuedLock::Client` instance. Resolves the
     collisions between the same process_id/thread_id/fiber_id/ractor_id identifiers on different
@@ -509,16 +532,18 @@ def lock!(
   lock_name,
   ttl: config[:default_lock_ttl],
   queue_ttl: config[:default_queue_ttl],
-  timeout: config[:default_timeout],
+  timeout: config[:try_to_lock_timeout],
+  timed: config[:is_timed_by_default],
   retry_count: config[:retry_count],
   retry_delay: config[:retry_delay],
   retry_jitter: config[:retry_jitter],
-  identity: uniq_identity,
   fail_fast: false,
+  identity: uniq_identity,
   meta: nil,
-  instrument: nil,
   logger: config[:logger],
   log_lock_try: config[:log_lock_try],
+  instrument: nil,
+  conflict_strategy: config[:default_conflict_strategy],
   &block
 )
 ```
