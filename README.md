@@ -825,6 +825,7 @@ rql.extend_lock_ttl("my_lock", 5_000) # NOTE: add 5_000 milliseconds
 
 <sup>\[[back to top](#usage)\]</sup>
 
+- get list of obtained locks;
 - uses redis `SCAN` under the hood;
 - accepts:
   - `:scan_size` - `Integer` - (`config[:key_extraction_batch_size]` by default);
@@ -857,6 +858,7 @@ rql.locks # or rql.locks(scan_size: 123)
 
 <sup>\[[back to top](#usage)\]</sup>
 
+- get list of lock request queues;
 - uses redis `SCAN` under the hood;
 - accepts
   - `:scan_size` - `Integer` - (`config[:key_extraction_batch_size]` by default);
@@ -889,6 +891,7 @@ rql.queues # or rql.queues(scan_size: 123)
 
 <sup>\[[back to top](#usage)\]</sup>
 
+- get list of taken locks and queues;
 - uses redis `SCAN` under the hood;
 - accepts:
   `:scan_size` - `Integer` - (`config[:key_extraction_batch_size]` by default);
@@ -922,6 +925,7 @@ rql.keys # or rql.keys(scan_size: 123)
 
 <sup>\[[back to top](#usage)\]</sup>
 
+- get list of locks with their info;
 - uses redis `SCAN` under the hod;
 - accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
 - returns `Set<Hash<Symbol,Any>>` (see [#lock_info](#lock_info) and examples below for details).
@@ -958,6 +962,7 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
 
 <sup>\[[back to top](#usage)\]</sup>
 
+- get list of queues with their info;
 - uses redis `SCAN` under the hod;
 - accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
 - returns `Set<Hash<Symbol,Any>>` (see [#queue_info](#queue_info) and examples below for details).
