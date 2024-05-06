@@ -1,6 +1,8 @@
 ## [Unreleased]
 ### Added
 - **Major Feature**: support for **Reentrant Locks** (super strong and diffcult feature):
+- The result of lock obtaining now includes `:process` key that shows a type of logical process that obtains a lock
+  (`:lock_obtaining`, `:extendable_conflict_work_through`, `:conflict_work_through`);
 - Added reentrant lock details to `RedisQueuedLocks::Client#lock_info` and `RedisQueuedLocks::Client#locks` method results;
 - Documentation updates;
 

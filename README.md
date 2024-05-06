@@ -384,7 +384,11 @@ Return value:
 - Lock information result:
   - Signature: `[yield, Hash<Symbol,Boolean|Hash<Symbol,Numeric|String>>]`
   - Format: `{ ok: true/false, result: <Symbol|Hash<Symbol,Hash>> }`;
-  - for successful lock obtaining:
+  - Includes the `:process` key that describes a logical type of the lock obtaining process. Possible values:
+    - `:lock_obtaining` - classic lock obtaining proces;
+    - `:extendable_conflict_work_through` - reentrant lock acquiring process with lock's TTL extension;
+    - `:conflict_work_through` - reentrant lock acquiring process without lock's TTL extension;
+  - For successful lock obtaining:
     ```ruby
     {
       ok: true,
@@ -392,10 +396,12 @@ Return value:
         lock_key: String, # acquierd lock key ("rql:lock:your_lock_name")
         acq_id: String, # acquier identifier ("process_id/thread_id/fiber_id/ractor_id/identity")
         ts: Float, # time (epoch) when lock was obtained (float, Time#to_f)
-        ttl: Integer # lock's time to live in milliseconds (integer)
+        ttl: Integer, # lock's time to live in milliseconds (integer)
+        process: Symbol # which logical process has acquired the lock (:lock_obtaining, :extendable_conflict_work_through, :conflict_work_through)
       }
     }
     ```
+
     ```ruby
     # example:
     {
@@ -404,11 +410,12 @@ Return value:
         lock_key: "rql:lock:my_lock",
         acq_id: "rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
         ts: 1711909612.653696,
-        ttl: 10000
+        ttl: 10000,
+        process: :lock_obtaining # for reentrant lock may be :extendable_conflict_work_through or :conflict_work_through
       }
     }
     ```
-  - for failed lock obtaining:
+  - For failed lock obtaining:
     ```ruby
     { ok: false, result: :timeout_reached }
     { ok: false, result: :retry_count_reached }
