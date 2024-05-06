@@ -12,8 +12,13 @@ module RedisQueuedLocks::Acquier::LockInfo
     #     'lock_key' => "rql:lock:your_lockname", # acquired lock key
     #     'acq_id' => "rql:acq:process_id/thread_id", # lock acquier identifier
     #     'ts' => 123456789.2649841, # <locked at> time stamp (epoch, seconds.microseconds)
-    #     'ini_ttl' => 123456789, # initial lock key ttl (milliseconds),
+    #     'ini_ttl' => 123456789, # initial lock key ttl (milliseconds)
     #     'rem_ttl' => 123456789, # remaining lock key ttl (milliseconds)
+    #     <additional keys for reentrant locks>:
+    #     'spc_cnt' => 2, # lock reentreing count (if lock was used as reentrant lock)
+    #     'spc_ext_ttl' => 14500, # (milliseconds) the sum of all ttl extensions
+    #     'l_spc_ext_ini_ttl' => 5000, # (milliseconds) the last ttl of reentrant lock
+    #     'l_spc_ext_ts' => 123456789 # <reentrant lock obtained at> time stamp (epoch, Time#to_f)
     #   }
     #
     # @api private

@@ -536,27 +536,32 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
 - lock data (`Hash<String,String|Integer>`):
   - `"lock_key"` - `string` - lock key in redis;
   - `"acq_id"` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity);
-  - `"ts"` - `integer`/`epoch` - the time lock was obtained;
+  - `"ts"` - `numeric`/`epoch` - the time when lock was obtained;
   - `"init_ttl"` - `integer` - (milliseconds) initial lock key ttl;
   - `"rem_ttl"` - `integer` - (milliseconds) remaining lock key ttl;
-  - `custom metadata`- `string`/`integer` - custom metadata passed to the `lock`/`lock!` methods via `meta:` keyword argument (see [lock]((#lock---obtain-a-lock)) method documentation);
+  - `<custom metadata>`- `string`/`integer` - custom metadata passed to the `lock`/`lock!` methods via `meta:` keyword argument (see [lock]((#lock---obtain-a-lock)) method documentation);
+  - additional keys for **reentrant locks** amd **extendable reentrant locks**:
+    - `spc_cnt` - `integer` - how many times the lock was obtained as reentrant lock;
+    - `spc_ext_ttl` - `integer` - (milliseconds) sum of TTL the each **extendable** reentrant lock (the total TTL extension time);
+    - `l_spc_ext_ini_ttl` - `integer` - (milliseconds) TTL of the last reentrant lock;
+    - `l_spc_ext_ts` - `numeric`/`epoch` - timestamp when the last reentrant lock was obtained;
 
 ```ruby
-# without custom metadata
+# <without custom metadata>
 rql.lock_info("your_lock_name")
 
 # =>
 {
   "lock_key" => "rql:lock:your_lock_name",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
-  "ts" => 123456789,
-  "ini_ttl" => 123456789,
-  "rem_ttl" => 123456789
+  "ts" => 123456789.12345,
+  "ini_ttl" => 5_000,
+  "rem_ttl" => 4_999
 }
 ```
 
 ```ruby
-# with custom metadata
+# <with custom metadata>
 rql.lock("your_lock_name", meta: { "kek" => "pek", "bum" => 123 })
 rql.lock_info("your_lock_name")
 
@@ -564,13 +569,37 @@ rql.lock_info("your_lock_name")
 {
   "lock_key" => "rql:lock:your_lock_name",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
-  "ts" => 123456789,
-  "ini_ttl" => 123456789,
-  "rem_ttl" => 123456789,
+  "ts" => 123456789.12345,
+  "ini_ttl" => 5_000,
+  "rem_ttl" => 4_999,
   "kek" => "pek",
   "bum" => "123" # NOTE: returned as a raw string directly from Redis
 }
 ```
+
+```ruby
+# <for reentrant locks>
+# (see :conflict_strategy attribute and config.default_conflict_strategy config)
+# (the example below shows `:extendable_work_through` strategy)
+
+rql.lock("your_lock_name", ttl: 5_000)
+rql.lock("your_lock_name", ttl: 3_000)
+rql.lock("your_lock_name", ttl: 2_000)
+rql.lock_info("your_lock_name")
+
+# =>
+{
+  "lock_key" => "rql:lock:your_lock_name",
+  "acq_id" => "rql:acq:123/456/567/678/374dd74324",
+  "ts" => 123456789.12345,
+  "ini_ttl" => 5_000,
+  "rem_ttl" => 9_444,
+  "spc_count" => 2,
+  "spc_ext_ttl" => 5_000,
+  "l_spc_ext_ini_ttl" => 2_000,
+  "l_spc_ext_ts" =>  123456792.12345
+}
+``
 
 ---
 
@@ -876,7 +905,9 @@ rql.keys # or rql.keys(scan_size: 123)
   - `:status` - `Symbol`- `:released` or `:alive`
     - the lock may become relased durign the lock info extraction process;
     - `:info` for `:released` keys is empty (`{}`);
-  - `:info` - `Hash<String,Any>` - lock data stored in the lock key in Redis. See [#lock_info](#lock_info) for details;
+  - `:info` - `Hash<String,Any>`
+      - lock data stored in the lock key in Redis;
+      - See [#lock_info](#lock_info) for details;
 
 ```ruby
 rql.locks_info # or rql.locks_info(scan_size: 123)
