@@ -629,7 +629,7 @@ rql.lock_info("your_lock_name")
   "l_spc_ext_ini_ttl" => 2_000, # TTL of the last reentrant lock
   "l_spc_ext_ts" =>  123456792.12345 # timestamp of the last reentrant lock obtaining
 }
-``
+```
 
 ---
 
