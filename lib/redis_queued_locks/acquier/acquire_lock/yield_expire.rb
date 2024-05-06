@@ -74,9 +74,18 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
     elsif should_decrease
       finish_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)
       spent_time = (finish_time - initial_time)
-      decrease_time = ttl - spent_time - RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
-      if decrease_time > 0
-        redis.call('EVAL', DECREASE_LOCK_PTTL, 1, lock_key, decrease_time)
+      decreased_ttl = ttl - spent_time - RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
+      if decreased_ttl > 0
+        run_non_critical do
+          logger.debug do
+            "[redis_queued_locks.decrease_lock] " \
+            "lock_key => '#{lock_key}' " \
+            "decreased_ttl => '#{decreased_ttl} " \
+            "queue_ttl => #{queue_ttl} " \
+            "acq_id => '#{acquier_id}' " \
+          end
+        end
+        redis.call('EVAL', DECREASE_LOCK_PTTL, 1, lock_key, decreased_ttl)
       end
     end
   end

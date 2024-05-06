@@ -203,8 +203,10 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.dead_score_reached__reset_acquier_position]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.lock_obtained]" (logs "lockkey", "queue_ttl", "acq_id", "acq_time");
+  #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs lock_key "queue_ttl", "acq_id", "acq_time");
   #   - "[redis_queued_locks.fail_fast_or_limits_reached__dequeue] (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id");
   # - by default uses VoidLogger that does nothing;
   config.logger = RedisQueuedLocks::Logging::VoidLogger
 
@@ -214,6 +216,9 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - it adds following logs in addition to the existing:
   #   - "[redis_queued_locks.try_lock.start]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.try_lock.rconn_fetched]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.try_lock.same_process_conflict_detected]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.try_lock.same_process_conflict_analyzed]" (logs "lock_key", "queue_ttl", "acq_id", "spc_status");
+  #   - "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" (logs "lock_key", "queue_ttl", "acq_id", "spc_status", "last_ext_ttl", "last_ext_ts");
   #   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id)";
   #   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue");
@@ -1115,9 +1120,20 @@ Detalized event semantics and payload structure:
     - `:ttl` - `integer`/`milliseconds` - lock ttl;
     - `:acq_id` - `string` - lock acquier identifier;
     - `:lock_key` - `string` - lock name;
-    - `:ts` - `integer`/`epoch` - the time when the lock was obtaiend;
+    - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:instrument` - `nil`/`Any` - custom data passed to the `lock`/`lock!` method as `:instrument` attribute;
+    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+
+- `"redis_queued_locks.extendable_reentrant_lock_obtained"`
+  - an event signalizes about the "extendable reentrant lock" obtaining is happened;
+  - raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
+  - payload:
+    - `:lock_key` - `string` - lock name;
+    - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
+    - `:acq_id` - `string` - lock acquier identifier;
+    - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
+    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
 - `"redis_queued_locks.lock_hold_and_release"`
   - an event signalizes about the "hold+and+release" process is finished;
@@ -1127,9 +1143,22 @@ Detalized event semantics and payload structure:
     - `:ttl` - `integer`/`milliseconds` - lock ttl;
     - `:acq_id` - `string` - lock acquier identifier;
     - `:lock_key` - `string` - lock name;
-    - `:ts` - `integer`/`epoch` - the time when lock was obtained;
+    - `:ts` - `numeric`/`epoch` - the time when lock was obtained;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:instrument` - `nil`/`Any` - custom data passed to the `lock`/`lock!` method as `:instrument` attribute;
+    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+
+- `"redis_queued_locks.reentrant_lock_hold_completes"`
+  - an event signalizes about the "reentrant lock hold" is complete (both extendable and non-extendable);
+  - lock re-entering can happen many times and this event happens for each of them separately;
+  - raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
+  - payload:
+    - `:hold_time` - `float`/`milliseconds` - lock hold time;
+    - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
+    - `:acq_id` - `string` - lock acquier identifier;
+    - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
+    - `:lock_key` - `string` - lock name;
+    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
 - `"redis_queued_locks.explicit_lock_release"`
   - an event signalizes about the explicit lock release (invoked via `RedisQueuedLock#unlock`);

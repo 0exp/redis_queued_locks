@@ -252,7 +252,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               # instrumetnation: (reentrant lock with ttl extension)
               run_non_critical do
                 logger.debug do
-                  "[redis_queued_locks.reentrant_lock_with_ttl_extension] " \
+                  "[redis_queued_locks.extendable_reentrant_lock_obtained] " \
                   "lock_key => '#{result[:lock_key]}' " \
                   "queue_ttl => #{queue_ttl} " \
                   "acq_id => '#{acquier_id}' " \
@@ -261,7 +261,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               end
 
               run_non_critical do
-                instrumenter.notify('redis_queued_locks.reentrant_lock_with_ttl_extension', {
+                instrumenter.notify('redis_queued_locks.extendable_reentrant_lock_obtained', {
                   lock_key: result[:lock_key],
                   ttl: result[:ttl],
                   acq_id: result[:acq_id],
@@ -397,7 +397,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                acq_process[:result][:process] == :conflict_work_through
               # Step X (instrumentation): reentrant_lock_hold_extension
               run_non_critical do
-                instrumenter.notify('redis_queued_locks.reentrant_lock_hold_extension', {
+                instrumenter.notify('redis_queued_locks.reentrant_lock_hold_completes', {
                   hold_time: acq_process[:hold_time],
                   ttl: acq_process[:lock_info][:ttl],
                   acq_id: acq_process[:lock_info][:acq_id],
