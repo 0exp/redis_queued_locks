@@ -1,6 +1,7 @@
 ## [Unreleased]
 ### Added
-- **Major Feature**: support for **Reentrant Locks** (super strong and diffcult feature);
+- **Major Feature**: support for **Reentrant Locks** (super strong and diffcult feature):
+- Added reentrant lock details to `RedisQueuedLocks::Client#lock_info` and `RedisQueuedLocks::Client#locks` method results;
 - Documentation updates;
 
 ## [1.2.0] - 2024-04-27
