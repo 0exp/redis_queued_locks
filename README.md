@@ -572,7 +572,7 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
   - `<custom metadata>`- `string`/`integer` - custom metadata passed to the `lock`/`lock!` methods via `meta:` keyword argument (see [lock]((#lock---obtain-a-lock)) method documentation);
   - additional keys for **reentrant locks** and **extendable reentrant locks**:
     - `spc_cnt` - `integer` - how many times the lock was obtained as reentrant lock;
-    - `spc_ext_ttl` - `integer` - (milliseconds) sum of TTL the each **extendable** reentrant lock (the total TTL extension time);
+    - `spc_ext_ttl` - `integer` - (milliseconds) sum of TTL of the each **extendable** reentrant lock (the total TTL extension time);
     - `l_spc_ext_ini_ttl` - `integer` - (milliseconds) TTL of the last reentrant lock;
     - `l_spc_ext_ts` - `numeric`/`epoch` - timestamp of the last reentrant lock obtaining;
 
@@ -625,7 +625,7 @@ rql.lock_info("your_lock_name")
   "ini_ttl" => 5_000,
   "rem_ttl" => 9_444,
   "spc_count" => 2, # how many times the lock was obtained as reentrant lock
-  "spc_ext_ttl" => 5_000, # sum of TTL the each <extendable> reentrant lock (3_000 + 2_000)
+  "spc_ext_ttl" => 5_000, # sum of TTL of the each <extendable> reentrant lock (3_000 + 2_000)
   "l_spc_ext_ini_ttl" => 2_000, # TTL of the last reentrant lock
   "l_spc_ext_ts" =>  123456792.12345 # timestamp of the last reentrant lock obtaining
 }
