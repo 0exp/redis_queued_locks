@@ -323,8 +323,8 @@ def lock(
   - By default uses `:wait_for_lock` strategy;
   - pre-confured in `config[:default_conflict_strategy]`;
   - Strategies:
-    - `:work_through` - continue working under the lock <u>**without**</u> lock's TTL extension;
-    - `:extendable_work_through` - continue working under the lock <u>**with**</u> lock's TTL extension;
+    - `:work_through` - continue working under the lock **without** lock's TTL extension;
+    - `:extendable_work_through` - continue working under the lock **with** lock's TTL extension;
     - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
     - `:dead_locking` - fail with deadlock exception;
 - `identity` - (optional) `[String]`
