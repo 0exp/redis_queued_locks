@@ -51,7 +51,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     # Step X: intermediate invocation results
     inter_result = nil
     timestamp = nil
-    l_spc_ext_ts = nil
+    spc_processed_timestamp = nil
 
     if log_lock_try
       run_non_critical do
@@ -219,7 +219,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
           transact.call(
             'HSET',
             lock_key,
-            'l_spc_ext_ts', (l_spc_ext_ts = Time.now.to_f),
+            'l_spc_ext_ts', (spc_processed_timestamp = Time.now.to_f),
             'l_spc_ext_ini_ttl', ttl
           )
           inter_result = :extendable_conflict_work_through
@@ -233,7 +233,39 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
                 "acq_id => '#{acquier_id}'" \
                 "spc_status => '#{sp_conflict_status} '" \
                 "last_ext_ttl => '#{ttl}' " \
-                "last_ext_ts => #{l_spc_ext_ts}'"
+                "last_ext_ts => '#{spc_processed_timestamp}'"
+              end
+            end
+          end
+        # SP-Conflict-Step X2: switch to dead lock logic or not
+        elsif sp_conflict_status == :conflict_work_through
+          inter_result = :conflict_work_through
+
+          # SPCF Step X: (lock meta-data)
+          #   - increment the conflcit counter in order to remember
+          #     how many times dead lock happened;
+          #   - [REDIS RESULT]: in normal cases should return the value of <spc_cnt> key
+          #     - for non-existent key starts from 0
+          transact.call('HINCRBY', lock_key, 'spc_cnt', 1)
+          # SPCF Step 4: (lock meta-data)
+          #   - remember the last ext-timestamp and the last ext-initial ttl;
+          #   - [REDIS RESULT]: for normal cases should return the number of fields
+          #     were added/changed;
+          transact.call(
+            'HSET',
+            lock_key,
+            'l_spc_ts', (spc_processed_timestamp = Time.now.to_f)
+          )
+
+          if log_lock_try
+            run_non_critical do
+              logger.debug do
+                "[redis_queued_locks.try_lock.reentrant_lock__work_through] " \
+                "lock_key => '#{lock_key}' " \
+                "queue_ttl => #{queue_ttl} " \
+                "acq_id => '#{acquier_id}'" \
+                "spc_status => '#{sp_conflict_status} ' " \
+                "last_spc_ts => '#{spc_processed_timestamp}'"
               end
             end
           end
@@ -385,8 +417,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     # rubocop:disable Lint/DuplicateBranch
     case
     when inter_result == :extendable_conflict_work_through
-      # Step 7.same_process_conflict.B:
-      #   - work_through case => yield <block> without lock realesing/extending;
+      # Step 7.same_process_conflict.A:
+      #   - extendable_conflict_work_through case => yield <block> without lock realesing/extending;
       #   - lock is extended in logic above;
       #   - if <result == nil> => the lock was changed during an extention:
       #     it is the fail case => go retry.
@@ -403,7 +435,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
             process: :extendable_conflict_work_through,
             lock_key: lock_key,
             acq_id: acquier_id,
-            ts: l_spc_ext_ts,
+            ts: spc_processed_timestamp,
             ttl: ttl
           }]
         elsif result[0] != nil
@@ -413,7 +445,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
             process: :extendable_conflict_work_through,
             lock_key: lock_key,
             acq_id: acquier_id,
-            ts: l_spc_ext_ts,
+            ts: spc_processed_timestamp,
             ttl: ttl
           }]
         else
@@ -427,6 +459,16 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
         # NOTE: unknown behaviour :thinking:. this part is not reachable at the moment.
         RedisQueuedLocks::Data[ok: false, result: :unknown]
       end
+    when inter_result == :conflict_work_through
+      # Step 7.same_process_conflict.B:
+      #   - conflict_work_through case => yield <block> without lock realesing/extending
+      RedisQueuedLocks::Data[ok: true, result: {
+        process: :conflict_work_through,
+        lock_key: lock_key,
+        acq_id: acquier_id,
+        ts: spc_processed_timestamp,
+        ttl: ttl
+      }]
     when fail_fast && inter_result == :fail_fast_no_try
       # Step 7.a: lock is still acquired and we should exit from the logic as soon as possible
       RedisQueuedLocks::Data[ok: false, result: inter_result]

@@ -16,9 +16,10 @@ module RedisQueuedLocks::Acquier::LockInfo
     #     'rem_ttl' => 123456789, # remaining lock key ttl (milliseconds)
     #     <additional keys for reentrant locks>:
     #     'spc_cnt' => 2, # lock reentreing count (if lock was used as reentrant lock)
+    #     'l_spc_ts' => 123456.1234 # (epoch) <non-extendable reentrant lock obtained at> timestamp
     #     'spc_ext_ttl' => 14500, # (milliseconds) the sum of all ttl extensions
     #     'l_spc_ext_ini_ttl' => 5000, # (milliseconds) the last ttl of reentrant lock
-    #     'l_spc_ext_ts' => 123456789 # <reentrant lock obtained at> time stamp (epoch, Time#to_f)
+    #     'l_spc_ext_ts' => 123456.789 # (epoch) <extendable reentrant lock obtained at> timestamp
     #   }
     #
     # @api private
@@ -56,6 +57,7 @@ module RedisQueuedLocks::Acquier::LockInfo
             lock_data['ini_ttl'] = Integer(lock_data['ini_ttl'])
             lock_data['rem_ttl'] = ((pttl_cmd_res == -1) ? Infinity : pttl_cmd_res)
             lock_data['spc_cnt'] = Integer(lock_data['spc_cnt']) if lock_data['spc_cnt']
+            lock_data['l_spc_ts'] = Float(lock_data['l_spc_ts']) if lock_data['l_spc_ts']
             lock_data['spc_ext_ttl'] = Integer(lock_data['spc_ext_ttl']) if lock_data['spc_ext_ttl']
             lock_data['l_spc_ext_ini_ttl'] =
               Integer(lock_data['l_spc_ext_ini_ttl']) if lock_data.key?('l_spc_ext_ini_ttl')

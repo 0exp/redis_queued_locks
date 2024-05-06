@@ -270,6 +270,28 @@ module RedisQueuedLocks::Acquier::AcquireLock
                   instrument:
                 })
               end
+            elsif acq_process[:result][:process] == :conflict_work_through
+              # instrumetnation: (reentrant lock without ttl extension)
+              run_non_critical do
+                logger.debug do
+                  "[redis_queued_locks.reentrant_lock_obtained] " \
+                  "lock_key => '#{result[:lock_key]}' " \
+                  "queue_ttl => #{queue_ttl} " \
+                  "acq_id => '#{acquier_id}' " \
+                  "acq_time => #{acq_time} (ms)"
+                end
+              end
+
+              run_non_critical do
+                instrumenter.notify('redis_queued_locks.reentrant_lock_obtained', {
+                  lock_key: result[:lock_key],
+                  ttl: result[:ttl],
+                  acq_id: result[:acq_id],
+                  ts: result[:ts],
+                  acq_time: acq_time,
+                  instrument:
+                })
+              end
             else
               # instrumentation: (classic lock obtain)
               # NOTE: classic is: acq_process[:result][:process] == :lock_obtaining
@@ -395,7 +417,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
             if acq_process[:result][:process] == :extendable_conflict_work_through ||
                acq_process[:result][:process] == :conflict_work_through
-              # Step X (instrumentation): reentrant_lock_hold_extension
+              # Step X (instrumentation): reentrant_lock_hold_completes
               run_non_critical do
                 instrumenter.notify('redis_queued_locks.reentrant_lock_hold_completes', {
                   hold_time: acq_process[:hold_time],

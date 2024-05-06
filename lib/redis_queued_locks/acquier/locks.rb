@@ -73,7 +73,8 @@ module RedisQueuedLocks::Acquier::Locks
                   lock_data['ts'] = Float(lock_data['ts'])
                   lock_data['ini_ttl'] = Integer(lock_data['ini_ttl'])
                   lock_data['rem_ttl'] = ((pttl_cmd_res == -1) ? Infinity : pttl_cmd_res)
-                  lock_data['spc_cnt'] = Integer(lock_date['spc_cnt']) if lock_data['spc_cnt']
+                  lock_data['spc_cnt'] = Integer(lock_data['spc_cnt']) if lock_data['spc_cnt']
+                  lock_data['l_spc_ts'] = Float(lock_data['l_spc_ts']) if lock_data['l_spc_ts']
                   lock_data['spc_ext_ttl'] =
                     Integer(lock_data['spc_ext_ttl']) if lock_data['spc_ext_ttl']
                   lock_data['l_spc_ext_ini_ttl'] =

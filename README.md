@@ -202,8 +202,9 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.dead_score_reached__reset_acquier_position]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.lock_obtained]" (logs "lockkey", "queue_ttl", "acq_id", "acq_time");
-  #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs lock_key "queue_ttl", "acq_id", "acq_time");
+  #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
+  #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
+  #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
   #   - "[redis_queued_locks.fail_fast_or_limits_reached__dequeue]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id");
@@ -219,6 +220,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.try_lock.same_process_conflict_detected]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.try_lock.same_process_conflict_analyzed]" (logs "lock_key", "queue_ttl", "acq_id", "spc_status");
   #   - "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" (logs "lock_key", "queue_ttl", "acq_id", "spc_status", "last_ext_ttl", "last_ext_ts");
+  #   - "[redis_queued_locks.try_lock.reentrant_lock__work_through]" (logs "lock_key", "queue_ttl", "acq_id", "spc_status", last_spc_ts);
   #   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id)";
   #   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id");
   #   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue");
@@ -578,10 +580,14 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
   - `"rem_ttl"` - `integer` - (milliseconds) remaining lock key ttl;
   - `<custom metadata>`- `string`/`integer` - custom metadata passed to the `lock`/`lock!` methods via `meta:` keyword argument (see [lock]((#lock---obtain-a-lock)) method documentation);
   - additional keys for **reentrant locks** and **extendable reentrant locks**:
-    - `spc_cnt` - `integer` - how many times the lock was obtained as reentrant lock;
-    - `spc_ext_ttl` - `integer` - (milliseconds) sum of TTL of the each **extendable** reentrant lock (the total TTL extension time);
-    - `l_spc_ext_ini_ttl` - `integer` - (milliseconds) TTL of the last reentrant lock;
-    - `l_spc_ext_ts` - `numeric`/`epoch` - timestamp of the last reentrant lock obtaining;
+    - for any type of reentrant locks:
+      - `"spc_cnt"` - `integer` - how many times the lock was obtained as reentrant lock;
+    - for non-extendable reentrant locks:
+      - `"l_spc_ts"` - `numeric`/`epoch` - timestamp of the last **non-extendable** reentrant lock obtaining;
+    - for extendalbe reentrant locks:
+      - `"spc_ext_ttl"` - `integer` - (milliseconds) sum of TTL of the each **extendable** reentrant lock (the total TTL extension time);
+      - `"l_spc_ext_ini_ttl"` - `integer` - (milliseconds) TTL of the last reentrant lock;
+      - `"l_spc_ext_ts"` - `numeric`/`epoch` - timestamp of the last extendable reentrant lock obtaining;
 
 ```ruby
 # <without custom metadata>
@@ -617,7 +623,6 @@ rql.lock_info("your_lock_name")
 ```ruby
 # <for reentrant locks>
 # (see `conflict_strategy:` kwarg attribute of #lock/#lock! methods and `config.default_conflict_strategy` config)
-# (the example below shows `:extendable_work_through` strategy)
 
 rql.lock("your_lock_name", ttl: 5_000)
 rql.lock("your_lock_name", ttl: 3_000)
@@ -631,10 +636,14 @@ rql.lock_info("your_lock_name")
   "ts" => 123456789.12345,
   "ini_ttl" => 5_000,
   "rem_ttl" => 9_444,
+  # ==> keys for any type of reentrant lock:
   "spc_count" => 2, # how many times the lock was obtained as reentrant lock
+  # ==> keys for extendable reentarnt locks with `:extendable_work_through` strategy:
   "spc_ext_ttl" => 5_000, # sum of TTL of the each <extendable> reentrant lock (3_000 + 2_000)
-  "l_spc_ext_ini_ttl" => 2_000, # TTL of the last reentrant lock
-  "l_spc_ext_ts" =>  123456792.12345 # timestamp of the last reentrant lock obtaining
+  "l_spc_ext_ini_ttl" => 2_000, # TTL of the last <extendable> reentrant lock
+  "l_spc_ext_ts" =>  123456792.12345 # timestamp of the last <extendable> reentrant lock obtaining
+  # ==> keys for non-extendable locks with `:work_through` strategy:
+  "l_spc_ts" => 123456.789 # timestamp of the last <non-extendable> reentrant lock obtaining
 }
 ```
 
@@ -1063,8 +1072,9 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 "[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id");
 "[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id");
 "[redis_queued_locks.dead_score_reached__reset_acquier_position]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.lock_obtained]" # (logs "lockkey", "queue_ttl", "acq_id", "acq_time");
-"[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs lock_key "queue_ttl", "acq_id", "acq_time");
+"[redis_queued_locks.lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
+"[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
+"[redis_queued_locks.reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
 "[redis_queued_locks.fail_fast_or_limits_reached__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id");
 "[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id");
 "[redis_queued_locks.decrease_lock]" # (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id");
@@ -1078,6 +1088,7 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 "[redis_queued_locks.try_lock.same_process_conflict_detected]" # (logs "lock_key", "queue_ttl", "acq_id");
 "[redis_queued_locks.try_lock.same_process_conflict_analyzed]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status");
 "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status", "last_ext_ttl", "last_ext_ts");
+"[redis_queued_locks.try_lock.reentrant_lock__work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status", last_spc_ts);
 "[redis_queued_locks.try_lock.acq_added_to_queue]" # (logs "lock_key", "queue_ttl", "acq_id)";
 "[redis_queued_locks.try_lock.remove_expired_acqs]" # (logs "lock_key", "queue_ttl", "acq_id");
 "[redis_queued_locks.try_lock.get_first_from_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue");
@@ -1120,6 +1131,7 @@ List of instrumentation events
 
 - `redis_queued_locks.lock_obtained`;
 - `redis_queued_locks.extendable_reentrant_lock_obtained`;
+- `redis_queued_locks.reentrant_lock_obtained`;
 - `redis_queued_locks.lock_hold_and_release`;
 - `redis_queued_locks.reentrant_lock_hold_completes`;
 - `redis_queued_locks.explicit_lock_release`;
@@ -1140,6 +1152,17 @@ Detalized event semantics and payload structure:
 
 - `"redis_queued_locks.extendable_reentrant_lock_obtained"`
   - an event signalizes about the "extendable reentrant lock" obtaining is happened;
+  - raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
+  - payload:
+    - `:lock_key` - `string` - lock name;
+    - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
+    - `:acq_id` - `string` - lock acquier identifier;
+    - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as extendable reentrant lock;
+    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+
+- `"redis_queued_locks.reentrant_lock_obtained"`
+  - an event signalizes about the "reentrant lock" obtaining is happened (without TTL extension);
   - raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
   - payload:
     - `:lock_key` - `string` - lock name;

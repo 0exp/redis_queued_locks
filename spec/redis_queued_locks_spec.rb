@@ -139,6 +139,118 @@ RSpec.describe RedisQueuedLocks do
       'rem_ttl' => be_a(Integer)
     })
     expect(client.lock_info('pek')['rem_ttl'] > 14_000).to eq(true)
+
+    # TODO: SPC count should change with another conflict strategy too
+    # client.lock('pek', ttl: 5500, conflict_strategy: :work_through)
+
+    # TODO: pokrit novie logi
+  end
+
+  specify 'reentrant lock hold - :work_through' do
+    client = RedisQueuedLocks::Client.new(redis) do |config|
+      config.default_conflict_strategy = :work_through
+      config.log_lock_try = true
+      # config.logger = Logger.new(STDOUT)
+    end
+
+    # Current Lock TTL: 5000
+    result1 = client.lock('trukek', ttl: 10_000)
+    lock_state1 = client.lock_info('trukek')
+    # Current Lock TTL: >9000, <10_000
+    # NOTE: <reentrant lock> without extension!!!
+    #   - ttl is ignored here cuz we try to obtain reentrant lock
+    result2 = client.lock('trukek', ttl: 5000) # NOTE: SPC COUNT - 1
+    lock_state2 = client.lock_info('trukek')
+    # Current Lock TTL: >9000, <1000 (no extensions - just simple reentrant work-through)
+    result3 = client.lock('trukek', ttl: 9000) # NOTE: SPC COUNT - 2
+    lock_state3 = client.lock_info('trukek')
+
+    # OK + :lock_obtaining process, NO SPC COUNT
+    expect(result1[:ok]).to eq(true)
+    expect(result1[:result]).to match({
+      lock_key: eq('rql:lock:trukek'),
+      acq_id: be_a(String),
+      ts: be_a(Float),
+      ttl: eq(10_000),
+      process: eq(:lock_obtaining)
+    })
+    expect(lock_state1.keys).to contain_exactly(
+      'acq_id',
+      'ts',
+      'ini_ttl',
+      'lock_key',
+      'rem_ttl'
+    )
+    expect(lock_state1).to match({
+      'acq_id' => be_a(String),
+      'ts' => be_a(Float),
+      'ini_ttl' => eq(10_000),
+      'lock_key' => eq('rql:lock:trukek'),
+      'rem_ttl' => be_a(Integer)
+    })
+
+    # OK + :conflict_work_through :process, SPC COUNT: 1
+    expect(result2[:ok]).to eq(true)
+    expect(result2[:result][:process]).to eq(:conflict_work_through)
+    expect(result2[:result]).to match({
+      lock_key: eq('rql:lock:trukek'),
+      acq_id: be_a(String),
+      ts: be_a(Float),
+      ttl: eq(5_000),
+      process: eq(:conflict_work_through)
+    })
+    expect(lock_state2.keys).to contain_exactly(
+      'acq_id',
+      'ts',
+      'ini_ttl',
+      'spc_cnt',
+      'l_spc_ts',
+      'lock_key',
+      'rem_ttl'
+    )
+    expect(lock_state2).to match({
+      'acq_id' => be_a(String),
+      'ts' => be_a(Float),
+      'ini_ttl' => eq(10_000),
+      'spc_cnt' => eq(1),
+      'l_spc_ts' => be_a(Float),
+      'lock_key' => eq('rql:lock:trukek'),
+      'rem_ttl' => be_a(Integer)
+    })
+
+    # OK + :conflict_work_through :process, SPC COUNT: 2
+    expect(result3[:ok]).to eq(true)
+    expect(result3[:result][:process]).to eq(:conflict_work_through)
+    expect(result3[:result]).to match({
+      lock_key: eq('rql:lock:trukek'),
+      acq_id: be_a(String),
+      ts: be_a(Float),
+      ttl: eq(9_000),
+      process: eq(:conflict_work_through)
+    })
+    expect(lock_state3.keys).to contain_exactly(
+      'acq_id',
+      'ts',
+      'ini_ttl',
+      'spc_cnt',
+      'l_spc_ts',
+      'lock_key',
+      'rem_ttl'
+    )
+    expect(lock_state3).to match({
+      'acq_id' => be_a(String),
+      'ts' => be_a(Float),
+      'ini_ttl' => eq(10_000),
+      'spc_cnt' => eq(2),
+      'l_spc_ts' => be_a(Float),
+      'lock_key' => eq('rql:lock:trukek'),
+      'rem_ttl' => be_a(Integer)
+    })
+
+    # TODO: SPC count should change with another conflict strategy too
+    # client.lock('pek', ttl: 5500, conflict_strategy: :extendable_work_through)
+
+    # TODO: pokrit novie logi
   end
 
   specify 'clear_dead_queues' do
