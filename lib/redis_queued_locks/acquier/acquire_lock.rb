@@ -6,6 +6,7 @@
 # rubocop:disable Metrics/MethodLength
 # rubocop:disable Metrics/ClassLength
 # rubocop:disable Metrics/BlockNesting
+# rubocop:disable Style/IfInsideElse
 module RedisQueuedLocks::Acquier::AcquireLock
   require_relative 'acquire_lock/delay_execution'
   require_relative 'acquire_lock/with_acq_timeout'
@@ -138,14 +139,16 @@ module RedisQueuedLocks::Acquier::AcquireLock
         key == 'lock_key' ||
         key == 'rem_ttl' ||
         key == 'spc_ext_ttl' ||
+        key == 'spc_cnt' ||
         key == 'l_spc_ext_ini_ttl' ||
-        key == 'l_spc_ext_ts'
+        key == 'l_spc_ext_ts' ||
+        key == 'l_spc_ts'
       end)
         raise(
           RedisQueuedLocks::ArgumentError,
-          '`:meta` keys can not overlap reserved lock data keys' \
-          '"acq_id", "ts", "ini_ttl", "lock_key", "rem_ttl", ' \
-          '"spc_ext_ttl", "l_spc_ext_ini_ttl", "l_spc_ext_ts"'
+          '`:meta` keys can not overlap reserved lock data keys ' \
+          '"acq_id", "ts", "ini_ttl", "lock_key", "rem_ttl", "spc_cnt", ' \
+          '"spc_ext_ttl", "l_spc_ext_ini_ttl", "l_spc_ext_ts", "l_spc_ts"'
         )
       end
 
@@ -330,48 +333,66 @@ module RedisQueuedLocks::Acquier::AcquireLock
             acq_process[:should_try] = false
             acq_process[:acq_time] = acq_time
             acq_process[:acq_end_time] = acq_end_time
-          elsif fail_fast && acq_process[:result] == :fail_fast_no_try
-            acq_process[:should_try] = false
-            if raise_errors
-              raise(
-                RedisQueuedLocks::LockAlreadyObtainedError,
-                "Lock \"#{lock_key}\" is already obtained."
-              )
-            end
           else
-            # Step 2.1.b: failed acquirement => retry
-            acq_process[:tries] += 1
-
-            if (retry_count != nil && acq_process[:tries] >= retry_count) || fail_fast
-              # NOTE:
-              #   - reached the retry limit => quit from the loop
-              #   - should fail fast => quit from the loop
+            # Step 2.2: failed to acquire. anylize each case and act in accordance
+            if acq_process[:result] == :fail_fast_no_try # Step 2.2.a: fail without try
               acq_process[:should_try] = false
-              acq_process[:result] = fail_fast ? :fail_fast_after_try : :retry_limit_reached
 
-              # NOTE:
-              #   - reached the retry limit => dequeue from the lock queue
-              #   - should fail fast => dequeue from the lock queue
-              acq_dequeue.call
-
-              # NOTE: check and raise an error
-              if fail_fast && raise_errors
+              if raise_errors
                 raise(
                   RedisQueuedLocks::LockAlreadyObtainedError,
                   "Lock \"#{lock_key}\" is already obtained."
                 )
-              elsif raise_errors
+              end
+            elsif acq_process[:result] == :conflict_dead_lock # Step 2.2.b: fail after dead lock
+              acq_process[:tries] += 1
+              acq_process[:should_try] = false
+              acq_process[:result] = :conflict_dead_lock
+              acq_dequeue.call
+
+              if raise_errors
                 raise(
-                  RedisQueuedLocks::LockAcquiermentRetryLimitError,
-                  "Failed to acquire the lock \"#{lock_key}\" " \
-                  "for the given retry_count limit (#{retry_count} times)."
+                  RedisQueuedLock::ConflictLockObtainError,
+                  "Lock Conflict: trying to acquire the lock \"#{lock_key}\" " \
+                  "that is already acquired by the current acquier (acq_id: \"#{acquired_id}\")."
                 )
               end
             else
-              # NOTE:
-              #   delay the exceution in order to prevent chaotic lock-acquire attempts
-              #   and to allow other processes and threads to obtain the lock too.
-              delay_execution(retry_delay, retry_jitter)
+              acq_process[:tries] += 1 # Step RETRY: possible retry case
+
+              if fail_fast # Step RETRY.A: fail after try
+                acq_process[:should_try] = false
+                acq_process[:result] = :fail_fast_after_try
+                acq_dequeue.call
+
+                if raise_errors
+                  raise(
+                    RedisQueuedLocks::LockAlreadyObtainedError,
+                    "Lock \"#{lock_key}\" is already obtained."
+                  )
+                end
+              else
+                # Step RETRY.B: fail cuz the retry count is reached
+                if retry_count != nil && acq_process[:tries] >= retry_count
+                  acq_process[:should_try] = false
+                  acq_process[:result] = :retry_limit_reached
+                  acq_dequeue.call
+
+                  if raise_errors
+                    raise(
+                      RedisQueuedLocks::LockAcquiermentRetryLimitError,
+                      "Failed to acquire the lock \"#{lock_key}\" " \
+                      "for the given retry_count limit (#{retry_count} times)."
+                    )
+                  end
+                else
+                  # Step RETRY.X: no significant failures => retry easily :)
+                  # NOTE:
+                  #   delay the exceution in order to prevent chaotic lock-acquire attempts
+                  #   and to allow other processes and threads to obtain the lock too.
+                  delay_execution(retry_delay, retry_jitter)
+                end
+              end
             end
           end
         end
@@ -450,11 +471,12 @@ module RedisQueuedLocks::Acquier::AcquireLock
       else
         if acq_process[:result] != :retry_limit_reached &&
            acq_process[:result] != :fail_fast_no_try &&
-           acq_process[:result] != :fail_fast_after_try
-          # NOTE: we have only two situations if lock is not acquired without fast-fail flag:
-          #   - time limit is reached
-          #   - retry count limit is reached
-          #   In other cases the lock obtaining time and tries count are infinite.
+           acq_process[:result] != :fail_fast_after_try &&
+           acq_process[:result] != :conflict_dead_lock
+          # NOTE: we have only two situations if lock is not acquired without explicit failures:
+          #   - time limit is reached;
+          #   - retry count limit is reached;
+          #   - **(notice: in other cases the lock obtaining time and tries count are infinite)
           acq_process[:result] = :timeout_reached
         end
         # Step 3.b: lock is not acquired (acquier is dequeued by timeout callback)
@@ -467,3 +489,4 @@ end
 # rubocop:enable Metrics/MethodLength
 # rubocop:enable Metrics/ClassLength
 # rubocop:enable Metrics/BlockNesting
+# rubocop:enable Style/IfInsideElse

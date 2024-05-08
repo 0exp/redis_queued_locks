@@ -138,58 +138,6 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
         end
 
         # SP-Conflict-Step X2: switch to conflict-based logic or not
-        case sp_conflict_status
-        when :conflict_work_through
-          # NADO LOG
-          # ==> inter_result = :conflict_work_through
-          puts '# ==> inter_result = :conflict_work_through'
-        # SP-Conflict-Step X2: switch to dead lock logic or not
-        when :extendable_conflict_work_through
-        # # SP-Conflict-Step FINAL (SPCF): extend the lock and work through
-        # #   - extend the lock ttl;
-        # #   - store extensions in lock metadata;
-        # # SPCF Step 1: extend the lock pttl
-        # #   - [REDIS RESULT]: in normal cases should return the last script command value
-        # #     - for the current script should return:
-        # #       <1> => timeout was set;
-        # #       <0> => timeount was not set;
-        # transact.call('EVAL', EXTEND_LOCK_PTTL, 1, lock_key, ttl)
-        # # SPCF Step <Meta>: store conflict-state additionals in lock metadata:
-        # # SPCF Step 2: (lock meta-data)
-        # #   - add the added ttl to reflect the real lock TTL in info;
-        # #   - [REDIS RESULT]: in normal cases should return the value of <ttl> key
-        # #     - for non-existent key value starts from <0> (zero)
-        # transact.call('HINCRBY', lock_key, 'spc_ext_ttl', ttl)
-        # # SPCF Step 3: (lock meta-data)
-        # #   - increment the conflcit counter in order to remember
-        # #     how many times dead lock happened;
-        # #   - [REDIS RESULT]: in normal cases should return the value of <spc_cnt> key
-        # #     - for non-existent key starts from 0
-        # transact.call('HINCRBY', lock_key, 'spc_cnt', 1)
-        # # SPCF Step 4: (lock meta-data)
-        # #   - remember the last ext-timestamp and the last ext-initial ttl;
-        # #   - [REDIS RESULT]: for normal cases should return the number of fields
-        # #     were added/changed;
-        # transact.call(
-        #   'HSET',
-        #   lock_key,
-        #   'l_spc_ext_ts', Time.now.to_f,
-        #   'l_spc_ext_ini_ttl', ttl
-        # )
-        # # NADO LOG
-        # inter_result = :extendable_conflict_work_through
-        # puts "# ==> inter_result = :extendable_conflict_work_through"
-        # SP-Conflict-Step X2: switch to dead lock logic or not
-        when :conflict_fail_now
-          puts '# ==> inter_result = :conflict_fail_now'
-          # SP-Conflict NOTICE:
-          #   - in other sp-cofnlict cases we are in <wait_for_lock> status and should
-          #     continue to work in classic way (next lines of code);
-        when :conflict_wait_for_lock
-          puts 'RABOTAEM KAK OBICHNO'
-        end
-
-        # SP-Conflict-Step X2: switch to conflict-based logic or not
         if sp_conflict_status == :extendable_conflict_work_through
           # SP-Conflict-Step FINAL (SPCF): extend the lock and work through
           #   - extend the lock ttl;
@@ -263,12 +211,30 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
                 "[redis_queued_locks.try_lock.reentrant_lock__work_through] " \
                 "lock_key => '#{lock_key}' " \
                 "queue_ttl => #{queue_ttl} " \
-                "acq_id => '#{acquier_id}'" \
+                "acq_id => '#{acquier_id}' " \
                 "spc_status => '#{sp_conflict_status} ' " \
                 "last_spc_ts => '#{spc_processed_timestamp}'"
               end
             end
           end
+        # SP-Conflict-Step X2: switch to dead lock logic or not
+        elsif sp_conflict_status == :conflict_dead_lock
+          inter_result = :conflict_dead_lock
+          spc_processed_timestamp = Time.now.to_f
+
+          if log_lock_try
+            logger.debug do
+              "[redis_queued_locks.try_lock.single_process_lock_conflict__dead_lock] " \
+              "lock_key => '#{lock_key}' " \
+              "queue_ttl => #{queue_ttl} " \
+              "acq_id => '#{acquier_id}' " \
+              "spc_status => '#{sp_conflict_status}' " \
+              "last_spc_ts => '#{spc_processed_timestamp}'"
+            end
+          end
+        # Reached the SP-Non-Conflict Mode (NOTE):
+        #   - in other sp-conflict cases we are in <wait_for_lock> (non-conflict) status and should
+        #     continue to work in classic way (next lines of code):
         elsif fail_fast && current_lock_obtainer != nil # Fast-Step X0: fail-fast check
           # Fast-Step X1: lock is already obtained. fail fast leads to "no try".
           inter_result = :fail_fast_no_try
@@ -469,6 +435,10 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
         ts: spc_processed_timestamp,
         ttl: ttl
       }]
+    when inter_result == :conflict_dead_lock
+      # Step 7.same_process_conflict.C:
+      #  - deadlock. should fail in acquirement logic;
+      RedisQueuedLocks::Data[ok: false, result: inter_result]
     when fail_fast && inter_result == :fail_fast_no_try
       # Step 7.a: lock is still acquired and we should exit from the logic as soon as possible
       RedisQueuedLocks::Data[ok: false, result: inter_result]
@@ -521,7 +491,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
     run_non_critical do
       logger.debug do
-        "[redis_queued_locks.fail_fast_or_limits_reached__dequeue] " \
+        "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue] " \
         "lock_key => '#{lock_key}' " \
         "queue_ttl => '#{queue_ttl}' " \
         "acq_id => '#{acquier_id}'"

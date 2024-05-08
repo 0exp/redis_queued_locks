@@ -24,4 +24,8 @@ module RedisQueuedLocks
   # @api pulic
   # @since 1.0.0
   TimedLockTimeoutError = Class.new(Error)
+
+  # @api public
+  # @since 1.3.0
+  ConflictLockObtainError = Class.new(Error)
 end
