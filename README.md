@@ -32,7 +32,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [locks_info](#locks_info---get-list-of-locks-with-their-info)
   - [queues_info](#queues_info---get-list-of-queues-with-their-info)
   - [clear_dead_requests](#clear_dead_requests)
-- [Dead locks and Reentrant locks](#)
+- [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks)
 - [Logging](#logging)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
