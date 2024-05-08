@@ -1071,6 +1071,11 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 
 ## Dead locks and Reentrant locks
 
+- documentation is in progress;
+- for current details check:
+  - (Configuration)[#configuration] documentation: see `config.default_conflict_strategy` config docs;
+  - (#lock)[#lock] method documentation: see `conflict_strategy` attribute docs;
+
 ---
 
 ## Logging
