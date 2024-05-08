@@ -486,6 +486,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   #
   # @api private
   # @since 1.0.0
+  # @version 1.3.0
   def dequeue_from_lock_queue(redis, logger, lock_key, lock_key_queue, queue_ttl, acquier_id)
     result = redis.call('ZREM', lock_key_queue, acquier_id)
 

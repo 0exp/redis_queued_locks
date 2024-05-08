@@ -1232,25 +1232,28 @@ Detalized event semantics and payload structure:
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
-- **strict redlock algorithm support** (support for many `RedisClient` instances);
-- Semantic Error objects for unexpected Redis errors;
-- better specs with 100% test coverage (total specs rework);
-- (non-`timed` locks): per-ruby-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
-  the acquired lock for long-running blocks of code (that invoked "under" the lock
-  whose ttl may expire before the block execution completes). It makes sense for non-`timed` locks *only*;
-- lock request prioritization;
-- support for LIFO strategy;
-- support for Random Access strategy;
-- more structured logging (separated docs);
-- `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
-- better code stylization (+ some refactorings);
-- statistics with UI;
-- JSON log formatter;
-- `#lock_series` - acquire a series of locks:
-  ```ruby
-  rql.lock_series('lock_a', 'lock_b', 'lock_c') { puts 'locked' }
-  ```
-- support for `Dragonfly` database backend (https://github.com/dragonflydb/dragonfly) (https://www.dragonflydb.io/);
+- **Major**:
+  - `#lock_series` - acquire a series of locks:
+    ```ruby
+    rql.lock_series('lock_a', 'lock_b', 'lock_c') { puts 'locked' }
+    ```
+  - support for `Dragonfly` database backend (https://github.com/dragonflydb/dragonfly) (https://www.dragonflydb.io/);
+  - support for Random Access strategy (non-queued behavior);
+  - lock request prioritization;
+  - **strict redlock algorithm support** (support for many `RedisClient` instances);
+- **Minor**:
+  - Semantic error objects for unexpected Redis errors;
+  - change all `::Process.clock_gettime(::Process::CLOCK_MONOTONIC)` milliseconds-related invocations to
+    `::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)` in order to reduce time-related math operations count;
+  - **Experimental feature**: (non-`timed` locks): per-ruby-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
+    the acquired lock for long-running blocks of code (that invoked "under" the lock
+    whose ttl may expire before the block execution completes). It makes sense for non-`timed` locks *only*;
+  - better code stylization (+ some refactorings);
+  - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
+  - Support for LIFO strategy;
+  - better specs with 100% test coverage (total specs rework);
+  - statistics with UI;
+  - JSON log formatter;
 
 ---
 

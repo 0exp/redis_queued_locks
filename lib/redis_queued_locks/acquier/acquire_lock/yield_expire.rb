@@ -85,7 +85,9 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
             "acq_id => '#{acquier_id}' " \
           end
         end
+        # NOTE:# NOTE: EVAL signature -> <lua script>, (number of keys), *(keys), *(arguments)
         redis.call('EVAL', DECREASE_LOCK_PTTL, 1, lock_key, decreased_ttl)
+        # TODO: upload scripts to the redis
       end
     end
   end
