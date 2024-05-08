@@ -160,6 +160,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
   #   - `:dead_locking` - fail with deadlock exception;
   # - Can be customized in methods via `:conflict_strategy` attribute (see method signatures of #lock and #lock! methods);
+  # - See "Dead locks and Reentrant Locks" documentation section in REDME.md for details;
   config.default_conflict_strategy = :wait_for_lock
 
   # (default: 100)
@@ -317,7 +318,7 @@ def lock(
   - See [Instrumentation](#instrumentation) section of docs;
   - pre-configured in `config[:isntrumenter]` with void notifier (`RedisQueuedLocks::Instrumenter::VoidNotifier`);
 - `raise_errors` - (optional) `[Boolean]`
-  - Raise errors on library-related limits such as timeout or retry count limit;
+  - Raise errors on library-related limits (such as timeout or retry count limit) and on lock conflicts (such as same-process dead locks);
   - `false` by default;
 - `fail_fast` - (optional) `[Boolean]`
     - Should the required lock to be checked before the try and exit immidietly if lock is
@@ -335,6 +336,7 @@ def lock(
     - `:extendable_work_through` - continue working under the lock **with** lock's TTL extension;
     - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
     - `:dead_locking` - fail with deadlock exception;
+  - See [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks) readme section for details;
 - `identity` - (optional) `[String]`
   - An unique string that is unique per `RedisQueuedLock::Client` instance. Resolves the
     collisions between the same process_id/thread_id/fiber_id/ractor_id identifiers on different
@@ -380,7 +382,8 @@ Return value:
       lock_key: "rql:lock:my_lock",
       acq_id: "rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
       ts: 1711909612.653696,
-      ttl: 10000
+      ttl: 10000,
+      process: :lock_obtaining
     }
   }
   ```
@@ -400,7 +403,7 @@ Return value:
         acq_id: String, # acquier identifier ("process_id/thread_id/fiber_id/ractor_id/identity")
         ts: Float, # time (epoch) when lock was obtained (float, Time#to_f)
         ttl: Integer, # lock's time to live in milliseconds (integer)
-        process: Symbol # which logical process has acquired the lock (:lock_obtaining, :extendable_conflict_work_through, :conflict_work_through)
+        process: Symbol # which logical process has acquired the lock (:lock_obtaining, :extendable_conflict_work_through, :conflict_work_through, :conflict_dead_lock)
       }
     }
     ```
@@ -414,7 +417,7 @@ Return value:
         acq_id: "rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
         ts: 1711909612.653696,
         ttl: 10000,
-        process: :lock_obtaining # for reentrant lock may be :extendable_conflict_work_through or :conflict_work_through
+        process: :lock_obtaining # for custom conflict strategies may be: :conflict_dead_lock, :conflict_work_through, :extendable_conflict_work_through
       }
     }
     ```
@@ -422,6 +425,7 @@ Return value:
     ```ruby
     { ok: false, result: :timeout_reached }
     { ok: false, result: :retry_count_reached }
+    { ok: false, result: :conflict_dead_lock } # see <conflict_strategy> option for details (:dead_locking strategy)
     { ok: false, result: :fail_fast_no_try } # see <fail_fast> option
     { ok: false, result: :fail_fast_after_try } # see <fail_fast> option
     { ok: false, result: :unknown }
