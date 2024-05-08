@@ -1073,7 +1073,7 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
-- **detailed documentation is in progress at the momend** ;
+- **this documentation section is in progress**;
 - (little details for a context of the current implementation and feautres):
   - at this moment we support only **reentrant locks**: they works via customizable conflict strategy behavior
     (`:wait_for_lock` (default), `:conflict_work_through`, `:extendable_conflict_work_through`, `:dead_locking`);
