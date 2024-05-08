@@ -1079,7 +1079,7 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
   - in non-reentrant conflict cases your lock obtaining process will work in a classic way (some dead lock conflict => work in "wait for lock" style);
   - for current implementation details check:
     - [Configuration](#configuration) documentation: see `config.default_conflict_strategy` config docs;
-    - [#lock](#lock) method documentation: see `conflict_strategy` attribute docs;
+    - [#lock](#lock---obtain-a-lock) method documentation: see `conflict_strategy` attribute docs;
 
 ---
 
