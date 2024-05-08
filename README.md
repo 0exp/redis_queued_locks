@@ -1264,6 +1264,7 @@ Detalized event semantics and payload structure:
   - better specs with 100% test coverage (total specs rework);
   - statistics with UI;
   - JSON log formatter;
+  - `go`-lang implementation;
 
 ---
 
