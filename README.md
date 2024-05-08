@@ -1243,14 +1243,14 @@ Detalized event semantics and payload structure:
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - **Major**:
+  - support for Random Access strategy (non-queued behavior);
+  - lock request prioritization;
+  - **strict redlock algorithm support** (support for many `RedisClient` instances);
   - `#lock_series` - acquire a series of locks:
     ```ruby
     rql.lock_series('lock_a', 'lock_b', 'lock_c') { puts 'locked' }
     ```
   - support for `Dragonfly` database backend (https://github.com/dragonflydb/dragonfly) (https://www.dragonflydb.io/);
-  - support for Random Access strategy (non-queued behavior);
-  - lock request prioritization;
-  - **strict redlock algorithm support** (support for many `RedisClient` instances);
 - **Minor**:
   - Semantic error objects for unexpected Redis errors;
   - change all `::Process.clock_gettime(::Process::CLOCK_MONOTONIC)` milliseconds-related invocations to
