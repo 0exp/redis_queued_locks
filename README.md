@@ -151,7 +151,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   config.is_timed_by_default = false
 
   # (symbol) (default: :wait_for_lock)
-  # - The conflict strategy mode for cases when the process that obtained the lock want to acquire this lock again;
+  # - The conflict strategy mode is a logical behavior for cases when the process that obtained the lock want to acquire this lock again;
   # - Realizes "reentrant locks" abstraction (same process conflict / same process deadlock);
   # - By default uses `:wait_for_lock` strategy (classic way);
   # - Strategies:
