@@ -151,7 +151,9 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   config.is_timed_by_default = false
 
   # (symbol) (default: :wait_for_lock)
-  # - The conflict strategy mode is a logical behavior for cases when the process that obtained the lock want to acquire this lock again;
+  # - Global default conflict strategy mode;
+  # - Can be customized in methods `#lock` and `#lock` via `:conflict_strategy` attribute (see method signatures of #lock and #lock! methods);
+  # - Conflict strategy is a logical behavior for cases when the process that obtained the lock want to acquire this lock again;
   # - Realizes "reentrant locks" abstraction (same process conflict / same process deadlock);
   # - By default uses `:wait_for_lock` strategy (classic way);
   # - Strategies:
@@ -159,7 +161,6 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - `:extendable_work_through` - continue working under the lock <with> lock's TTL extension;
   #   - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
   #   - `:dead_locking` - fail with deadlock exception;
-  # - Can be customized in methods via `:conflict_strategy` attribute (see method signatures of #lock and #lock! methods);
   # - See "Dead locks and Reentrant Locks" documentation section in REDME.md for details;
   config.default_conflict_strategy = :wait_for_lock
 
