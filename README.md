@@ -32,7 +32,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [locks_info](#locks_info---get-list-of-locks-with-their-info)
   - [queues_info](#queues_info---get-list-of-queues-with-their-info)
   - [clear_dead_requests](#clear_dead_requests)
-- [Conflicts and Reentrant Locks](#)
+- [Dead locks and Reentrant locks](#)
 - [Logging](#logging)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
@@ -1063,7 +1063,7 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 
 ---
 
-## Conflicts and Reentrant Locks
+## Dead locks and Reentrant locks
 
 ---
 
