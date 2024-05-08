@@ -391,9 +391,11 @@ Return value:
   - Signature: `[yield, Hash<Symbol,Boolean|Hash<Symbol,Numeric|String>>]`
   - Format: `{ ok: true/false, result: <Symbol|Hash<Symbol,Hash>> }`;
   - Includes the `:process` key that describes a logical type of the lock obtaining process. Possible values:
-    - `:lock_obtaining` - classic lock obtaining proces;
-    - `:extendable_conflict_work_through` - reentrant lock acquiring process with lock's TTL extension;
-    - `:conflict_work_through` - reentrant lock acquiring process without lock's TTL extension;
+    - `:lock_obtaining` - classic lock obtaining proces. Default behavior (`conflict_strategy: :wait_for_lock`);
+    - `:extendable_conflict_work_through` - reentrant lock acquiring process with lock's TTL extension. Suitable for `conflict_strategy: :extendable_work_through`;
+    - `:conflict_work_through` - reentrant lock acquiring process without lock's TTL extension. Suitable for `conflict_strategy: :work_through`;
+    - `:dead_locking` - current process tries to acquire a lock that is already acquired by them. Suitalbe for `conflict_startegy: :dead_locking`;
+    - For more details see [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks) readme section;
   - For successful lock obtaining:
     ```ruby
     {
