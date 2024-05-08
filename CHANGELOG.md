@@ -1,13 +1,15 @@
 ## [Unreleased]
+
+## [1.3.0] - 2024-05-08
 ### Added
-- **Major Feature**: support for **Reentrant Locks** (super strong and diffcult feature);
+- **Major Feature**: support for **Reentrant Locks**;
 - The result of lock obtaining now includes `:process` key that shows the type of logical process that obtains the lock
-  (`:lock_obtaining`, `:extendable_conflict_work_through`, `:conflict_work_through`);
+  (`:lock_obtaining`, `:extendable_conflict_work_through`, `:conflict_work_through`, `:dead_locking`);
 - Added reentrant lock details to `RedisQueuedLocks::Client#lock_info` and `RedisQueuedLocks::Client#locks` method results;
 - Documentation updates;
 ### Changed
 - Logging: `redis_queued_locks.fail_fast_or_limits_reached__dequeue` log is renamed to `redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue`
-  in order to reflect the same-process-conflict-deadlock failure reason;
+  in order to reflect the lock conflict failures too;
 
 ## [1.2.0] - 2024-04-27
 ### Added
