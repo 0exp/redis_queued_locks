@@ -264,10 +264,13 @@ end
 <sup>\[[back to top](#usage)\]</sup>
 
 - `#lock` - obtain a lock;
-- If block is passed the obtained lock will be released after the block execution or the lock's ttl (what will happen first);
-- If block is not passed the obtained lock will be released after lock's ttl;
-- If block is passed the block's yield result will be returned;
-- If block is not passed the lock information will be returned;
+- If block is passed:
+  - the obtained lock will be released after the block execution or the lock's ttl (what will happen first);
+    - if you want to timeout (fail with timeout) the block execution with lock's TTL use `timed: true` option;
+  - the block's result will be returned;
+- If block is not passed:
+  - the obtained lock will be released after lock's ttl;
+  - the lock information will be returned;
 
 ```ruby
 def lock(
