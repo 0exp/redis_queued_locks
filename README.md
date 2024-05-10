@@ -553,6 +553,7 @@ rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
   - (`RedisQueuedLocks::LockAlreadyObtainedError`) when `fail_fast` is `true` and lock is already obtained;
   - (`RedisQueuedLocks::LockAcquiermentTimeoutError`) `timeout` limit reached before lock is obtained;
   - (`RedisQueuedLocks::LockAcquiermentRetryLimitError`) `retry_count` limit reached before lock is obtained;
+  - (`RedisQueuedLocks::ConflictLockObtainError`) when `conflict_strategy: :dead_locking` is used and the "same-process-dead-lock" is happened (see [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks) docs);
 
 ```ruby
 def lock!(
