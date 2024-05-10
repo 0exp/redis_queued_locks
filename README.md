@@ -655,7 +655,7 @@ rql.lock_info("your_lock_name")
   # ==> keys for extendable reentarnt locks with `:extendable_work_through` strategy:
   "spc_ext_ttl" => 5_000, # sum of TTL of the each <extendable> reentrant lock (3_000 + 2_000)
   "l_spc_ext_ini_ttl" => 2_000, # TTL of the last <extendable> reentrant lock
-  "l_spc_ext_ts" =>  123456792.12345 # timestamp of the last <extendable> reentrant lock obtaining
+  "l_spc_ext_ts" =>  123456792.12345, # timestamp of the last <extendable> reentrant lock obtaining
   # ==> keys for non-extendable locks with `:work_through` strategy:
   "l_spc_ts" => 123456.789 # timestamp of the last <non-extendable> reentrant lock obtaining
 }
