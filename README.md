@@ -263,6 +263,7 @@ end
 
 <sup>\[[back to top](#usage)\]</sup>
 
+- `#lock` - obtain a lock;
 - If block is passed the obtained lock will be released after the block execution or the lock's ttl (what will happen first);
 - If block is not passed the obtained lock will be released after lock's ttl;
 - If block is passed the block's yield result will be returned;
@@ -544,6 +545,7 @@ rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
 
 <sup>\[[back to top](#usage)\]</sup>
 
+- `#lock!` - exceptional lock obtaining;
 - fails when (and with):
   - (`RedisQueuedLocks::LockAlreadyObtainedError`) when `fail_fast` is `true` and lock is already obtained;
   - (`RedisQueuedLocks::LockAcquiermentTimeoutError`) `timeout` limit reached before lock is obtained;
