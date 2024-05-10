@@ -94,7 +94,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.3.0
+    # @version 1.3.1
     def acquire_lock(
       redis,
       lock_name,
@@ -132,7 +132,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
       end
 
       # Step 0.2: prevent :meta incompatabiltiies (structure)
-      if meta == ::Hash && (meta.keys.any? do |key|
+      if meta.is_a?(::Hash) && (meta.keys.any? do |key|
         key == 'acq_id' ||
         key == 'ts' ||
         key == 'ini_ttl' ||

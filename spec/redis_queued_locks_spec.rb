@@ -707,6 +707,58 @@ RSpec.describe RedisQueuedLocks do
       'chuk' => '321', # <custom meta> (expectation)
       'buk' => '123' # <custom meta> (expectation)
     })
+
+    aggregate_failures 'reserved keys' do
+      expect do
+        client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'acq_id' => 'kek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError)
+      expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+
+      expect do
+        client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'ts' => 'kek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError)
+      expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+
+      expect do
+        client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'ini_ttl' => 'kek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError)
+      expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+
+      expect do
+        client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'lock_key' => 'kek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError)
+      expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+
+      expect do
+        client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'rem_ttl' => 'kek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError)
+      expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+
+      expect do
+        client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'spc_ext_ttl' => 'kek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError)
+      expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+
+      expect do
+        client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'spc_cnt' => 'kek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError)
+      expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+
+      expect do
+        client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'l_spc_ext_ini_ttl' => 'kek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError)
+      expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+
+      expect do
+        client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'l_spc_ext_ts' => 'kek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError)
+      expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+
+      expect do
+        client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'l_spc_ts' => 'kek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError)
+      expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+    end
   end
 
   specify ':instrument' do
