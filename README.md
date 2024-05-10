@@ -270,7 +270,7 @@ end
   - the block's result will be returned;
 - If block is not passed:
   - the obtained lock will be released after lock's ttl;
-  - the lock information will be returned;
+  - the lock information will be returned (hash with technical info such as lock key, acquier identifier, acquirement timestamp, lock's ttl, type of obtaining process, etc);
 
 ```ruby
 def lock(
