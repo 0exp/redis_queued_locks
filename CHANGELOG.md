@@ -1,4 +1,6 @@
 ## [Unreleased]
+### Added
+- `#lock/#lock!`: reduced memory allocaiton during `:meta` attribute type checking;
 
 ## [1.3.1] - 2024-05-10
 ### Fixed
