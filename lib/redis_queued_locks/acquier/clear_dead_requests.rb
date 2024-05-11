@@ -15,7 +15,7 @@ module RedisQueuedLocks::Acquier::ClearDeadRequests
     # @api private
     # @since 1.0.0
     def clear_dead_requests(redis_client, scan_size, dead_ttl, logger, instrumenter, instrument)
-      dead_score = RedisQueuedLocks::Resource.acquier_dead_score(dead_ttl / 1000.0)
+      dead_score = RedisQueuedLocks::Resource.acquier_dead_score(dead_ttl / 1_000.0)
 
       result = Set.new.tap do |processed_queues|
         redis_client.with do |rconn|

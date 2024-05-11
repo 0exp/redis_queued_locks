@@ -198,7 +198,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
       # Step 2: try to lock with timeout
       with_acq_timeout(timeout, lock_key, raise_errors, on_timeout: acq_dequeue) do
-        acq_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
+        acq_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
 
         # Step 2.1: cyclically try to obtain the lock
         while acq_process[:should_try]
@@ -241,8 +241,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
             meta
           ) => { ok:, result: }
 
-          acq_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
-          acq_time = ((acq_end_time - acq_start_time) * 1_000).ceil(2)
+          acq_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
+          acq_time = ((acq_end_time - acq_start_time) / 1_000.0).ceil(2)
 
           # Step X: save the intermediate results to the result observer
           acq_process[:result] = result
@@ -403,10 +403,10 @@ module RedisQueuedLocks::Acquier::AcquireLock
         # Step 3.a: acquired successfully => run logic or return the result of acquirement
         if block_given?
           begin
-            yield_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
+            yield_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
 
             ttl_shift = (
-              (yield_time - acq_process[:acq_end_time]) * 1000 -
+              (yield_time - acq_process[:acq_end_time]) / 1_000.0 -
               RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
             ).ceil(2)
 
@@ -431,9 +431,11 @@ module RedisQueuedLocks::Acquier::AcquireLock
               &block
             )
           ensure
-            acq_process[:rel_time] = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
+            acq_process[:rel_time] = ::Process.clock_gettime(
+              ::Process::CLOCK_MONOTONIC, :microsecond
+            )
             acq_process[:hold_time] = (
-              (acq_process[:rel_time] - acq_process[:acq_end_time]) * 1000
+              (acq_process[:rel_time] - acq_process[:acq_end_time]) / 1_000.0
             ).ceil(2)
 
             if acq_process[:result][:process] == :extendable_conflict_work_through ||

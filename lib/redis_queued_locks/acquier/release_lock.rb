@@ -32,11 +32,11 @@ module RedisQueuedLocks::Acquier::ReleaseLock
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
 
-      rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
+      rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
       fully_release_lock(redis, lock_key, lock_key_queue) => { ok:, result: }
       time_at = Time.now.to_f
-      rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
-      rel_time = ((rel_end_time - rel_start_time) * 1_000).ceil(2)
+      rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
+      rel_time = ((rel_end_time - rel_start_time) / 1_000).ceil(2)
 
       run_non_critical do
         instrumenter.notify('redis_queued_locks.explicit_lock_release', {

@@ -49,7 +49,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
     initial_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)
 
     if block_given?
-      timeout = ((ttl - ttl_shift) / 1000.0).yield_self do |time|
+      timeout = ((ttl - ttl_shift) / 1_000.0).yield_self do |time|
         # NOTE: time in <seconds> cuz Ruby's Timeout requires <seconds>
         (time < 0) ? 0.0 : time
       end

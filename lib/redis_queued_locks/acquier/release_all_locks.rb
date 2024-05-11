@@ -29,11 +29,11 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     # @api private
     # @since 1.0.0
     def release_all_locks(redis, batch_size, logger, instrumenter, instrument)
-      rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
+      rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
       fully_release_all_locks(redis, batch_size) => { ok:, result: }
       time_at = Time.now.to_f
-      rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
-      rel_time = ((rel_end_time - rel_start_time) * 1_000).ceil(2)
+      rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
+      rel_time = ((rel_end_time - rel_start_time) / 1_000).ceil(2)
 
       run_non_critical do
         instrumenter.notify('redis_queued_locks.explicit_all_locks_release', {
