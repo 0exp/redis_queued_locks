@@ -28,6 +28,7 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     #
     # @api private
     # @since 1.0.0
+    # @version 1.4.0
     def release_all_locks(redis, batch_size, logger, instrumenter, instrument)
       rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
       fully_release_all_locks(redis, batch_size) => { ok:, result: }

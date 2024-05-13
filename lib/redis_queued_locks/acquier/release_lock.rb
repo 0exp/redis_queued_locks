@@ -28,6 +28,7 @@ module RedisQueuedLocks::Acquier::ReleaseLock
     #
     # @api private
     # @since 1.0.0
+    # @version 1.4.0
     def release_lock(redis, lock_name, instrumenter, logger)
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
