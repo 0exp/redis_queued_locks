@@ -4,7 +4,7 @@
 
 Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) (with requeue capabilities) which guarantees the request queue will never be stacked.
 
-Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttls, queue ttls, lock attempts limit, fast failing, etc), logging and instrumentation.
+Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), logging and instrumentation.
 
 ---
 
