@@ -1,7 +1,9 @@
 ## [Unreleased]
+
+## [1.4.0] - 2024-05-13
 ### Added
-- `#lock/#lock!`: reduced memory allocaiton during `:meta` attribute type checking;
-### Changeed
+- `#lock`/`#lock!`: reduced memory allocaiton during `:meta` attribute type checking;
+### Changed
 - More accurate time analyzis operations;
 
 ## [1.3.1] - 2024-05-10
