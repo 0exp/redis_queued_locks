@@ -1264,8 +1264,6 @@ Detalized event semantics and payload structure:
   - support for `Dragonfly` database backend (https://github.com/dragonflydb/dragonfly) (https://www.dragonflydb.io/);
 - **Minor**:
   - Semantic error objects for unexpected Redis errors;
-  - change all `::Process.clock_gettime(::Process::CLOCK_MONOTONIC)` milliseconds-related invocations to
-    `::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)` in order to reduce time-related math operations count;
   - **Experimental feature**: (non-`timed` locks): per-ruby-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
     the acquired lock for long-running blocks of code (that invoked "under" the lock
     whose ttl may expire before the block execution completes). It makes sense for non-`timed` locks *only*;
