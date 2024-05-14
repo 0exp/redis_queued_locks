@@ -182,10 +182,10 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
 
   # (default: RedisQueuedLocks::Instrument::VoidNotifier)
   # - instrumentation layer;
-  # - you can provde your own instrumenter with `#notify(event, payload = {})`
+  # - you can provide your own instrumenter that should realize `#notify(event, payload = {})` interface:
   #   - event: <string> requried;
   #   - payload: <hash> requried;
-  # - disabled by default via VoidNotifier;
+  # - disabled by default via `VoidNotifier`;
   config.instrumenter = RedisQueuedLocks::Instrument::ActiveSupport
 
   # (default: -> { RedisQueuedLocks::Resource.calc_uniq_identity })
