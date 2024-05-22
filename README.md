@@ -1255,7 +1255,7 @@ Detalized event semantics and payload structure:
 
 - **Major**:
   - percent-based log sampling (log the concrete % of cases via "sampling" strategy);
-  - precent-based instrumentation (instrument the concrete % of cases via "sampling" strategy);
+  - precent-based instrumentation sampling (instrument the concrete % of cases via "sampling" strategy);
   - support for Random Access strategy (non-queued behavior);
   - lock request prioritization;
   - **strict redlock algorithm support** (support for many `RedisClient` instances);
