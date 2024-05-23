@@ -2,7 +2,7 @@
 
 ## [1.5.0] - 2024-05-23
 ### Added
-- New Feature: **Log sampling** - configurable log sampling based on `weight` algorithm (where the weight is a percentage);
+- New Feature: **Log sampling** - configurable log sampling based on `weight` algorithm (where the weight is a percentage of RQL cases that should be logged);
 
 ## [1.4.0] - 2024-05-13
 ### Added
