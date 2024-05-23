@@ -20,16 +20,33 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
     # @param isntrumenter [#notify]
     #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
-    # @option instrument [NilClass,Any]
+    # @param instrument [NilClass,Any]
     #    - Custom instrumentation data wich will be passed to the instrumenter's payload
     #      with :instrument key;
+    # @param log_sampling_enabled [Boolean]
+    #   - Enables <log sampling>: only the configured percent of cases will be logged;
+    #   - Works in tandem with <log_samplng_percent> option;
+    # @param log_sampling_percent [Integer]
+    #   - The percent of cases that should be logged;
+    #   - Take an effect when <log_sampling_enabled> parameter has <true> value
+    #     (when log sampling is enabled);
+    # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
     #   Format: { ok: true, result: Hash<Symbol,Numeric> }
     #
     # @api private
     # @since 1.0.0
-    # @version 1.4.0
-    def release_all_locks(redis, batch_size, logger, instrumenter, instrument)
+    # @version 1.5.0
+    def release_all_locks(
+      redis,
+      batch_size,
+      logger,
+      instrumenter,
+      instrument,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler
+    )
       rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
       fully_release_all_locks(redis, batch_size) => { ok:, result: }
       time_at = Time.now.to_f

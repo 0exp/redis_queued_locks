@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.0.0
+# @version 1.5.0
 module RedisQueuedLocks::Utilities
   module_function
 

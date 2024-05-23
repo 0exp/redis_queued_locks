@@ -14,6 +14,53 @@ RSpec.describe RedisQueuedLocks do
 
   after { redis.call('FLUSHDB') }
 
+  specify 'log sampling' do
+    test_logger_klass = Class.new do
+      attr_reader :logs
+
+      def initialize
+        @logs = []
+      end
+
+      def debug(progname = nil, &block)
+        logs << "#{progname} : #{yield if block_given?}"
+      end
+    end
+
+    client = RedisQueuedLocks::Client.new(redis) do |conf|
+      conf.log_lock_try = true
+      conf.log_sampling_enabled = true
+      conf.log_sampling_percent = 15
+    end
+
+    100.times do
+      sampled_logs = Array.new(100) do
+        sampled_logger = test_logger_klass.new
+        client.lock('log_sampling_check', logger: sampled_logger) {}
+        sampled_logger.logs
+      end
+
+      logged_cases = sampled_logs.select(&:any?)
+      expect(logged_cases.size < 30).to eq(true)
+      expect(logged_cases.size > 1).to eq(true)
+    end
+
+    client = RedisQueuedLocks::Client.new(redis) do |conf|
+      conf.log_lock_try = true
+      conf.log_sampling_enabled = false
+      conf.log_sampling_percent = 15
+    end
+
+    sampled_logs = Array.new(100) do
+      sampled_logger = test_logger_klass.new
+      client.lock('log_sampling_check', logger: sampled_logger) {}
+      sampled_logger.logs
+    end
+
+    logged_cases = sampled_logs.select(&:any?)
+    expect(logged_cases.size).to eq(100)
+  end
+
   specify 'reentrant locks - :extendable_work_trhough' do
     client = RedisQueuedLocks::Client.new(redis) do |config|
       config.default_conflict_strategy = :extendable_work_through

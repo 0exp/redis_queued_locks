@@ -232,6 +232,27 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
   #   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id");
   config.log_lock_try = false
+
+  # (default: false)
+  # - enables <log sampling>: only the configured percent of RQL cases will be logged;
+  # - disabled by default;
+  # - works in tandem with <config.log_sampling_percent> and <log.sampler> configs;
+  config.log_sampling_enabled = false
+
+  # (default: 15)
+  # - the percent of cases that should be logged;
+  # - take an effect when <config.log_sampling_enalbed> is true;
+  # - works in tandem with <config.log_sampling_enabled> and <config.log_sampler> configs;
+  config.log_sampling_percent = 15
+
+  # (default: RedisQueuedLocks::Logging::Sampler)
+  # - percent-based log sampler that decides should be RQL case logged or not;
+  # - works in tandem with <config.log_sampling_enabled> and <config.log_sampling_percent> configs;
+  # - based on the ultra simple percent-based (weight-based) algorithm that uses SecureRandom.rand
+  #   method so the algorithm error is ~(0%..13%);
+  # - you can provide your own log sampler with bettter algorithm that should realize
+  #   `sampling_happened?(percent) => boolean` interface (see `RedisQueuedLocks::Logging::Sampler` for example);
+  config.log_sampler = RedisQueuedLocks::Logging::Sampler
 end
 ```
 
@@ -290,6 +311,9 @@ def lock(
   instrument: nil,
   logger: config[:logger],
   log_lock_try: config[:log_lock_try],
+  log_sampling_enabled: config[:log_sampling_enabled],
+  log_sampling_percent: config[:log_sampling_percent],
+  log_sampler: config[:log_sampler],
   &block
 )
 ```
@@ -363,6 +387,24 @@ def lock(
   - should be logged the each try of lock acquiring (a lot of logs can be generated depending on your retry configurations);
   - pre-configured in `config[:log_lock_try]`;
   - `false` by default;
+- `log_sampling_enabled` - (optional) `[Boolean]`
+  - enables **log sampling**: only the configured percent of RQL cases will be logged;
+  - disabled by default;
+  - works in tandem with `log_sampling_percent` and `log_sampler` options;
+  - pre-configured in `config[:log_sampling_enabled]`;
+- `log_sampling_percent` - (optional) `[Integer]`
+  - the percent of cases that should be logged;
+  - take an effect when `log_sampling_enalbed` is true;
+  - works in tandem with `log_sampling_enabled` and `log_sampler` options;
+  - pre-configured in `config[:log_sampling_percent]`;
+- `log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
+  - percent-based log sampler that decides should be RQL case logged or not;
+  - works in tandem with `log_sampling_enabled` and `log_sampling_percent` options;
+  - based on the ultra simple percent-based (weight-based) algorithm that uses SecureRandom.rand
+    method so the algorithm error is ~(0%..13%);
+  - you can provide your own log sampler with bettter algorithm that should realize
+    `sampling_happened?(percent) => boolean` interface (see `RedisQueuedLocks::Logging::Sampler` for example);
+  - pre-configured in `config[:log_sampler]`;
 - `block` - (optional) `[Block]`
   - A block of code that should be executed after the successfully acquired lock.
   - If block is **passed** the obtained lock will be released after the block execution or it's ttl (what will happen first);
@@ -572,6 +614,9 @@ def lock!(
   log_lock_try: config[:log_lock_try],
   instrument: nil,
   conflict_strategy: config[:default_conflict_strategy],
+  log_sampling_enabled: config[:log_sampling_enabled],
+  log_sampling_percent: config[:log_sampling_percent],
+  log_sampler: config[:log_sampler],
   &block
 )
 ```
@@ -743,6 +788,15 @@ rql.queued?("your_lock_name") # => true/false
   - `:instrument` - (optional) `[NilClass,Any]`;
     - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
     - `nil` by default (no additional data);
+  - `:log_sampling_enabled` - (optional) `[Boolean]`
+    - enables **log sampling**;
+    - pre-configured in `config[:log_sampling_enabled]`;
+  - `:log_sampling_percent` - (optional) `[Integer]`
+    - **log sampling**:the percent of cases that should be logged;
+    - pre-configured in `config[:log_sampling_percent]`;
+  - `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
+    - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
+    - pre-configured in `config[:log_sampler]`;
 - if you try to unlock non-existent lock you will receive `ok: true` result with operation timings
   and `:nothing_to_release` result factor inside;
 
@@ -793,6 +847,15 @@ rql.unlock("your_lock_name")
     - pre-configured value in `config[:isntrumenter]`;
   - `:instrument` - (optional) `[NilClass,Any]`
     - custom instrumentation data wich will be passed to the instrumenter's payload with `:instrument` key;
+  - `:log_sampling_enabled` - (optional) `[Boolean]`
+    - enables **log sampling**;
+    - pre-configured in `config[:log_sampling_enabled]`;
+  - `:log_sampling_percent` - (optional) `[Integer]`
+    - **log sampling**:the percent of cases that should be logged;
+    - pre-configured in `config[:log_sampling_percent]`;
+  - `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
+    - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
+    - pre-configured in `config[:log_sampler]`;
 - returns:
   - `[Hash<Symbol,Numeric>]` - Format: `{ ok: true, result: Hash<Symbol,Numeric> }`;
   - result data:
@@ -828,6 +891,15 @@ rql.clear_locks
   - `:logger` - (optional) `[::Logger,#debug]`
     - custom logger object;
     - pre-configured in `config[:logger]`;
+  - `:log_sampling_enabled` - (optional) `[Boolean]`
+    - enables **log sampling**;
+    - pre-configured in `config[:log_sampling_enabled]`;
+  - `:log_sampling_percent` - (optional) `[Integer]`
+    - **log sampling**:the percent of cases that should be logged;
+    - pre-configured in `config[:log_sampling_percent]`;
+  - `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
+    - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
+    - pre-configured in `config[:log_sampler]`;
 - returns `{ ok: true, result: :ttl_extended }` when ttl is extended;
 - returns `{ ok: false, result: :async_expire_or_no_lock }` when a lock not found or a lock is already expired during
   some steps of invocation (see **Important** section below);
@@ -1056,6 +1128,15 @@ Accepts:
 - `:instrument` - (optional) `[NilClass,Any]`
   - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
   - `nil` by default (no additional data);
+- `:log_sampling_enabled` - (optional) `[Boolean]`
+  - enables **log sampling**;
+  - pre-configured in `config[:log_sampling_enabled]`;
+- `:log_sampling_percent` - (optional) `[Integer]`
+  - **log sampling**:the percent of cases that should be logged;
+  - pre-configured in `config[:log_sampling_percent]`;
+- `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
+  - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
+  - pre-configured in `config[:log_sampler]`;
 
 Returns: `{ ok: true, processed_queues: Set<String> }` returns the list of processed lock queues;
 
@@ -1254,7 +1335,6 @@ Detalized event semantics and payload structure:
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - **Major**:
-  - percent-based log sampling (log the concrete % of cases via "sampling" strategy);
   - precent-based instrumentation sampling (instrument the concrete % of cases via "sampling" strategy);
   - support for Random Access strategy (non-queued behavior);
   - lock request prioritization;

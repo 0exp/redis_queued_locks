@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+## [1.5.0] - 2024-05-23
+### Added
+- New feature **Log sampling**:
+  - configurable log sampling based on `weight` algorithm (where weight is a percentage);
+
 ## [1.4.0] - 2024-05-13
 ### Added
 - `#lock`/`#lock!`: reduced memory allocaiton during `:meta` attribute type checking;

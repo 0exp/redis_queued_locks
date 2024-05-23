@@ -10,11 +10,24 @@ module RedisQueuedLocks::Acquier::ClearDeadRequests
     # @param logger [::Logger,#debug]
     # @param instrumenter [#notify]
     # @param instrument [NilClass,Any]
+    # @param log_sampling_enabled [Boolean]
+    # @param log_sampling_percent [Integer]
+    # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     # @return [Hash<Symbol,Boolean|Hash<Symbol,Set<String>>>]
     #
     # @api private
     # @since 1.0.0
-    def clear_dead_requests(redis_client, scan_size, dead_ttl, logger, instrumenter, instrument)
+    def clear_dead_requests(
+      redis_client,
+      scan_size,
+      dead_ttl,
+      logger,
+      instrumenter,
+      instrument,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler
+    )
       dead_score = RedisQueuedLocks::Resource.acquier_dead_score(dead_ttl / 1_000.0)
 
       result = Set.new.tap do |processed_queues|

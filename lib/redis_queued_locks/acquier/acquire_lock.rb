@@ -86,6 +86,20 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #     - `:extendable_work_through`;
     #     - `:wait_for_lock`;
     #     - `:dead_locking`;
+    # @option log_sampling_enabled [Boolean]
+    #   - The percent of cases that should be logged;
+    #   - Sampling algorithm is super simple and works via SecureRandom.rand method
+    #     on the base of "weight" algorithm;
+    #   - You can provide your own sampler via config[:log_sampler] config and :sampler option
+    #     (see `RedisQueuedLocks::Logging::Sampler` for examples);
+    #   - The spread of guaranteed percent is approximately +13% (rand method spread);
+    #   - Take an effect when <log_sampling_enabled> parameter has <true> value
+    #     (when log sampling is enabled);
+    # @option log_sampling_percent [Integer]
+    #   - The percent of cases that should be logged;
+    #   - Take an effect when <log_sampling_enabled> parameter has <true> value
+    #     (when log sampling is enabled);
+    # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -118,6 +132,9 @@ module RedisQueuedLocks::Acquier::AcquireLock
       logger:,
       log_lock_try:,
       conflict_strategy:,
+      log_sampling_enabled:,
+      log_sampling_percent:,
+      log_sampler:,
       &block
     )
       # Step 0: Prevent argument type incompatabilities
@@ -165,6 +182,12 @@ module RedisQueuedLocks::Acquier::AcquireLock
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
       acquier_position = RedisQueuedLocks::Resource.calc_initial_acquier_position
 
+      log_sampled = RedisQueuedLocks::Logging.should_log?(
+        log_sampling_enabled,
+        log_sampling_percent,
+        log_sampler
+      )
+
       # Step X: intermediate result observer
       acq_process = {
         lock_info: {},
@@ -183,7 +206,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
           lock_key,
           lock_key_queue,
           queue_ttl,
-          acquier_id
+          acquier_id,
+          log_sampled
         )
       end
 
@@ -194,7 +218,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
           "queue_ttl => #{queue_ttl} " \
           "acq_id => '#{acquier_id}'"
         end
-      end
+      end if log_sampled
 
       # Step 2: try to lock with timeout
       with_acq_timeout(timeout, lock_key, raise_errors, on_timeout: acq_dequeue) do
@@ -209,7 +233,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               "queue_ttl => #{queue_ttl} " \
               "acq_id => '{#{acquier_id}'"
             end
-          end
+          end if log_sampled
 
           # Step 2.X: check the actual score: is it in queue ttl limit or not?
           if RedisQueuedLocks::Resource.dead_score_reached?(acquier_position, queue_ttl)
@@ -223,7 +247,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                 "queue_ttl => #{queue_ttl} " \
                 "acq_id => '#{acquier_id}'"
               end
-            end
+            end if log_sampled
           end
 
           try_to_lock(
@@ -238,7 +262,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
             queue_ttl,
             fail_fast,
             conflict_strategy,
-            meta
+            meta,
+            log_sampled
           ) => { ok:, result: }
 
           acq_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
@@ -261,7 +286,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                   "acq_id => '#{acquier_id}' " \
                   "acq_time => #{acq_time} (ms)"
                 end
-              end
+              end if log_sampled
 
               run_non_critical do
                 instrumenter.notify('redis_queued_locks.extendable_reentrant_lock_obtained', {
@@ -283,7 +308,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                   "acq_id => '#{acquier_id}' " \
                   "acq_time => #{acq_time} (ms)"
                 end
-              end
+              end if log_sampled
 
               run_non_critical do
                 instrumenter.notify('redis_queued_locks.reentrant_lock_obtained', {
@@ -306,7 +331,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                   "acq_id => '#{acquier_id}' " \
                   "acq_time => #{acq_time} (ms)"
                 end
-              end
+              end if log_sampled
 
               # Step X (instrumentation): lock obtained
               run_non_critical do
@@ -426,6 +451,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               ttl_shift,
               ttl,
               queue_ttl,
+              log_sampled,
               should_expire, # NOTE: should expire the lock after the block execution
               should_decrease, # NOTE: should decrease the lock ttl in reentrant locks?
               &block

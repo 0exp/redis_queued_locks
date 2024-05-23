@@ -17,11 +17,23 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
     # @param lock_name [String]
     # @param milliseconds [Integer]
     # @param logger [::Logger,#debug]
+    # @param log_sampling_enabled [Boolean]
+    # @param log_sampling_percent [Integer]
+    # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     # @return [Hash<Symbol,Boolean|Symbol>]
     #
     # @api private
     # @since 1.0.0
-    def extend_lock_ttl(redis_client, lock_name, milliseconds, logger)
+    # @version 1.5.0
+    def extend_lock_ttl(
+      redis_client,
+      lock_name,
+      milliseconds,
+      logger,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler
+    )
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
 
       # NOTE: EVAL signature -> <lua script>, (number of keys), *(keys), *(arguments)

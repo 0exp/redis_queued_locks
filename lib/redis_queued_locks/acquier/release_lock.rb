@@ -23,13 +23,35 @@ module RedisQueuedLocks::Acquier::ReleaseLock
     # @param logger [::Logger,#debug]
     #   - Logger object used from `configuration` layer (see config[:logger]);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
+    # @param log_sampling_enabled [Boolean]
+    #   - The percent of cases that should be logged;
+    #   - Sampling algorithm is super simple and works via SecureRandom.rand method
+    #     on the base of "weight" algorithm;
+    #   - You can provide your own sampler via config[:log_sampler] config and :sampler option
+    #     (see `RedisQueuedLocks::Logging::Sampler` for examples);
+    #   - The spread of guaranteed percent is approximately +13% (rand method spread);
+    #   - Take an effect when <log_sampling_enabled> parameter has <true> value
+    #     (when log sampling is enabled);
+    # @param log_sampling_percent [Integer]
+    #   - The percent of cases that should be logged;
+    #   - Take an effect when <log_sampling_enabled> parameter has <true> value
+    #     (when log sampling is enabled);
+    # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Boolean<Hash<Symbol,Numeric|String|Symbol>>]
     #   Format: { ok: true/false, result: Hash<Symbol,Numeric|String|Symbol> }
     #
     # @api private
     # @since 1.0.0
-    # @version 1.4.0
-    def release_lock(redis, lock_name, instrumenter, logger)
+    # @version 1.5.0
+    def release_lock(
+      redis,
+      lock_name,
+      instrumenter,
+      logger,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler
+    )
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
 

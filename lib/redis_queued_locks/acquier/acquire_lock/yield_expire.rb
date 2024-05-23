@@ -24,6 +24,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   # @param ttl [Integer,NilClass] Lock's time to live (in ms). Nil means "without timeout".
   # @param queue_ttl [Integer] Lock request lifetime.
   # @param block [Block] Custom logic that should be invoked unter the obtained lock.
+  # @param log_sampled [Boolean] Should the logic be logged or not (is log sample happened?).
   # @param should_expire [Boolean] Should the lock be expired after the block invocation.
   # @param should_decrease [Boolean]
   #   - Should decrease the lock TTL after the lock invocation;
@@ -32,6 +33,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   #
   # @api private
   # @since 1.3.0
+  # @version 1.5.0
   # rubocop:disable Metrics/MethodLength
   def yield_expire(
     redis,
@@ -42,6 +44,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
     ttl_shift,
     ttl,
     queue_ttl,
+    log_sampled,
     should_expire,
     should_decrease,
     &block
@@ -69,7 +72,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
           "queue_ttl => #{queue_ttl} " \
           "acq_id => '#{acquier_id}'"
         end
-      end
+      end if log_sampled
       redis.call('EXPIRE', lock_key, '0')
     elsif should_decrease
       finish_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)
@@ -84,7 +87,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
             "queue_ttl => #{queue_ttl} " \
             "acq_id => '#{acquier_id}' " \
           end
-        end
+        end if log_sampled
         # NOTE:# NOTE: EVAL signature -> <lua script>, (number of keys), *(keys), *(arguments)
         redis.call('EVAL', DECREASE_LOCK_PTTL, 1, lock_key, decreased_ttl)
         # TODO: upload scripts to the redis
