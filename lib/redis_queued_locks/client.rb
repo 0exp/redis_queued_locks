@@ -26,6 +26,9 @@ class RedisQueuedLocks::Client
     setting :log_sampling_enabled, false
     setting :log_sampling_percent, 15
     setting :log_sampler, RedisQueuedLocks::Logging::Sampler
+    setting :instr_sampling_enabled, false
+    setting :instr_sampling_percent, 15
+    setting :instr_sampler, RedisQueuedLocks::Instrument::Sampler
 
     validate('retry_count') { |val| val == nil || (val.is_a?(::Integer) && val >= 0) }
     validate('retry_delay') { |val| val.is_a?(::Integer) && val >= 0 }
@@ -43,6 +46,9 @@ class RedisQueuedLocks::Client
     validate('log_sampler') { |val| RedisQueuedLocks::Logging.valid_sampler?(val) }
     validate('log_sampling_enabled', :boolean)
     validate('log_sampling_percent') { |val| val.is_a?(::Integer) && val >= 0 && val <= 100 }
+    validate('instr_sampling_enabled', :boolean)
+    validate('instr_sampling_percent') { |val| val.is_a?(::Integer) && val >= 0 && val <= 100 }
+    validate('instr_sampler') { |val| RedisQueuedLocks::Instrument.valid_sampler?(val) }
     validate('default_conflict_strategy') do |val|
       # rubocop:disable Layout/MultilineOperationIndentation
       val == :work_through ||
@@ -153,6 +159,24 @@ class RedisQueuedLocks::Client
   #   - you can provide your own log sampler with bettter algorithm that should realize
   #     `sampling_happened?(percent) => boolean` interface
   #     (see `RedisQueuedLocks::Logging::Sampler` for example);
+  # @option instr_sampling_enabled [Boolean]
+  #   - enables <instrumentaion sampling>: only the configured percent
+  #     of RQL cases will be instrumented;
+  #   - disabled by default;
+  #   - works in tandem with <config.instr_sampling_percent and <log.instr_sampler>;
+  # @option instr_sampling_percent [Integer]
+  #   - the percent of cases that should be instrumented;
+  #   - take an effect when <config.instr_sampling_enalbed> is true;
+  #   - works in tandem with <config.instr_sampling_enabled> and <config.instr_sampler> configs;
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  #   - percent-based log sampler that decides should be RQL case instrumented or not;
+  #   - works in tandem with <config.instr_sampling_enabled> and
+  #     <config.instr_sampling_percent> configs;
+  #   - based on the ultra simple percent-based (weight-based) algorithm that uses SecureRandom.rand
+  #     method so the algorithm error is ~(0%..13%);
+  #   - you can provide your own log sampler with bettter algorithm that should realize
+  #     `sampling_happened?(percent) => boolean` interface
+  #     (see `RedisQueuedLocks::Instrument::Sampler` for example);
   # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
   # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -161,7 +185,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.5.0
+  # @version 1.6.0
   # rubocop:disable Metrics/MethodLength
   def lock(
     lock_name,
@@ -183,6 +207,9 @@ class RedisQueuedLocks::Client
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
     log_sampler: config[:log_sampler],
+    instr_sampling_enabled: config[:instr_sampling_enabled],
+    instr_sampling_percent: config[:instr_sampling_percent],
+    instr_sampler: config[:instr_sampler],
     &block
   )
     RedisQueuedLocks::Acquier::AcquireLock.acquire_lock(
@@ -211,6 +238,9 @@ class RedisQueuedLocks::Client
       log_sampling_enabled:,
       log_sampling_percent:,
       log_sampler:,
+      instr_sampling_enabled:,
+      instr_sampling_percent:,
+      instr_sampler:,
       &block
     )
   end
@@ -220,7 +250,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.5.0
+  # @version 1.6.0
   def lock!(
     lock_name,
     ttl: config[:default_lock_ttl],
@@ -240,6 +270,9 @@ class RedisQueuedLocks::Client
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
     log_sampler: config[:log_sampler],
+    instr_sampling_enabled: config[:instr_sampling_enabled],
+    instr_sampling_percent: config[:instr_sampling_percent],
+    instr_sampler: config[:instr_sampler],
     &block
   )
     lock(
@@ -262,6 +295,9 @@ class RedisQueuedLocks::Client
       log_sampling_enabled:,
       log_sampling_percent:,
       log_sampler:,
+      instr_sampling_enabled:,
+      instr_sampling_percent:,
+      instr_sampler:,
       &block
     )
   end
@@ -273,6 +309,9 @@ class RedisQueuedLocks::Client
   # @option log_sampling_enabled [Boolean]
   # @option log_sampling_percent [Integer]
   # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
   # @return [RedisQueuedLocks::Data, Hash<Symbol,Any>]
   #   Format: {
   #     ok: true/false,
@@ -287,7 +326,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.5.0
+  # @version 1.6.0
   def unlock(
     lock_name,
     logger: config[:logger],
@@ -295,7 +334,10 @@ class RedisQueuedLocks::Client
     instrument: nil,
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
-    log_sampler: config[:log_sampler]
+    log_sampler: config[:log_sampler],
+    instr_sampling_enabled: config[:instr_sampling_enabled],
+    instr_sampling_percent: config[:instr_sampling_percent],
+    instr_sampler: config[:instr_sampler]
   )
     RedisQueuedLocks::Acquier::ReleaseLock.release_lock(
       redis_client,
@@ -304,7 +346,10 @@ class RedisQueuedLocks::Client
       config[:logger],
       log_sampling_enabled,
       log_sampling_percent,
-      log_sampler
+      log_sampler,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler
     )
   end
 
@@ -359,33 +404,28 @@ class RedisQueuedLocks::Client
   # @param milliseconds [Integer] How many milliseconds should be added.
   # @option logger [::Logger,#debug]
   # @option log_sampling_enabled [Boolean]
-  #   - The percent of cases that should be logged;
-  #   - Sampling algorithm is super simple and works via SecureRandom.rand method
-  #     on the base of "weight" algorithm;
-  #   - You can provide your own sampler via config[:log_sampler] config and :sampler option
-  #     (see `RedisQueuedLocks::Logging::Sampler` for examples);
-  #   - The spread of guaranteed percent is approximately +13% (rand method spread);
-  #   - Take an effect when <log_sampling_enabled> parameter has <true> value
-  #     (when log sampling is enabled);
   # @option log_sampling_percent [Integer]
-  #   - The percent of cases that should be logged;
-  #   - Take an effect when <log_sampling_enabled> parameter has <true> value
-  #     (when log sampling is enabled);
   # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
   # @return [Hash<Symbol,Boolean|Symbol>]
   #   - { ok: true, result: :ttl_extended }
   #   - { ok: false, result: :async_expire_or_no_lock }
   #
   # @api public
   # @since 1.0.0
-  # @version 1.5.0
+  # @version 1.6.0
   def extend_lock_ttl(
     lock_name,
     milliseconds,
     logger: config[:logger],
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
-    log_sampler: config[:log_sampler]
+    log_sampler: config[:log_sampler],
+    instr_sampling_enabled: config[:instr_sampling_enabled],
+    instr_sampling_percent: config[:instr_sampling_percent],
+    instr_sampler: config[:instr_sampler]
   )
     RedisQueuedLocks::Acquier::ExtendLockTTL.extend_lock_ttl(
       redis_client,
@@ -394,7 +434,10 @@ class RedisQueuedLocks::Client
       logger,
       log_sampling_enabled,
       log_sampling_percent,
-      log_sampler
+      log_sampler,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler
     )
   end
 
@@ -410,12 +453,15 @@ class RedisQueuedLocks::Client
   # @option log_sampling_enabled [Boolean]
   # @option log_sampling_percent [Integer]
   # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
   # @return [RedisQueuedLocks::Data,Hash<Symbol,Boolean|Hash<Symbol,Numeric>>]
   #   Example: { ok: true, result { rel_key_cnt: 100, rel_time: 0.01 } }
   #
   # @api public
   # @since 1.0.0
-  # @version 1.5.0
+  # @version 1.6.0
   def clear_locks(
     batch_size: config[:lock_release_batch_size],
     logger: config[:logger],
@@ -423,7 +469,10 @@ class RedisQueuedLocks::Client
     instrument: nil,
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
-    log_sampler: config[:log_sampler]
+    log_sampler: config[:log_sampler],
+    instr_sampling_enabled: config[:instr_sampling_enabled],
+    instr_sampling_percent: config[:instr_sampling_percent],
+    instr_sampler: config[:instr_sampler]
   )
     RedisQueuedLocks::Acquier::ReleaseAllLocks.release_all_locks(
       redis_client,
@@ -433,7 +482,10 @@ class RedisQueuedLocks::Client
       instrument,
       log_sampling_enabled,
       log_sampling_percent,
-      log_sampler
+      log_sampler,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler
     )
   end
 
@@ -524,12 +576,15 @@ class RedisQueuedLocks::Client
   # @option log_sampling_enabled [Boolean]
   # @option log_sampling_percent [Integer]
   # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
   # @return [Hash<Symbol,Boolean|Hash<Symbol,Set<String>>>]
   #   Format: { ok: true, result: { processed_queus: Set<String> } }
   #
   # @api public
   # @since 1.0.0
-  # @version 1.5.0
+  # @version 1.6.0
   def clear_dead_requests(
     dead_ttl: config[:dead_request_ttl],
     scan_size: config[:lock_release_batch_size],
@@ -538,7 +593,10 @@ class RedisQueuedLocks::Client
     instrument: nil,
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
-    log_sampler: config[:log_sampler]
+    log_sampler: config[:log_sampler],
+    instr_sampling_enabled: config[:instr_sampling_enabled],
+    instr_sampling_percent: config[:instr_sampling_percent],
+    instr_sampler: config[:instr_sampler]
   )
     RedisQueuedLocks::Acquier::ClearDeadRequests.clear_dead_requests(
       redis_client,
@@ -549,7 +607,10 @@ class RedisQueuedLocks::Client
       instrument,
       log_sampling_enabled,
       log_sampling_percent,
-      log_sampler
+      log_sampler,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler
     )
   end
 end

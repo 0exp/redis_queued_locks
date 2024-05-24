@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 # @api public
-# @since 1.5.0
-module RedisQueuedLocks::Logging::Sampler
+# @since 1.6.0
+module RedisQueuedLocks::Instrument::Sampler
   # @return [Range]
   #
   # @api private
@@ -19,8 +19,7 @@ module RedisQueuedLocks::Logging::Sampler
     #   - <true> for <sampling_percent>% of invocations (and <false> for the rest invocations)
     #
     # @api public
-    # @since 1.5.0
-    # @version 1.6.0
+    # @since 1.6.0
     def sampling_happened?(sampling_percent)
       sampling_percent >= SecureRandom.rand(SAMPLING_PERCENT_RANGE)
     end

@@ -24,7 +24,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   # @param ttl [Integer,NilClass] Lock's time to live (in ms). Nil means "without timeout".
   # @param queue_ttl [Integer] Lock request lifetime.
   # @param block [Block] Custom logic that should be invoked unter the obtained lock.
-  # @param log_sampled [Boolean] Should the logic be logged or not (is log sample happened?).
+  # @param log_sampled [Boolean] Should the logic be logged or not.
+  # @param instr_sampled [Boolean] Should the logic be instrumented or not.
   # @param should_expire [Boolean] Should the lock be expired after the block invocation.
   # @param should_decrease [Boolean]
   #   - Should decrease the lock TTL after the lock invocation;
@@ -33,7 +34,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   #
   # @api private
   # @since 1.3.0
-  # @version 1.5.0
+  # @version 1.6.0
   # rubocop:disable Metrics/MethodLength
   def yield_expire(
     redis,
@@ -45,6 +46,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
     ttl,
     queue_ttl,
     log_sampled,
+    instr_sampled,
     should_expire,
     should_decrease,
     &block
@@ -73,11 +75,13 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
           "acq_id => '#{acquier_id}'"
         end
       end if log_sampled
+
       redis.call('EXPIRE', lock_key, '0')
     elsif should_decrease
       finish_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)
       spent_time = (finish_time - initial_time)
       decreased_ttl = ttl - spent_time - RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
+
       if decreased_ttl > 0
         run_non_critical do
           logger.debug do
@@ -88,6 +92,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
             "acq_id => '#{acquier_id}' " \
           end
         end if log_sampled
+
         # NOTE:# NOTE: EVAL signature -> <lua script>, (number of keys), *(keys), *(arguments)
         redis.call('EVAL', DECREASE_LOCK_PTTL, 1, lock_key, decreased_ttl)
         # TODO: upload scripts to the redis

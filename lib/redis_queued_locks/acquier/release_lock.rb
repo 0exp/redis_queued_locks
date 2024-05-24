@@ -24,25 +24,47 @@ module RedisQueuedLocks::Acquier::ReleaseLock
     #   - Logger object used from `configuration` layer (see config[:logger]);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
     # @param log_sampling_enabled [Boolean]
-    #   - The percent of cases that should be logged;
-    #   - Sampling algorithm is super simple and works via SecureRandom.rand method
-    #     on the base of "weight" algorithm;
-    #   - You can provide your own sampler via config[:log_sampler] config and :sampler option
-    #     (see `RedisQueuedLocks::Logging::Sampler` for examples);
-    #   - The spread of guaranteed percent is approximately +13% (rand method spread);
-    #   - Take an effect when <log_sampling_enabled> parameter has <true> value
-    #     (when log sampling is enabled);
+    #   - enables <log sampling>: only the configured percent of RQL cases will be logged;
+    #   - disabled by default;
+    #   - works in tandem with <config.log_sampling_percent and <log.sampler>;
     # @param log_sampling_percent [Integer]
-    #   - The percent of cases that should be logged;
-    #   - Take an effect when <log_sampling_enabled> parameter has <true> value
-    #     (when log sampling is enabled);
+    #   - the percent of cases that should be logged;
+    #   - take an effect when <config.log_sampling_enalbed> is true;
+    #   - works in tandem with <config.log_sampling_enabled> and <config.log_sampler> configs;
     # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+    #   - percent-based log sampler that decides should be RQL case logged or not;
+    #   - works in tandem with <config.log_sampling_enabled> and
+    #     <config.log_sampling_percent> configs;
+    #   - based on the ultra simple percent-based (weight-based) algorithm that uses
+    #     SecureRandom.rand method so the algorithm error is ~(0%..13%);
+    #   - you can provide your own log sampler with bettter algorithm that should realize
+    #     `sampling_happened?(percent) => boolean` interface
+    #     (see `RedisQueuedLocks::Logging::Sampler` for example);
+    # @param instr_sampling_enabled [Boolean]
+    #   - enables <instrumentaion sampling>: only the configured percent
+    #     of RQL cases will be instrumented;
+    #   - disabled by default;
+    #   - works in tandem with <config.instr_sampling_percent and <log.instr_sampler>;
+    # @param instr_sampling_percent [Integer]
+    #   - the percent of cases that should be instrumented;
+    #   - take an effect when <config.instr_sampling_enalbed> is true;
+    #   - works in tandem with <config.instr_sampling_enabled> and <config.instr_sampler> configs;
+    # @param instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+    #   - percent-based log sampler that decides should be RQL case instrumented or not;
+    #   - works in tandem with <config.instr_sampling_enabled> and
+    #     <config.instr_sampling_percent> configs;
+    #   - based on the ultra simple percent-based (weight-based) algorithm that uses
+    #     SecureRandom.rand method so the algorithm error is ~(0%..13%);
+    #   - you can provide your own log sampler with bettter algorithm that should realize
+    #     `sampling_happened?(percent) => boolean` interface
+    #     (see `RedisQueuedLocks::Instrument::Sampler` for example);
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Boolean<Hash<Symbol,Numeric|String|Symbol>>]
     #   Format: { ok: true/false, result: Hash<Symbol,Numeric|String|Symbol> }
     #
     # @api private
     # @since 1.0.0
-    # @version 1.5.0
+    # @version 1.6.0
+    # rubocop:disable Metrics/MethodLength
     def release_lock(
       redis,
       lock_name,
@@ -50,7 +72,10 @@ module RedisQueuedLocks::Acquier::ReleaseLock
       logger,
       log_sampling_enabled,
       log_sampling_percent,
-      log_sampler
+      log_sampler,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler
     )
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
@@ -61,6 +86,12 @@ module RedisQueuedLocks::Acquier::ReleaseLock
       rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
       rel_time = ((rel_end_time - rel_start_time) / 1_000).ceil(2)
 
+      instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
+        instr_sampling_enabled,
+        instr_sampling_percent,
+        instr_sampler
+      )
+
       run_non_critical do
         instrumenter.notify('redis_queued_locks.explicit_lock_release', {
           lock_key: lock_key,
@@ -68,7 +99,7 @@ module RedisQueuedLocks::Acquier::ReleaseLock
           rel_time: rel_time,
           at: time_at
         })
-      end
+      end if instr_sampled
 
       RedisQueuedLocks::Data[
         ok: true,
@@ -81,6 +112,7 @@ module RedisQueuedLocks::Acquier::ReleaseLock
         }
       ]
     end
+    # rubocop:enable Metrics/MethodLength
 
     private
 

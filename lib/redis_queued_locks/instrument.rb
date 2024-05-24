@@ -2,11 +2,58 @@
 
 # @api public
 # @since 1.0.0
+# @version 1.6.0
 module RedisQueuedLocks::Instrument
   require_relative 'instrument/void_notifier'
   require_relative 'instrument/active_support'
+  require_relative 'instrument/sampler'
 
   class << self
+    # @param instr_sampling_enabled [Boolean]
+    # @param instr_sampling_percent [Integer]
+    # @param instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+    # @return [Boolean]
+    #
+    # @api private
+    # @since 1.6.0
+    def should_instrument?(instr_sampling_enabled, instr_sampling_percent, instr_sampler)
+      return true unless instr_sampling_enabled
+      instr_sampler.sampling_happened?(instr_sampling_percent)
+    end
+
+    # @param sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+    # @return [Boolean]
+    #
+    # @api private
+    # @since 1.6.0
+    def valid_sampler?(sampler)
+      return false unless sampler.respond_to?(:sampling_happened?)
+
+      m_obj = sampler.method(:sampling_happened?)
+      m_sig = m_obj.parameters
+
+      # NOTE:
+      #   Required method signature (sampling_percent)
+      #     => [[:req, :sampling_percent]]
+      #     => [[:opt, :sampling_percent]]
+      #     => [[:req, :sampling_percent], [:block, :block]]
+      #     => [[:opt, :sampling_percent], [:block, :block]]
+      if m_sig.size == 1
+        prm = m_sig[0][0]
+        prm == :req || prm == :opt
+      elsif m_sig.size == 2
+        f_prm = m_sig[0][0]
+        s_prm = m_sign[1][0]
+
+        # rubocop:disable Layout/MultilineOperationIndentation
+        f_prm == :req && s_prm == :block ||
+        f_prm == :opt && s_prm == :block
+        # rubocop:enable Layout/MultilineOperationIndentation
+      else
+        false
+      end
+    end
+
     # @param instrumenter [Class,Module,Object]
     # @return [Boolean]
     #

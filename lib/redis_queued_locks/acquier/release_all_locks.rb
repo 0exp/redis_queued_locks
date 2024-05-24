@@ -24,19 +24,46 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     #    - Custom instrumentation data wich will be passed to the instrumenter's payload
     #      with :instrument key;
     # @param log_sampling_enabled [Boolean]
-    #   - Enables <log sampling>: only the configured percent of cases will be logged;
-    #   - Works in tandem with <log_samplng_percent> option;
+    #   - enables <log sampling>: only the configured percent of RQL cases will be logged;
+    #   - disabled by default;
+    #   - works in tandem with <config.log_sampling_percent and <log.sampler>;
     # @param log_sampling_percent [Integer]
-    #   - The percent of cases that should be logged;
-    #   - Take an effect when <log_sampling_enabled> parameter has <true> value
-    #     (when log sampling is enabled);
+    #   - the percent of cases that should be logged;
+    #   - take an effect when <config.log_sampling_enalbed> is true;
+    #   - works in tandem with <config.log_sampling_enabled> and <config.log_sampler> configs;
     # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+    #   - percent-based log sampler that decides should be RQL case logged or not;
+    #   - works in tandem with <config.log_sampling_enabled> and
+    #     <config.log_sampling_percent> configs;
+    #   - based on the ultra simple percent-based (weight-based) algorithm that uses
+    #     SecureRandom.rand method so the algorithm error is ~(0%..13%);
+    #   - you can provide your own log sampler with bettter algorithm that should realize
+    #     `sampling_happened?(percent) => boolean` interface
+    #     (see `RedisQueuedLocks::Logging::Sampler` for example);
+    # @param instr_sampling_enabled [Boolean]
+    #   - enables <instrumentaion sampling>: only the configured percent
+    #     of RQL cases will be instrumented;
+    #   - disabled by default;
+    #   - works in tandem with <config.instr_sampling_percent and <log.instr_sampler>;
+    # @param instr_sampling_percent [Integer]
+    #   - the percent of cases that should be instrumented;
+    #   - take an effect when <config.instr_sampling_enalbed> is true;
+    #   - works in tandem with <config.instr_sampling_enabled> and <config.instr_sampler> configs;
+    # @param instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+    #   - percent-based log sampler that decides should be RQL case instrumented or not;
+    #   - works in tandem with <config.instr_sampling_enabled> and
+    #     <config.instr_sampling_percent> configs;
+    #   - based on the ultra simple percent-based (weight-based) algorithm that uses
+    #     SecureRandom.rand method so the algorithm error is ~(0%..13%);
+    #   - you can provide your own log sampler with bettter algorithm that should realize
+    #     `sampling_happened?(percent) => boolean` interface
+    #     (see `RedisQueuedLocks::Instrument::Sampler` for example);
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
     #   Format: { ok: true, result: Hash<Symbol,Numeric> }
     #
     # @api private
     # @since 1.0.0
-    # @version 1.5.0
+    # @version 1.6.0
     def release_all_locks(
       redis,
       batch_size,
@@ -45,7 +72,10 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
       instrument,
       log_sampling_enabled,
       log_sampling_percent,
-      log_sampler
+      log_sampler,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler
     )
       rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
       fully_release_all_locks(redis, batch_size) => { ok:, result: }
@@ -53,13 +83,19 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
       rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
       rel_time = ((rel_end_time - rel_start_time) / 1_000).ceil(2)
 
+      instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
+        instr_sampling_enabled,
+        instr_sampling_percent,
+        instr_sampler
+      )
+
       run_non_critical do
         instrumenter.notify('redis_queued_locks.explicit_all_locks_release', {
           at: time_at,
           rel_time: rel_time,
           rel_key_cnt: result[:rel_key_cnt]
         })
-      end
+      end if instr_sampled
 
       RedisQueuedLocks::Data[
         ok: true,

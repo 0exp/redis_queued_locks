@@ -13,10 +13,14 @@ module RedisQueuedLocks::Acquier::ClearDeadRequests
     # @param log_sampling_enabled [Boolean]
     # @param log_sampling_percent [Integer]
     # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+    # @param instr_sampling_enabled [Boolean]
+    # @param instr_sampling_percent [Integer]
+    # @param instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
     # @return [Hash<Symbol,Boolean|Hash<Symbol,Set<String>>>]
     #
     # @api private
     # @since 1.0.0
+    # @version 1.6.0
     def clear_dead_requests(
       redis_client,
       scan_size,

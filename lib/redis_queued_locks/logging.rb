@@ -2,6 +2,7 @@
 
 # @api public
 # @since 1.0.0
+# @version 1.5.0
 module RedisQueuedLocks::Logging
   require_relative 'logging/void_logger'
   require_relative 'logging/sampler'

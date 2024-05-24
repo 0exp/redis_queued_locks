@@ -87,19 +87,40 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #     - `:wait_for_lock`;
     #     - `:dead_locking`;
     # @option log_sampling_enabled [Boolean]
-    #   - The percent of cases that should be logged;
-    #   - Sampling algorithm is super simple and works via SecureRandom.rand method
-    #     on the base of "weight" algorithm;
-    #   - You can provide your own sampler via config[:log_sampler] config and :sampler option
-    #     (see `RedisQueuedLocks::Logging::Sampler` for examples);
-    #   - The spread of guaranteed percent is approximately +13% (rand method spread);
-    #   - Take an effect when <log_sampling_enabled> parameter has <true> value
-    #     (when log sampling is enabled);
+    #   - enables <log sampling>: only the configured percent of RQL cases will be logged;
+    #   - disabled by default;
+    #   - works in tandem with <config.log_sampling_percent and <log.sampler>;
     # @option log_sampling_percent [Integer]
-    #   - The percent of cases that should be logged;
-    #   - Take an effect when <log_sampling_enabled> parameter has <true> value
-    #     (when log sampling is enabled);
+    #   - the percent of cases that should be logged;
+    #   - take an effect when <config.log_sampling_enalbed> is true;
+    #   - works in tandem with <config.log_sampling_enabled> and <config.log_sampler> configs;
     # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+    #   - percent-based log sampler that decides should be RQL case logged or not;
+    #   - works in tandem with <config.log_sampling_enabled> and
+    #     <config.log_sampling_percent> configs;
+    #   - based on the ultra simple percent-based (weight-based) algorithm that uses
+    #     SecureRandom.rand method so the algorithm error is ~(0%..13%);
+    #   - you can provide your own log sampler with bettter algorithm that should realize
+    #     `sampling_happened?(percent) => boolean` interface
+    #     (see `RedisQueuedLocks::Logging::Sampler` for example);
+    # @option instr_sampling_enabled [Boolean]
+    #   - enables <instrumentaion sampling>: only the configured percent
+    #     of RQL cases will be instrumented;
+    #   - disabled by default;
+    #   - works in tandem with <config.instr_sampling_percent and <log.instr_sampler>;
+    # @option instr_sampling_percent [Integer]
+    #   - the percent of cases that should be instrumented;
+    #   - take an effect when <config.instr_sampling_enalbed> is true;
+    #   - works in tandem with <config.instr_sampling_enabled> and <config.instr_sampler> configs;
+    # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+    #   - percent-based log sampler that decides should be RQL case instrumented or not;
+    #   - works in tandem with <config.instr_sampling_enabled> and
+    #     <config.instr_sampling_percent> configs;
+    #   - based on the ultra simple percent-based (weight-based) algorithm that uses
+    #     SecureRandom.rand method so the algorithm error is ~(0%..13%);
+    #   - you can provide your own log sampler with bettter algorithm that should realize
+    #     `sampling_happened?(percent) => boolean` interface
+    #     (see `RedisQueuedLocks::Instrument::Sampler` for example);
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -108,7 +129,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.4.0
+    # @version 1.6.0
     def acquire_lock(
       redis,
       lock_name,
@@ -135,6 +156,9 @@ module RedisQueuedLocks::Acquier::AcquireLock
       log_sampling_enabled:,
       log_sampling_percent:,
       log_sampler:,
+      instr_sampling_enabled:,
+      instr_sampling_percent:,
+      instr_sampler:,
       &block
     )
       # Step 0: Prevent argument type incompatabilities
@@ -187,6 +211,11 @@ module RedisQueuedLocks::Acquier::AcquireLock
         log_sampling_percent,
         log_sampler
       )
+      instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
+        instr_sampling_enabled,
+        instr_sampling_percent,
+        instr_sampler
+      )
 
       # Step X: intermediate result observer
       acq_process = {
@@ -207,7 +236,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
           lock_key_queue,
           queue_ttl,
           acquier_id,
-          log_sampled
+          log_sampled,
+          instr_sampled
         )
       end
 
@@ -263,7 +293,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
             fail_fast,
             conflict_strategy,
             meta,
-            log_sampled
+            log_sampled,
+            instr_sampled
           ) => { ok:, result: }
 
           acq_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
@@ -297,7 +328,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                   acq_time: acq_time,
                   instrument:
                 })
-              end
+              end if instr_sampled
             elsif acq_process[:result][:process] == :conflict_work_through
               # instrumetnation: (reentrant lock without ttl extension)
               run_non_critical do
@@ -319,7 +350,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                   acq_time: acq_time,
                   instrument:
                 })
-              end
+              end if instr_sampled
             else
               # instrumentation: (classic lock obtain)
               # NOTE: classic is: acq_process[:result][:process] == :lock_obtaining
@@ -343,7 +374,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                   acq_time: acq_time,
                   instrument:
                 })
-              end
+              end if instr_sampled
             end
 
             # Step 2.1.a: successfully acquired => build the result
@@ -452,6 +483,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               ttl,
               queue_ttl,
               log_sampled,
+              instr_sampled,
               should_expire, # NOTE: should expire the lock after the block execution
               should_decrease, # NOTE: should decrease the lock ttl in reentrant locks?
               &block
@@ -477,7 +509,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                   acq_time: acq_process[:acq_time],
                   instrument:
                 })
-              end
+              end if instr_sampled
             else
               # Step X (instrumentation): lock_hold_and_release
               run_non_critical do
@@ -490,7 +522,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                   acq_time: acq_process[:acq_time],
                   instrument:
                 })
-              end
+              end if instr_sampled
             end
           end
         else

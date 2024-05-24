@@ -29,11 +29,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   # @param conflict_strategy [Symbol]
   # @param meta [NilClass,Hash<String|Symbol,Any>]
   # @param log_sampled [Boolean]
+  # @param instr_sampled [Boolean]
   # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol|Hash<Symbol,Any> }
   #
   # @api private
   # @since 1.0.0
-  # @version 1.5.0
+  # @version 1.6.0
   # rubocop:disable Metrics/MethodLength
   def try_to_lock(
     redis,
@@ -48,7 +49,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     fail_fast,
     conflict_strategy,
     meta,
-    log_sampled
+    log_sampled,
+    instr_sampled
   )
     # Step X: intermediate invocation results
     inter_result = nil
@@ -485,11 +487,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
   # @param log_sampled [Boolean]
+  # @param instr_sampled [Boolean]
   # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
   #
   # @api private
   # @since 1.0.0
-  # @version 1.5.0
+  # @version 1.6.0
   def dequeue_from_lock_queue(
     redis,
     logger,
@@ -497,7 +500,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     lock_key_queue,
     queue_ttl,
     acquier_id,
-    log_sampled
+    log_sampled,
+    instr_sampled
   )
     result = redis.call('ZREM', lock_key_queue, acquier_id)
 

@@ -20,11 +20,14 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
     # @param log_sampling_enabled [Boolean]
     # @param log_sampling_percent [Integer]
     # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+    # @param instr_sampling_enabled [Boolean]
+    # @param instr_sampling_percent [Integer]
+    # @param instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
     # @return [Hash<Symbol,Boolean|Symbol>]
     #
     # @api private
     # @since 1.0.0
-    # @version 1.5.0
+    # @version 1.6.0
     def extend_lock_ttl(
       redis_client,
       lock_name,
@@ -32,7 +35,10 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
       logger,
       log_sampling_enabled,
       log_sampling_percent,
-      log_sampler
+      log_sampler,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler
     )
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
 
