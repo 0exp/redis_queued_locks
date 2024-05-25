@@ -1,6 +1,6 @@
 ## [Unreleased]
 
-## [1.6.0] - 2024-05-24
+## [1.6.0] - 2024-05-25
 ### Added
 - New Feature: **Instrumentation Sampling** - configurable instrumentation sampling based on `weight` algorithm (where the weight is a percentage of RQL cases that should be logged);
 - Missing instrumenter customization in public `RedisQueuedLocks::Client` methods;
