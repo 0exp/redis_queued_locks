@@ -29,7 +29,7 @@ RSpec.describe RedisQueuedLocks do
 
     client = RedisQueuedLocks::Client.new(redis) do |conf|
       conf.instr_sampling_enabled = true
-      conf.instr_sampling_percent = 15
+      conf.instr_sampling_percent = 13
     end
 
     100.times do
@@ -74,7 +74,7 @@ RSpec.describe RedisQueuedLocks do
     client = RedisQueuedLocks::Client.new(redis) do |conf|
       conf.log_lock_try = true
       conf.log_sampling_enabled = true
-      conf.log_sampling_percent = 15
+      conf.log_sampling_percent = 13
     end
 
     100.times do
