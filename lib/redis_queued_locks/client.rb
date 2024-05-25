@@ -256,6 +256,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.0.0
   # @version 1.6.0
+  # rubocop:disable Metrics/MethodLength
   def lock!(
     lock_name,
     ttl: config[:default_lock_ttl],
@@ -308,6 +309,7 @@ class RedisQueuedLocks::Client
       &block
     )
   end
+  # rubocop:enable Metrics/MethodLength
 
   # @param lock_name [String] The lock name that should be released.
   # @option logger [::Logger,#debug]
