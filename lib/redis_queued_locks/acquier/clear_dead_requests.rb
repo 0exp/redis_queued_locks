@@ -30,7 +30,10 @@ module RedisQueuedLocks::Acquier::ClearDeadRequests
       instrument,
       log_sampling_enabled,
       log_sampling_percent,
-      log_sampler
+      log_sampler,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler
     )
       dead_score = RedisQueuedLocks::Resource.acquier_dead_score(dead_ttl / 1_000.0)
 
