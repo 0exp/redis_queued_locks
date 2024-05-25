@@ -330,6 +330,7 @@ def lock(
   identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config[:uniq_identifier] proc;
   meta: nil,
   instrument: nil,
+  instrumenter: config[:instrumenter],
   logger: config[:logger],
   log_lock_try: config[:log_lock_try],
   log_sampling_enabled: config[:log_sampling_enabled],
@@ -370,6 +371,9 @@ def lock(
   - See RedisQueuedLocks::Instrument::ActiveSupport for example;
   - See [Instrumentation](#instrumentation) section of docs;
   - pre-configured in `config[:isntrumenter]` with void notifier (`RedisQueuedLocks::Instrumenter::VoidNotifier`);
+- `instrument` - (optional) `[NilClass,Any]`
+  - Custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
+  - `nil` by default (means "no custom instrumentation data");
 - `raise_errors` - (optional) `[Boolean]`
   - Raise errors on library-related limits (such as timeout or retry count limit) and on lock conflicts (such as same-process dead locks);
   - `false` by default;
@@ -401,9 +405,6 @@ def lock(
   - A custom metadata wich will be passed to the lock data in addition to the existing data;
   - Custom metadata can not contain reserved lock data keys (such as `lock_key`, `acq_id`, `ts`, `ini_ttl`, `rem_ttl`);
   - `nil` by default (means "no metadata");
-- `instrument` - (optional) `[NilClass,Any]`
-  - Custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
-  - `nil` by default (means "no custom instrumentation data");
 - `logger` - (optional) `[::Logger,#debug]`
   - Logger object used for loggin internal mutation oeprations and opertioan results / process progress;
   - pre-configured in `config[:logger]` with void logger `RedisQueuedLocks::Logging::VoidLogger`;
@@ -655,6 +656,7 @@ def lock!(
   logger: config[:logger],
   log_lock_try: config[:log_lock_try],
   instrument: nil,
+  instrumenter: config[:instrumenter],
   conflict_strategy: config[:default_conflict_strategy],
   log_sampling_enabled: config[:log_sampling_enabled],
   log_sampling_percent: config[:log_sampling_percent],
@@ -951,6 +953,12 @@ rql.clear_locks
     - the lock name which ttl should be extended;
   - `milliseconds` - (required) `[Integer]`
     - how many milliseconds should be added to the lock's TTL;
+  - `:instrumenter` - (optional) `[#notify]`
+    - custom instrumenter object;
+    - pre-configured in `config[:instrumetner]`;
+  - `:instrument` - (optional) `[NilClass,Any]`;
+    - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
+    - `nil` by default (no additional data);
   - `:logger` - (optional) `[::Logger,#debug]`
     - custom logger object;
     - pre-configured in `config[:logger]`;
@@ -1416,7 +1424,6 @@ Detalized event semantics and payload structure:
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - **Major**:
-  - precent-based instrumentation sampling (instrument the concrete % of cases via "sampling" strategy);
   - support for Random Access strategy (non-queued behavior);
   - lock request prioritization;
   - **strict redlock algorithm support** (support for many `RedisClient` instances);

@@ -17,6 +17,8 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
     # @param lock_name [String]
     # @param milliseconds [Integer]
     # @param logger [::Logger,#debug]
+    # @param instrumenter [#notify]
+    # @param instrument [NilClass,Any]
     # @param log_sampling_enabled [Boolean]
     # @param log_sampling_percent [Integer]
     # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
@@ -33,6 +35,8 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
       lock_name,
       milliseconds,
       logger,
+      instrumenter,
+      instrument,
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,

@@ -104,8 +104,6 @@ class RedisQueuedLocks::Client
   #   A time-interval between the each retry (in milliseconds).
   # @option retry_jitter [Integer]
   #   Time-shift range for retry-delay (in milliseconds).
-  # @option instrumenter [#notify]
-  #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
   # @option raise_errors [Boolean]
   #   Raise errors on library-related limits such as timeout or failed lock obtain.
   # @option identity [String]
@@ -139,6 +137,12 @@ class RedisQueuedLocks::Client
   #   - should be logged the each try of lock acquiring (a lot of logs can
   #     be generated depending on your retry configurations);
   #   - see `config[:log_lock_try]`;
+  # @option instrumenter [#notify]
+  #   - Custom instrumenter that will be invoked via #notify method with `event` and `payload` data;
+  #   - See RedisQueuedLocks::Instrument::ActiveSupport for examples and implementation details;
+  #   - See [Instrumentation](#instrumentation) section of docs;
+  #   - pre-configured in `config[:isntrumenter]` with void notifier
+  #     (`RedisQueuedLocks::Instrumenter::VoidNotifier`);
   # @option instrument [NilClass,Any]
   #   - Custom instrumentation data wich will be passed to the instrumenter's payload
   #     with :instrument key;
@@ -203,6 +207,7 @@ class RedisQueuedLocks::Client
     meta: nil,
     logger: config[:logger],
     log_lock_try: config[:log_lock_try],
+    instrumenter: config[:instrumenter],
     instrument: nil,
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
@@ -227,7 +232,7 @@ class RedisQueuedLocks::Client
       retry_delay:,
       retry_jitter:,
       raise_errors:,
-      instrumenter: config[:instrumenter],
+      instrumenter:,
       identity:,
       fail_fast:,
       conflict_strategy:,
@@ -263,6 +268,7 @@ class RedisQueuedLocks::Client
     fail_fast: false,
     conflict_strategy: config[:default_conflict_strategy],
     identity: uniq_identity,
+    instrumenter: config[:instrumenter],
     meta: nil,
     logger: config[:logger],
     log_lock_try: config[:log_lock_try],
@@ -291,6 +297,7 @@ class RedisQueuedLocks::Client
       log_lock_try:,
       meta:,
       instrument:,
+      instrumenter:,
       conflict_strategy:,
       log_sampling_enabled:,
       log_sampling_percent:,
@@ -342,8 +349,8 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Acquier::ReleaseLock.release_lock(
       redis_client,
       lock_name,
-      config[:instrumenter],
-      config[:logger],
+      instrumenter,
+      logger,
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,
@@ -403,6 +410,8 @@ class RedisQueuedLocks::Client
   # @param lock_name [String]
   # @param milliseconds [Integer] How many milliseconds should be added.
   # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify] See `config[:instrumenter]` docs for details.
+  # @option instrument [NilClass,Any]
   # @option log_sampling_enabled [Boolean]
   # @option log_sampling_percent [Integer]
   # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
@@ -420,6 +429,8 @@ class RedisQueuedLocks::Client
     lock_name,
     milliseconds,
     logger: config[:logger],
+    instrumenter: config[:instrumenter],
+    instrument: nil,
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
     log_sampler: config[:log_sampler],
@@ -432,6 +443,8 @@ class RedisQueuedLocks::Client
       lock_name,
       milliseconds,
       logger,
+      instrumenter,
+      instrument,
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,
@@ -448,7 +461,7 @@ class RedisQueuedLocks::Client
   #
   # @option batch_size [Integer]
   # @option logger [::Logger,#debug]
-  # @option instrumenter [#notify]
+  # @option instrumenter [#notify] See `config[:instrumenter]` docs for details.
   # @option instrument [NilClass,Any]
   # @option log_sampling_enabled [Boolean]
   # @option log_sampling_percent [Integer]

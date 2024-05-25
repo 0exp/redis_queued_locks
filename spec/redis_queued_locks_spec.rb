@@ -14,6 +14,50 @@ RSpec.describe RedisQueuedLocks do
 
   after { redis.call('FLUSHDB') }
 
+  specify 'instrumentation sampling' do
+    test_notifier = Class.new do
+      attr_reader :notifications
+
+      def initialize
+        @notifications = []
+      end
+
+      def notify(event, payload = {})
+        notifications << { event:, payload: }
+      end
+    end
+
+    client = RedisQueuedLocks::Client.new(redis) do |conf|
+      conf.instr_sampling_enabled = true
+      conf.instr_sampling_percent = 15
+    end
+
+    100.times do
+      sampled_notifications = Array.new(100) do
+        sampled_notifier = test_notifier.new
+        client.lock('instr_sampling_check', instrumenter: sampled_notifier) {}
+        sampled_notifier.notifications
+      end
+
+      instrumented_cases = sampled_notifications.select(&:any?)
+      expect(instrumented_cases.size < 30).to eq(true)
+      expect(instrumented_cases.size > 1).to eq(true)
+    end
+
+    client = RedisQueuedLocks::Client.new(redis) do |conf|
+      conf.instr_sampling_enabled = false
+    end
+
+    sampled_notifications = Array.new(100) do
+      sampled_notifier = test_notifier.new
+      client.lock('instr_sampling_check', instrumenter: sampled_notifier) {}
+      sampled_notifier.notifications
+    end
+
+    instrumented_cases = sampled_notifications.select(&:any?)
+    expect(instrumented_cases.size).to eq(100)
+  end
+
   specify 'log sampling' do
     test_logger_klass = Class.new do
       attr_reader :logs
