@@ -2,7 +2,7 @@
 
 ## [1.7.0] - 2024-06-12
 ### Added
-- New feature: **Lock Access Strategy**: you can obtain a lock in different ways: `queued` (classic queued FIFO), `random` (get the lock immideatly if lock is free), and soon: `lifo` and `barrier`;
+- New feature: **Lock Access Strategy**: you can obtain a lock in different ways: `queued` (classic queued FIFO), `random` (get the lock immideatly if lock is free):
   - `:queued` is used by default (classic `redis_queued_locks` behavior);
   - `:random`: obtain a lock without checking the positions in the queue => if lock is free to obtain - it will be obtained;
 ### Changed
