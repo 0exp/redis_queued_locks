@@ -10,9 +10,29 @@ Gem::Specification.new do |spec|
   spec.authors = ['Rustam Ibragimov']
   spec.email   = ['iamdaiver@gmail.com']
 
-  spec.summary     = 'Queued distributed locks based on Redis.'
-  spec.description = 'Distributed locks with "lock acquisition queue" ' \
-                     'capabilities based on the Redis Database.'
+  spec.summary =
+    'Distributed locks with "prioritized lock acquisition queue" ' \
+    'capabilities based on the Redis Database.'
+
+  spec.description =
+    'Distributed locks with "prioritized lock acquisition queue" capabilities ' \
+    'based on the Redis Database. ' \
+    # ---
+    'Each lock request is put into the request queue ' \
+    "(each lock is hosted by it's own queue separately from other queues) and processed " \
+    'in order of their priority (FIFO). ' \
+    # ---
+    'Each lock request lives some period of time (RTTL) ' \
+    '(with requeue capabilities) which guarantees the request queue will never be stacked. ' \
+    # ---
+    'In addition to the classic `queued` (FIFO) strategy RQL supports ' \
+    '`random` (RANDOM) lock obtaining strategy when any acquirer from the lock queue ' \
+    'can obtain the lock regardless the position in the queue. ' \
+    # ---
+    'Provides flexible invocation flow, parametrized limits ' \
+    '(lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), ' \
+    'logging and instrumentation.'
+
   spec.homepage    = 'https://github.com/0exp/redis_queued_locks'
   spec.license     = 'MIT'
 
