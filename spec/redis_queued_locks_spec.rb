@@ -748,14 +748,14 @@ RSpec.describe RedisQueuedLocks do
     end.new
 
     queue_ttl = rand(10..15)
-    acq_strat = :queued
+    acs_strat = :queued
 
     # NOTE: with log_lock_try test
     client = RedisQueuedLocks::Client.new(redis) do |conf|
       conf.logger = test_logger
       conf.log_lock_try = true
       conf.default_queue_ttl = queue_ttl
-      conf.default_access_strategy = acq_strat
+      conf.default_access_strategy = acs_strat
     end
 
     client.lock('pek.kek.cheburek') { 1 + 1 }
@@ -767,42 +767,42 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[0]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[0]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[0]).to include('acq_id =>')
-      expect(test_logger.logs[0]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[0]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: start <try lock> cycle
       expect(test_logger.logs[1]).to include('[redis_queued_locks.start_try_to_lock_cycle]')
       expect(test_logger.logs[1]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[1]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[1]).to include('acq_id =>')
-      expect(test_logger.logs[1]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[1]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock - start
       expect(test_logger.logs[2]).to include('[redis_queued_locks.try_lock.start]')
       expect(test_logger.logs[2]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[2]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[2]).to include('acq_id =>')
-      expect(test_logger.logs[2]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[2]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock - rconn fetched
       expect(test_logger.logs[3]).to include('[redis_queued_locks.try_lock.rconn_fetched]')
       expect(test_logger.logs[3]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[3]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[3]).to include('acq_id =>')
-      expect(test_logger.logs[3]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[3]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock - acq added to queue
       expect(test_logger.logs[4]).to include('[redis_queued_locks.try_lock.acq_added_to_queue]')
       expect(test_logger.logs[4]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[4]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[4]).to include('acq_id =>')
-      expect(test_logger.logs[4]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[4]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock - remove expired acqs
       expect(test_logger.logs[5]).to include('[redis_queued_locks.try_lock.remove_expired_acqs]')
       expect(test_logger.logs[5]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[5]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[5]).to include('acq_id =>')
-      expect(test_logger.logs[5]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[5]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock - get first from queue
       expect(test_logger.logs[6]).to include('[redis_queued_locks.try_lock.get_first_from_queue]')
@@ -810,7 +810,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[6]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[6]).to include('acq_id =>')
       expect(test_logger.logs[6]).to include('first_acq_id_in_queue =>')
-      expect(test_logger.logs[6]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[6]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock - fre to acquire
       # rubocop:disable Layout/LineLength
@@ -818,7 +818,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[7]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[7]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[7]).to include('acq_id =>')
-      expect(test_logger.logs[7]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[7]).to include("acs_strat => '#{acs_strat}")
       # rubocop:enable Layout/LineLength
 
       # NOTE: lock_obtained
@@ -827,26 +827,26 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[8]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[8]).to include('acq_id =>')
       expect(test_logger.logs[8]).to include('acq_time =>')
-      expect(test_logger.logs[8]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[8]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: expire_lock
       expect(test_logger.logs[9]).to include('[redis_queued_locks.expire_lock]')
       expect(test_logger.logs[9]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[9]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[9]).to include('acq_id =>')
-      expect(test_logger.logs[9]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[9]).to include("acs_strat => '#{acs_strat}")
     end
 
     # NOTE: rollback to the clean initial state in order to test another case
     test_logger.logs.clear
-    acq_strat = :random
+    acs_strat = :random
 
     # NOTE: without log_lock_try test
     client = RedisQueuedLocks::Client.new(redis) do |conf|
       conf.logger = test_logger
       conf.log_lock_try = false
       conf.default_queue_ttl = queue_ttl
-      conf.access_strategy = acq_strat
+      conf.access_strategy = acs_strat
     end
 
     client.lock('pek.kek.cheburek') { 1 + 1 }
@@ -858,14 +858,14 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[0]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[0]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[0]).to include('acq_id =>')
-      expect(test_logger.logs[0]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[0]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock cycle start
       expect(test_logger.logs[1]).to include('[redis_queued_locks.start_try_to_lock_cycle]')
       expect(test_logger.logs[1]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[1]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[1]).to include('acq_id =>')
-      expect(test_logger.logs[1]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[1]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: lock_obtained
       expect(test_logger.logs[2]).to include('[redis_queued_locks.lock_obtained]')
@@ -873,14 +873,14 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[2]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[2]).to include('acq_id =>')
       expect(test_logger.logs[2]).to include('acq_time =>')
-      expect(test_logger.logs[2]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[2]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: expire_lock
       expect(test_logger.logs[3]).to include('[redis_queued_locks.expire_lock]')
       expect(test_logger.logs[3]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[3]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[3]).to include('acq_id =>')
-      expect(test_logger.logs[3]).to include("acq_strat => '#{acq_strat}")
+      expect(test_logger.logs[3]).to include("acs_strat => '#{acs_strat}")
     end
   end
 

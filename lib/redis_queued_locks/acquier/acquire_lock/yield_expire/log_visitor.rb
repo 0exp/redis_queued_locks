@@ -30,7 +30,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
-      "acq_strat => '#{access_strategy}'"
+      "acs_strat => '#{access_strategy}'"
     end # rescue nil
   end
 
@@ -62,7 +62,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire::LogVisitor
       "decreased_ttl => #{decreased_ttl} " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
-      "acq_strat => '#{access_strategy}'"
+      "acs_strat => '#{access_strategy}'"
     end # rescue nil
   end
 end
