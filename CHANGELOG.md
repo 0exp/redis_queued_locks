@@ -2,15 +2,15 @@
 
 ## [1.7.0] - 2024-06-12
 ### Added
-- New feature: **Lock Access Strategy** - you can obtain a lock in a series ways: `queued` (classic queued FIFO), `random` (get the lock immideatly if lock is free), and soon: `lifo` and `barrier`;
+- New feature: **Lock Access Strategy**: you can obtain a lock in different ways: `queued` (classic queued FIFO), `random` (get the lock immideatly if lock is free), and soon: `lifo` and `barrier`;
   - `:queued` is used by default (classic `redis_queued_locks` behavior);
   - `:random`: obtain a lock without checking the positions in the queue => if lock is free to obtain - it will be obtained;
 ### Changed
-- Some logging refactorings, some instrumentation refactorings: the code that uses them is now more readable and supportable;
+- Some logging refactorings, some instrumentation refactorings: the code that uses them is more readable and supportable;
 
 ## [1.6.0] - 2024-05-25
 ### Added
-- New Feature: **Instrumentation Sampling** - configurable instrumentation sampling based on `weight` algorithm (where the weight is a percentage of RQL cases that should be logged);
+- New Feature: **Instrumentation Sampling**: configurable instrumentation sampling based on `weight` algorithm (where the weight is a percentage of RQL cases that should be logged);
 - Missing instrumenter customization in public `RedisQueuedLocks::Client` methods;
 - Documentation updates;
 

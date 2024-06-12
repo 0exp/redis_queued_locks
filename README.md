@@ -4,6 +4,8 @@
 
 Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) (with requeue capabilities) which guarantees the request queue will never be stacked.
 
+In addition to the classic `queued` (FIFO) strategy supports `random` (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
+
 Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), logging and instrumentation.
 
 ---
@@ -71,6 +73,8 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 > Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
+
+> In addition to the classic "queued" (FIFO) strategy supports "random" (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
 
 **Soon**: detailed explanation.
 
@@ -162,8 +166,6 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - `:queued` (FIFO): the classic queued behavior (default), your lock will be obitaned if you are first in queue and the required lock is free;
   #   - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist,
   #     retries, timeouts and so on). if lock is free to obtain - it will be obtained;
-  #   - (soon) `:lifo` (in development phase);
-  #   - (soon) `:barrier` (in development phase);
   config.default_access_strategy = :queued
 
   # (symbol) (default: :wait_for_lock)
@@ -653,7 +655,7 @@ rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
 ```
 
 - obtain a lock in `:random` way (with `:random` strategy): in `:random` strategy
-  any acquirer in a queue can obtain the lock regardless of position in lock queue;
+  any acquirer from the lcok queue can obtain the lock regardless of the position in the lock queue;
 
 ```ruby
 # Current Process (process#1)
@@ -727,6 +729,7 @@ def lock!(
   log_lock_try: config[:log_lock_try],
   instrument: nil,
   instrumenter: config[:instrumenter],
+  access_strategy: config[:default_access_strategy],
   conflict_strategy: config[:default_conflict_strategy],
   log_sampling_enabled: config[:log_sampling_enabled],
   log_sampling_percent: config[:log_sampling_percent],
@@ -1319,8 +1322,16 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 ## Lock Access Startegies
 
 - **this documentation section is in progress**;
-- `:queued` - **this documentation section is in progress**;
-- `:random` - **this documentation section is in progress**;
+- (little details for a context of the current implementation and feautres):
+  - defines the way in which the lock should be obitained;
+  - by default it is configured to obtain a lock in classic `queued` way: you should wait your position in queue in order to obtain a lock;
+  - can be customized in methods `#lock` and `#lock!` via `:access_strategy` attribute (see method signatures of #lock and #lock! methods);
+  - supports different strategies:
+    - `:queued` (FIFO): the classic queued behavior (default), your lock will be obitaned if you are first in queue and the required lock is free;
+    - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist, retries, timeouts and so on). if lock is free to obtain - it will be obtained;
+  - for current implementation detalis check:
+    - [Configuration](#configuration) documentation: see `config.default_access_strategy` config docs;
+    - [#lock](#lock---obtain-a-lock) method documentation: see `access_strategy` attribute docs;
 
 ---
 

@@ -139,11 +139,12 @@ class RedisQueuedLocks::Client
   #   - The way in which the lock will be obtained;
   #   - By default it uses `:queued` strategy pre-defined in `config[:default_access_strategy]`;
   #   - Supports following strategies:
-  #     - `:queued` (FIFO):
-  #       - the classic queued behavior (default);
+  #     - `:queued` (FIFO): the classic queued behavior (default), your lock will be
+  #       obitaned if you are first in queue and the required lock is free;
   #     - `:random` (RANDOM):
-  #       - obtain a lock without checking the positions in the queue.
-  #       - if lock is free to obtain - it will be obtained;
+  #       - obtain a lock without checking the positions in the queue
+  #         (but with checking the limist, retries, timeouts and so on);
+  #        - if lock is free to obtain - it will be obtained;
   # @option meta [NilClass,Hash<String|Symbol,Any>]
   #   - A custom metadata wich will be passed to the lock data in addition to the existing data;
   #   - Metadata can not contain reserved lock data keys;
