@@ -220,15 +220,15 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - should implement `debug(progname = nil, &block)` (minimal requirement) or be an instance of Ruby's `::Logger` class/subclass;
   # - supports `SemanticLogger::Logger` (see "semantic_logger" gem)
   # - at this moment the only debug logs are realised in following cases:
-  #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.dead_score_reached__reset_acquier_position]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-  #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-  #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-  #   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.dead_score_reached__reset_acquier_position]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time", "acs_strat");
+  #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time", "acs_strat");
+  #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time", "acs_strat");
+  #   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "acs_strat");
   # - by default uses VoidLogger that does nothing;
   config.logger = RedisQueuedLocks::Logging::VoidLogger
 
@@ -236,19 +236,19 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - adds additional debug logs;
   # - enables additional logs for each internal try-retry lock acquiring (a lot of logs can be generated depending on your retry configurations);
   # - it adds following logs in addition to the existing:
-  #   - "[redis_queued_locks.try_lock.start]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.try_lock.rconn_fetched]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.try_lock.same_process_conflict_detected]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.try_lock.same_process_conflict_analyzed]" (logs "lock_key", "queue_ttl", "acq_id", "spc_status");
-  #   - "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" (logs "lock_key", "queue_ttl", "acq_id", "spc_status", "last_ext_ttl", "last_ext_ts");
-  #   - "[redis_queued_locks.try_lock.reentrant_lock__work_through]" (logs "lock_key", "queue_ttl", "acq_id", "spc_status", last_spc_ts);
-  #   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id)";
-  #   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue");
-  #   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "<current_lock_data>");
-  #   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
-  #   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.try_lock.start]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.rconn_fetched]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.same_process_conflict_detected]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.same_process_conflict_analyzed]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status");
+  #   - "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", "last_ext_ttl", "last_ext_ts");
+  #   - "[redis_queued_locks.try_lock.reentrant_lock__work_through]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", last_spc_ts);
+  #   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id, "acs_strat")";
+  #   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue");
+  #   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue", "<current_lock_data>");
+  #   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
+  #   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
   config.log_lock_try = false
 
   # (default: false)
@@ -1360,34 +1360,34 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 - default logs (raised from `#lock`/`#lock!`):
 
 ```ruby
-"[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.dead_score_reached__reset_acquier_position]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.dead_score_reached__reset_acquier_position]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
 "[redis_queued_locks.lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-"[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-"[redis_queued_locks.reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-"[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.decrease_lock]" # (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id");
+"[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "acq_time");
+"[redis_queued_locks.reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "acq_time");
+"[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.decrease_lock]" # (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "acs_strat");
 ```
 
 - additional logs (raised from `#lock`/`#lock!` with `confg[:log_lock_try] == true`):
 
 ```ruby
-"[redis_queued_locks.try_lock.start]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.try_lock.rconn_fetched]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.try_lock.same_process_conflict_detected]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.try_lock.same_process_conflict_analyzed]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status");
-"[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status", "last_ext_ttl", "last_ext_ts");
-"[redis_queued_locks.try_lock.reentrant_lock__work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status", last_spc_ts);
-"[redis_queued_locks.try_lock.single_process_lock_conflict__dead_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status", "last_spc_ts");
-"[redis_queued_locks.try_lock.acq_added_to_queue]" # (logs "lock_key", "queue_ttl", "acq_id)";
-"[redis_queued_locks.try_lock.remove_expired_acqs]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.try_lock.get_first_from_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue");
-"[redis_queued_locks.try_lock.exit__queue_ttl_reached]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.try_lock.exit__no_first]" # (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "<current_lock_data>");
-"[redis_queued_locks.try_lock.exit__lock_still_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
-"[redis_queued_locks.try_lock.obtain__free_to_acquire]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.try_lock.start]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.rconn_fetched]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.same_process_conflict_detected]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.same_process_conflict_analyzed]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status");
+"[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", "last_ext_ttl", "last_ext_ts");
+"[redis_queued_locks.try_lock.reentrant_lock__work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", last_spc_ts);
+"[redis_queued_locks.try_lock.single_process_lock_conflict__dead_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", "last_spc_ts");
+"[redis_queued_locks.try_lock.acq_added_to_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.remove_expired_acqs]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.get_first_from_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue");
+"[redis_queued_locks.try_lock.exit__queue_ttl_reached]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.exit__no_first]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue", "<current_lock_data>");
+"[redis_queued_locks.try_lock.exit__lock_still_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
+"[redis_queued_locks.try_lock.obtain__free_to_acquire]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
 ```
 
 ---

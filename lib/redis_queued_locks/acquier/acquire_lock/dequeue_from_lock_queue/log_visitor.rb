@@ -10,18 +10,27 @@ module RedisQueuedLocks::Acquier::AcquireLock::DequeueFromLockQueue::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param access_strategy [Symbol]
   # @return [void]
   #
   # @api private
   # @since 1.7.0
-  def dequeue_from_lock_queue(logger, log_sampled, lock_key, queue_ttl, acquier_id)
+  def dequeue_from_lock_queue(
+    logger,
+    log_sampled,
+    lock_key,
+    queue_ttl,
+    acquier_id,
+    access_strategy
+  )
     return unless log_sampled
 
     logger.debug do
       "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue] " \
       "lock_key => '#{lock_key}' " \
-      "queue_ttl => '#{queue_ttl}' " \
-      "acq_id => '#{acquier_id}'"
-    end rescue nil
+      "queue_ttl => #{queue_ttl} " \
+      "acq_id => '#{acquier_id}' " \
+      "acq_strat => '#{access_strategy}"
+    end # rescue nil
   end
 end

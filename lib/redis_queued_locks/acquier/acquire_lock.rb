@@ -251,6 +251,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
           lock_key_queue,
           queue_ttl,
           acquier_id,
+          access_strategy,
           log_sampled,
           instr_sampled
         )
@@ -258,7 +259,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
       LogVisitor.start_lock_obtaining(
         logger, log_sampled,
-        lock_key, queue_ttl, acquier_id
+        lock_key, queue_ttl, acquier_id, access_strategy
       )
 
       # Step 2: try to lock with timeout
@@ -270,7 +271,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
           LogVisitor.start_try_to_lock_cycle(
             logger, log_sampled,
-            lock_key, queue_ttl, acquier_id
+            lock_key, queue_ttl, acquier_id, access_strategy
           )
 
           # Step 2.X: check the actual score: is it in queue ttl limit or not?
@@ -280,7 +281,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
             LogVisitor.dead_score_reached__reset_acquier_position(
               logger, log_sampled,
-              lock_key, queue_ttl, acquier_id
+              lock_key, queue_ttl, acquier_id, access_strategy
             )
           end
 
@@ -316,7 +317,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               # instrumetnation: (reentrant lock with ttl extension)
               LogVisitor.extendable_reentrant_lock_obtained(
                 logger, log_sampled,
-                result[:lock_key], queue_ttl, acquier_id, acq_time
+                result[:lock_key], queue_ttl, acquier_id, acq_time, access_strategy
               )
               InstrVisitor.extendable_reentrant_lock_obtained(
                 instrumenter, instr_sampled,
@@ -327,7 +328,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               # instrumetnation: (reentrant lock without ttl extension)
               LogVisitor.reentrant_lock_obtained(
                 logger, log_sampled,
-                result[:lock_key], queue_ttl, acquier_id, acq_time
+                result[:lock_key], queue_ttl, acquier_id, acq_time, access_strategy
               )
               InstrVisitor.reentrant_lock_obtained(
                 instrumenter, instr_sampled,
@@ -339,7 +340,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               # NOTE: classic is: acq_process[:result][:process] == :lock_obtaining
               LogVisitor.lock_obtained(
                 logger, log_sampled,
-                result[:lock_key], queue_ttl, acquier_id, acq_time
+                result[:lock_key], queue_ttl, acquier_id, acq_time, access_strategy
               )
               InstrVisitor.lock_obtained(
                 instrumenter, instr_sampled,
@@ -449,6 +450,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               logger,
               lock_key,
               acquier_id,
+              access_strategy,
               timed,
               ttl_shift,
               ttl,
