@@ -23,6 +23,7 @@ class RedisQueuedLocks::Client
     setting :dead_request_ttl, (1 * 24 * 60 * 60 * 1000) # NOTE: 1 day in milliseconds
     setting :is_timed_by_default, false
     setting :default_conflict_strategy, :wait_for_lock
+    setting :default_access_strategy, :queued
     setting :log_sampling_enabled, false
     setting :log_sampling_percent, 15
     setting :log_sampler, RedisQueuedLocks::Logging::Sampler
@@ -55,6 +56,12 @@ class RedisQueuedLocks::Client
       val == :extendable_work_through ||
       val == :wait_for_lock ||
       val == :dead_locking
+      # rubocop:enable Layout/MultilineOperationIndentation
+    end
+    validate('default_access_strategy') do |val|
+      # rubocop:disable Layout/MultilineOperationIndentation
+      val == :queued ||
+      val == :random
       # rubocop:enable Layout/MultilineOperationIndentation
     end
   end
@@ -126,6 +133,16 @@ class RedisQueuedLocks::Client
   #     - `:wait_for_lock` - (default) - work in classic way
   #       (with timeouts, retry delays, retry limits, etc - in classic way :));
   #     - `:dead_locking` - fail with deadlock exception;
+  # @option access_strategy [Symbol]
+  #   - The way in which the lock will be obtained;
+  #   - By default it uses `:queued` strategy;
+  #   - Supports following strategies:
+  #     - `:queued` (FIFO): the classic queued behavior (default), your lock will be
+  #       obitaned if you are first in queue and the required lock is free;
+  #     - `:random` (RANDOM): obtain a lock without checking the positions in the queue
+  #       (but with checking the limist, retries, timeouts and so on). if lock is
+  #       free to obtain - it will be obtained;
+  #   - pre-configured in `config[:default_access_strategy]`;
   # @option meta [NilClass,Hash<String|Symbol,Any>]
   #   - A custom metadata wich will be passed to the lock data in addition to the existing data;
   #   - Metadata can not contain reserved lock data keys;
@@ -189,7 +206,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.6.0
+  # @version 1.7.0
   # rubocop:disable Metrics/MethodLength
   def lock(
     lock_name,
@@ -203,6 +220,7 @@ class RedisQueuedLocks::Client
     raise_errors: false,
     fail_fast: false,
     conflict_strategy: config[:default_conflict_strategy],
+    access_strategy: config[:default_access_strategy],
     identity: uniq_identity,
     meta: nil,
     logger: config[:logger],
@@ -236,6 +254,7 @@ class RedisQueuedLocks::Client
       identity:,
       fail_fast:,
       conflict_strategy:,
+      access_strategy:,
       meta:,
       logger:,
       log_lock_try:,
@@ -255,7 +274,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.6.0
+  # @version 1.7.0
   # rubocop:disable Metrics/MethodLength
   def lock!(
     lock_name,
@@ -268,6 +287,7 @@ class RedisQueuedLocks::Client
     retry_jitter: config[:retry_jitter],
     fail_fast: false,
     conflict_strategy: config[:default_conflict_strategy],
+    access_strategy: config[:default_access_strategy],
     identity: uniq_identity,
     instrumenter: config[:instrumenter],
     meta: nil,
@@ -300,6 +320,7 @@ class RedisQueuedLocks::Client
       instrument:,
       instrumenter:,
       conflict_strategy:,
+      access_strategy:,
       log_sampling_enabled:,
       log_sampling_percent:,
       log_sampler:,

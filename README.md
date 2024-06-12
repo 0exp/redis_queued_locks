@@ -4,6 +4,8 @@
 
 Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) (with requeue capabilities) which guarantees the request queue will never be stacked.
 
+In addition to the classic `queued` (FIFO) strategy supports `random` (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
+
 Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), logging and instrumentation.
 
 ---
@@ -32,6 +34,9 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [locks_info](#locks_info---get-list-of-locks-with-their-info)
   - [queues_info](#queues_info---get-list-of-queues-with-their-info)
   - [clear_dead_requests](#clear_dead_requests)
+- [Lock Access Strategies](#lock-access-strategies)
+  - [queued](#lock-access-strategies)
+  - [random](#lock-access-strategies)
 - [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks)
 - [Logging](#logging)
 - [Instrumentation](#instrumentation)
@@ -68,6 +73,8 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 > Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
+
+> In addition to the classic "queued" (FIFO) strategy supports "random" (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
 
 **Soon**: detailed explanation.
 
@@ -150,9 +157,20 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - should be all blocks of code are timed by default;
   config.is_timed_by_default = false
 
+  # (symbol) (default: :queued)
+  # - Defines the way in which the lock should be obitained;
+  # - By default it is configured to obtain a lock in classic `queued` way:
+  #   you should wait your position in queue in order to obtain a lock;
+  # - Can be customized in methods `#lock` and `#lock!` via `:access_strategy` attribute (see method signatures of #lock and #lock! methods);
+  # - Supports different strategies:
+  #   - `:queued` (FIFO): the classic queued behavior (default), your lock will be obitaned if you are first in queue and the required lock is free;
+  #   - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist,
+  #     retries, timeouts and so on). if lock is free to obtain - it will be obtained;
+  config.default_access_strategy = :queued
+
   # (symbol) (default: :wait_for_lock)
   # - Global default conflict strategy mode;
-  # - Can be customized in methods `#lock` and `#lock` via `:conflict_strategy` attribute (see method signatures of #lock and #lock! methods);
+  # - Can be customized in methods `#lock` and `#lock!` via `:conflict_strategy` attribute (see method signatures of #lock and #lock! methods);
   # - Conflict strategy is a logical behavior for cases when the process that obtained the lock want to acquire this lock again;
   # - Realizes "reentrant locks" abstraction (same process conflict / same process deadlock);
   # - By default uses `:wait_for_lock` strategy (classic way);
@@ -202,15 +220,15 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - should implement `debug(progname = nil, &block)` (minimal requirement) or be an instance of Ruby's `::Logger` class/subclass;
   # - supports `SemanticLogger::Logger` (see "semantic_logger" gem)
   # - at this moment the only debug logs are realised in following cases:
-  #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.dead_score_reached__reset_acquier_position]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-  #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-  #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-  #   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.dead_score_reached__reset_acquier_position]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time", "acs_strat");
+  #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time", "acs_strat");
+  #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acq_time", "acs_strat");
+  #   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "acs_strat");
   # - by default uses VoidLogger that does nothing;
   config.logger = RedisQueuedLocks::Logging::VoidLogger
 
@@ -218,19 +236,19 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - adds additional debug logs;
   # - enables additional logs for each internal try-retry lock acquiring (a lot of logs can be generated depending on your retry configurations);
   # - it adds following logs in addition to the existing:
-  #   - "[redis_queued_locks.try_lock.start]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.try_lock.rconn_fetched]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.try_lock.same_process_conflict_detected]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.try_lock.same_process_conflict_analyzed]" (logs "lock_key", "queue_ttl", "acq_id", "spc_status");
-  #   - "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" (logs "lock_key", "queue_ttl", "acq_id", "spc_status", "last_ext_ttl", "last_ext_ts");
-  #   - "[redis_queued_locks.try_lock.reentrant_lock__work_through]" (logs "lock_key", "queue_ttl", "acq_id", "spc_status", last_spc_ts);
-  #   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id)";
-  #   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue");
-  #   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id");
-  #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "<current_lock_data>");
-  #   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
-  #   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id");
+  #   - "[redis_queued_locks.try_lock.start]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.rconn_fetched]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.same_process_conflict_detected]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.same_process_conflict_analyzed]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status");
+  #   - "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", "last_ext_ttl", "last_ext_ts");
+  #   - "[redis_queued_locks.try_lock.reentrant_lock__work_through]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", last_spc_ts);
+  #   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id, "acs_strat")";
+  #   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue");
+  #   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue", "<current_lock_data>");
+  #   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
+  #   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
   config.log_lock_try = false
 
   # (default: false)
@@ -327,6 +345,7 @@ def lock(
   raise_errors: false,
   fail_fast: false,
   conflict_strategy: config[:default_conflict_strategy],
+  access_strategy: config[:default_access_strategy],
   identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config[:uniq_identifier] proc;
   meta: nil,
   instrument: nil,
@@ -378,12 +397,21 @@ def lock(
   - Raise errors on library-related limits (such as timeout or retry count limit) and on lock conflicts (such as same-process dead locks);
   - `false` by default;
 - `fail_fast` - (optional) `[Boolean]`
-    - Should the required lock to be checked before the try and exit immidietly if lock is
-      already obtained;
-    - Should the logic exit immidietly after the first try if the lock was obtained
-      by another process while the lock request queue was initially empty;
-    - `false` by default;
-- `conflict_strategy` - (optional) - `[Symbol]``
+  - Should the required lock to be checked before the try and exit immidietly if lock is
+    already obtained;
+  - Should the logic exit immidietly after the first try if the lock was obtained
+    by another process while the lock request queue was initially empty;
+  - `false` by default;
+- `access_strategy` - (optional) - `[Symbol]`
+  - Defines the way in which the lock should be obitained (in queued way, in random way and so on);
+  - By default it is configured to obtain a lock in classic `:queued` way: you should wait your position in queue in order to obtain a lock;
+  - Supports following strategies:
+    - `:queued` (FIFO): (default) the classic queued behavior, your lock will be obitaned if you are first in queue and the required lock is free;
+    - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist, retries, timeouts and so on).
+      if lock is free to obtain - it will be obtained;
+  - pre-configured in `config[:default_access_strategy]`;
+  - See [Lock Access Strategies](#lock-access-strategies) documentation section for details;
+- `conflict_strategy` - (optional) - `[Symbol]`
   - The conflict strategy mode for cases when the process that obtained the lock
     want to acquire this lock again;
   - By default uses `:wait_for_lock` strategy;
@@ -393,7 +421,7 @@ def lock(
     - `:extendable_work_through` - continue working under the lock **with** lock's TTL extension;
     - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
     - `:dead_locking` - fail with deadlock exception;
-  - See [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks) readme section for details;
+  - See [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks) documentation section for details;
 - `identity` - (optional) `[String]`
   - An unique string that is unique per `RedisQueuedLock::Client` instance. Resolves the
     collisions between the same process_id/thread_id/fiber_id/ractor_id identifiers on different
@@ -624,7 +652,51 @@ rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
  "rql:acq:123/456/567/685/374dd74329", # some other waiting process
  "rql:acq:123/456/567/683/374dd74322", # <== we are here (moved to the end of the queue)
 ]
+```
 
+- obtain a lock in `:random` way (with `:random` strategy): in `:random` strategy
+  any acquirer from the lcok queue can obtain the lock regardless of the position in the lock queue;
+
+```ruby
+# Current Process (process#1)
+rql.lock('my_lock', ttl: 2_000, access_strategy: :random)
+# => holds the lock
+
+# Another Process (process#2)
+rql.lock('my_lock', retry_delay: 7000, ttl: 4000, access_strategy: :random)
+# => the lock is not free, stay in a queue and retry...
+
+# Another Process (process#3)
+rql.lock('my_lock', retry_delay: 3000, ttl: 3000, access_strategy: :random)
+# => the lock is not free, stay in a queue and retry...
+
+# lock queue:
+[
+ "rql:acq:123/456/567/677/374dd74322", # process#1 (holds the lock)
+ "rql:acq:123/456/567/679/374dd74321", # process#2 (waiting for the lock, in retry)
+ "rql:acq:123/456/567/683/374dd74322", # process#3 (waiting for the lock, in retry)
+]
+
+# ... some period of time
+# -> process#1 => released the lock;
+# -> process#2 => delayed retry, waiting;
+# -> process#3 => preparing for retry (the delay is over);
+# lock queue:
+[
+ "rql:acq:123/456/567/679/374dd74321", # process#2 (waiting for the lock, DELAYED)
+ "rql:acq:123/456/567/683/374dd74322", # process#3 (trying to obtain the lock, RETRYING now)
+]
+
+# ... some period of time
+# -> process#2 => didn't have time to obtain the lock, delayed retry;
+# -> process#3 => holds the lock;
+# lock queue:
+[
+ "rql:acq:123/456/567/679/374dd74321", # process#2 (waiting for the lock, DELAYED)
+ "rql:acq:123/456/567/683/374dd74322", # process#3 (holds the lock)
+]
+
+# `process#3` is the last in queue, but has acquired the lock because his lock request "randomly" came first;
 ```
 
 ---
@@ -657,6 +729,7 @@ def lock!(
   log_lock_try: config[:log_lock_try],
   instrument: nil,
   instrumenter: config[:instrumenter],
+  access_strategy: config[:default_access_strategy],
   conflict_strategy: config[:default_conflict_strategy],
   log_sampling_enabled: config[:log_sampling_enabled],
   log_sampling_percent: config[:log_sampling_percent],
@@ -1246,6 +1319,22 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 
 ---
 
+## Lock Access Strategies
+
+- **this documentation section is in progress**;
+- (little details for a context of the current implementation and feautres):
+  - defines the way in which the lock should be obitained;
+  - by default it is configured to obtain a lock in classic `queued` way: you should wait your position in queue in order to obtain a lock;
+  - can be customized in methods `#lock` and `#lock!` via `:access_strategy` attribute (see method signatures of #lock and #lock! methods);
+  - supports different strategies:
+    - `:queued` (FIFO): the classic queued behavior (default), your lock will be obitaned if you are first in queue and the required lock is free;
+    - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist, retries, timeouts and so on). if lock is free to obtain - it will be obtained;
+  - for current implementation detalis check:
+    - [Configuration](#configuration) documentation: see `config.default_access_strategy` config docs;
+    - [#lock](#lock---obtain-a-lock) method documentation: see `access_strategy` attribute docs;
+
+---
+
 ## Dead locks and Reentrant locks
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
@@ -1271,34 +1360,34 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 - default logs (raised from `#lock`/`#lock!`):
 
 ```ruby
-"[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.dead_score_reached__reset_acquier_position]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.dead_score_reached__reset_acquier_position]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
 "[redis_queued_locks.lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-"[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-"[redis_queued_locks.reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-"[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.decrease_lock]" # (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id");
+"[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "acq_time");
+"[redis_queued_locks.reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "acq_time");
+"[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.decrease_lock]" # (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "acs_strat");
 ```
 
 - additional logs (raised from `#lock`/`#lock!` with `confg[:log_lock_try] == true`):
 
 ```ruby
-"[redis_queued_locks.try_lock.start]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.try_lock.rconn_fetched]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.try_lock.same_process_conflict_detected]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.try_lock.same_process_conflict_analyzed]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status");
-"[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status", "last_ext_ttl", "last_ext_ts");
-"[redis_queued_locks.try_lock.reentrant_lock__work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status", last_spc_ts);
-"[redis_queued_locks.try_lock.single_process_lock_conflict__dead_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "spc_status", "last_spc_ts");
-"[redis_queued_locks.try_lock.acq_added_to_queue]" # (logs "lock_key", "queue_ttl", "acq_id)";
-"[redis_queued_locks.try_lock.remove_expired_acqs]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.try_lock.get_first_from_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue");
-"[redis_queued_locks.try_lock.exit__queue_ttl_reached]" # (logs "lock_key", "queue_ttl", "acq_id");
-"[redis_queued_locks.try_lock.exit__no_first]" # (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "<current_lock_data>");
-"[redis_queued_locks.try_lock.exit__lock_still_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
-"[redis_queued_locks.try_lock.obtain__free_to_acquire]" # (logs "lock_key", "queue_ttl", "acq_id");
+"[redis_queued_locks.try_lock.start]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.rconn_fetched]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.same_process_conflict_detected]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.same_process_conflict_analyzed]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status");
+"[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", "last_ext_ttl", "last_ext_ts");
+"[redis_queued_locks.try_lock.reentrant_lock__work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", last_spc_ts);
+"[redis_queued_locks.try_lock.single_process_lock_conflict__dead_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", "last_spc_ts");
+"[redis_queued_locks.try_lock.acq_added_to_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.remove_expired_acqs]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.get_first_from_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue");
+"[redis_queued_locks.try_lock.exit__queue_ttl_reached]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.exit__no_first]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue", "<current_lock_data>");
+"[redis_queued_locks.try_lock.exit__lock_still_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
+"[redis_queued_locks.try_lock.obtain__free_to_acquire]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
 ```
 
 ---
@@ -1424,7 +1513,6 @@ Detalized event semantics and payload structure:
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - **Major**:
-  - support for Random Access strategy (non-queued behavior);
   - lock request prioritization;
   - **strict redlock algorithm support** (support for many `RedisClient` instances);
   - `#lock_series` - acquire a series of locks:

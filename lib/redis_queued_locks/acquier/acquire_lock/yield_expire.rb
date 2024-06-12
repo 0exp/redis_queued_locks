@@ -2,9 +2,9 @@
 
 # @api private
 # @since 1.3.0
+# @version 1.7.0
 module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
-  # @since 1.3.0
-  extend RedisQueuedLocks::Utilities
+  require_relative 'yield_expire/log_visitor'
 
   # @return [String]
   #
@@ -19,6 +19,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   # @param logger [::Logger,#debug] Logger object.
   # @param lock_key [String] Obtained lock key that should be expired.
   # @param acquier_id [String] Acquier identifier.
+  # @param access_strategy [Symbol] Lock obtaining strategy.
   # @param timed [Boolean] Should the lock be wrapped by Timeout with with lock's ttl
   # @param ttl_shift [Float] Lock's TTL shifting. Should affect block's ttl. In millisecodns.
   # @param ttl [Integer,NilClass] Lock's time to live (in ms). Nil means "without timeout".
@@ -34,13 +35,14 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   #
   # @api private
   # @since 1.3.0
-  # @version 1.6.0
+  # @version 1.7.0
   # rubocop:disable Metrics/MethodLength
   def yield_expire(
     redis,
     logger,
     lock_key,
     acquier_id,
+    access_strategy,
     timed,
     ttl_shift,
     ttl,
@@ -67,15 +69,10 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
     end
   ensure
     if should_expire
-      run_non_critical do
-        logger.debug do
-          "[redis_queued_locks.expire_lock] " \
-          "lock_key => '#{lock_key}' " \
-          "queue_ttl => #{queue_ttl} " \
-          "acq_id => '#{acquier_id}'"
-        end
-      end if log_sampled
-
+      LogVisitor.expire_lock(
+        logger, log_sampled,
+        lock_key, queue_ttl, acquier_id, access_strategy
+      )
       redis.call('EXPIRE', lock_key, '0')
     elsif should_decrease
       finish_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)
@@ -83,16 +80,10 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
       decreased_ttl = ttl - spent_time - RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
 
       if decreased_ttl > 0
-        run_non_critical do
-          logger.debug do
-            "[redis_queued_locks.decrease_lock] " \
-            "lock_key => '#{lock_key}' " \
-            "decreased_ttl => '#{decreased_ttl} " \
-            "queue_ttl => #{queue_ttl} " \
-            "acq_id => '#{acquier_id}' " \
-          end
-        end if log_sampled
-
+        LogVisitor.decrease_lock(
+          logger, log_sampled,
+          lock_key, decreased_ttl, queue_ttl, acquier_id, access_strategy
+        )
         # NOTE:# NOTE: EVAL signature -> <lua script>, (number of keys), *(keys), *(arguments)
         redis.call('EVAL', DECREASE_LOCK_PTTL, 1, lock_key, decreased_ttl)
         # TODO: upload scripts to the redis

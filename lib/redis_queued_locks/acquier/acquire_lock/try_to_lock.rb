@@ -2,10 +2,10 @@
 
 # @api private
 # @since 1.0.0
+# @version 1.7.0
 # rubocop:disable Metrics/ModuleLength, Metrics/BlockNesting
 module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
-  # @since 1.0.0
-  extend RedisQueuedLocks::Utilities
+  require_relative 'try_to_lock/log_visitor'
 
   # @return [String]
   #
@@ -27,6 +27,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   # @param queue_ttl [Integer]
   # @param fail_fast [Boolean]
   # @param conflict_strategy [Symbol]
+  # @param access_strategy [Symbol]
   # @param meta [NilClass,Hash<String|Symbol,Any>]
   # @param log_sampled [Boolean]
   # @param instr_sampled [Boolean]
@@ -34,7 +35,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   #
   # @api private
   # @since 1.0.0
-  # @version 1.6.0
+  # @version 1.7.0
   # rubocop:disable Metrics/MethodLength
   def try_to_lock(
     redis,
@@ -48,6 +49,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     queue_ttl,
     fail_fast,
     conflict_strategy,
+    access_strategy,
     meta,
     log_sampled,
     instr_sampled
@@ -57,29 +59,17 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     timestamp = nil
     spc_processed_timestamp = nil
 
-    if log_sampled && log_lock_try
-      run_non_critical do
-        logger.debug do
-          "[redis_queued_locks.try_lock.start] " \
-          "lock_key => '#{lock_key}' " \
-          "queue_ttl => #{queue_ttl} " \
-          "acq_id => '#{acquier_id}'"
-        end
-      end
-    end
+    LogVisitor.start(
+      logger, log_sampled, log_lock_try,
+      lock_key, queue_ttl, acquier_id, access_strategy
+    )
 
     # Step X: start to work with lock acquiring
     result = redis.with do |rconn|
-      if log_sampled && log_lock_try
-        run_non_critical do
-          logger.debug do
-            "[redis_queued_locks.try_lock.rconn_fetched] " \
-            "lock_key => '#{lock_key}' " \
-            "queue_ttl => #{queue_ttl} " \
-            "acq_id => '#{acquier_id}'"
-          end
-        end
-      end
+      LogVisitor.rconn_fetched(
+        logger, log_sampled, log_lock_try,
+        lock_key, queue_ttl, acquier_id, access_strategy
+      )
 
       # Step 0:
       #   watch the lock key changes (and discard acquirement if lock is already
@@ -92,16 +82,10 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
         # SP-Conflict Step X1: calculate the current deadlock status
         if current_lock_obtainer != nil && acquier_id == current_lock_obtainer
-          if log_sampled && log_lock_try
-            run_non_critical do
-              logger.debug do
-                "[redis_queued_locks.try_lock.same_process_conflict_detected] " \
-                "lock_key => '#{lock_key}' " \
-                "queue_ttl => #{queue_ttl} " \
-                "acq_id => '#{acquier_id}'"
-              end
-            end
-          end
+          LogVisitor.same_process_conflict_detected(
+            logger, log_sampled, log_lock_try,
+            lock_key, queue_ttl, acquier_id, access_strategy
+          )
 
           # SP-Conflict Step X2: self-process dead lock moment started.
           # SP-Conflict CHECK (Step CHECK): check chosen strategy and flag the current status
@@ -128,17 +112,10 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
           end
           # rubocop:enable Lint/DuplicateBranch
 
-          if log_sampled && log_lock_try
-            run_non_critical do
-              logger.debug do
-                "[redis_queued_locks.try_lock.same_process_conflict_analyzed] " \
-                "lock_key => '#{lock_key}' " \
-                "queue_ttl => #{queue_ttl} " \
-                "acq_id => '#{acquier_id}' " \
-                "spc_status => '#{sp_conflict_status}'"
-              end
-            end
-          end
+          LogVisitor.same_process_conflict_analyzed(
+            logger, log_sampled, log_lock_try,
+            lock_key, queue_ttl, acquier_id, access_strategy, sp_conflict_status
+          )
         end
 
         # SP-Conflict-Step X2: switch to conflict-based logic or not
@@ -176,19 +153,11 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
           )
           inter_result = :extendable_conflict_work_through
 
-          if log_sampled && log_lock_try
-            run_non_critical do
-              logger.debug do
-                "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through] " \
-                "lock_key => '#{lock_key}' " \
-                "queue_ttl => #{queue_ttl} " \
-                "acq_id => '#{acquier_id}'" \
-                "spc_status => '#{sp_conflict_status} '" \
-                "last_ext_ttl => '#{ttl}' " \
-                "last_ext_ts => '#{spc_processed_timestamp}'"
-              end
-            end
-          end
+          LogVisitor.reentrant_lock__extend_and_work_through(
+            logger, log_sampled, log_lock_try,
+            lock_key, queue_ttl, acquier_id, access_strategy,
+            sp_conflict_status, ttl, spc_processed_timestamp
+          )
         # SP-Conflict-Step X2: switch to dead lock logic or not
         elsif sp_conflict_status == :conflict_work_through
           inter_result = :conflict_work_through
@@ -209,33 +178,21 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
             'l_spc_ts', (spc_processed_timestamp = Time.now.to_f)
           )
 
-          if log_sampled && log_lock_try
-            run_non_critical do
-              logger.debug do
-                "[redis_queued_locks.try_lock.reentrant_lock__work_through] " \
-                "lock_key => '#{lock_key}' " \
-                "queue_ttl => #{queue_ttl} " \
-                "acq_id => '#{acquier_id}' " \
-                "spc_status => '#{sp_conflict_status} ' " \
-                "last_spc_ts => '#{spc_processed_timestamp}'"
-              end
-            end
-          end
+          LogVisitor.reentrant_lock__work_through(
+            logger, log_sampled, log_lock_try,
+            lock_key, queue_ttl, acquier_id, access_strategy,
+            sp_conflict_status, spc_processed_timestamp
+          )
         # SP-Conflict-Step X2: switch to dead lock logic or not
         elsif sp_conflict_status == :conflict_dead_lock
           inter_result = :conflict_dead_lock
           spc_processed_timestamp = Time.now.to_f
 
-          if log_sampled && log_lock_try
-            logger.debug do
-              "[redis_queued_locks.try_lock.single_process_lock_conflict__dead_lock] " \
-              "lock_key => '#{lock_key}' " \
-              "queue_ttl => #{queue_ttl} " \
-              "acq_id => '#{acquier_id}' " \
-              "spc_status => '#{sp_conflict_status}' " \
-              "last_spc_ts => '#{spc_processed_timestamp}'"
-            end
-          end
+          LogVisitor.single_process_lock_conflict__dead_lock(
+            logger, log_sampled, log_lock_try,
+            lock_key, queue_ttl, acquier_id, access_strategy,
+            sp_conflict_status, spc_processed_timestamp
+          )
         # Reached the SP-Non-Conflict Mode (NOTE):
         #   - in other sp-conflict cases we are in <wait_for_lock> (non-conflict) status and should
         #     continue to work in classic way (next lines of code):
@@ -246,16 +203,10 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
           # Step 1: add an acquier to the lock acquirement queue
           rconn.call('ZADD', lock_key_queue, 'NX', acquier_position, acquier_id)
 
-          if log_sampled && log_lock_try
-            run_non_critical do
-              logger.debug do
-                "[redis_queued_locks.try_lock.acq_added_to_queue] " \
-                "lock_key => '#{lock_key}' " \
-                "queue_ttl => #{queue_ttl} " \
-                "acq_id => '#{acquier_id}'"
-              end
-            end
-          end
+          LogVisitor.acq_added_to_queue(
+            logger, log_sampled, log_lock_try,
+            lock_key, queue_ttl, acquier_id, access_strategy
+          )
 
           # Step 2.1: drop expired acquiers from the lock queue
           rconn.call(
@@ -265,66 +216,41 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
             RedisQueuedLocks::Resource.acquier_dead_score(queue_ttl)
           )
 
-          if log_sampled && log_lock_try
-            run_non_critical do
-              logger.debug do
-                "[redis_queued_locks.try_lock.remove_expired_acqs] " \
-                "lock_key => '#{lock_key}' " \
-                "queue_ttl => #{queue_ttl} " \
-                "acq_id => '#{acquier_id}'"
-              end
-            end
-          end
+          LogVisitor.remove_expired_acqs(
+            logger, log_sampled, log_lock_try,
+            lock_key, queue_ttl, acquier_id, access_strategy
+          )
 
           # Step 3: get the actual acquier waiting in the queue
           waiting_acquier = Array(rconn.call('ZRANGE', lock_key_queue, '0', '0')).first
 
-          if log_sampled && log_lock_try
-            run_non_critical do
-              logger.debug do
-                "[redis_queued_locks.try_lock.get_first_from_queue] " \
-                "lock_key => '#{lock_key}' " \
-                "queue_ttl => #{queue_ttl} " \
-                "acq_id => '#{acquier_id}' " \
-                "first_acq_id_in_queue => '#{waiting_acquier}'"
-              end
-            end
-          end
+          LogVisitor.get_first_from_queue(
+            logger, log_sampled, log_lock_try,
+            lock_key, queue_ttl, acquier_id, access_strategy, waiting_acquier
+          )
 
           # Step PRE-4.x: check if the request time limit is reached
           #   (when the current try self-removes itself from queue (queue ttl has come))
           if waiting_acquier == nil
-            if log_sampled && log_lock_try
-              run_non_critical do
-                logger.debug do
-                  "[redis_queued_locks.try_lock.exit__queue_ttl_reached] " \
-                  "lock_key => '#{lock_key}' " \
-                  "queue_ttl => #{queue_ttl} " \
-                  "acq_id => '#{acquier_id}'"
-                end
-              end
-            end
+            LogVisitor.exit__queue_ttl_reached(
+              logger, log_sampled, log_lock_try,
+              lock_key, queue_ttl, acquier_id, access_strategy
+            )
 
             inter_result = :dead_score_reached
-          # Step 4: check the actual acquier: is it ours? are we aready to lock?
-          elsif waiting_acquier != acquier_id
+            # Step STRATEGY: check the stragegy and corresponding preventing factor
+            # Step STRATEGY (queued): check the actual acquier: is it ours? are we aready to lock?
+          elsif access_strategy == :queued && waiting_acquier != acquier_id
             # Step ROLLBACK 1.1: our time hasn't come yet. retry!
-
-            if log_sampled && log_lock_try
-              run_non_critical do
-                logger.debug do
-                  "[redis_queued_locks.try_lock.exit__no_first] " \
-                  "lock_key => '#{lock_key}' " \
-                  "queue_ttl => #{queue_ttl} " \
-                  "acq_id => '#{acquier_id}' " \
-                  "first_acq_id_in_queue => '#{waiting_acquier}' " \
-                  "<current_lock_data> => <<#{rconn.call('HGETALL', lock_key).to_h}>>"
-                end
-              end
-            end
-
+            LogVisitor.exit__no_first(
+              logger, log_sampled, log_lock_try,
+              lock_key, queue_ttl, acquier_id, access_strategy, waiting_acquier,
+              rconn.call('HGETALL', lock_key).to_h
+            )
             inter_result = :acquier_is_not_first_in_queue
-          else
+            # Step STRAGEY: successfull (:queued OR :random)
+          elsif (access_strategy == :queued && waiting_acquier == acquier_id) ||
+                (access_strategy == :random)
             # NOTE: our time has come! let's try to acquire the lock!
 
             # Step 5: find the lock -> check if the our lock is already acquired
@@ -333,20 +259,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
             if locked_by_acquier
               # Step ROLLBACK 2: required lock is stil acquired. retry!
 
-              if log_sampled && log_lock_try
-                run_non_critical do
-                  logger.debug do
-                    "[redis_queued_locks.try_lock.exit__lock_still_obtained] " \
-                    "lock_key => '#{lock_key}' " \
-                    "queue_ttl => #{queue_ttl} " \
-                    "acq_id => '#{acquier_id}' " \
-                    "first_acq_id_in_queue => '#{waiting_acquier}' " \
-                    "locked_by_acq_id => '#{locked_by_acquier}' " \
-                    "<current_lock_data> => <<#{rconn.call('HGETALL', lock_key).to_h}>>"
-                  end
-                end
-              end
-
+              LogVisitor.exit__lock_still_obtained(
+                logger, log_sampled, log_lock_try,
+                lock_key, queue_ttl, acquier_id, access_strategy,
+                waiting_acquier, locked_by_acquier,
+                rconn.call('HGETALL', lock_key).to_h
+              )
               inter_result = :lock_is_still_acquired
             else
               # NOTE: required lock is free and ready to be acquired! acquire!
@@ -367,16 +285,10 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
               # Step 6.3: set the lock expiration time in order to prevent "infinite locks"
               transact.call('PEXPIRE', lock_key, ttl) # NOTE: in milliseconds
 
-              if log_sampled && log_lock_try
-                run_non_critical do
-                  logger.debug do
-                    "[redis_queued_locks.try_lock.obtain__free_to_acquire] " \
-                    "lock_key => '#{lock_key}' " \
-                    "queue_ttl => #{queue_ttl} " \
-                    "acq_id => '#{acquier_id}'"
-                  end
-                end
-              end
+              LogVisitor.obtain__free_to_acquire(
+                logger, log_sampled, log_lock_try,
+                lock_key, queue_ttl, acquier_id, access_strategy
+              )
             end
           end
         end
@@ -479,42 +391,5 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
     # rubocop:enable Lint/DuplicateBranch
   end
   # rubocop:enable Metrics/MethodLength, Metrics/PerceivedComplexity
-
-  # @param redis [RedisClient]
-  # @param logger [::Logger,#debug]
-  # @param lock_key [String]
-  # @param lock_key_queue [String]
-  # @param queue_ttl [Integer]
-  # @param acquier_id [String]
-  # @param log_sampled [Boolean]
-  # @param instr_sampled [Boolean]
-  # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
-  #
-  # @api private
-  # @since 1.0.0
-  # @version 1.6.0
-  def dequeue_from_lock_queue(
-    redis,
-    logger,
-    lock_key,
-    lock_key_queue,
-    queue_ttl,
-    acquier_id,
-    log_sampled,
-    instr_sampled
-  )
-    result = redis.call('ZREM', lock_key_queue, acquier_id)
-
-    run_non_critical do
-      logger.debug do
-        "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue] " \
-        "lock_key => '#{lock_key}' " \
-        "queue_ttl => '#{queue_ttl}' " \
-        "acq_id => '#{acquier_id}'"
-      end
-    end if log_sampled
-
-    RedisQueuedLocks::Data[ok: true, result: result]
-  end
 end
 # rubocop:enable Metrics/ModuleLength, Metrics/BlockNesting
