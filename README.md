@@ -1513,7 +1513,6 @@ Detalized event semantics and payload structure:
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - **Major**:
-  - support for Random Access strategy (non-queued behavior);
   - lock request prioritization;
   - **strict redlock algorithm support** (support for many `RedisClient` instances);
   - `#lock_series` - acquire a series of locks:
