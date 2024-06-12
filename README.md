@@ -1319,7 +1319,7 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 
 ---
 
-## Lock Access Startegies
+## Lock Access Strategies
 
 - **this documentation section is in progress**;
 - (little details for a context of the current implementation and feautres):
