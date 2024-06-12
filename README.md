@@ -4,7 +4,7 @@
 
 Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) (with requeue capabilities) which guarantees the request queue will never be stacked.
 
-In addition to the classic `queued` (FIFO) strategy supports `random` (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
+In addition to the classic `queued` (FIFO) strategy RQL supports `random` (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
 
 Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), logging and instrumentation.
 
@@ -74,7 +74,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 
 > Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
 
-> In addition to the classic "queued" (FIFO) strategy supports "random" (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
+> In addition to the classic "queued" (FIFO) strategy RQL supports "random" (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
 
 **Soon**: detailed explanation.
 
