@@ -14,6 +14,59 @@ RSpec.describe RedisQueuedLocks do
 
   after { redis.call('FLUSHDB') }
 
+  specify ':random access strategy' do
+    client = RedisQueuedLocks::Client.new(redis) do |conf|
+      conf.default_access_strategy = :random
+    end
+
+    client.lock('random.access.strategy', ttl: 2_000, meta: { 'trd' => 0 })
+
+    Thread.new do
+      client.lock('random.access.strategy', retry_delay: 7_000, ttl: 4_000, meta: { 'trd' => 1 })
+    end
+
+    Thread.new do
+      client.lock('random.access.strategy', retry_delay: 3_000, ttl: 3_000, meta: { 'trd' => 2 })
+    end
+
+    # NOTE:
+    #   lock queue: trd0->trd1->trd2
+    #   expected access (cuz it is random): trd-0 => trd-2 => trd-1 (trd2 should be next, not trd1)
+
+    expect(client.lock_info('random.access.strategy')['trd']).to eq('0')
+    sleep(4)
+    expect(client.lock_info('random.access.strategy')['trd']).to eq('2')
+    sleep(4)
+    expect(client.lock_info('random.access.strategy')['trd']).to eq('1')
+  end
+
+  specify ':queued access strategy' do
+    client = RedisQueuedLocks::Client.new(redis) do |conf|
+      conf.default_access_strategy = :queued
+    end
+
+    client.lock('random.access.strategy', ttl: 2_000, meta: { 'trd' => 0 })
+
+    Thread.new do
+      client.lock('random.access.strategy', retry_delay: 7_000, ttl: 2_000, meta: { 'trd' => 1 })
+    end
+
+    Thread.new do
+      client.lock('random.access.strategy', retry_count: 5, retry_delay: 3_000, ttl: 3_000,
+meta: { 'trd' => 2 })
+    end
+
+    # NOTE:
+    #   lock queue: trd0->trd1->trd2
+    #   expected access (cuz it is queued): trd-0 => trd-1 => trd-2
+
+    expect(client.lock_info('random.access.strategy')['trd']).to eq('0')
+    sleep(8)
+    expect(client.lock_info('random.access.strategy')['trd']).to eq('1')
+    sleep(4)
+    expect(client.lock_info('random.access.strategy')['trd']).to eq('2')
+  end
+
   specify 'instrumentation sampling' do
     test_notifier = Class.new do
       attr_reader :notifications

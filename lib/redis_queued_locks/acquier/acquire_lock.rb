@@ -2,16 +2,20 @@
 
 # @api private
 # @since 1.0.0
+# @version 1.7.0
 # rubocop:disable Metrics/ModuleLength
 # rubocop:disable Metrics/MethodLength
 # rubocop:disable Metrics/ClassLength
 # rubocop:disable Metrics/BlockNesting
 # rubocop:disable Style/IfInsideElse
 module RedisQueuedLocks::Acquier::AcquireLock
+  require_relative 'acquire_lock/log_visitor'
+  require_relative 'acquire_lock/instr_visitor'
   require_relative 'acquire_lock/delay_execution'
   require_relative 'acquire_lock/with_acq_timeout'
   require_relative 'acquire_lock/yield_expire'
   require_relative 'acquire_lock/try_to_lock'
+  require_relative 'acquire_lock/dequeue_from_lock_queue'
 
   # @since 1.0.0
   extend TryToLock
@@ -21,8 +25,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
   extend YieldExpire
   # @since 1.0.0
   extend WithAcqTimeout
-  # @since 1.0.0
-  extend RedisQueuedLocks::Utilities
+  # @since 1.7.0
+  extend DequeueFromLockQueue
 
   class << self
     # @param redis [RedisClient]
@@ -86,6 +90,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #     - `:extendable_work_through`;
     #     - `:wait_for_lock`;
     #     - `:dead_locking`;
+    # @option access_strategy [Symbol]
     # @option log_sampling_enabled [Boolean]
     #   - enables <log sampling>: only the configured percent of RQL cases will be logged;
     #   - disabled by default;
@@ -129,7 +134,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.6.0
+    # @version 1.7.0
     def acquire_lock(
       redis,
       lock_name,
@@ -153,6 +158,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
       logger:,
       log_lock_try:,
       conflict_strategy:,
+      access_strategy:,
       log_sampling_enabled:,
       log_sampling_percent:,
       log_sampler:,
@@ -241,14 +247,10 @@ module RedisQueuedLocks::Acquier::AcquireLock
         )
       end
 
-      run_non_critical do
-        logger.debug do
-          "[redis_queued_locks.start_lock_obtaining] " \
-          "lock_key => '#{lock_key}' " \
-          "queue_ttl => #{queue_ttl} " \
-          "acq_id => '#{acquier_id}'"
-        end
-      end if log_sampled
+      LogVisitor.start_lock_obtaining(
+        logger, log_sampled,
+        lock_key, queue_ttl, acquier_id
+      )
 
       # Step 2: try to lock with timeout
       with_acq_timeout(timeout, lock_key, raise_errors, on_timeout: acq_dequeue) do
@@ -256,28 +258,21 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
         # Step 2.1: cyclically try to obtain the lock
         while acq_process[:should_try]
-          run_non_critical do
-            logger.debug do
-              "[redis_queued_locks.start_try_to_lock_cycle] " \
-              "lock_key => '#{lock_key}' " \
-              "queue_ttl => #{queue_ttl} " \
-              "acq_id => '{#{acquier_id}'"
-            end
-          end if log_sampled
+
+          LogVisitor.start_try_to_lock_cycle(
+            logger, log_sampled,
+            lock_key, queue_ttl, acquier_id
+          )
 
           # Step 2.X: check the actual score: is it in queue ttl limit or not?
           if RedisQueuedLocks::Resource.dead_score_reached?(acquier_position, queue_ttl)
             # Step 2.X.X: dead score reached => re-queue the lock request with the new score;
             acquier_position = RedisQueuedLocks::Resource.calc_initial_acquier_position
 
-            run_non_critical do
-              logger.debug do
-                "[redis_queued_locks.dead_score_reached__reset_acquier_position] " \
-                "lock_key => '#{lock_key} " \
-                "queue_ttl => #{queue_ttl} " \
-                "acq_id => '#{acquier_id}'"
-              end
-            end if log_sampled
+            LogVisitor.dead_score_reached__reset_acquier_position(
+              logger, log_sampled,
+              lock_key, queue_ttl, acquier_id
+            )
           end
 
           try_to_lock(
@@ -292,6 +287,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
             queue_ttl,
             fail_fast,
             conflict_strategy,
+            access_strategy,
             meta,
             log_sampled,
             instr_sampled
@@ -309,72 +305,38 @@ module RedisQueuedLocks::Acquier::AcquireLock
             # Step X: (instrumentation)
             if acq_process[:result][:process] == :extendable_conflict_work_through
               # instrumetnation: (reentrant lock with ttl extension)
-              run_non_critical do
-                logger.debug do
-                  "[redis_queued_locks.extendable_reentrant_lock_obtained] " \
-                  "lock_key => '#{result[:lock_key]}' " \
-                  "queue_ttl => #{queue_ttl} " \
-                  "acq_id => '#{acquier_id}' " \
-                  "acq_time => #{acq_time} (ms)"
-                end
-              end if log_sampled
-
-              run_non_critical do
-                instrumenter.notify('redis_queued_locks.extendable_reentrant_lock_obtained', {
-                  lock_key: result[:lock_key],
-                  ttl: result[:ttl],
-                  acq_id: result[:acq_id],
-                  ts: result[:ts],
-                  acq_time: acq_time,
-                  instrument:
-                })
-              end if instr_sampled
+              LogVisitor.extendable_reentrant_lock_obtained(
+                logger, log_sampled,
+                result[:lock_key], queue_ttl, acquier_id, acq_time
+              )
+              InstrVisitor.extendable_reentrant_lock_obtained(
+                instrumenter, instr_sampled,
+                result[:lock_key], result[:ttl], result[:acq_id], result[:ts], acq_time,
+                instrument
+              )
             elsif acq_process[:result][:process] == :conflict_work_through
               # instrumetnation: (reentrant lock without ttl extension)
-              run_non_critical do
-                logger.debug do
-                  "[redis_queued_locks.reentrant_lock_obtained] " \
-                  "lock_key => '#{result[:lock_key]}' " \
-                  "queue_ttl => #{queue_ttl} " \
-                  "acq_id => '#{acquier_id}' " \
-                  "acq_time => #{acq_time} (ms)"
-                end
-              end if log_sampled
-
-              run_non_critical do
-                instrumenter.notify('redis_queued_locks.reentrant_lock_obtained', {
-                  lock_key: result[:lock_key],
-                  ttl: result[:ttl],
-                  acq_id: result[:acq_id],
-                  ts: result[:ts],
-                  acq_time: acq_time,
-                  instrument:
-                })
-              end if instr_sampled
+              LogVisitor.reentrant_lock_obtained(
+                logger, log_sampled,
+                result[:lock_key], queue_ttl, acquier_id, acq_time
+              )
+              InstrVisitor.reentrant_lock_obtained(
+                instrumenter, instr_sampled,
+                result[:lock_key], result[:ttl], result[:acq_id], result[:ts], acq_time,
+                instrument
+              )
             else
               # instrumentation: (classic lock obtain)
               # NOTE: classic is: acq_process[:result][:process] == :lock_obtaining
-              run_non_critical do
-                logger.debug do
-                  "[redis_queued_locks.lock_obtained] " \
-                  "lock_key => '#{result[:lock_key]}' " \
-                  "queue_ttl => #{queue_ttl} " \
-                  "acq_id => '#{acquier_id}' " \
-                  "acq_time => #{acq_time} (ms)"
-                end
-              end if log_sampled
-
-              # Step X (instrumentation): lock obtained
-              run_non_critical do
-                instrumenter.notify('redis_queued_locks.lock_obtained', {
-                  lock_key: result[:lock_key],
-                  ttl: result[:ttl],
-                  acq_id: result[:acq_id],
-                  ts: result[:ts],
-                  acq_time: acq_time,
-                  instrument:
-                })
-              end if instr_sampled
+              LogVisitor.lock_obtained(
+                logger, log_sampled,
+                result[:lock_key], queue_ttl, acquier_id, acq_time
+              )
+              InstrVisitor.lock_obtained(
+                instrumenter, instr_sampled,
+                result[:lock_key], result[:ttl], result[:acq_id], result[:ts], acq_time,
+                instrument
+              )
             end
 
             # Step 2.1.a: successfully acquired => build the result
@@ -499,30 +461,30 @@ module RedisQueuedLocks::Acquier::AcquireLock
             if acq_process[:result][:process] == :extendable_conflict_work_through ||
                acq_process[:result][:process] == :conflict_work_through
               # Step X (instrumentation): reentrant_lock_hold_completes
-              run_non_critical do
-                instrumenter.notify('redis_queued_locks.reentrant_lock_hold_completes', {
-                  hold_time: acq_process[:hold_time],
-                  ttl: acq_process[:lock_info][:ttl],
-                  acq_id: acq_process[:lock_info][:acq_id],
-                  ts: acq_process[:lock_info][:ts],
-                  lock_key: acq_process[:lock_info][:lock_key],
-                  acq_time: acq_process[:acq_time],
-                  instrument:
-                })
-              end if instr_sampled
+              InstrVisitor.reentrant_lock_hold_completes(
+                instrumenter,
+                instr_sampled,
+                acq_process[:lock_info][:lock_key],
+                acq_process[:lock_info][:ttl],
+                acq_process[:lock_info][:acq_id],
+                acq_process[:lock_info][:ts],
+                acq_process[:acq_time],
+                acq_process[:hold_time],
+                instrument
+              )
             else
               # Step X (instrumentation): lock_hold_and_release
-              run_non_critical do
-                instrumenter.notify('redis_queued_locks.lock_hold_and_release', {
-                  hold_time: acq_process[:hold_time],
-                  ttl: acq_process[:lock_info][:ttl],
-                  acq_id: acq_process[:lock_info][:acq_id],
-                  ts: acq_process[:lock_info][:ts],
-                  lock_key: acq_process[:lock_info][:lock_key],
-                  acq_time: acq_process[:acq_time],
-                  instrument:
-                })
-              end if instr_sampled
+              InstrVisitor.lock_hold_and_release(
+                instrumenter,
+                instr_sampled,
+                acq_process[:lock_info][:lock_key],
+                acq_process[:lock_info][:ttl],
+                acq_process[:lock_info][:acq_id],
+                acq_process[:lock_info][:ts],
+                acq_process[:lock_info][:lock_key],
+                acq_process[:acq_time],
+                instrument
+              )
             end
           end
         else

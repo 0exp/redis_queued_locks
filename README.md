@@ -32,6 +32,9 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [locks_info](#locks_info---get-list-of-locks-with-their-info)
   - [queues_info](#queues_info---get-list-of-queues-with-their-info)
   - [clear_dead_requests](#clear_dead_requests)
+- [Lock Access Strategies](#lock-access-strategies)
+  - [queued](#lock-access-strategies)
+  - [random](#lock-access-strategies)
 - [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks)
 - [Logging](#logging)
 - [Instrumentation](#instrumentation)
@@ -150,9 +153,22 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - should be all blocks of code are timed by default;
   config.is_timed_by_default = false
 
+  # (symbol) (default: :queued)
+  # - Defines the way in which the lock should be obitained;
+  # - By default it is configured to obtain a lock in classic `queued` way:
+  #   you should wait your position in queue in order to obtain a lock;
+  # - Can be customized in methods `#lock` and `#lock!` via `:access_strategy` attribute (see method signatures of #lock and #lock! methods);
+  # - Supports different strategies:
+  #   - `:queued` (FIFO): the classic queued behavior (default), your lock will be obitaned if you are first in queue and the required lock is free;
+  #   - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist,
+  #     retries, timeouts and so on). if lock is free to obtain - it will be obtained;
+  #   - (soon) `:lifo` (in development phase);
+  #   - (soon) `:barrier` (in development phase);
+  config.default_access_strategy = :queued
+
   # (symbol) (default: :wait_for_lock)
   # - Global default conflict strategy mode;
-  # - Can be customized in methods `#lock` and `#lock` via `:conflict_strategy` attribute (see method signatures of #lock and #lock! methods);
+  # - Can be customized in methods `#lock` and `#lock!` via `:conflict_strategy` attribute (see method signatures of #lock and #lock! methods);
   # - Conflict strategy is a logical behavior for cases when the process that obtained the lock want to acquire this lock again;
   # - Realizes "reentrant locks" abstraction (same process conflict / same process deadlock);
   # - By default uses `:wait_for_lock` strategy (classic way);
@@ -327,6 +343,7 @@ def lock(
   raise_errors: false,
   fail_fast: false,
   conflict_strategy: config[:default_conflict_strategy],
+  access_strategy: config[:default_access_strategy],
   identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config[:uniq_identifier] proc;
   meta: nil,
   instrument: nil,
@@ -378,12 +395,21 @@ def lock(
   - Raise errors on library-related limits (such as timeout or retry count limit) and on lock conflicts (such as same-process dead locks);
   - `false` by default;
 - `fail_fast` - (optional) `[Boolean]`
-    - Should the required lock to be checked before the try and exit immidietly if lock is
-      already obtained;
-    - Should the logic exit immidietly after the first try if the lock was obtained
-      by another process while the lock request queue was initially empty;
-    - `false` by default;
-- `conflict_strategy` - (optional) - `[Symbol]``
+  - Should the required lock to be checked before the try and exit immidietly if lock is
+    already obtained;
+  - Should the logic exit immidietly after the first try if the lock was obtained
+    by another process while the lock request queue was initially empty;
+  - `false` by default;
+- `access_strategy` - (optional) - `[Symbol]`
+  - Defines the way in which the lock should be obitained (in queued way, in random way and so on);
+  - By default it is configured to obtain a lock in classic `:queued` way: you should wait your position in queue in order to obtain a lock;
+  - Supports following strategies:
+    - `:queued` (FIFO): (default) the classic queued behavior, your lock will be obitaned if you are first in queue and the required lock is free;
+    - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist, retries, timeouts and so on).
+      if lock is free to obtain - it will be obtained;
+  - pre-configured in `config[:default_access_strategy]`;
+  - See [Lock Access Strategies](#lock-access-strategies) documentation section for details;
+- `conflict_strategy` - (optional) - `[Symbol]`
   - The conflict strategy mode for cases when the process that obtained the lock
     want to acquire this lock again;
   - By default uses `:wait_for_lock` strategy;
@@ -393,7 +419,7 @@ def lock(
     - `:extendable_work_through` - continue working under the lock **with** lock's TTL extension;
     - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
     - `:dead_locking` - fail with deadlock exception;
-  - See [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks) readme section for details;
+  - See [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks) documentation section for details;
 - `identity` - (optional) `[String]`
   - An unique string that is unique per `RedisQueuedLock::Client` instance. Resolves the
     collisions between the same process_id/thread_id/fiber_id/ractor_id identifiers on different
@@ -624,7 +650,51 @@ rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
  "rql:acq:123/456/567/685/374dd74329", # some other waiting process
  "rql:acq:123/456/567/683/374dd74322", # <== we are here (moved to the end of the queue)
 ]
+```
 
+- obtain a lock in `:random` way (with `:random` strategy): in `:random` strategy
+  any acquirer in a queue can obtain the lock regardless of position in lock queue;
+
+```ruby
+# Current Process (process#1)
+rql.lock('my_lock', ttl: 2_000, access_strategy: :random)
+# => holds the lock
+
+# Another Process (process#2)
+rql.lock('my_lock', retry_delay: 7000, ttl: 4000, access_strategy: :random)
+# => the lock is not free, stay in a queue and retry...
+
+# Another Process (process#3)
+rql.lock('my_lock', retry_delay: 3000, ttl: 3000, access_strategy: :random)
+# => the lock is not free, stay in a queue and retry...
+
+# lock queue:
+[
+ "rql:acq:123/456/567/677/374dd74322", # process#1 (holds the lock)
+ "rql:acq:123/456/567/679/374dd74321", # process#2 (waiting for the lock, in retry)
+ "rql:acq:123/456/567/683/374dd74322", # process#3 (waiting for the lock, in retry)
+]
+
+# ... some period of time
+# -> process#1 => released the lock;
+# -> process#2 => delayed retry, waiting;
+# -> process#3 => preparing for retry (the delay is over);
+# lock queue:
+[
+ "rql:acq:123/456/567/679/374dd74321", # process#2 (waiting for the lock, DELAYED)
+ "rql:acq:123/456/567/683/374dd74322", # process#3 (trying to obtain the lock, RETRYING now)
+]
+
+# ... some period of time
+# -> process#2 => didn't have time to obtain the lock, delayed retry;
+# -> process#3 => holds the lock;
+# lock queue:
+[
+ "rql:acq:123/456/567/679/374dd74321", # process#2 (waiting for the lock, DELAYED)
+ "rql:acq:123/456/567/683/374dd74322", # process#3 (holds the lock)
+]
+
+# `process#3` is the last in queue, but has acquired the lock because his lock request "randomly" came first;
 ```
 
 ---
@@ -1243,6 +1313,14 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
   ]
 }
 ```
+
+---
+
+## Lock Access Startegies
+
+- **this documentation section is in progress**;
+- `:queued` - **this documentation section is in progress**;
+- `:random` - **this documentation section is in progress**;
 
 ---
 
