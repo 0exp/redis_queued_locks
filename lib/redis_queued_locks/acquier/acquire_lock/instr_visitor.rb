@@ -30,7 +30,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::InstrVisitor
     return unless instr_sampled
     instrumenter.notify('redis_queued_locks.extendable_reentrant_lock_obtained', {
       lock_key:, ttl:, acq_id:, ts:, acq_time:, instrument:
-    }) # rescue nil
+    }) rescue nil
   end
 
   # @param instrumenter [#notify]
@@ -58,7 +58,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::InstrVisitor
     return unless instr_sampled
     instrumenter.notify('redis_queued_locks.reentrant_lock_obtained', {
       lock_key:, ttl:, acq_id:, ts:, acq_time:, instrument:
-    }) # rescue nil
+    }) rescue nil
   end
 
   # @param instrumenter [#notify]
@@ -86,7 +86,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::InstrVisitor
     return unless instr_sampled
     instrumenter.notify('redis_queued_locks.lock_obtained', {
       lock_key:, ttl:, acq_id:, ts:, acq_time:, instrument:
-    }) # rescue nil
+    }) rescue nil
   end
 
   # @param instrumenter [#notify]
@@ -116,7 +116,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::InstrVisitor
     return unless instr_sampled
     instrumenter.notify('redis_queued_locks.reentrant_lock_hold_completes', {
       hold_time:, ttl:, acq_id:, ts:, lock_key:, acq_time:, instrument:
-    }) # rescue nil
+    }) rescue nil
   end
 
   # @param instrumenter [#notify]
@@ -146,6 +146,6 @@ module RedisQueuedLocks::Acquier::AcquireLock::InstrVisitor
     return unless instr_sampled
     instrumenter.notify('redis_queued_locks.lock_hold_and_release', {
       hold_time:, ttl:, acq_id:, ts:, lock_key:, acq_time:, instrument:
-    }) # rescue nil
+    }) rescue nil
   end
 end

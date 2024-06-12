@@ -846,7 +846,7 @@ RSpec.describe RedisQueuedLocks do
       conf.logger = test_logger
       conf.log_lock_try = false
       conf.default_queue_ttl = queue_ttl
-      conf.access_strategy = acs_strat
+      conf.default_access_strategy = acs_strat
     end
 
     client.lock('pek.kek.cheburek') { 1 + 1 }

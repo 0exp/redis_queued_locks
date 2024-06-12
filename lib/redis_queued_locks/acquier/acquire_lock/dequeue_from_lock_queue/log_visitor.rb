@@ -31,6 +31,6 @@ module RedisQueuedLocks::Acquier::AcquireLock::DequeueFromLockQueue::LogVisitor
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
       "acs_strat => '#{access_strategy}"
-    end # rescue nil
+    end rescue nil
   end
 end

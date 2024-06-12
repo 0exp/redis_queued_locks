@@ -32,7 +32,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::LogVisitor
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
       "acs_strat => '#{access_strategy}'"
-    end # rescue nil
+    end rescue nil
   end
 
   # @param logger [::Logger,#debug]
@@ -61,7 +61,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::LogVisitor
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
       "acs_strat => '#{access_strategy}'"
-    end # rescue nil
+    end rescue nil
   end
 
   # @param logger [::Logger,#debug]
@@ -90,7 +90,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::LogVisitor
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
       "acs_strat => '#{access_strategy}'"
-    end # rescue nil
+    end rescue nil
   end
 
   # @param logger [::Logger,#debug]
@@ -122,7 +122,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::LogVisitor
       "acq_id => '#{acquier_id}' " \
       "acs_strat => '#{access_strategy}' " \
       "acq_time => #{acq_time} (ms)"
-    end # rescue nil
+    end rescue nil
   end
 
   # @param logger [::Logger,#debug]
@@ -154,7 +154,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::LogVisitor
       "acq_id => '#{acquier_id}' " \
       "acs_strat => '#{access_strategy}' " \
       "acq_time => #{acq_time} (ms)"
-    end # rescue nil
+    end rescue nil
   end
 
   # @param logger [::Logger,#debug]
@@ -186,7 +186,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::LogVisitor
       "acq_id => '#{acquier_id}' " \
       "acs_strat => '#{access_strategy}' " \
       "acq_time => #{acq_time} (ms)"
-    end # rescue nil
+    end rescue nil
   end
 end
 # rubocop:enable Metrics/ModuleLength
