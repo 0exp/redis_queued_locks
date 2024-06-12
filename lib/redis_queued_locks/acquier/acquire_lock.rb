@@ -91,6 +91,15 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #     - `:wait_for_lock`;
     #     - `:dead_locking`;
     # @option access_strategy [Symbol]
+    #   - The way in which the lock will be obtained;
+    #   - By default it uses `:queued` strategy;
+    #   - Supports following strategies:
+    #     - `:queued` (FIFO): the classic queued behavior (default), your lock will be
+    #       obitaned if you are first in queue and the required lock is free;
+    #     - `:random` (RANDOM): obtain a lock without checking the positions in the queue
+    #       (but with checking the limist, retries, timeouts and so on). if lock is
+    #       free to obtain - it will be obtained;
+    #   - pre-configured in `config[:default_access_strategy]`;
     # @option log_sampling_enabled [Boolean]
     #   - enables <log sampling>: only the configured percent of RQL cases will be logged;
     #   - disabled by default;

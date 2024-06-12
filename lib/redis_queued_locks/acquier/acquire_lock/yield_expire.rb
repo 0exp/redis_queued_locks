@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.3.0
+# @version 1.7.0
 module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   require_relative 'yield_expire/log_visitor'
 
