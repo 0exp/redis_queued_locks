@@ -69,6 +69,10 @@ module RedisQueuedLocks::Acquier::AcquireLock
     # @option meta [NilClass,Hash<String|Symbol,Any>]
     #   - A custom metadata wich will be passed to the lock data in addition to the existing data;
     #   - Metadata can not contain reserved lock data keys;
+    # @option detailed_acq_timeout_error [Boolean]
+    #   - Add additional data to the acquirement timeout error such as the current lock queue state
+    #   and the required lock state;
+    #   - See `config[:detailed_acq_timeout_error]` for details;
     # @option logger [::Logger,#debug]
     #   - Logger object used from the configuration layer (see config[:logger]);
     #   - See `RedisQueuedLocks::Logging::VoidLogger` for example;
@@ -143,7 +147,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.7.0
+    # @version 1.8.0
     def acquire_lock(
       redis,
       lock_name,
@@ -163,6 +167,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
       identity:,
       fail_fast:,
       meta:,
+      detailed_acq_timeout_error:,
       instrument:,
       logger:,
       log_lock_try:,
@@ -246,7 +251,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
       acq_dequeue = proc do
         dequeue_from_lock_queue(
-          redis, logger,
+          redis,
+          logger,
           lock_key,
           lock_key_queue,
           queue_ttl,
@@ -263,7 +269,15 @@ module RedisQueuedLocks::Acquier::AcquireLock
       )
 
       # Step 2: try to lock with timeout
-      with_acq_timeout(timeout, lock_key, raise_errors, on_timeout: acq_dequeue) do
+      with_acq_timeout(
+        redis,
+        timeout,
+        lock_key,
+        lock_name,
+        raise_errors,
+        detailed_acq_timeout_error,
+        on_timeout: acq_dequeue
+      ) do
         acq_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
 
         # Step 2.1: cyclically try to obtain the lock
@@ -455,6 +469,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               ttl_shift,
               ttl,
               queue_ttl,
+              meta,
               log_sampled,
               instr_sampled,
               should_expire, # NOTE: should expire the lock after the block execution

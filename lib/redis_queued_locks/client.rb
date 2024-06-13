@@ -14,6 +14,7 @@ class RedisQueuedLocks::Client
     setting :try_to_lock_timeout, 10 # NOTE: in seconds
     setting :default_lock_ttl, 5_000 # NOTE: in milliseconds
     setting :default_queue_ttl, 15 # NOTE: in seconds
+    setting :detailed_acq_timeout_error, false
     setting :lock_release_batch_size, 100
     setting :key_extraction_batch_size, 500
     setting :instrumenter, RedisQueuedLocks::Instrument::VoidNotifier
@@ -37,6 +38,7 @@ class RedisQueuedLocks::Client
     validate('try_to_lock_timeout') { |val| val == nil || (val.is_a?(::Integer) && val >= 0) }
     validate('default_lock_tt', :integer)
     validate('default_queue_ttl', :integer)
+    validate('detailed_acq_timeout_error', :boolean)
     validate('lock_release_batch_size', :integer)
     validate('instrumenter') { |val| RedisQueuedLocks::Instrument.valid_interface?(val) }
     validate('uniq_identifier', :proc)
@@ -146,6 +148,25 @@ class RedisQueuedLocks::Client
   # @option meta [NilClass,Hash<String|Symbol,Any>]
   #   - A custom metadata wich will be passed to the lock data in addition to the existing data;
   #   - Metadata can not contain reserved lock data keys;
+  # @option detailed_acq_timeout_error [Boolean]
+  #  - When the lock acquirement try reached the acquirement time limit (:timeout option) the
+  #    `RedisQueuedLocks::LockAcquirementTimeoutError` is raised (when `raise_errors` option
+  #    set to `true`). The error message contains the lock key name and the timeout value).
+  #  - <true> option adds the additional details to the error message:
+  #    - current lock queue state (you can see which acquirer blocks your request and how much acquirers are in queue);
+  #    - current lock data stored inside (for example: you can check the current acquirer and the lock meta state if you store some additional data there);
+  #  - Realized as an option because of the additional lock data requires two additional Redis
+  #    queries: (1) get the current lock from redis and (2) fetch the lock queue state;
+  #  - These two additional Redis queries has async nature so you can receive
+  #    inconsistent data of the lock and of the lock queue in your error emssage because:
+  #    - required lock can be released after the error moment and before the error message build;
+  #    - required lock can be obtained by other process after the error moment and
+  #      before the error message build;
+  #    - required lock queue can reach a state when the blocking acquirer start to obtain the lock
+  #      and moved from the lock queue after the error moment and before the error message build;
+  #  - You should consider the async nature of this error message and should use received data
+  #    from error message correspondingly;
+  #  - pre-configred in `config[:detailed_acq_timeout_error]`;
   # @option logger [::Logger,#debug]
   #   - Logger object used from the configuration layer (see config[:logger]);
   #   - See `RedisQueuedLocks::Logging::VoidLogger` for example;
@@ -223,6 +244,7 @@ class RedisQueuedLocks::Client
     access_strategy: config[:default_access_strategy],
     identity: uniq_identity,
     meta: nil,
+    detailed_acq_timeout_error: config[:detailed_acq_timeout_error],
     logger: config[:logger],
     log_lock_try: config[:log_lock_try],
     instrumenter: config[:instrumenter],
@@ -256,6 +278,7 @@ class RedisQueuedLocks::Client
       conflict_strategy:,
       access_strategy:,
       meta:,
+      detailed_acq_timeout_error:,
       logger:,
       log_lock_try:,
       instrument:,
@@ -291,6 +314,7 @@ class RedisQueuedLocks::Client
     identity: uniq_identity,
     instrumenter: config[:instrumenter],
     meta: nil,
+    detailed_acq_timeout_error: config[:detailed_acq_timeout_error],
     logger: config[:logger],
     log_lock_try: config[:log_lock_try],
     instrument: nil,
@@ -317,6 +341,7 @@ class RedisQueuedLocks::Client
       logger:,
       log_lock_try:,
       meta:,
+      detailed_acq_timeout_error:,
       instrument:,
       instrumenter:,
       conflict_strategy:,

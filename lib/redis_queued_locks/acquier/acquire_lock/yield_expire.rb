@@ -25,6 +25,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   # @param ttl [Integer,NilClass] Lock's time to live (in ms). Nil means "without timeout".
   # @param queue_ttl [Integer] Lock request lifetime.
   # @param block [Block] Custom logic that should be invoked unter the obtained lock.
+  # @param meta [NilClass,Hash<String|Symbol,Any>] Custom metadata wich is passed to the lock data;
   # @param log_sampled [Boolean] Should the logic be logged or not.
   # @param instr_sampled [Boolean] Should the logic be instrumented or not.
   # @param should_expire [Boolean] Should the lock be expired after the block invocation.
@@ -35,7 +36,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   #
   # @api private
   # @since 1.3.0
-  # @version 1.7.0
+  # @version 1.8.0
   # rubocop:disable Metrics/MethodLength
   def yield_expire(
     redis,
@@ -47,6 +48,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
     ttl_shift,
     ttl,
     queue_ttl,
+    meta,
     log_sampled,
     instr_sampled,
     should_expire,
@@ -62,7 +64,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
       end
 
       if timed && ttl != nil
-        yield_with_timeout(timeout, lock_key, ttl, &block)
+        yield_with_timeout(timeout, lock_key, ttl, acquier_id, meta, &block)
       else
         yield
       end
@@ -102,13 +104,17 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   #
   # @api private
   # @since 1.3.0
-  def yield_with_timeout(timeout, lock_key, lock_ttl, &block)
+  # @version 1.8.0
+  def yield_with_timeout(timeout, lock_key, lock_ttl, acquier_id, meta, &block)
     ::Timeout.timeout(timeout, &block)
   rescue ::Timeout::Error
     raise(
       RedisQueuedLocks::TimedLockTimeoutError,
-      "Passed <timed> block of code exceeded " \
-      "the lock TTL (lock: \"#{lock_key}\", ttl: #{lock_ttl})"
+      "Passed <timed> block of code exceeded the lock TTL " \
+      "(lock: \"#{lock_key}\", " \
+      "ttl: #{lock_ttl}, " \
+      "meta: \"#{meta ? meta.inspect : '<no_meta>'}\", " \
+      "acq_id: \"#{acquier_id}\")"
     )
   end
 end
