@@ -1048,13 +1048,117 @@ RSpec.describe RedisQueuedLocks do
     expect(test_notifier.notifications[1][:payload][:instrument]).to eq(nil)
   end
 
+  specify 'detailed lock acquirement timeout error' do
+    redis = RedisClient.config.new_pool(timeout: 5, size: 50)
+    client = RedisQueuedLocks::Client.new(redis) do |config|
+      # NOTE: false by default
+      # config.detailed_acq_timeout_error = false
+    end
+
+    client.lock('some-long-lock', ttl: 30_000)
+
+    expect do
+      client.lock('some-long-lock', timeout: 2, retry_count: nil, raise_errors: true)
+    end.to raise_error(RedisQueuedLocks::LockAcquiermentTimeoutError)
+
+    common_timeout_error = begin
+      client.lock('some-long-lock', timeout: 2, retry_count: nil, raise_errors: true)
+    rescue RedisQueuedLocks::LockAcquiermentTimeoutError => error
+      error
+    end
+
+    aggregate_failures 'common error message content' do
+      expect(common_timeout_error.message).to include('<2 seconds> timeout.')
+      expect(common_timeout_error.message).to include('the lock "rql:lock:some-long-lock"')
+      expect(common_timeout_error.message).not_to include('<Lock Data>')
+      expect(common_timeout_error.message).not_to include('<Queue Data>')
+    end
+
+    detailed_timeout_error = begin
+      client.lock(
+        'some-long-lock',
+        timeout: 2,
+        retry_count: nil,
+        raise_errors: true,
+        detailed_acq_timeout_error: true
+      )
+    rescue RedisQueuedLocks::LockAcquiermentTimeoutError => error
+      error
+    end
+
+    aggregate_failures 'detailed error message content' do
+      expect(detailed_timeout_error.message).to include('<2 seconds> timeout.')
+      expect(detailed_timeout_error.message).to include('the lock "rql:lock:some-long-lock"')
+      expect(detailed_timeout_error.message).to include('<Lock Data>')
+      expect(detailed_timeout_error.message).not_to include('<Lock Data> => <no_data>')
+      expect(detailed_timeout_error.message).to include('<Queue Data> => <no_data>')
+    end
+
+    Thread.new { client.lock('some-long-lock', ttl: 30_000, retry_count: nil) }
+
+    detailed_timeout_error = begin
+      client.lock(
+        'some-long-lock',
+        timeout: 2,
+        retry_count: nil,
+        raise_errors: true,
+        detailed_acq_timeout_error: true
+      )
+    rescue RedisQueuedLocks::LockAcquiermentTimeoutError => error
+      error
+    end
+
+    aggregate_failures 'more detailed error message content' do
+      expect(detailed_timeout_error.message).to include('<2 seconds> timeout.')
+      expect(detailed_timeout_error.message).to include('the lock "rql:lock:some-long-lock"')
+      expect(detailed_timeout_error.message).to include('<Lock Data>')
+      expect(detailed_timeout_error.message).not_to include('<Lock Data> => <no_data>')
+      expect(detailed_timeout_error.message).to include('<Queue Data>')
+      expect(detailed_timeout_error.message).not_to include('<Queue Data> => <no_data>')
+    end
+  end
+
   specify 'timed lock' do
     redis = RedisClient.config.new_pool(timeout: 5, size: 50)
     client = RedisQueuedLocks::Client.new(redis)
 
     expect do
-      client.lock('some-timed-lock', timed: true, ttl: 5_000) { sleep(6) }
+      client.lock('some-timed-lock', timed: true, ttl: 2_000) { sleep(3) }
     end.to raise_error(RedisQueuedLocks::TimedLockTimeoutError)
+
+    timed_lock_error = begin
+      client.lock('some-timed-lock', timed: true, ttl: 1_000) { sleep(2) }
+    rescue RedisQueuedLocks::TimedLockTimeoutError => error
+      error
+    end
+
+    aggregate_failures 'error message content (with empty meta)' do
+      expect(timed_lock_error.message).to include('lock: "rql:lock:some-timed-lock",')
+      expect(timed_lock_error.message).to include('ttl: 1000,')
+      expect(timed_lock_error.message).to include('meta: <no-meta>,')
+      expect(timed_lock_error.message).to include("acq_id: \"#{client.current_acquier_id}\"")
+    end
+
+    timed_lock_error_with_meta = begin
+      client.lock('some-timed-lock', timed: true, ttl: 1_000, meta: { kek: 'pek' }) { sleep(2) }
+    rescue RedisQueuedLocks::TimedLockTimeoutError => error
+      error
+    end
+
+    aggregate_failures 'error message content (with filled meta)' do
+      expect(timed_lock_error_with_meta.message).to include(
+        'lock: "rql:lock:some-timed-lock",'
+      )
+      expect(timed_lock_error_with_meta.message).to include(
+        'ttl: 1000,'
+      )
+      expect(timed_lock_error_with_meta.message).to include(
+        "meta: #{{ kek: 'pek' }.inspect}"
+      )
+      expect(timed_lock_error_with_meta.message).to include(
+        "acq_id: \"#{client.current_acquier_id}\""
+      )
+    end
 
     expect(client.locked?('some-timed-lock')).to eq(false)
 

@@ -99,6 +99,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   # @param timeout [Float]
   # @parma lock_key [String]
   # @param lock_ttl [Integer,NilClass]
+  # @param acquier_id [String]
+  # @param meta [NilClass,Hash<Symbol|String,Any>]
   # @param block [Blcok]
   # @return [Any]
   #
@@ -113,7 +115,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
       "Passed <timed> block of code exceeded the lock TTL " \
       "(lock: \"#{lock_key}\", " \
       "ttl: #{lock_ttl}, " \
-      "meta: \"#{meta ? meta.inspect : '<no_meta>'}\", " \
+      "meta: #{meta ? meta.inspect : '<no-meta>'}, " \
       "acq_id: \"#{acquier_id}\")"
     )
   end

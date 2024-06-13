@@ -42,15 +42,15 @@ module RedisQueuedLocks::Acquier::AcquireLock::WithAcqTimeout
         #   in order to remove any dependencies from the other public RQL commands cuz
         #   all AcquireLock logic elements should be fully independent from others as a core;
         lock_info = RedisQueuedLocks::Acquier::LockInfo.lock_info(redis, lock_name)
-        queue_info = RedisQueuedLocks::Acquire::QueueInfo.queue_info(redis, lock_name)
+        queue_info = RedisQueuedLocks::Acquier::QueueInfo.queue_info(redis, lock_name)
 
         # rubocop:disable Metrics/BlockNesting
         raise(
           RedisQueuedLocks::LockAcquiermentTimeoutError,
           "Failed to acquire the lock \"#{lock_key}\" " \
           "for the given <#{timeout} seconds> timeout. Details: " \
-          "<<Lock Data>> #{lock_info ? '<no_data>' : lock_info.inspect}; " \
-          "<<Queue Data>> #{queue_info ? '<no_data>' : queue_info.inspect};"
+          "<Lock Data> => #{lock_info ? lock_info.inspect : '<no_data>'}; " \
+          "<Queue Data> => #{queue_info ? queue_info.inspect : '<no_data>'};"
         )
         # rubocop:enable Metrics/BlockNesting
       else

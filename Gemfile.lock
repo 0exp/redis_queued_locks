@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    redis_queued_locks (1.7.0)
+    redis_queued_locks (1.8.0)
       qonfig (~> 0.28)
       redis-client (~> 0.20)
 

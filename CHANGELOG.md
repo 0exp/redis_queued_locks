@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+## [1.8.0] - 2024-06-13
+### Added
+- A configurable option that enables the adding additional lock/queue data to "Acquirement Timeout"-related error messages for better debugging;
+  - Configurable option is used beacuse of the extra error data requires some additional Redis requests that can be costly for memory/cpu/etc resources;
+- An ability to get the current acquirer id (`RedisQueuedLocks::Client#current_acquirer_id`);
+### Changed
+- Added additional lock information to some exceptions that does not require extra Redis requests;
+
 ## [1.7.0] - 2024-06-12
 ### Added
 - New feature: **Lock Access Strategy**: you can obtain a lock in different ways: `queued` (classic queued FIFO), `random` (get the lock immideatly if lock is free):

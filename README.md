@@ -34,6 +34,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [locks_info](#locks_info---get-list-of-locks-with-their-info)
   - [queues_info](#queues_info---get-list-of-queues-with-their-info)
   - [clear_dead_requests](#clear_dead_requests)
+  - [current_acquirer_id](#current_acquirer_id)
 - [Lock Access Strategies](#lock-access-strategies)
   - [queued](#lock-access-strategies)
   - [random](#lock-access-strategies)
@@ -160,10 +161,13 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # (boolean) (default: false)
   # - When the lock acquirement try reached the acquirement time limit (:timeout option) the
   #   `RedisQueuedLocks::LockAcquirementTimeoutError` is raised (when `raise_errors` option
-  #   set to `true`). The error message contains the lock key name and the timeout value).
+  #   of the #lock method is set to `true`). The error message contains the lock key name and
+  #   the timeout value).
   # - <true> option adds the additional details to the error message:
-  #   - current lock queue state (you can see which acquirer blocks your request and how much acquirers are in queue);
-  #   - current lock data stored inside (for example: you can check the current acquirer and the lock meta state if you store some additional data there);
+  #   - current lock queue state (you can see which acquirer blocks your request and
+  #     how much acquirers are in queue);
+  #   - current lock data stored inside (for example: you can check the current acquirer and
+  #     the lock meta state if you store some additional data there);
   # - Realized as an option because of the additional lock data requires two additional Redis
   #   queries: (1) get the current lock from redis and (2) fetch the lock queue state;
   # - These two additional Redis queries has async nature so you can receive
@@ -336,6 +340,7 @@ end
 - [locks_info](#locks_info---get-list-of-locks-with-their-info)
 - [queues_info](#queues_info---get-list-of-queues-with-their-info)
 - [clear_dead_requests](#clear_dead_requests)
+- [current_acquirer_id](#current_acquirer_id)
 
 ---
 
@@ -368,6 +373,7 @@ def lock(
   access_strategy: config[:default_access_strategy],
   identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config[:uniq_identifier] proc;
   meta: nil,
+  detailed_acq_timeout_error: config[:detailed_acq_timeout_error],
   instrument: nil,
   instrumenter: config[:instrumenter],
   logger: config[:logger],
@@ -764,6 +770,7 @@ def lock!(
   fail_fast: false,
   identity: uniq_identity,
   meta: nil,
+  detailed_acq_timeout_error: config[:detailed_acq_timeout_error]
   logger: config[:logger],
   log_lock_try: config[:log_lock_try],
   instrument: nil,
@@ -1354,6 +1361,37 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
     ...
   ]
 }
+```
+
+---
+
+### #current_acquirer_id
+
+- get the current acquirer identifier in RQL notation that you can use for debugging purposes during the lock analyzation;
+- because of the moment that `#lock`/`#lock!` gives you a possibility to customize `process_id`,
+  `fiber_id`, `thread_id`, `ractor_id` and `unique identity` identifiers the `#current_acquirer_id` method provides this possibility too;
+
+Accepts:
+
+- `process_id:` - (optional) `[Integer,Any]`
+  - `::Process.pid` by default;
+- `thread_id:` - (optional) `[Integer,Any]`;
+  - `::Thread.current.object_id` by default;
+- `fiber_id:` - (optional) `[Integer,Any]`;
+  - `::Fiber.current.object_id` by default;
+- `ractor_id:` - (optional) `[Integer,Any]`;
+  - `::Ractor.current.object_id` by default;
+- `identity:` - (optional) `[String,Any]`;
+  - this value is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`;
+  - this value can be accessed from `RedisQueuedLock::Client#uniq_identity`;
+  - [Configuration](#configuration) documentation: see `config[:uniq_identifier]`;
+  - [#lock](#lock---obtain-a-lock) method documentation: see `uniq_identifier`;
+
+```ruby
+rql.current_acquirer_id
+
+# =>
+"rql:acq:38529/4500/4520/4360/66093702f24a3129"
 ```
 
 ---

@@ -97,6 +97,39 @@ class RedisQueuedLocks::Client
     @redis_client = redis_client
   end
 
+  # Retrun the current acquirer identifier.
+  #
+  # @option process_id [Integer,Any] Process identifier.
+  # @option thread_id [Integer,Any] Thread identifier.
+  # @option fiber_id [Integer,Any] Fiber identifier.
+  # @option ractor_id [Integer,Any] Ractor identifier.
+  # @option identity [String] Unique per-process string. See `config[:uniq_identifier]`.
+  # @return [String]
+  #
+  # @see RedisQueuedLocks::Resource.get_process_id
+  # @see RedisQueuedLocks::Resource.get_thread_id
+  # @see RedisQueuedLocks::Resource.get_fiber_id
+  # @see RedisQueuedLocks::Resource.get_ractor_id
+  # @see RedisQueuedLocks::Client#uniq_identity
+  #
+  # @api public
+  # @since 1.8.0
+  def current_acquier_id(
+    process_id: RedisQueuedLocks::Resource.get_process_id,
+    thread_id: RedisQueuedLocks::Resource.get_thread_id,
+    fiber_id: RedisQueuedLocks::Resource.get_fiber_id,
+    ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
+    identity: uniq_identity
+  )
+    RedisQueuedLocks::Resource.acquier_identifier(
+      process_id,
+      thread_id,
+      fiber_id,
+      ractor_id,
+      identity
+    )
+  end
+
   # @param lock_name [String]
   #   Lock name to be obtained.
   # @option ttl [Integer]
@@ -229,7 +262,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.7.0
+  # @version 1.8.0
   # rubocop:disable Metrics/MethodLength
   def lock(
     lock_name,
@@ -299,7 +332,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.7.0
+  # @version 1.8.0
   # rubocop:disable Metrics/MethodLength
   def lock!(
     lock_name,
