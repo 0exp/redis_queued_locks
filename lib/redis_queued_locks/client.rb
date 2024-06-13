@@ -153,8 +153,10 @@ class RedisQueuedLocks::Client
   #    `RedisQueuedLocks::LockAcquirementTimeoutError` is raised (when `raise_errors` option
   #    set to `true`). The error message contains the lock key name and the timeout value).
   #  - <true> option adds the additional details to the error message:
-  #    - current lock queue state (you can see which acquirer blocks your request and how much acquirers are in queue);
-  #    - current lock data stored inside (for example: you can check the current acquirer and the lock meta state if you store some additional data there);
+  #    - current lock queue state (you can see which acquirer blocks your request and
+  #      how much acquirers are in queue);
+  #    - current lock data stored inside (for example: you can check the current acquirer and
+  #      the lock meta state if you store some additional data there);
   #  - Realized as an option because of the additional lock data requires two additional Redis
   #    queries: (1) get the current lock from redis and (2) fetch the lock queue state;
   #  - These two additional Redis queries has async nature so you can receive

@@ -44,6 +44,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::WithAcqTimeout
         lock_info = RedisQueuedLocks::Acquier::LockInfo.lock_info(redis, lock_name)
         queue_info = RedisQueuedLocks::Acquire::QueueInfo.queue_info(redis, lock_name)
 
+        # rubocop:disable Metrics/BlockNesting
         raise(
           RedisQueuedLocks::LockAcquiermentTimeoutError,
           "Failed to acquire the lock \"#{lock_key}\" " \
@@ -51,6 +52,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::WithAcqTimeout
           "<<Lock Data>> #{lock_info ? '<no_data>' : lock_info.inspect}; " \
           "<<Queue Data>> #{queue_info ? '<no_data>' : queue_info.inspect};"
         )
+        # rubocop:enable Metrics/BlockNesting
       else
         raise(
           RedisQueuedLocks::LockAcquiermentTimeoutError,
