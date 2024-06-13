@@ -1367,6 +1367,8 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 
 #### #current_acquirer_id
 
+<sup>\[[back to top](#usage)\]</sup>
+
 - get the current acquirer identifier in RQL notation that you can use for debugging purposes during the lock analyzation;
 - acquirer identifier format:
   ```ruby
