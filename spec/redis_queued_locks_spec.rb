@@ -1265,7 +1265,7 @@ RSpec.describe RedisQueuedLocks do
           timeout: nil,
           retry_count: nil,
           meta: { 'kek' => 'pek', 'a' => 123 }
-        ) { sleep(4) }
+        ) { sleep(5) }
       end
     end
     inf_threads2 = Array.new(4) do |kek|
@@ -1276,7 +1276,7 @@ RSpec.describe RedisQueuedLocks do
           timeout: nil,
           retry_count: nil,
           meta: { 'pek' => 'mek', 'b' => 55.66 }
-        ) { sleep(4) }
+        ) { sleep(5) }
       end
     end
 
