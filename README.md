@@ -1365,7 +1365,7 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 
 ---
 
-### #current_acquirer_id
+#### #current_acquirer_id
 
 - get the current acquirer identifier in RQL notation that you can use for debugging purposes during the lock analyzation;
 - because of the moment that `#lock`/`#lock!` gives you a possibility to customize `process_id`,
