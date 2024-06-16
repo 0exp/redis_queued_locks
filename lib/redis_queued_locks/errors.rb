@@ -28,4 +28,12 @@ module RedisQueuedLocks
   # @api public
   # @since 1.3.0
   ConflictLockObtainError = Class.new(Error)
+
+  # @api public
+  # @since 1.9.0
+  SwarmError = Class.new(Error)
+
+  # @api public
+  # @since 1.9.0
+  SwarmArgumentError = Class.new(ArgumentError)
 end

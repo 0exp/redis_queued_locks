@@ -32,6 +32,42 @@ class RedisQueuedLocks::Client
     setting :instr_sampling_percent, 15
     setting :instr_sampler, RedisQueuedLocks::Instrument::Sampler
 
+    setting :swarm do
+      setting :enabled, true
+      setting :visor do
+        setting :check_period, 2 # in seconds
+      end
+      setting :probe_itself do
+        setting :enabled_for_swarm, true
+        setting :redis_config, {}
+        setting :probe_period, 2 # NOTE: in seconds
+      end
+      setting :flush_zombies do
+        setting :enabled_for_swarm, true
+        setting :redis_config, {}
+        setting :lock_flushing, true
+        setting :lock_flushing_ttl, 5_000 # NOTE: in milliseconds
+        setting :zombie_ttl, 15_000 # NOTE: in milliseconds
+        setting :zombie_lock_scan_size, 500
+        setting :zombie_queue_scan_size, 500
+        setting :zombie_flush_period, 10 # NOTE: in seconds
+      end
+    end
+
+    validate('swarm.enabled', :boolean)
+    validate('swarm.visor.check_period', :integer)
+    validate('swarm.probe_itself.enabled_for_swarm', :boolean)
+    validate('swarm.probe_itself.redis_config', :hash)
+    validate('swarm.probe_itself.probe_period', :integer)
+    validate('swarm.flush_zombies.enabled_for_swarm', :boolean)
+    validate('swarm.flush_zombies.redis_config', :hash)
+    validate('swarm.flush_zombies.lock_flushing', :boolean)
+    validate('swarm.flush_zombies.lock_flushing_ttl', :integer)
+    validate('swarm.flush_zombies.zombie_ttl', :integer)
+    validate('swarm.flush_zombies.zombie_lock_scan_size', :integer)
+    validate('swarm.flush_zombies.zombie_queue_scan_size', :integer)
+    validate('swarm.flush_zombies.zombie_flush_period', :integer)
+
     validate('retry_count') { |val| val == nil || (val.is_a?(::Integer) && val >= 0) }
     validate('retry_delay') { |val| val.is_a?(::Integer) && val >= 0 }
     validate('retry_jitter') { |val| val.is_a?(::Integer) && val >= 0 }
@@ -82,6 +118,12 @@ class RedisQueuedLocks::Client
   # @since 1.0.0
   attr_accessor :uniq_identity
 
+  # @return [RedisQueuedLocks::Swarm]
+  #
+  # @api private
+  # @since 1.9.0
+  attr_reader :swarm
+
   # @param redis_client [RedisClient]
   #   Redis connection manager, which will be used for the lock acquierment and distribution.
   #   It should be an instance of RedisClient.
@@ -95,38 +137,63 @@ class RedisQueuedLocks::Client
     configure(&configs)
     @uniq_identity = config[:uniq_identifier].call
     @redis_client = redis_client
+    @swarm = RedisQueuedLocks::Swarm.new(self)
   end
 
-  # Retrun the current acquirer identifier.
-  #
-  # @option process_id [Integer,Any] Process identifier.
-  # @option thread_id [Integer,Any] Thread identifier.
-  # @option fiber_id [Integer,Any] Fiber identifier.
-  # @option ractor_id [Integer,Any] Ractor identifier.
-  # @option identity [String] Unique per-process string. See `config[:uniq_identifier]`.
-  # @return [String]
-  #
-  # @see RedisQueuedLocks::Resource.get_process_id
-  # @see RedisQueuedLocks::Resource.get_thread_id
-  # @see RedisQueuedLocks::Resource.get_fiber_id
-  # @see RedisQueuedLocks::Resource.get_ractor_id
-  # @see RedisQueuedLocks::Client#uniq_identity
+  # @return [Hash<Symbol<Hash<Symbol,Boolean>>>]
   #
   # @api public
-  # @since 1.8.0
-  def current_acquier_id(
-    process_id: RedisQueuedLocks::Resource.get_process_id,
-    thread_id: RedisQueuedLocks::Resource.get_thread_id,
-    fiber_id: RedisQueuedLocks::Resource.get_fiber_id,
-    ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
-    identity: uniq_identity
+  # @since 1.9.0
+  def swarmize!
+    swarm.swarm!
+  end
+
+  # @option zombie_ttl [Integer]
+  # @return [Hash<String,Hash<Symbol,Float|Time>>]
+  #
+  # @api public
+  # @since 1.9.0
+  def swarm_info(zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl])
+    swarm.swarm_info
+  end
+
+  # @return [Hash<Symbol<Hash<Symbol,Boolean>>]
+  #
+  # @api public
+  # @since 1.9.0
+  def swarm_status
+    swarm.swarm_status
+  end
+
+  # @return [Hash<Symbol,Boolean|String|Float>]
+  #
+  # @api public
+  # @since 1.9.0
+  def probe_itself
+    swarm.probe_itself
+  end
+
+  # @option zombie_ttl [Integer]
+  # @option lock_scan_size [Integer]
+  # @option queue_scan_size [Integer]
+  # @option lock_flushing [Boolean]
+  # @return [Hash<Symbol,Boolean|Array<String>>]
+  #
+  # @api public
+  # @since 1.9.0
+  def flush_zombies(
+    zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl],
+    lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size],
+    queue_scan_size: config[:swarm][:flush_zombies][:zombie_queue_scan_size],
+    lock_flushing: config[:swarm][:flush_zombies][:lock_flushing],
+    lock_flushing_ttl: config[:swarm][:flush_zombies][:lock_flushing_ttl]
   )
-    RedisQueuedLocks::Resource.acquier_identifier(
-      process_id,
-      thread_id,
-      fiber_id,
-      ractor_id,
-      identity
+    swarm.flush_zombies(
+      zombie_ttl:,
+      lock_scan_size:,
+      queue_scan_size:,
+      lock_flushing:,
+      lock_flushing_ttl:
     )
   end
 
@@ -477,6 +544,39 @@ class RedisQueuedLocks::Client
   # @since 1.0.0
   def queue_info(lock_name)
     RedisQueuedLocks::Acquier::QueueInfo.queue_info(redis_client, lock_name)
+  end
+
+  # Retrun the current acquirer identifier.
+  #
+  # @option process_id [Integer,Any] Process identifier.
+  # @option thread_id [Integer,Any] Thread identifier.
+  # @option fiber_id [Integer,Any] Fiber identifier.
+  # @option ractor_id [Integer,Any] Ractor identifier.
+  # @option identity [String] Unique per-process string. See `config[:uniq_identifier]`.
+  # @return [String]
+  #
+  # @see RedisQueuedLocks::Resource.get_process_id
+  # @see RedisQueuedLocks::Resource.get_thread_id
+  # @see RedisQueuedLocks::Resource.get_fiber_id
+  # @see RedisQueuedLocks::Resource.get_ractor_id
+  # @see RedisQueuedLocks::Client#uniq_identity
+  #
+  # @api public
+  # @since 1.8.0
+  def current_acquier_id(
+    process_id: RedisQueuedLocks::Resource.get_process_id,
+    thread_id: RedisQueuedLocks::Resource.get_thread_id,
+    fiber_id: RedisQueuedLocks::Resource.get_fiber_id,
+    ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
+    identity: uniq_identity
+  )
+    RedisQueuedLocks::Resource.acquier_identifier(
+      process_id,
+      thread_id,
+      fiber_id,
+      ractor_id,
+      identity
+    )
   end
 
   # This method is non-atomic cuz redis does not provide an atomic function for TTL/PTTL extension.

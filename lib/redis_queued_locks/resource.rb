@@ -21,6 +21,18 @@ module RedisQueuedLocks::Resource
   # @since 1.0.0
   LOCK_QUEUE_PATTERN = 'rql:lock_queue:*'
 
+  # @return [String]
+  #
+  # @api private
+  # @since 1.9.0
+  SWARM_KEY = 'rql:swarm:acqs'
+
+  # @return [String]
+  #
+  # @api private
+  # @since 1.9.0
+  SWARM_FLUSH_LOCK_KEY = 'rql:swarm:flock'
+
   # @return [Integer] Redis time error (in milliseconds).
   #
   # @api private
@@ -88,8 +100,17 @@ module RedisQueuedLocks::Resource
       Time.now.to_f - queue_ttl
     end
 
+    # @param zombie_ttl [Float] In seconds with milliseconds.
+    # @return [Float]
+    #
+    # @api private
+    # @since 1.9.0
+    def calc_zombie_score(zombie_ttl)
+      Time.now.to_f - zombie_ttl
+    end
+
     # @param acquier_position [Float]
-    #   A time (epoch, seconds.microseconds) that represents
+    #   A time (epoch, seconds.milliseconds) that represents
     #   the acquier position in lock request queue.
     # @parma queue_ttl [Integer]
     #   In second.
