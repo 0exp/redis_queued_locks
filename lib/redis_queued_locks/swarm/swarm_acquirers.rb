@@ -7,10 +7,10 @@ module RedisQueuedLocks::Swarm::SwarmAcquirers
     # Returns the list of swarm acquirers are stored as a hash represented in following format:
     #   {
     #     <acquirer id #1> => {
-    #       zombie: <Boolean>, last_probe_time: <Time>, last_probe_epoch: <Numeric>
+    #       zombie: <Boolean>, last_probe_time: <Time>, last_probe_score: <Numeric>
     #      },
     #     <acquirer id #2> => {
-    #       zombie: <Boolean>, last_probe_time: <Time>, last_probe_epoch: <Numeric>
+    #       zombie: <Boolean>, last_probe_time: <Time>, last_probe_score: <Numeric>
     #      },
     #     ...
     #   }
@@ -26,11 +26,11 @@ module RedisQueuedLocks::Swarm::SwarmAcquirers
       redis_client.with do |rconn|
         rconn.call('HGETALL', RedisQueuedLocks::Resource::SWARM_KEY).tap do |acquirers|
           acquirers.transform_values! do |last_probe|
-            last_probe_epoch = last_probe.to_f
-            last_probe_time = Time.at(last_probe_epoch)
-            zombie_epoch = RedisQueuedLocks::Resource.calc_zombie_score(zombie_ttl / 1_000)
-            is_zombie = last_probe_epoch < zombie_epoch
-            { zombie: is_zombie, last_probe_time:, last_probe_epoch: }
+            last_probe_score = last_probe.to_f
+            last_probe_time = Time.at(last_probe_score)
+            zombie_score = RedisQueuedLocks::Resource.calc_zombie_score(zombie_ttl / 1_000)
+            is_zombie = last_probe_score < zombie_score
+            { zombie: is_zombie, last_probe_time:, last_probe_score: }
           end
         end
       end

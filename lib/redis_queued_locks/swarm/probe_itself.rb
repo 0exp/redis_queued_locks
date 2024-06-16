@@ -16,7 +16,7 @@ class RedisQueuedLocks::Swarm::ProbeItself < RedisQueuedLocks::Swarm::SwarmEleme
     #
     # @api private
     # @since 1.9.0
-    def probe_itslef(redis_client, acquirer_id)
+    def probe_itself(redis_client, acquirer_id)
       redis_client.call(
         'HSET',
         RedisQueuedLocks::Resource::SWARM_KEY,
@@ -47,7 +47,7 @@ class RedisQueuedLocks::Swarm::ProbeItself < RedisQueuedLocks::Swarm::SwarmEleme
     ) do |rc, acq_id, prb_prd|
       rcl = RedisClient.config(**rc).new_client
       loop do
-        RedisQueuedLocks::Swarm::ProbeItself.probe_itslef(rcl, acq_id)
+        RedisQueuedLocks::Swarm::ProbeItself.probe_itself(rcl, acq_id)
         sleep(prb_prd)
       end
     end

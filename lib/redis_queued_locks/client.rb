@@ -154,10 +154,10 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.9.0
   def swarm_info(zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl])
-    swarm.swarm_info
+    swarm.swarm_info(zombie_ttl:)
   end
 
-  # @return [Hash<Symbol<Hash<Symbol,Boolean>>]
+  # @return [Hash<Symbol,Boolean|<Hash<Symbol,Boolean>>]
   #
   # @api public
   # @since 1.9.0
@@ -177,7 +177,7 @@ class RedisQueuedLocks::Client
   # @option lock_scan_size [Integer]
   # @option queue_scan_size [Integer]
   # @option lock_flushing [Boolean]
-  # @return [Hash<Symbol,Boolean|Array<String>>]
+  # @return [Hash<Symbol,Boolean|Array<String>|Set<String>>]
   #
   # @api public
   # @since 1.9.0

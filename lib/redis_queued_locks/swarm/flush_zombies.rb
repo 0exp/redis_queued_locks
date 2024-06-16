@@ -9,18 +9,26 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
     # @param lock_scan_size [Integer]
     # @param queue_scan_size [Integer]
     # @param lock_flushing [Boolean]
+    # @param lock_flushing_ttl [Integer]
     # @return [
     #   RedisQueuedLocks::Data[
     #     ok: <Boolean>,
-    #     del_zombie_acqs: <Array<String>>,
-    #     del_zombie_locks: <Array<String>>
+    #     delete_zombies: <Array<String>>,
+    #     deleted_zombie_locks: <Set<String>>
     #   ]
     # ]
     #
     # @api private
     # @since 1.9.0
     # rubocop:disable Metrics/MethodLength
-    def flush_zombies(redis_client, zombie_ttl, lock_scan_size, queue_scan_size, lock_flushing)
+    def flush_zombies(
+      redis_client,
+      zombie_ttl,
+      lock_scan_size,
+      queue_scan_size,
+      lock_flushing,
+      lock_flushing_ttl
+    )
       # Step 1:
       #   calculate zombie score (the time marker that shows acquirers that
       #   have not announced live probes for a long time)
@@ -35,8 +43,8 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
       # Step X: exit if we have no any zombie acquirer
       return RedisQueuedLocks::Data[
         ok: true,
-        del_zombie_acqs: [],
-        del_zombie_locks: [],
+        delete_zombies: [],
+        deleted_zombie_locks: [],
       ] if zombie_acquirers.empty?
 
       # Step 3: find zombie locks held by zombies and delete them
@@ -68,10 +76,10 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
       redis_client.call('HDEL', RedisQueuedLocks::Resource::SWARM_KEY, *zombie_acquirers)
 
       # Step 6: inform about deleted zombies
-      return RedisQueuedLocks::Data[
+      RedisQueuedLocks::Data[
         ok: true,
-        del_zombie_acqs: zombie_acquirers,
-        del_zombie_locks: zombie_locks
+        delete_zombies: zombie_acquirers,
+        deleted_zombie_locks: zombie_locks
       ]
     end
     # rubocop:enable Metrics/MethodLength
@@ -96,12 +104,13 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
       rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size],
       rql_client.config[:swarm][:flush_zombies][:zombie_queue_scan_size],
       rql_client.config[:swarm][:flush_zombies][:zombie_flush_period],
-      rql_client.config[:swarm][:flush_zombies][:lock_flushing]
-    ) do |rc, z_ttl, lss, qss, fl_prd, l_fl|
+      rql_client.config[:swarm][:flush_zombies][:lock_flushing],
+      rql_client.config[:swarm][:flush_zombies][:lock_flushing_ttl]
+    ) do |rc, z_ttl, lss, qss, fl_prd, l_fl, l_fl_ttl|
       # TODO: pooled connection for parallel processing of zombie acquirers and zombie locks
       rcl = RedisClient.config(**rc).new_client
       loop do
-        RedisQueuedLocks::Swarm::FlushZombies.flush_zombies(rcl, z_ttl, lss, qss, l_fl)
+        RedisQueuedLocks::Swarm::FlushZombies.flush_zombies(rcl, z_ttl, lss, qss, l_fl, l_fl_ttl)
         sleep(fl_prd)
       end
     end

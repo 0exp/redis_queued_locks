@@ -24,13 +24,13 @@ class RedisQueuedLocks::Swarm
   #
   # @api private
   # @since 1.9.0
-  attr_reader :probe_swarm_element
+  attr_reader :probe_itself_element
 
   # @return [Ractor]
   #
   # @api private
   # @since 1.9.0
-  attr_reader :flush_swarm_element
+  attr_reader :flush_zombies_element
 
   # @param rql_client [RedisQueuedLocks::Client]
   # @return [void]
@@ -40,22 +40,22 @@ class RedisQueuedLocks::Swarm
   def initialize(rql_client)
     @rql_client = rql_client
     @swarm_visor = nil
-    @probe_swarm_element = RedisQueuedLocks::Swarm::ProbeItself.new(rql_client)
-    @flush_swarm_element = RedisQueuedLocks::Swarm::FlushZombies.new(rql_client)
+    @probe_itself_element = RedisQueuedLocks::Swarm::ProbeItself.new(rql_client)
+    @flush_zombies_element = RedisQueuedLocks::Swarm::FlushZombies.new(rql_client)
   end
 
-  # @return [Hash<Symbol<Hash<Symbol,Boolean>>>]
+  # @return [Hash<Symbol,Boolean|<Hash<Symbol,Boolean>>]
   #
-  # @api private
+  # @api public
   # @since 1.9.0
   def swarm_status
     swarm_enabled = rql_client.config[:swarm][:enabled]
     visor_running = swarm_visor != nil
     visor_alive = swarm_visor != nil && swarm_visor.alive?
-    probe_itself_enabled = probe_swarm_element.enabled?
-    probe_itself_alive = probe_swarm_element.alive?
-    flush_zombies_enabled = flush_swarm_element.enabled?
-    flush_zombies_alive = flush_swarm_element.alive?
+    probe_itself_enabled = probe_itself_element.enabled?
+    probe_itself_alive = probe_itself_element.alive?
+    flush_zombies_enabled = flush_zombies_element.enabled?
+    flush_zombies_alive = flush_zombies_element.alive?
 
     {
       enabled: swarm_enabled,
@@ -76,7 +76,7 @@ class RedisQueuedLocks::Swarm
 
   # @return [Hash<String,Hash<Symbol,Float|Time>>]
   #
-  # @api private
+  # @api public
   # @since 1.9.0
   def swarm_info(zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl])
     RedisQueuedLocks::Swarm::SwarmAcquirers.swarm_acquirers(
@@ -85,14 +85,20 @@ class RedisQueuedLocks::Swarm
     )
   end
 
-  # @return [?]
+  # @return [
+  #   RedisQueuedLocks::Data[
+  #     ok: <Boolean>,
+  #     acq_id: <String>,
+  #     probe_score: <Float>
+  #   ]
+  # ]
   #
-  # @api private
+  # @api public
   # @since 1.9.0
   def probe_itself
     RedisQueuedLocks::Swarm::ProbeItself.probe_itself(
       rql_client.redis_client,
-      rql_client.current_acquirer_id
+      rql_client.current_acquier_id
     )
   end
 
@@ -104,11 +110,11 @@ class RedisQueuedLocks::Swarm
   #   RedisQueuedLocks::Data[
   #     ok: <Boolean>,
   #     del_zombie_acqs: <Array<String>>,
-  #     del_zombie_locks: <Array<String>>
+  #     del_zombie_locks: <Set<String>>
   #   ]
   # ]
   #
-  # @api private
+  # @api public
   # @since 1.9.0
   def flush_zombies(
     zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
@@ -122,7 +128,8 @@ class RedisQueuedLocks::Swarm
       zombie_ttl,
       lock_scan_size,
       queue_scan_size,
-      lock_flushing
+      lock_flushing,
+      lock_flushing_ttl
     )
   end
 
@@ -131,16 +138,16 @@ class RedisQueuedLocks::Swarm
   #
   # @see RedisQueuedLocks::Swarm#swarm_status
   #
-  # @api private
+  # @api public
   # @since 1.9.0
   def swarm!
-    probe_swarm_element.try_swarm!
-    flush_swarm_element.try_swarm!
+    probe_itself_element.try_swarm!
+    flush_zombies_element.try_swarm!
 
     @swarm_visor = Thread.new do
       loop do
-        probe_swarm_element.reswarm_if_dead!
-        flush_swarm_element.reswarm_if_dead!
+        probe_itself_element.reswarm_if_dead!
+        flush_zombies_element.reswarm_if_dead!
         sleep(rql_client.config[:swarm][:visor][:check_period])
       end
     end
