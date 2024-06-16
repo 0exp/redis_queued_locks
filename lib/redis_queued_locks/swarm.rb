@@ -74,6 +74,7 @@ class RedisQueuedLocks::Swarm
     }
   end
 
+  # @option zombie_ttl [Integer]
   # @return [Hash<String,Hash<Symbol,Float|Time>>]
   #
   # @api public
