@@ -35,6 +35,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [queues_info](#queues_info---get-list-of-queues-with-their-info)
   - [clear_dead_requests](#clear_dead_requests)
   - [current_acquirer_id](#current_acquirer_id)
+- [Swarm Mode and Zombie Locks](#swarm-mode-and-zombie-locks)
 - [Lock Access Strategies](#lock-access-strategies)
   - [queued](#lock-access-strategies)
   - [random](#lock-access-strategies)
@@ -1399,6 +1400,12 @@ rql.current_acquirer_id
 # =>
 "rql:acq:38529/4500/4520/4360/66093702f24a3129"
 ```
+
+---
+
+## Swarm Mode and Zombie Locks
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
 
 ---
 

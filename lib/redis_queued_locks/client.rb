@@ -43,9 +43,9 @@ class RedisQueuedLocks::Client
         setting :probe_period, 2 # NOTE: in seconds
       end
       setting :flush_zombies do
-        setting :enabled_for_swarm, true
+        setting :enabled_for_swarm, false
         setting :redis_config, {}
-        setting :lock_flushing, true
+        setting :lock_flushing, false
         setting :lock_flushing_ttl, 5_000 # NOTE: in milliseconds
         setting :zombie_ttl, 15_000 # NOTE: in milliseconds
         setting :zombie_lock_scan_size, 500
