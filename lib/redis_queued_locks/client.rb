@@ -33,7 +33,7 @@ class RedisQueuedLocks::Client
     setting :instr_sampler, RedisQueuedLocks::Instrument::Sampler
 
     setting :swarm do
-      setting :enabled, true
+      setting :auto_swarm, true
       setting :visor do
         setting :check_period, 2 # in seconds
       end
@@ -43,7 +43,7 @@ class RedisQueuedLocks::Client
         setting :probe_period, 2 # NOTE: in seconds
       end
       setting :flush_zombies do
-        setting :enabled_for_swarm, false
+        setting :enabled_for_swarm, true
         setting :redis_config, {}
         setting :lock_flushing, false
         setting :lock_flushing_ttl, 5_000 # NOTE: in milliseconds
@@ -54,7 +54,7 @@ class RedisQueuedLocks::Client
       end
     end
 
-    validate('swarm.enabled', :boolean)
+    validate('swarm.auto_swarm', :boolean)
     validate('swarm.visor.check_period', :integer)
     validate('swarm.probe_itself.enabled_for_swarm', :boolean)
     validate('swarm.probe_itself.redis_config', :hash)
@@ -137,7 +137,7 @@ class RedisQueuedLocks::Client
     configure(&configs)
     @uniq_identity = config[:uniq_identifier].call
     @redis_client = redis_client
-    @swarm = RedisQueuedLocks::Swarm.new(self)
+    @swarm = RedisQueuedLocks::Swarm.new(self).tap { |s| s.swarm! if config[:swarm][:auto_swarm] }
   end
 
   # @return [Hash<Symbol<Hash<Symbol,Boolean>>>]

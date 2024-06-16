@@ -49,7 +49,7 @@ class RedisQueuedLocks::Swarm
   # @api public
   # @since 1.9.0
   def swarm_status
-    swarm_enabled = rql_client.config[:swarm][:enabled]
+    auto_swarm = rql_client.config[:swarm][:auto_swarm]
     visor_running = swarm_visor != nil
     visor_alive = swarm_visor != nil && swarm_visor.alive?
     probe_itself_enabled = probe_itself_element.enabled?
@@ -58,7 +58,7 @@ class RedisQueuedLocks::Swarm
     flush_zombies_alive = flush_zombies_element.alive?
 
     {
-      enabled: swarm_enabled,
+      auto_swarm: auto_swarm,
       visor: {
         running: visor_running,
         alive: visor_alive
@@ -134,7 +134,6 @@ class RedisQueuedLocks::Swarm
     )
   end
 
-  # @param redis_client [RedisClient]
   # @return [Hash<Symbol<Hash<Symbol,Boolean>>>]
   #
   # @see RedisQueuedLocks::Swarm#swarm_status
@@ -142,14 +141,18 @@ class RedisQueuedLocks::Swarm
   # @api public
   # @since 1.9.0
   def swarm!
+    # Step 1: start swarm elements
     probe_itself_element.try_swarm!
     flush_zombies_element.try_swarm!
 
-    @swarm_visor = Thread.new do
-      loop do
-        probe_itself_element.reswarm_if_dead!
-        flush_zombies_element.reswarm_if_dead!
-        sleep(rql_client.config[:swarm][:visor][:check_period])
+    # Step 2: start swarm element visor that should keep up swarm elements
+    if @swarm_visor == nil || !@swarm_visor.alive?
+      @swarm_visor = Thread.new do
+        loop do
+          probe_itself_element.reswarm_if_dead!
+          flush_zombies_element.reswarm_if_dead!
+          sleep(rql_client.config[:swarm][:visor][:check_period])
+        end
       end
     end
 

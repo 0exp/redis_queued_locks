@@ -30,6 +30,7 @@ class RedisQueuedLocks::Swarm::SwarmElement
   # @api private
   # @since 1.9.0
   def try_swarm!
+    return if alive?
     swarm! if enabled?
   end
 
