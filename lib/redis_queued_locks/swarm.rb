@@ -54,6 +54,7 @@ class RedisQueuedLocks::Swarm
     visor_alive = swarm_visor != nil && swarm_visor.alive?
     probe_itself_enabled = probe_itself_element.enabled?
     probe_itself_alive = probe_itself_element.alive?
+    probe_itself_status = probe_itself_element.swarm_status
     flush_zombies_enabled = flush_zombies_element.enabled?
     flush_zombies_alive = flush_zombies_element.alive?
 
@@ -65,11 +66,13 @@ class RedisQueuedLocks::Swarm
       },
       probe_itself: {
         enabled: probe_itself_enabled,
-        alive: probe_itself_alive
+        alive: probe_itself_alive,
+        main_loop: probe_itself_alive && probe_itself_element.swarm_status[:main_loop]
       },
       flush_zombies: {
         enabled: flush_zombies_enabled,
-        alive: flush_zombies_alive
+        alive: flush_zombies_alive,
+        main_loop: flush_zombies_alive && flush_zombies_element.swarm_status[:main_loop]
       }
     }
   end
@@ -119,10 +122,10 @@ class RedisQueuedLocks::Swarm
   # @since 1.9.0
   def flush_zombies(
     zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
-    lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size],
-    queue_scan_size: config[:swarm][:flush_zombies][:zombie_queue_scan_size],
-    lock_flushing: config[:swarm][:flush_zombies][:lock_flushing],
-    lock_flushing_ttl: config[:swarm][:flush_zombies][:lock_flushing_ttl]
+    lock_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size],
+    queue_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_queue_scan_size],
+    lock_flushing: rql_client.config[:swarm][:flush_zombies][:lock_flushing],
+    lock_flushing_ttl: rql_client.config[:swarm][:flush_zombies][:lock_flushing_ttl]
   )
     RedisQueuedLocks::Swarm::FlushZombies.flush_zombies(
       rql_client.redis_client,

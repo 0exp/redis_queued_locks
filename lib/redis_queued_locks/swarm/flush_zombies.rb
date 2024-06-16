@@ -107,11 +107,26 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
       rql_client.config[:swarm][:flush_zombies][:lock_flushing],
       rql_client.config[:swarm][:flush_zombies][:lock_flushing_ttl]
     ) do |rc, z_ttl, lss, qss, fl_prd, l_fl, l_fl_ttl|
-      # TODO: pooled connection for parallel processing of zombie acquirers and zombie locks
-      rcl = RedisClient.config(**rc).new_client
+      thrd = nil
+
       loop do
-        RedisQueuedLocks::Swarm::FlushZombies.flush_zombies(rcl, z_ttl, lss, qss, l_fl, l_fl_ttl)
-        sleep(fl_prd)
+        command = Ractor.receive
+        case command
+        when :status
+          Ractor.yield({ main_loop: { alive: thrd.alive? } })
+        when :run
+          thrd.kill if thrd != nil
+          thrd = Thread.new do
+            rcl = RedisClient.config(**rc).new_client
+            loop do
+              RedisQueuedLocks::Swarm::FlushZombies.flush_zombies(rcl, z_ttl, lss, qss, l_fl, l_fl_ttl)
+              sleep(fl_prd)
+            end
+          end
+        when :stop
+          thrd.kill
+          exit
+        end
       end
     end
   end

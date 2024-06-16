@@ -36,4 +36,8 @@ module RedisQueuedLocks
   # @api public
   # @since 1.9.0
   SwarmArgumentError = Class.new(ArgumentError)
+
+  # @api public
+  # @since 1.9.0
+  NonSwarmedElementError = Class.new(SwarmError)
 end

@@ -31,7 +31,7 @@ class RedisQueuedLocks::Swarm::SwarmElement
   # @since 1.9.0
   def try_swarm!
     return if alive?
-    swarm! if enabled?
+    swarm! && start! if enabled?
   end
 
   # @return [void]
@@ -47,7 +47,7 @@ class RedisQueuedLocks::Swarm::SwarmElement
   # @api private
   # @since 1.9.0
   def enabled?
-    # NOTE: Check RedisQueuedLocks config here for the correspondng swarm element
+    # NOTE: check configs for the correspondng swarm element
   end
 
   # @return [Boolean]
@@ -56,6 +56,30 @@ class RedisQueuedLocks::Swarm::SwarmElement
   # @since 1.9.0
   def alive?
     swarm_element != nil && RedisQueuedLocks::Utilities.ractor_alive?(swarm_element)
+  end
+
+  # @return [Hash<Symbol,Boolean,Hash<Symbol,Boolean>>]
+  #
+  # @api private
+  # @since 1.9.0
+  def swarm_status
+    swarm_element.send(:status).take
+  end
+
+  # @return [void]
+  #
+  # @api private
+  # @since 1.9.0
+  def run!
+    swarm_element.send(:start)
+  end
+
+  # @return [void]
+  #
+  # @api private
+  # @since 1.9.0
+  def stop!
+    swarm_element.send(:stop)
   end
 
   private
