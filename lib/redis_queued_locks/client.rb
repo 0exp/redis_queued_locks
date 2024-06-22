@@ -48,7 +48,7 @@ class RedisQueuedLocks::Client
         setting :probe_period, 2 # NOTE: in seconds
       end
       setting :flush_zombies do
-        setting :enabled_for_swarm, true
+        setting :enabled_for_swarm, false
         setting :redis_config do
           setting :sentinel, false
           setting :pooled, false
