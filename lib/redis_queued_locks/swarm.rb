@@ -4,7 +4,7 @@
 # @since 1.9.0
 class RedisQueuedLocks::Swarm
   require_relative 'swarm/redis_client_builder'
-  require_relative 'swarm/super_visor'
+  require_relative 'swarm/supervisor'
   require_relative 'swarm/acquirers'
   require_relative 'swarm/swarm_element'
   require_relative 'swarm/probe_itself'
@@ -16,11 +16,11 @@ class RedisQueuedLocks::Swarm
   # @since 1.9.0
   attr_reader :rql_client
 
-  # @return [RedisQueuedLocks::Swarm::SuperVisor]
+  # @return [RedisQueuedLocks::Swarm::Supervisor]
   #
   # @api private
   # @since 1.9.0
-  attr_reader :super_visor
+  attr_reader :supervisor
 
   # @return [RedisQueuedLocks::Swarm::ProbeItself]
   #
@@ -48,7 +48,7 @@ class RedisQueuedLocks::Swarm
   def initialize(rql_client)
     @rql_client = rql_client
     @sync = RedisQueuedLocks::Utilities::Lock.new
-    @super_visor = RedisQueuedLocks::Swarm::SuperVisor.new(rql_client)
+    @supervisor = RedisQueuedLocks::Swarm::Supervisor.new(rql_client)
     @probe_itself_element = RedisQueuedLocks::Swarm::ProbeItself.new(rql_client)
     @flush_zombies_element = RedisQueuedLocks::Swarm::FlushZombies.new(rql_client)
   end
@@ -61,7 +61,7 @@ class RedisQueuedLocks::Swarm
     sync.synchronize do
       {
         auto_swarm: rql_client.config[:swarm][:auto_swarm],
-        super_visor: super_visor.status,
+        supervisor: supervisor.status,
         probe_itself: probe_itself_element.status,
         flush_zombies: flush_zombies_element.status
       }
@@ -124,15 +124,15 @@ class RedisQueuedLocks::Swarm
   end
 
   # @option silently [Boolean]
-  # @return [void]
+  # @return [NilClass,Hash<Symbol,Symbol|Boolean>]
   #
   # @api public
   # @since 1.9.0
-  def swarm!(silently: false)
+  def swarm!
     sync.synchronize do
       # Step 0:
       #   - stop the supervisor (kill internal observer objects if supervisor is alredy running);
-      super_visor.stop!
+      supervisor.stop!
 
       # Step 1:
       #   - initialize swarm elements and start their main loop;
@@ -141,8 +141,8 @@ class RedisQueuedLocks::Swarm
 
       # Step 2:
       #   - run supercisor that should keep running created swarm elements and their main loops;
-      unless super_visor.running?
-        super_visor.observe! do
+      unless supervisor.running?
+        supervisor.observe! do
           probe_itself_element.reswarm_if_dead!
           flush_zombies_element.reswarm_if_dead!
         end
@@ -151,13 +151,25 @@ class RedisQueuedLocks::Swarm
       # NOTE: need to give a little timespot to initialize ractor objects and their main loops;
       sleep(0.1)
 
-      # NOTE:
-      #   silently is used to prevent ractor blocking (invoked under the swarm status method)
-      #   in auto-swarm mode when ractor and thread objects are instantiated emmideatly and that
-      #   can lead to situation when the current thread will lock the receive/take message queue of
-      #   some internal ractor element by a asynchronous Ractor#take invocations (it will lead to
-      #   the infinite Ractor#take current process waiting);
-      RedisQueuedLocks::Data[ok: true, result: swarm_status] unless silently
+      RedisQueuedLocks::Data[ok: true, result: :swarming]
+    end
+  end
+
+  # @option silently [Boolean]
+  # @return [NilClass,Hash<Symbol,Symbol|Boolean>]
+  #
+  # @api private
+  # @since 1.9.0
+  def deswarm!
+    sync.synchronize do
+      supervisor.stop!
+      probe_itself_element.try_kill!
+      flush_zombies_element.try_kill!
+
+      # NOTE: need to give a little timespot to initialize ractor objects and their main loops;
+      sleep(0.1)
+
+      RedisQueuedLocks::Data[ok: true, result: :terminating]
     end
   end
 end

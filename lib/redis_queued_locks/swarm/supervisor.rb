@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.9.0
-class RedisQueuedLocks::Swarm::SuperVisor
+class RedisQueuedLocks::Swarm::Supervisor
   # @since 1.9.0
   include RedisQueuedLocks::Utilities
 

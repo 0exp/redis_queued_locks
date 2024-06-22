@@ -33,7 +33,7 @@ class RedisQueuedLocks::Client
     setting :instr_sampler, RedisQueuedLocks::Instrument::Sampler
 
     setting :swarm do
-      setting :auto_swarm, true
+      setting :auto_swarm, false
       setting :visor do
         setting :check_period, 2 # in seconds
       end
@@ -151,17 +151,23 @@ class RedisQueuedLocks::Client
     configure(&configs)
     @uniq_identity = config[:uniq_identifier].call
     @redis_client = redis_client
-    @swarm = RedisQueuedLocks::Swarm.new(self).tap do |swarm|
-      swarm.swarm!(silently: true) if config[:swarm][:auto_swarm]
-    end
+    @swarm = RedisQueuedLocks::Swarm.new(self).tap { |s| s.swarm! if config[:swarm][:auto_swarm] }
   end
 
-  # @return [Hash<Symbol<Hash<Symbol,Boolean>>>]
+  # @return [Hash<Symbol,Boolean|Symbol>]
   #
   # @api public
   # @since 1.9.0
   def swarmize!
     swarm.swarm!
+  end
+
+  # @return [Hash<Symbol,Boolean|Symbol>]
+  #
+  # @api public
+  # @since 1.9.0
+  def deswarmize!
+    swarm.deswarm!
   end
 
   # @option zombie_ttl [Integer]

@@ -66,6 +66,16 @@ class RedisQueuedLocks::Swarm::SwarmElement
     end
   end
 
+  # @return [void]
+  #
+  # @api private
+  # @since 1.9.0
+  def try_kill!
+    sync.synchronize do
+      swarm_loop__kill
+    end
+  end
+
   # @return [Boolean]
   #
   # @api private
@@ -81,15 +91,19 @@ class RedisQueuedLocks::Swarm::SwarmElement
   def status
     sync.synchronize do
       ractor_running = swarmed__alive?
-      ractor_state = begin
-        # TODO: error handling;
-        swarmed? ? ractor_status(swarm_element) : 'non_initialized'
-      end
+      ractor_state = swarmed? ? ractor_status(swarm_element) : 'non_initialized'
 
-      main_loop_running = swarmed__running?
-      main_loop_state = begin
-        # TODO: error handling;
-        main_loop_running ? swarm_loop__status[:main_loop][:state] : 'non_initialized'
+      main_loop_running = nil
+      main_loop_state = nil
+      begin
+        main_loop_running = swarmed__running?
+        main_loop_state =
+          main_loop_running ? swarm_loop__status[:main_loop][:state] : 'non_initialized'
+      rescue Ractor::ClosedError
+        # NOTE:
+        #   in successfull behavior it can happend when you run RedisQueuedLocks::Swarm#deswarm!;
+        main_loop_running = false
+        main_loop_state = 'non_initialized'
       end
 
       {
@@ -105,6 +119,8 @@ class RedisQueuedLocks::Swarm::SwarmElement
       }
     end
   end
+
+  private
 
   # Swarm element lifecycle should have the following scheme:
   # => 1) init (swarm!): create a ractor, main loop is not started;
@@ -122,17 +138,18 @@ class RedisQueuedLocks::Swarm::SwarmElement
     # IMPORTANT №3: you should provde the main_loop_logic to .swarm_loop as a block;
   end
 
-  # NOTE:
-  #   This self-related part of code is placed here in order to provide better code readability
-  #   (it is placed next to the method inside wich it should be called (see #swarm!)).
-  #
   # @param main_loop_spawner [Block]
   # @return [void]
   #
   # @api private
   # @since 1.9.0
-  # rubocop:disable Layout/ClassStructure, Metrics/MethodLength
+  # rubocop:disable Layout/ClassStructure, Metrics/MethodLength, Lint/IneffectiveAccessModifier
   def self.swarm_loop(&main_loop_spawner)
+    # NOTE:
+    #   This self.-related part of code is placed in the middle of class in order
+    #   to provide better code readability (it is placed next to the method inside
+    #   wich it should be called (see #swarm!)). That's why some rubocop cops are disabled.
+
     main_loop = nil
 
     loop do
@@ -166,7 +183,7 @@ class RedisQueuedLocks::Swarm::SwarmElement
       end
     end
   end
-  # rubocop:enable Layout/ClassStructure, Metrics/MethodLength
+  # rubocop:enable Layout/ClassStructure, Metrics/MethodLength, Lint/IneffectiveAccessModifier
 
   # @return [Boolean]
   #
