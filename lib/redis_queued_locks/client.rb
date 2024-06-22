@@ -39,14 +39,22 @@ class RedisQueuedLocks::Client
       end
       setting :probe_itself do
         setting :enabled_for_swarm, true
-        setting :redis_config, {}
+        setting :redis_config do
+          setting :sentinel, false
+          setting :pooled, false
+          setting :config, {}
+          setting :pool_config, {}
+        end
         setting :probe_period, 2 # NOTE: in seconds
       end
       setting :flush_zombies do
         setting :enabled_for_swarm, true
-        setting :redis_config, {}
-        setting :lock_flushing, false
-        setting :lock_flushing_ttl, 5_000 # NOTE: in milliseconds
+        setting :redis_config do
+          setting :sentinel, false
+          setting :pooled, false
+          setting :config, {}
+          setting :pool_config, {}
+        end
         setting :zombie_ttl, 15_000 # NOTE: in milliseconds
         setting :zombie_lock_scan_size, 500
         setting :zombie_queue_scan_size, 500
@@ -56,13 +64,19 @@ class RedisQueuedLocks::Client
 
     validate('swarm.auto_swarm', :boolean)
     validate('swarm.visor.check_period', :integer)
+
     validate('swarm.probe_itself.enabled_for_swarm', :boolean)
-    validate('swarm.probe_itself.redis_config', :hash)
+    validate('swarm.probe_itself.redis_config.sentinel', :boolean)
+    validate('swarm.probe_itself.redis_config.pooled', :boolean)
+    validate('swarm.probe_itself.redis_config.config', :hash)
+    validate('swarm.probe_itself.redis_config.pool_config', :hash)
     validate('swarm.probe_itself.probe_period', :integer)
+
     validate('swarm.flush_zombies.enabled_for_swarm', :boolean)
-    validate('swarm.flush_zombies.redis_config', :hash)
-    validate('swarm.flush_zombies.lock_flushing', :boolean)
-    validate('swarm.flush_zombies.lock_flushing_ttl', :integer)
+    validate('swarm.flush_zombies.redis_config.sentinel', :boolean)
+    validate('swarm.flush_zombies.redis_config.pooled', :boolean)
+    validate('swarm.flush_zombies.redis_config.config', :hash)
+    validate('swarm.flush_zombies.redis_config.pool_config', :hash)
     validate('swarm.flush_zombies.zombie_ttl', :integer)
     validate('swarm.flush_zombies.zombie_lock_scan_size', :integer)
     validate('swarm.flush_zombies.zombie_queue_scan_size', :integer)
@@ -137,7 +151,9 @@ class RedisQueuedLocks::Client
     configure(&configs)
     @uniq_identity = config[:uniq_identifier].call
     @redis_client = redis_client
-    @swarm = RedisQueuedLocks::Swarm.new(self).tap { |s| s.swarm! if config[:swarm][:auto_swarm] }
+    @swarm = RedisQueuedLocks::Swarm.new(self).tap do |swarm|
+      swarm.swarm!(silently: true) if config[:swarm][:auto_swarm]
+    end
   end
 
   # @return [Hash<Symbol<Hash<Symbol,Boolean>>>]
@@ -176,7 +192,6 @@ class RedisQueuedLocks::Client
   # @option zombie_ttl [Integer]
   # @option lock_scan_size [Integer]
   # @option queue_scan_size [Integer]
-  # @option lock_flushing [Boolean]
   # @return [Hash<Symbol,Boolean|Array<String>|Set<String>>]
   #
   # @api public
@@ -184,16 +199,12 @@ class RedisQueuedLocks::Client
   def flush_zombies(
     zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl],
     lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size],
-    queue_scan_size: config[:swarm][:flush_zombies][:zombie_queue_scan_size],
-    lock_flushing: config[:swarm][:flush_zombies][:lock_flushing],
-    lock_flushing_ttl: config[:swarm][:flush_zombies][:lock_flushing_ttl]
+    queue_scan_size: config[:swarm][:flush_zombies][:zombie_queue_scan_size]
   )
     swarm.flush_zombies(
       zombie_ttl:,
       lock_scan_size:,
-      queue_scan_size:,
-      lock_flushing:,
-      lock_flushing_ttl:
+      queue_scan_size:
     )
   end
 

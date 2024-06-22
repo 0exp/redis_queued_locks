@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.9.0
-module RedisQueuedLocks::Swarm::SwarmAcquirers
+module RedisQueuedLocks::Swarm::Acquirers
   class << self
     # Returns the list of swarm acquirers are stored as a hash represented in following format:
     #   {
@@ -22,10 +22,10 @@ module RedisQueuedLocks::Swarm::SwarmAcquirers
     #
     # @api private
     # @since 1.9.0
-    def swarm_acquirers(redis_client, zombie_ttl)
+    def acquirers(redis_client, zombie_ttl)
       redis_client.with do |rconn|
-        rconn.call('HGETALL', RedisQueuedLocks::Resource::SWARM_KEY).tap do |acquirers|
-          acquirers.transform_values! do |last_probe|
+        rconn.call('HGETALL', RedisQueuedLocks::Resource::SWARM_KEY).tap do |swarm_acqs|
+          swarm_acqs.transform_values! do |last_probe|
             last_probe_score = last_probe.to_f
             last_probe_time = Time.at(last_probe_score)
             zombie_score = RedisQueuedLocks::Resource.calc_zombie_score(zombie_ttl / 1_000)

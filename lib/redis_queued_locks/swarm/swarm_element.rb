@@ -2,20 +2,29 @@
 
 # @api private
 # @since 1.9.0
+# rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Swarm::SwarmElement
+  # @since 1.9.0
+  include RedisQueuedLocks::Utilities
+
   # @return [RedisQueuedLocks::Client]
   #
   # @api private
   # @since 1.9.0
   attr_reader :rql_client
 
-  # @return [NilClass,Ractor]
+  # @return [Ractor,NilClass]
   #
   # @api private
   # @since 1.9.0
   attr_reader :swarm_element
 
-  # @param rql_client [RedisQueuedLocks::Client]
+  # @return [RedisQueuedLocks::Utilities::Lock]
+  #
+  # @api private
+  # @since 1.9.0
+  attr_reader :sync
+
   # @return [void]
   #
   # @api private
@@ -23,6 +32,7 @@ class RedisQueuedLocks::Swarm::SwarmElement
   def initialize(rql_client)
     @rql_client = rql_client
     @swarm_element = nil
+    @sync = RedisQueuedLocks::Utilities::Lock.new
   end
 
   # @return [void]
@@ -30,8 +40,13 @@ class RedisQueuedLocks::Swarm::SwarmElement
   # @api private
   # @since 1.9.0
   def try_swarm!
-    return if alive?
-    swarm! && start! if enabled?
+    return unless enabled?
+
+    sync.synchronize do
+      swarm_loop__kill
+      swarm!
+      swarm_loop__start
+    end
   end
 
   # @return [void]
@@ -39,7 +54,16 @@ class RedisQueuedLocks::Swarm::SwarmElement
   # @api private
   # @since 1.9.0
   def reswarm_if_dead!
-    try_swarm! unless alive?
+    return unless enabled?
+
+    sync.synchronize do
+      if swarmed__stopped?
+        swarm_loop__start
+      elsif swarmed__dead? || idle?
+        swarm!
+        swarm_loop__start
+      end
+    end
   end
 
   # @return [Boolean]
@@ -47,48 +71,194 @@ class RedisQueuedLocks::Swarm::SwarmElement
   # @api private
   # @since 1.9.0
   def enabled?
-    # NOTE: check configs for the correspondng swarm element
+    # NOTE: provde an <is enabled> logic here by analyzing the redis queued locks config.
+  end
+
+  # @return [Hash<Symbol,Hash<Symbol,String|Boolean>>]
+  #
+  # @api private
+  # @since 1.9.0
+  def status
+    sync.synchronize do
+      ractor_running = swarmed__alive?
+      ractor_state = begin
+        # TODO: error handling;
+        swarmed? ? ractor_status(swarm_element) : 'non_initialized'
+      end
+
+      main_loop_running = swarmed__running?
+      main_loop_state = begin
+        # TODO: error handling;
+        main_loop_running ? swarm_loop__status[:main_loop][:state] : 'non_initialized'
+      end
+
+      {
+        enabled: enabled?,
+        ractor: {
+          running: ractor_running,
+          state: ractor_state
+        },
+        main_loop: {
+          running: main_loop_running,
+          state: main_loop_state
+        }
+      }
+    end
+  end
+
+  # Swarm element lifecycle should have the following scheme:
+  # => 1) init (swarm!): create a ractor, main loop is not started;
+  # => 2) start (swarm_loop__start!): run main lopp inside the ractor;
+  # => 3) stop (swarm_loop__stop!): stop the main loop inside a ractor;
+  # => 4) kill (swarm_loop__kill!): kill the main loop inside teh ractor and kill a ractor;
+  #
+  # @return [void]
+  #
+  # @api private
+  # @since 1.9.0
+  def swarm!
+    # IMPORTANT №1: initialize @swarm_element here with Ractor;
+    # IMPORTANT №2: your Ractor should invoke .swarm_loop inside (see below);
+    # IMPORTANT №3: you should provde the main_loop_logic to .swarm_loop as a block;
+  end
+
+  # NOTE:
+  #   This self-related part of code is placed here in order to provide better code readability
+  #   (it is placed next to the method inside wich it should be called (see #swarm!)).
+  #
+  # @param main_loop_spawner [Block]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.9.0
+  # rubocop:disable Layout/ClassStructure, Metrics/MethodLength
+  def self.swarm_loop(&main_loop_spawner)
+    main_loop = nil
+
+    loop do
+      command = Ractor.receive
+
+      case command
+      when :status
+        main_loop_alive = main_loop != nil && main_loop.alive?
+        main_loop_state =
+          if main_loop == nil
+            'non_initialized'
+          else
+            RedisQueuedLocks::Utilities.thread_state(main_loop)
+          end
+        Ractor.yield({
+          main_loop: {
+            alive: main_loop_alive,
+            state: main_loop_state
+          }
+        })
+      when :is_active
+        Ractor.yield(main_loop != nil && main_loop.alive?)
+      when :start
+        main_loop.kill unless main_loop == nil
+        main_loop = yield # NOTE: => main_loop_spawner.call
+      when :stop
+        main_loop.kill unless main_loop == nil
+      when :kill
+        main_loop.kill unless main_loop == nil
+        exit
+      end
+    end
+  end
+  # rubocop:enable Layout/ClassStructure, Metrics/MethodLength
+
+  # @return [Boolean]
+  #
+  # @api private
+  # @since 1.9.0
+  def idle?
+    swarm_element == nil
   end
 
   # @return [Boolean]
   #
   # @api private
   # @since 1.9.0
-  def alive?
-    swarm_element != nil && RedisQueuedLocks::Utilities.ractor_alive?(swarm_element)
+  def swarmed?
+    swarm_element != nil
   end
 
-  # @return [Hash<Symbol,Boolean,Hash<Symbol,Boolean>>]
+  # @return [Boolean]
   #
   # @api private
   # @since 1.9.0
-  def swarm_status
-    swarm_element.send(:status).take
+  def swarmed__alive?
+    swarm_element != nil && ractor_alive?(swarm_element)
+  end
+
+  # @return [Boolean]
+  #
+  # @api private
+  # @since 1.9.0
+  def swarmed__dead?
+    swarm_element != nil && !ractor_alive?(swarm_element)
+  end
+
+  # @return [Boolean]
+  #
+  # @api private
+  # @since 1.9.0
+  def swarmed__running?
+    swarm_element != nil && ractor_alive?(swarm_element) && swarm_loop__is_active
+  end
+
+  # @return [Boolean]
+  #
+  # @api private
+  # @since 1.9.0
+  def swarmed__stopped?
+    swarm_element != nil && ractor_alive?(swarm_element) && !swarm_loop__is_active
+  end
+
+  # @return [Boolean]
+  #
+  # @api private
+  # @since 1.9.0
+  def swarm_loop__is_active
+    return if idle? || swarmed__dead?
+    sync.synchronize { swarm_element.send(:is_active).take }
+  end
+
+  # @return [Hash]
+  #
+  # @api private
+  # @since 1.9.0
+  def swarm_loop__status
+    return if idle? || swarmed__dead?
+    sync.synchronize { swarm_element.send(:status).take }
   end
 
   # @return [void]
   #
   # @api private
   # @since 1.9.0
-  def run!
-    swarm_element.send(:start)
+  def swarm_loop__start
+    return if idle? || swarmed__dead?
+    sync.synchronize { swarm_element.send(:start) }
   end
 
   # @return [void]
   #
   # @api private
   # @since 1.9.0
-  def stop!
-    swarm_element.send(:stop)
+  def swarm_loop__pause
+    return if idle? || swarmed__dead?
+    sync.synchronize { swarm_element.send(:stop) }
   end
-
-  private
 
   # @return [void]
   #
   # @api private
   # @since 1.9.0
-  def swarm!
-    # NOTE: Initialize @swarm_element here with a Ractor object
+  def swarm_loop__kill
+    return if idle? || swarmed__dead?
+    sync.synchronize { swarm_element.send(:kill) }
   end
 end
+# rubocop:enable Metrics/ClassLength

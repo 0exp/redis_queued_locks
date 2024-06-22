@@ -3,7 +3,9 @@
 # @api private
 # @since 1.9.0
 class RedisQueuedLocks::Swarm
-  require_relative 'swarm/swarm_acquirers'
+  require_relative 'swarm/redis_client_builder'
+  require_relative 'swarm/super_visor'
+  require_relative 'swarm/acquirers'
   require_relative 'swarm/swarm_element'
   require_relative 'swarm/probe_itself'
   require_relative 'swarm/flush_zombies'
@@ -14,23 +16,29 @@ class RedisQueuedLocks::Swarm
   # @since 1.9.0
   attr_reader :rql_client
 
-  # @return [Thread]
+  # @return [RedisQueuedLocks::Swarm::SuperVisor]
   #
   # @api private
   # @since 1.9.0
-  attr_reader :swarm_visor
+  attr_reader :super_visor
 
-  # @return [Ractor]
+  # @return [RedisQueuedLocks::Swarm::ProbeItself]
   #
   # @api private
   # @since 1.9.0
   attr_reader :probe_itself_element
 
-  # @return [Ractor]
+  # @return [RedisQueuedLocks::Swarm::FlushZombies]
   #
   # @api private
   # @since 1.9.0
   attr_reader :flush_zombies_element
+
+  # @return [RedisQueuedLocks::Utilities::Lock]
+  #
+  # @api private
+  # @since 1.9.0
+  attr_reader :sync
 
   # @param rql_client [RedisQueuedLocks::Client]
   # @return [void]
@@ -39,7 +47,8 @@ class RedisQueuedLocks::Swarm
   # @since 1.9.0
   def initialize(rql_client)
     @rql_client = rql_client
-    @swarm_visor = nil
+    @sync = RedisQueuedLocks::Utilities::Lock.new
+    @super_visor = RedisQueuedLocks::Swarm::SuperVisor.new(rql_client)
     @probe_itself_element = RedisQueuedLocks::Swarm::ProbeItself.new(rql_client)
     @flush_zombies_element = RedisQueuedLocks::Swarm::FlushZombies.new(rql_client)
   end
@@ -49,32 +58,14 @@ class RedisQueuedLocks::Swarm
   # @api public
   # @since 1.9.0
   def swarm_status
-    auto_swarm = rql_client.config[:swarm][:auto_swarm]
-    visor_running = swarm_visor != nil
-    visor_alive = swarm_visor != nil && swarm_visor.alive?
-    probe_itself_enabled = probe_itself_element.enabled?
-    probe_itself_alive = probe_itself_element.alive?
-    probe_itself_status = probe_itself_element.swarm_status
-    flush_zombies_enabled = flush_zombies_element.enabled?
-    flush_zombies_alive = flush_zombies_element.alive?
-
-    {
-      auto_swarm: auto_swarm,
-      visor: {
-        running: visor_running,
-        alive: visor_alive
-      },
-      probe_itself: {
-        enabled: probe_itself_enabled,
-        alive: probe_itself_alive,
-        main_loop: probe_itself_alive && probe_itself_element.swarm_status[:main_loop]
-      },
-      flush_zombies: {
-        enabled: flush_zombies_enabled,
-        alive: flush_zombies_alive,
-        main_loop: flush_zombies_alive && flush_zombies_element.swarm_status[:main_loop]
+    sync.synchronize do
+      {
+        auto_swarm: rql_client.config[:swarm][:auto_swarm],
+        super_visor: super_visor.status,
+        probe_itself: probe_itself_element.status,
+        flush_zombies: flush_zombies_element.status
       }
-    }
+    end
   end
 
   # @option zombie_ttl [Integer]
@@ -83,7 +74,7 @@ class RedisQueuedLocks::Swarm
   # @api public
   # @since 1.9.0
   def swarm_info(zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl])
-    RedisQueuedLocks::Swarm::SwarmAcquirers.swarm_acquirers(
+    RedisQueuedLocks::Swarm::Acquirers.acquirers(
       rql_client.redis_client,
       zombie_ttl
     )
@@ -109,7 +100,6 @@ class RedisQueuedLocks::Swarm
   # @option zombie_ttl [Integer]
   # @option lock_scan_size [Integer]
   # @option queue_scan_size [Integer]
-  # @option lock_flushing [Boolean]
   # @return [
   #   RedisQueuedLocks::Data[
   #     ok: <Boolean>,
@@ -123,42 +113,51 @@ class RedisQueuedLocks::Swarm
   def flush_zombies(
     zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
     lock_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size],
-    queue_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_queue_scan_size],
-    lock_flushing: rql_client.config[:swarm][:flush_zombies][:lock_flushing],
-    lock_flushing_ttl: rql_client.config[:swarm][:flush_zombies][:lock_flushing_ttl]
+    queue_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_queue_scan_size]
   )
     RedisQueuedLocks::Swarm::FlushZombies.flush_zombies(
       rql_client.redis_client,
       zombie_ttl,
       lock_scan_size,
-      queue_scan_size,
-      lock_flushing,
-      lock_flushing_ttl
+      queue_scan_size
     )
   end
 
-  # @return [Hash<Symbol<Hash<Symbol,Boolean>>>]
-  #
-  # @see RedisQueuedLocks::Swarm#swarm_status
+  # @option silently [Boolean]
+  # @return [void]
   #
   # @api public
   # @since 1.9.0
-  def swarm!
-    # Step 1: start swarm elements
-    probe_itself_element.try_swarm!
-    flush_zombies_element.try_swarm!
+  def swarm!(silently: false)
+    sync.synchronize do
+      # Step 0:
+      #   - stop the supervisor (kill internal observer objects if supervisor is alredy running);
+      super_visor.stop!
 
-    # Step 2: start swarm element visor that should keep up swarm elements
-    if @swarm_visor == nil || !@swarm_visor.alive?
-      @swarm_visor = Thread.new do
-        loop do
+      # Step 1:
+      #   - initialize swarm elements and start their main loop;
+      probe_itself_element.try_swarm!
+      flush_zombies_element.try_swarm!
+
+      # Step 2:
+      #   - run supercisor that should keep running created swarm elements and their main loops;
+      unless super_visor.running?
+        super_visor.observe! do
           probe_itself_element.reswarm_if_dead!
           flush_zombies_element.reswarm_if_dead!
-          sleep(rql_client.config[:swarm][:visor][:check_period])
         end
       end
-    end
 
-    RedisQueuedLocks::Data[ok: true, result: swarm_status]
+      # NOTE: need to give a little timespot to initialize ractor objects and their main loops;
+      sleep(0.1)
+
+      # NOTE:
+      #   silently is used to prevent ractor blocking (invoked under the swarm status method)
+      #   in auto-swarm mode when ractor and thread objects are instantiated emmideatly and that
+      #   can lead to situation when the current thread will lock the receive/take message queue of
+      #   some internal ractor element by a asynchronous Ractor#take invocations (it will lead to
+      #   the infinite Ractor#take current process waiting);
+      RedisQueuedLocks::Data[ok: true, result: swarm_status] unless silently
+    end
   end
 end

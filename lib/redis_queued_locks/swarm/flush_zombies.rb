@@ -8,12 +8,10 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
     # @parma zombie_ttl [Numeric]
     # @param lock_scan_size [Integer]
     # @param queue_scan_size [Integer]
-    # @param lock_flushing [Boolean]
-    # @param lock_flushing_ttl [Integer]
     # @return [
     #   RedisQueuedLocks::Data[
     #     ok: <Boolean>,
-    #     delete_zombies: <Array<String>>,
+    #     deleted_zombies: <Array<String>>,
     #     deleted_zombie_locks: <Set<String>>
     #   ]
     # ]
@@ -25,9 +23,7 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
       redis_client,
       zombie_ttl,
       lock_scan_size,
-      queue_scan_size,
-      lock_flushing,
-      lock_flushing_ttl
+      queue_scan_size
     )
       # Step 1:
       #   calculate zombie score (the time marker that shows acquirers that
@@ -43,7 +39,7 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
       # Step X: exit if we have no any zombie acquirer
       return RedisQueuedLocks::Data[
         ok: true,
-        delete_zombies: [],
+        deleted_zombies: [],
         deleted_zombie_locks: [],
       ] if zombie_acquirers.empty?
 
@@ -78,11 +74,47 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
       # Step 6: inform about deleted zombies
       RedisQueuedLocks::Data[
         ok: true,
-        delete_zombies: zombie_acquirers,
+        deleted_zombies: zombie_acquirers,
         deleted_zombie_locks: zombie_locks
       ]
     end
     # rubocop:enable Metrics/MethodLength
+
+    # @param redis_config [Hash]
+    # @param zombie_ttl [Integer]
+    # @param zombie_lock_scan_size [Integer]
+    # @param zombie_queue_scan_size [Integer]
+    # @param zombie_flush_period [Numeric]
+    # @return [Thread]
+    #
+    # @api private
+    # @since 1.9.0
+    def spawn_main_loop(
+      redis_config,
+      zombie_ttl,
+      zombie_lock_scan_size,
+      zombie_queue_scan_size,
+      zombie_flush_period
+    )
+      Thread.new do
+        redis_client = RedisQueuedLocks::Swarm::RedisClientBuilder.build(
+          pooled: redis_config['pooled'],
+          sentinel: redis_config['sentinel'],
+          config: redis_config['config'],
+          pool_config: redis_config['pool_config']
+        )
+
+        loop do
+          RedisQueuedLocks::Swarm::FlushZombies.flush_zombies(
+            redis_client,
+            zombie_ttl,
+            zombie_lock_scan_size,
+            zombie_queue_scan_size
+          )
+          sleep(zombie_flush_period)
+        end
+      end
+    end
   end
 
   # @return [Boolean]
@@ -93,40 +125,28 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
     rql_client.config[:swarm][:flush_zombies][:enabled_for_swarm]
   end
 
+  # Swarm element lifecycle:
+  # => 1) init (swarm!): create a ractor, main loop is not started;
+  # => 2) start (start!): run main lopp inside the ractor;
+  # => 3) stop (stop!): stop the main loop inside a ractor;
+  # => 4) kill (kill!): kill the main loop inside teh ractor and kill a ractor;
+  #
   # @return [void]
   #
   # @api private
   # @since 1.9.0
   def swarm!
     @swarm_element = Ractor.new(
-      rql_client.config[:swarm][:flush_zombies][:redis_config],
+      rql_client.config.slice_value('swarm.flush_zombies.redis_config'),
       rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
       rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size],
       rql_client.config[:swarm][:flush_zombies][:zombie_queue_scan_size],
-      rql_client.config[:swarm][:flush_zombies][:zombie_flush_period],
-      rql_client.config[:swarm][:flush_zombies][:lock_flushing],
-      rql_client.config[:swarm][:flush_zombies][:lock_flushing_ttl]
-    ) do |rc, z_ttl, lss, qss, fl_prd, l_fl, l_fl_ttl|
-      thrd = nil
-
-      loop do
-        command = Ractor.receive
-        case command
-        when :status
-          Ractor.yield({ main_loop: { alive: thrd.alive? } })
-        when :run
-          thrd.kill if thrd != nil
-          thrd = Thread.new do
-            rcl = RedisClient.config(**rc).new_client
-            loop do
-              RedisQueuedLocks::Swarm::FlushZombies.flush_zombies(rcl, z_ttl, lss, qss, l_fl, l_fl_ttl)
-              sleep(fl_prd)
-            end
-          end
-        when :stop
-          thrd.kill
-          exit
-        end
+      rql_client.config[:swarm][:flush_zombies][:zombie_flush_period]
+    ) do |rc, z_ttl, z_lss, z_qss, z_fl_prd|
+      RedisQueuedLocks::Swarm::FlushZombies.swarm_loop do
+        RedisQueuedLocks::Swarm::FlushZombies.spawn_main_loop(
+          rc, z_ttl, z_lss, z_qss, z_fl_prd
+        )
       end
     end
   end
