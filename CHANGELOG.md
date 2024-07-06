@@ -7,6 +7,59 @@
 - (changelog draft) (`#current_host_id`);
 - (changelog draft) (added **hst_id** to `RedisQueuedLocks::TimedLockTimeoutError` error message);
 
+```ruby
+daiver => ~/Projects/redis_queued_locks  master [$]
+➜ bin/console
+[1] pry(main)> rql = RedisQueuedLocks::Client.new(RedisClient.new);
+[2] pry(main)> rql.swarm_info
+=> {"rql:hst:16000/2260/2280/bc5292827b86010a"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:28 55751/2097152 +0300, :last_probe_score=>1720305208.0265841},
+ "rql:hst:16000/2300/2280/bc5292827b86010a"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:28 114719/4194304 +0300, :last_probe_score=>1720305208.0273511},
+ "rql:hst:16000/2320/2280/bc5292827b86010a"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:28 116027/4194304 +0300, :last_probe_score=>1720305208.027663},
+ "rql:hst:16000/2260/2340/bc5292827b86010a"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:28 113959/4194304 +0300, :last_probe_score=>1720305208.02717},
+ "rql:hst:16000/2300/2340/bc5292827b86010a"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:28 115361/4194304 +0300, :last_probe_score=>1720305208.0275042},
+ "rql:hst:16000/2320/2340/bc5292827b86010a"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:28 116699/4194304 +0300, :last_probe_score=>1720305208.0278232},
+ "rql:hst:16000/2360/2280/bc5292827b86010a"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:28 29335/1048576 +0300, :last_probe_score=>1720305208.027976},
+ "rql:hst:16000/2360/2340/bc5292827b86010a"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:28 117927/4194304 +0300, :last_probe_score=>1720305208.028116}}
+[3] pry(main)> rql.swarm_status
+=> {:auto_swarm=>false,
+ :supervisor=>{:running=>false, :state=>"non_initialized", :observable=>"non_initialized"},
+ :probe_hosts=>{:enabled=>true, :thread=>{:running=>false, :state=>"non_initialized"}, :main_loop=>{:running=>false, :state=>"non_initialized"}},
+ :flush_zombies=>{:enabled=>true, :ractor=>{:running=>false, :state=>"non_initialized"}, :main_loop=>{:running=>false, :state=>"non_initialized"}}}
+[4] pry(main)> rql.zombies_info
+=> {:zombie_hosts=>
+  #<Set:
+   {"rql:hst:16000/2260/2280/bc5292827b86010a",
+    "rql:hst:16000/2300/2280/bc5292827b86010a",
+    "rql:hst:16000/2320/2280/bc5292827b86010a",
+    "rql:hst:16000/2260/2340/bc5292827b86010a",
+    "rql:hst:16000/2300/2340/bc5292827b86010a",
+    "rql:hst:16000/2320/2340/bc5292827b86010a",
+    "rql:hst:16000/2360/2280/bc5292827b86010a",
+    "rql:hst:16000/2360/2340/bc5292827b86010a"}>,
+ :zombie_acquirers=>#<Set: {}>,
+ :zombie_locks=>#<Set: {}>}
+[5] pry(main)> rql.swarmize!
+/Users/daiver/Projects/redis_queued_locks/lib/redis_queued_locks/swarm/flush_zombies.rb:107: warning: Ractor is experimental, and the behavior may change in future versions of Ruby! Also there are many implementation issues.
+=> {:ok=>true, :result=>:swarming}
+[6] pry(main)> rql.swarm_info
+=> {"rql:hst:16343/2260/2280/f3092b038a9a1cda"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:58 216057/1048576 +0300, :last_probe_score=>1720305238.206048},
+ "rql:hst:16343/2300/2280/f3092b038a9a1cda"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:58 865893/4194304 +0300, :last_probe_score=>1720305238.206445},
+ "rql:hst:16343/2320/2280/f3092b038a9a1cda"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:58 866807/4194304 +0300, :last_probe_score=>1720305238.206663},
+ "rql:hst:16343/2260/2340/f3092b038a9a1cda"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:58 865419/4194304 +0300, :last_probe_score=>1720305238.206332},
+ "rql:hst:16343/2300/2340/f3092b038a9a1cda"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:58 866371/4194304 +0300, :last_probe_score=>1720305238.206559},
+ "rql:hst:16343/2320/2340/f3092b038a9a1cda"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:58 433597/2097152 +0300, :last_probe_score=>1720305238.2067552},
+ "rql:hst:16343/2360/2280/f3092b038a9a1cda"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:58 867583/4194304 +0300, :last_probe_score=>1720305238.206848},
+ "rql:hst:16343/2360/2340/f3092b038a9a1cda"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:33:58 216987/1048576 +0300, :last_probe_score=>1720305238.206935}}
+[7] pry(main)> rql.swarm_status
+=> {:auto_swarm=>false,
+ :supervisor=>{:running=>true, :state=>"sleep", :observable=>"initialized"},
+ :probe_hosts=>{:enabled=>true, :thread=>{:running=>true, :state=>"sleep"}, :main_loop=>{:running=>true, :state=>"sleep"}},
+ :flush_zombies=>{:enabled=>true, :ractor=>{:running=>true, :state=>"running"}, :main_loop=>{:running=>true, :state=>"sleep"}}}
+[8] pry(main)> rql.zombies_info
+=> {:zombie_hosts=>#<Set: {}>, :zombie_acquirers=>#<Set: {}>, :zombie_locks=>#<Set: {}>}
+[9] pry(main)>
+```
+
 ## [1.8.0] - 2024-06-13
 ### Added
 - A configurable option that enables the adding additional lock/queue data to "Acquirement Timeout"-related error messages for better debugging;
