@@ -34,10 +34,10 @@ class RedisQueuedLocks::Client
 
     setting :swarm do
       setting :auto_swarm, false
-      setting :visor do
-        setting :check_period, 2 # in seconds
+      setting :supervisor do
+        setting :liveness_probing_period, 2 # in seconds
       end
-      setting :probe_itself do
+      setting :probe_hosts do
         setting :enabled_for_swarm, true
         setting :redis_config do
           setting :sentinel, false
@@ -48,7 +48,7 @@ class RedisQueuedLocks::Client
         setting :probe_period, 2 # NOTE: in seconds
       end
       setting :flush_zombies do
-        setting :enabled_for_swarm, false
+        setting :enabled_for_swarm, true
         setting :redis_config do
           setting :sentinel, false
           setting :pooled, false
@@ -63,14 +63,14 @@ class RedisQueuedLocks::Client
     end
 
     validate('swarm.auto_swarm', :boolean)
-    validate('swarm.visor.check_period', :integer)
+    validate('swarm.visor.liveness_probing_period', :integer)
 
-    validate('swarm.probe_itself.enabled_for_swarm', :boolean)
-    validate('swarm.probe_itself.redis_config.sentinel', :boolean)
-    validate('swarm.probe_itself.redis_config.pooled', :boolean)
-    validate('swarm.probe_itself.redis_config.config', :hash)
-    validate('swarm.probe_itself.redis_config.pool_config', :hash)
-    validate('swarm.probe_itself.probe_period', :integer)
+    validate('swarm.probe_hosts.enabled_for_swarm', :boolean)
+    validate('swarm.probe_hosts.redis_config.sentinel', :boolean)
+    validate('swarm.probe_hosts.redis_config.pooled', :boolean)
+    validate('swarm.probe_hosts.redis_config.config', :hash)
+    validate('swarm.probe_hosts.redis_config.pool_config', :hash)
+    validate('swarm.probe_hosts.probe_period', :integer)
 
     validate('swarm.flush_zombies.enabled_for_swarm', :boolean)
     validate('swarm.flush_zombies.redis_config.sentinel', :boolean)
@@ -191,14 +191,14 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
-  def probe_itself
-    swarm.probe_itself
+  def probe_hosts
+    swarm.probe_hosts
   end
 
   # @option zombie_ttl [Integer]
   # @option lock_scan_size [Integer]
   # @option queue_scan_size [Integer]
-  # @return [Hash<Symbol,Boolean|Array<String>|Set<String>>]
+  # @return [Hash<Symbol,Boolean|Set<String>>]
   #
   # @api public
   # @since 1.9.0
@@ -207,11 +207,53 @@ class RedisQueuedLocks::Client
     lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size],
     queue_scan_size: config[:swarm][:flush_zombies][:zombie_queue_scan_size]
   )
-    swarm.flush_zombies(
-      zombie_ttl:,
-      lock_scan_size:,
-      queue_scan_size:
-    )
+    swarm.flush_zombies(zombie_ttl:, lock_scan_size:, queue_scan_size:)
+  end
+
+  # @return [Set<String>]
+  #
+  # @api public
+  # @since 1.9.0
+  def zombie_locks(
+    zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl],
+    lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size]
+  )
+    swarm.zombie_locks(zombie_ttl:, lock_scan_size:)
+  end
+
+  # @return [Set<String>]
+  #
+  # @api ppublic
+  # @since 1.9.0
+  def zombie_acquiers(
+    zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl],
+    lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size]
+  )
+    swarm.zombie_acquiers(zombie_ttl:, lock_scan_size:)
+  end
+
+  # @return [Set<String>]
+  #
+  # @api public
+  # @since 1.9.0
+  def zombie_hosts(zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl])
+    swarm.zombie_hosts(zombie_ttl:)
+  end
+
+  # @return [Hash<Symbol,Set<String>>]
+  #   Format: {
+  #     zombie_hosts: <Set<String>>,
+  #     zombie_acquiers: <Set<String>>,
+  #     zombie_locks: <Set<String>>
+  #   }
+  #
+  # @api public
+  # @since 1.9.0
+  def zombies_info(
+    zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl],
+    lock_scan_size: config[:swarm][:flush_zombies][:zombie_ttl]
+  )
+    swarm.zombies_info(zombie_ttl:, lock_scan_size:)
   end
 
   # @param lock_name [String]
@@ -572,6 +614,7 @@ class RedisQueuedLocks::Client
   # @option identity [String] Unique per-process string. See `config[:uniq_identifier]`.
   # @return [String]
   #
+  # @see RedisQueuedLocks::Resource.acquier_identifier
   # @see RedisQueuedLocks::Resource.get_process_id
   # @see RedisQueuedLocks::Resource.get_thread_id
   # @see RedisQueuedLocks::Resource.get_fiber_id
@@ -591,6 +634,37 @@ class RedisQueuedLocks::Client
       process_id,
       thread_id,
       fiber_id,
+      ractor_id,
+      identity
+    )
+  end
+
+  # Retrun the current host identifier.
+  #
+  # @option process_id [Integer,Any] Process identifier.
+  # @option thread_id [Integer,Any] Thread identifier.
+  # @option fiber_id [Integer,Any] Fiber identifier.
+  # @option ractor_id [Integer,Any] Ractor identifier.
+  # @option identity [String] Unique per-process string. See `config[:uniq_identifier]`.
+  # @return [String]
+  #
+  # @see RedisQueuedLocks::Resource.host_identifier
+  # @see RedisQueuedLocks::Resource.get_process_id
+  # @see RedisQueuedLocks::Resource.get_thread_id
+  # @see RedisQueuedLocks::Resource.get_ractor_id
+  # @see RedisQueuedLocks::Client#uniq_identity
+  #
+  # @api public
+  # @since 1.9.0
+  def current_host_id(
+    process_id: RedisQueuedLocks::Resource.get_process_id,
+    thread_id: RedisQueuedLocks::Resource.get_thread_id,
+    ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
+    identity: uniq_identity
+  )
+    RedisQueuedLocks::Resource.host_identifier(
+      process_id,
+      thread_id,
       ractor_id,
       identity
     )

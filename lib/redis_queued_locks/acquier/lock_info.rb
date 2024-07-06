@@ -10,7 +10,8 @@ module RedisQueuedLocks::Acquier::LockInfo
     #   - `nil` is returned when lock key does not exist or expired;
     #   - result format: {
     #     'lock_key' => "rql:lock:your_lockname", # acquired lock key
-    #     'acq_id' => "rql:acq:process_id/thread_id", # lock acquier identifier
+    #     'acq_id' => "rql:acq:123/456/789/987/uniqstring", # lock acquier identifier
+    #     'hst_id' => "rql:hst:123/456/987/uniqstring", # lock host identifier
     #     'ts' => 123456789.2649841, # <locked at> time stamp (epoch, seconds.microseconds)
     #     'ini_ttl' => 123456789, # initial lock key ttl (milliseconds)
     #     'rem_ttl' => 123456789, # remaining lock key ttl (milliseconds)
@@ -24,7 +25,7 @@ module RedisQueuedLocks::Acquier::LockInfo
     #
     # @api private
     # @since 1.0.0
-    # @version 1.3.0
+    # @version 1.9.0
     # rubocop:disable Metrics/MethodLength
     def lock_info(redis_client, lock_name)
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
@@ -55,7 +56,7 @@ module RedisQueuedLocks::Acquier::LockInfo
             lock_data['lock_key'] = lock_key
             lock_data['ts'] = Float(lock_data['ts'])
             lock_data['ini_ttl'] = Integer(lock_data['ini_ttl'])
-            lock_data['rem_ttl'] = ((pttl_cmd_res == -1) ? Infinity : pttl_cmd_res)
+            lock_data['rem_ttl'] = ((pttl_cmd_res == -1) ? Float::INFINITY : pttl_cmd_res)
             lock_data['spc_cnt'] = Integer(lock_data['spc_cnt']) if lock_data['spc_cnt']
             lock_data['l_spc_ts'] = Float(lock_data['l_spc_ts']) if lock_data['l_spc_ts']
             lock_data['spc_ext_ttl'] = Integer(lock_data['spc_ext_ttl']) if lock_data['spc_ext_ttl']

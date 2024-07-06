@@ -40,15 +40,6 @@ module RedisQueuedLocks::Utilities
   end
 
   # @param ractor [Ractor]
-  # @return [Boolean]
-  #
-  # @api private
-  # @since 1.9.0
-  def ractor_alive?(ractor)
-    ractor.to_s.match?(RACTOR_LIVENESS_PATTERN)
-  end
-
-  # @param ractor [Ractor]
   # @return [String]
   #
   # @api private
@@ -57,8 +48,17 @@ module RedisQueuedLocks::Utilities
     ractor.to_s.match(RACTOR_STATUS_PATTERN)[:status]
   end
 
+  # @param ractor [Ractor]
+  # @return [Boolean]
+  #
+  # @api private
+  # @since 1.9.0
+  def ractor_alive?(ractor)
+    ractor.to_s.match?(RACTOR_LIVENESS_PATTERN)
+  end
+
   # Returns the status of the passed thread object.
-  # Possible thread statuses:
+  # Possible statuses:
   #   - "run" (thread is executing);
   #   - "sleep" (thread is sleeping or waiting on I/O);
   #   - "aborting" (thread is aborting)
@@ -73,14 +73,8 @@ module RedisQueuedLocks::Utilities
   # @since 1.9.0
   def thread_state(thread)
     status = thread.status
-
-    case
-    when status == false
-      'dead'
-    when status == nil
-      'failed'
-    else
-      status
-    end
+    return 'dead' if status == false
+    return 'failed' if status == nil
+    status
   end
 end

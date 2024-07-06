@@ -1,13 +1,15 @@
 # frozen_string_literal: true
 
-# @api private
+# @api public
 # @since 1.9.0
+# rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Swarm
   require_relative 'swarm/redis_client_builder'
   require_relative 'swarm/supervisor'
   require_relative 'swarm/acquirers'
+  require_relative 'swarm/zombie_info'
   require_relative 'swarm/swarm_element'
-  require_relative 'swarm/probe_itself'
+  require_relative 'swarm/probe_hosts'
   require_relative 'swarm/flush_zombies'
 
   # @return [RedisQueuedLocks::Client]
@@ -22,11 +24,11 @@ class RedisQueuedLocks::Swarm
   # @since 1.9.0
   attr_reader :supervisor
 
-  # @return [RedisQueuedLocks::Swarm::ProbeItself]
+  # @return [RedisQueuedLocks::Swarm::ProbeHosts]
   #
   # @api private
   # @since 1.9.0
-  attr_reader :probe_itself_element
+  attr_reader :probe_hosts_element
 
   # @return [RedisQueuedLocks::Swarm::FlushZombies]
   #
@@ -49,7 +51,7 @@ class RedisQueuedLocks::Swarm
     @rql_client = rql_client
     @sync = RedisQueuedLocks::Utilities::Lock.new
     @supervisor = RedisQueuedLocks::Swarm::Supervisor.new(rql_client)
-    @probe_itself_element = RedisQueuedLocks::Swarm::ProbeItself.new(rql_client)
+    @probe_hosts_element = RedisQueuedLocks::Swarm::ProbeHosts.new(rql_client)
     @flush_zombies_element = RedisQueuedLocks::Swarm::FlushZombies.new(rql_client)
   end
 
@@ -62,7 +64,7 @@ class RedisQueuedLocks::Swarm
       {
         auto_swarm: rql_client.config[:swarm][:auto_swarm],
         supervisor: supervisor.status,
-        probe_itself: probe_itself_element.status,
+        probe_hosts: probe_hosts_element.status,
         flush_zombies: flush_zombies_element.status
       }
     end
@@ -83,17 +85,20 @@ class RedisQueuedLocks::Swarm
   # @return [
   #   RedisQueuedLocks::Data[
   #     ok: <Boolean>,
-  #     acq_id: <String>,
-  #     probe_score: <Float>
+  #     result: {
+  #       host_id1 <String> => score1 <String>,
+  #       host_id2 <String> => score2 <String>,
+  #       etc...
+  #     }
   #   ]
   # ]
   #
   # @api public
   # @since 1.9.0
-  def probe_itself
-    RedisQueuedLocks::Swarm::ProbeItself.probe_itself(
+  def probe_hosts
+    RedisQueuedLocks::Swarm::ProbeHosts.probe_hosts(
       rql_client.redis_client,
-      rql_client.current_acquier_id
+      rql_client.uniq_identity
     )
   end
 
@@ -103,8 +108,9 @@ class RedisQueuedLocks::Swarm
   # @return [
   #   RedisQueuedLocks::Data[
   #     ok: <Boolean>,
-  #     del_zombie_acqs: <Array<String>>,
-  #     del_zombie_locks: <Set<String>>
+  #     deleted_zombie_hosts: <Set<String>>,
+  #     deleted_zombie_acquiers: <Set<String>>,
+  #     deleted_zombie_locks: <Set<String>>
   #   ]
   # ]
   #
@@ -123,6 +129,64 @@ class RedisQueuedLocks::Swarm
     )
   end
 
+  # @return [Set<String>]
+  #
+  # @api public
+  # @since 1.9.0
+  def zombie_locks(
+    zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
+    lock_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size]
+  )
+    RedisQueuedLocks::Swarm::ZombieInfo.zombie_locks(
+      rql_client.redis_client,
+      zombie_ttl,
+      lock_scan_size
+    )
+  end
+
+  # @return [Set<String>]
+  #
+  # @api ppublic
+  # @since 1.9.0
+  def zombie_acquiers(
+    zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
+    lock_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size]
+  )
+    RedisQueuedLocks::Swarm::ZombieInfo.zombie_acquiers(
+      rql_client.redis_client,
+      zombie_ttl,
+      lock_scan_size
+    )
+  end
+
+  # @return [Set<String>]
+  #
+  # @api public
+  # @since 1.9.0
+  def zombie_hosts(zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl])
+    RedisQueuedLocks::Swarm::ZombieInfo.zombie_hosts(rql_client.redis_client, zombie_ttl)
+  end
+
+  # @return [Hash<Symbol,Set<String>>]
+  #   Format: {
+  #     zombie_hosts: <Set<String>>,
+  #     zombie_acquirers: <Set<String>>,
+  #     zombie_locks: <Set<String>>
+  #   }
+  #
+  # @api public
+  # @since 1.9.0
+  def zombies_info(
+    zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
+    lock_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size]
+  )
+    RedisQueuedLocks::Swarm::ZombieInfo.zombies_info(
+      rql_client.redis_client,
+      zombie_ttl,
+      lock_scan_size
+    )
+  end
+
   # @option silently [Boolean]
   # @return [NilClass,Hash<Symbol,Symbol|Boolean>]
   #
@@ -135,15 +199,15 @@ class RedisQueuedLocks::Swarm
       supervisor.stop!
 
       # Step 1:
-      #   - initialize swarm elements and start their main loop;
-      probe_itself_element.try_swarm!
+      #   - initialize swarm elements and start their main loops;
+      probe_hosts_element.try_swarm!
       flush_zombies_element.try_swarm!
 
       # Step 2:
-      #   - run supercisor that should keep running created swarm elements and their main loops;
+      #   - run supervisor that should keep running created swarm elements and their main loops;
       unless supervisor.running?
         supervisor.observe! do
-          probe_itself_element.reswarm_if_dead!
+          probe_hosts_element.reswarm_if_dead!
           flush_zombies_element.reswarm_if_dead!
         end
       end
@@ -158,18 +222,19 @@ class RedisQueuedLocks::Swarm
   # @option silently [Boolean]
   # @return [NilClass,Hash<Symbol,Symbol|Boolean>]
   #
-  # @api private
+  # @api public
   # @since 1.9.0
   def deswarm!
     sync.synchronize do
       supervisor.stop!
-      probe_itself_element.try_kill!
+      probe_hosts_element.try_kill!
       flush_zombies_element.try_kill!
 
-      # NOTE: need to give a little timespot to initialize ractor objects and their main loops;
+      # NOTE: need to give a little timespot to stop ractor objects and their main loops;
       sleep(0.1)
 
       RedisQueuedLocks::Data[ok: true, result: :terminating]
     end
   end
 end
+# rubocop:enable Metrics/ClassLength

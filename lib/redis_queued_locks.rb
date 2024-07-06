@@ -5,6 +5,7 @@ require 'qonfig'
 require 'timeout'
 require 'securerandom'
 require 'logger'
+require 'objspace'
 
 # @api public
 # @since 1.0.0

@@ -275,16 +275,18 @@ RSpec.describe RedisQueuedLocks do
       result: match({
         lock_key: eq('rql:lock:pek'),
         acq_id: be_a(String),
+        hst_id: be_a(String),
         ts: be_a(Float),
         ttl: eq(5000),
         process: eq(:lock_obtaining)
       })
     })
     expect(lock_state1.keys).to contain_exactly(
-      'acq_id', 'ts', 'ini_ttl', 'lock_key', 'rem_ttl'
+      'acq_id', 'hst_id', 'ts', 'ini_ttl', 'lock_key', 'rem_ttl'
     )
     expect(lock_state1).to match({
       'acq_id' => be_a(String),
+      'hst_id' => be_a(String),
       'ts' => be_a(Float),
       'ini_ttl' => eq(5000),
       'lock_key' => eq('rql:lock:pek'),
@@ -296,6 +298,7 @@ RSpec.describe RedisQueuedLocks do
       result: match({
         lock_key: eq('rql:lock:pek'),
         acq_id: be_a(String),
+        hst_id: be_a(String),
         ts: be_a(Float),
         ttl: eq(5000),
         process: eq(:extendable_conflict_work_through)
@@ -303,6 +306,7 @@ RSpec.describe RedisQueuedLocks do
     })
     expect(lock_state2.keys).to contain_exactly(
       'acq_id',
+      'hst_id',
       'ts',
       'ini_ttl',
       'lock_key',
@@ -314,6 +318,7 @@ RSpec.describe RedisQueuedLocks do
     )
     expect(lock_state2).to match({
       'acq_id' => be_a(String),
+      'hst_id' => be_a(String),
       'ini_ttl' => eq(5000),
       'ts' => be_a(Float),
       'spc_ext_ttl' => eq(5000), # NOTE: the sum of added TTL of the all reenters
@@ -334,6 +339,7 @@ RSpec.describe RedisQueuedLocks do
       result: match({
         lock_key: eq('rql:lock:pek'),
         acq_id: be_a(String),
+        hst_id: be_a(String),
         ts: be_a(Float),
         ttl: eq(4500),
         process: eq(:extendable_conflict_work_through)
@@ -341,6 +347,7 @@ RSpec.describe RedisQueuedLocks do
     })
     expect(lock_state3.keys).to contain_exactly(
       'acq_id',
+      'hst_id',
       'ts',
       'ini_ttl',
       'lock_key',
@@ -352,6 +359,7 @@ RSpec.describe RedisQueuedLocks do
     )
     expect(lock_state3).to match({
       'acq_id' => be_a(String),
+      'hst_id' => be_a(String),
       'ini_ttl' => eq(5000),
       'ts' => be_a(Float),
       'spc_ext_ttl' => eq(9500), # NOTE: the sum of added TTL of the all reenters
@@ -372,6 +380,7 @@ RSpec.describe RedisQueuedLocks do
     lock_state4 = client.lock_info('pek')
     expect(lock_state4).to match({
       'acq_id' => be_a(String),
+      'hst_id' => be_a(String),
       'ini_ttl' => eq(5000),
       'ts' => be_a(Float),
       'spc_ext_ttl' => eq(15_000), # NOTE: the sum of added TTL of the all reenters
@@ -390,6 +399,7 @@ RSpec.describe RedisQueuedLocks do
     expect(result5[:result]).to match({
       lock_key: eq('rql:lock:pek'),
       acq_id: be_a(String),
+      hst_id: be_a(String),
       ts: be_a(Float),
       ttl: eq(5_500),
       process: :conflict_work_through
@@ -397,6 +407,7 @@ RSpec.describe RedisQueuedLocks do
     lock_state5 = client.lock_info('pek')
     expect(lock_state5.keys).to contain_exactly(
       'acq_id',
+      'hst_id',
       'ts',
       'ini_ttl',
       'spc_ext_ttl',
@@ -409,6 +420,7 @@ RSpec.describe RedisQueuedLocks do
     )
     expect(lock_state5).to match({
       'acq_id' => be_a(String),
+      'hst_id' => be_a(String),
       'ts' => be_a(Float),
       'ini_ttl' => eq(5000),
       'spc_ext_ttl' => eq(15_000),
@@ -447,12 +459,14 @@ RSpec.describe RedisQueuedLocks do
     expect(result1[:result]).to match({
       lock_key: eq('rql:lock:trukek'),
       acq_id: be_a(String),
+      hst_id: be_a(String),
       ts: be_a(Float),
       ttl: eq(10_000),
       process: eq(:lock_obtaining)
     })
     expect(lock_state1.keys).to contain_exactly(
       'acq_id',
+      'hst_id',
       'ts',
       'ini_ttl',
       'lock_key',
@@ -460,6 +474,7 @@ RSpec.describe RedisQueuedLocks do
     )
     expect(lock_state1).to match({
       'acq_id' => be_a(String),
+      'hst_id' => be_a(String),
       'ts' => be_a(Float),
       'ini_ttl' => eq(10_000),
       'lock_key' => eq('rql:lock:trukek'),
@@ -472,12 +487,14 @@ RSpec.describe RedisQueuedLocks do
     expect(result2[:result]).to match({
       lock_key: eq('rql:lock:trukek'),
       acq_id: be_a(String),
+      hst_id: be_a(String),
       ts: be_a(Float),
       ttl: eq(5_000),
       process: eq(:conflict_work_through)
     })
     expect(lock_state2.keys).to contain_exactly(
       'acq_id',
+      'hst_id',
       'ts',
       'ini_ttl',
       'spc_cnt',
@@ -487,6 +504,7 @@ RSpec.describe RedisQueuedLocks do
     )
     expect(lock_state2).to match({
       'acq_id' => be_a(String),
+      'hst_id' => be_a(String),
       'ts' => be_a(Float),
       'ini_ttl' => eq(10_000),
       'spc_cnt' => eq(1),
@@ -501,12 +519,14 @@ RSpec.describe RedisQueuedLocks do
     expect(result3[:result]).to match({
       lock_key: eq('rql:lock:trukek'),
       acq_id: be_a(String),
+      hst_id: be_a(String),
       ts: be_a(Float),
       ttl: eq(9_000),
       process: eq(:conflict_work_through)
     })
     expect(lock_state3.keys).to contain_exactly(
       'acq_id',
+      'hst_id',
       'ts',
       'ini_ttl',
       'spc_cnt',
@@ -516,6 +536,7 @@ RSpec.describe RedisQueuedLocks do
     )
     expect(lock_state3).to match({
       'acq_id' => be_a(String),
+      'hst_id' => be_a(String),
       'ts' => be_a(Float),
       'ini_ttl' => eq(10_000),
       'spc_cnt' => eq(2),
@@ -531,6 +552,7 @@ RSpec.describe RedisQueuedLocks do
     expect(result4[:result]).to match({
       lock_key: eq('rql:lock:trukek'),
       acq_id: be_a(String),
+      hst_id: be_a(String),
       ts: be_a(Float),
       ttl: eq(5500),
       process: eq(:extendable_conflict_work_through)
@@ -538,6 +560,7 @@ RSpec.describe RedisQueuedLocks do
     lock_state4 = client.lock_info('trukek')
     expect(lock_state4.keys).to contain_exactly(
       'acq_id',
+      'hst_id',
       'ts',
       'ini_ttl',
       'spc_cnt',
@@ -550,6 +573,7 @@ RSpec.describe RedisQueuedLocks do
     )
     expect(lock_state4).to match({
       'acq_id' => be_a(String),
+      'hst_id' => be_a(String),
       'ts' => be_a(Float),
       'ini_ttl' => eq(10_000),
       'spc_cnt' => eq(3),
@@ -578,12 +602,14 @@ RSpec.describe RedisQueuedLocks do
     expect(result1[:result]).to match({
       lock_key: eq('rql:lock:bekkek'),
       acq_id: be_a(String),
+      hst_id: be_a(String),
       ts: be_a(Float),
       ttl: eq(10_000),
       process: eq(:lock_obtaining)
     })
     expect(lock_state1.keys).to contain_exactly(
       'acq_id',
+      'hst_id',
       'ts',
       'ini_ttl',
       'lock_key',
@@ -591,6 +617,7 @@ RSpec.describe RedisQueuedLocks do
     )
     expect(lock_state1).to match({
       'acq_id' => be_a(String),
+      'hst_id' => be_a(String),
       'ts' => be_a(Float),
       'ini_ttl' => eq(10_000),
       'lock_key' => eq('rql:lock:bekkek'),
@@ -603,6 +630,7 @@ RSpec.describe RedisQueuedLocks do
     expect(result2[:result]).to eq(:conflict_dead_lock)
     expect(lock_state1.keys).to contain_exactly(
       'acq_id',
+      'hst_id',
       'ts',
       'ini_ttl',
       'lock_key',
@@ -611,6 +639,7 @@ RSpec.describe RedisQueuedLocks do
     # CHECK: lock state does not change (except the `rem_ttl` key of course)
     expect(lock_state2).to match({
       'acq_id' => (lock_state1['acq_id']),
+      'hst_id' => (lock_state1['hst_id']),
       'ts' => eq(lock_state1['ts']),
       'ini_ttl' => eq(lock_state1['ini_ttl']),
       'lock_key' => eq('rql:lock:bekkek'),
@@ -767,6 +796,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[0]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[0]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[0]).to include('acq_id =>')
+      expect(test_logger.logs[0]).to include('hst_id =>')
       expect(test_logger.logs[0]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: start <try lock> cycle
@@ -774,6 +804,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[1]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[1]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[1]).to include('acq_id =>')
+      expect(test_logger.logs[1]).to include('hst_id =>')
       expect(test_logger.logs[1]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock - start
@@ -781,6 +812,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[2]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[2]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[2]).to include('acq_id =>')
+      expect(test_logger.logs[2]).to include('hst_id =>')
       expect(test_logger.logs[2]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock - rconn fetched
@@ -788,6 +820,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[3]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[3]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[3]).to include('acq_id =>')
+      expect(test_logger.logs[3]).to include('hst_id =>')
       expect(test_logger.logs[3]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock - acq added to queue
@@ -795,6 +828,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[4]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[4]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[4]).to include('acq_id =>')
+      expect(test_logger.logs[4]).to include('hst_id =>')
       expect(test_logger.logs[4]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock - remove expired acqs
@@ -802,6 +836,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[5]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[5]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[5]).to include('acq_id =>')
+      expect(test_logger.logs[5]).to include('hst_id =>')
       expect(test_logger.logs[5]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock - get first from queue
@@ -809,6 +844,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[6]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[6]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[6]).to include('acq_id =>')
+      expect(test_logger.logs[6]).to include('hst_id =>')
       expect(test_logger.logs[6]).to include('first_acq_id_in_queue =>')
       expect(test_logger.logs[6]).to include("acs_strat => '#{acs_strat}")
 
@@ -818,6 +854,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[7]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[7]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[7]).to include('acq_id =>')
+      expect(test_logger.logs[7]).to include('hst_id =>')
       expect(test_logger.logs[7]).to include("acs_strat => '#{acs_strat}")
       # rubocop:enable Layout/LineLength
 
@@ -826,6 +863,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[8]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[8]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[8]).to include('acq_id =>')
+      expect(test_logger.logs[8]).to include('hst_id =>')
       expect(test_logger.logs[8]).to include('acq_time =>')
       expect(test_logger.logs[8]).to include("acs_strat => '#{acs_strat}")
 
@@ -834,6 +872,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[9]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[9]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[9]).to include('acq_id =>')
+      expect(test_logger.logs[9]).to include('hst_id =>')
       expect(test_logger.logs[9]).to include("acs_strat => '#{acs_strat}")
     end
 
@@ -858,6 +897,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[0]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[0]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[0]).to include('acq_id =>')
+      expect(test_logger.logs[0]).to include('hst_id =>')
       expect(test_logger.logs[0]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: try to lock cycle start
@@ -865,6 +905,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[1]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[1]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[1]).to include('acq_id =>')
+      expect(test_logger.logs[1]).to include('hst_id =>')
       expect(test_logger.logs[1]).to include("acs_strat => '#{acs_strat}")
 
       # NOTE: lock_obtained
@@ -872,6 +913,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[2]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[2]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[2]).to include('acq_id =>')
+      expect(test_logger.logs[2]).to include('hst_id =>')
       expect(test_logger.logs[2]).to include('acq_time =>')
       expect(test_logger.logs[2]).to include("acs_strat => '#{acs_strat}")
 
@@ -880,6 +922,7 @@ RSpec.describe RedisQueuedLocks do
       expect(test_logger.logs[3]).to include("lock_key => 'rql:lock:pek.kek.cheburek'")
       expect(test_logger.logs[3]).to include("queue_ttl => #{queue_ttl}")
       expect(test_logger.logs[3]).to include('acq_id =>')
+      expect(test_logger.logs[3]).to include('hst_id =>')
       expect(test_logger.logs[3]).to include("acs_strat => '#{acs_strat}")
     end
   end
@@ -961,6 +1004,7 @@ RSpec.describe RedisQueuedLocks do
 
     expect(lock_info).to match({
       'acq_id' => be_a(String), # reserved
+      'hst_id' => be_a(String), # reserved
       'ts' => be_a(Numeric), # reserved
       'ini_ttl' => be_a(Integer), # reserved
       'lock_key' => be_a(String), # reserved
@@ -972,6 +1016,11 @@ RSpec.describe RedisQueuedLocks do
     aggregate_failures 'reserved keys' do
       expect do
         client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'acq_id' => 'kek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError)
+      expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+
+      expect do
+        client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'hst_id' => 'kek' })
       end.to raise_error(RedisQueuedLocks::ArgumentError)
       expect(client.locked?('bum.bum.bam.bam')).to eq(false)
 
@@ -1137,6 +1186,7 @@ RSpec.describe RedisQueuedLocks do
       expect(timed_lock_error.message).to include('ttl: 1000,')
       expect(timed_lock_error.message).to include('meta: <no-meta>,')
       expect(timed_lock_error.message).to include("acq_id: \"#{client.current_acquier_id}\"")
+      expect(timed_lock_error.message).to include("hst_id: \"#{client.current_host_id}\"")
     end
 
     timed_lock_error_with_meta = begin
@@ -1157,6 +1207,9 @@ RSpec.describe RedisQueuedLocks do
       )
       expect(timed_lock_error_with_meta.message).to include(
         "acq_id: \"#{client.current_acquier_id}\""
+      )
+      expect(timed_lock_error_with_meta.message).to include(
+        "hst_id: \"#{client.current_host_id}\""
       )
     end
 
@@ -1205,6 +1258,7 @@ RSpec.describe RedisQueuedLocks do
     expect(lock_info).to match({
       'lock_key' => "rql:lock:#{lock_name}",
       'acq_id' => be_a(String),
+      'hst_id' => be_a(String),
       'ts' => be_a(Float),
       'ini_ttl' => 10_000,
       'rem_ttl' => be_a(Integer)
@@ -1304,8 +1358,8 @@ RSpec.describe RedisQueuedLocks do
       :alive
     )
     expect(locks_info_a.map { |val| val[:info].keys }).to contain_exactly(
-      contain_exactly(*%w[acq_id ts ini_ttl rem_ttl kek a]),
-      contain_exactly(*%w[acq_id ts ini_ttl rem_ttl pek b])
+      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl kek a]),
+      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl pek b])
     )
     expect(locks_info_b.size).to eq(2)
     expect(locks_info_b.map { |val| val[:lock] }).to contain_exactly(
@@ -1317,8 +1371,8 @@ RSpec.describe RedisQueuedLocks do
       :alive
     )
     expect(locks_info_b.map { |val| val[:info].keys }).to contain_exactly(
-      contain_exactly(*%w[acq_id ts ini_ttl rem_ttl kek a]),
-      contain_exactly(*%w[acq_id ts ini_ttl rem_ttl pek b])
+      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl kek a]),
+      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl pek b])
     )
 
     # TODO: more time for work => better spec

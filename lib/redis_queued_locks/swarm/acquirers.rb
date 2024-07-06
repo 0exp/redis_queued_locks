@@ -4,7 +4,8 @@
 # @since 1.9.0
 module RedisQueuedLocks::Swarm::Acquirers
   class << self
-    # Returns the list of swarm acquirers are stored as a hash represented in following format:
+    # Returns the list of swarm acquirers stored as HASH.
+    # Format:
     #   {
     #     <acquirer id #1> => {
     #       zombie: <Boolean>, last_probe_time: <Time>, last_probe_score: <Numeric>

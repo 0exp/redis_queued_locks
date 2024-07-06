@@ -147,7 +147,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.8.0
+    # @version 1.9.0
     def acquire_lock(
       redis,
       lock_name,
@@ -195,6 +195,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
       # Step 0.2: prevent :meta incompatabiltiies (structure)
       if meta.is_a?(::Hash) && (meta.any? do |key, _value|
         key == 'acq_id' ||
+        key == 'hst_id' ||
         key == 'ts' ||
         key == 'ini_ttl' ||
         key == 'lock_key' ||
@@ -208,7 +209,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
         raise(
           RedisQueuedLocks::ArgumentError,
           '`:meta` keys can not overlap reserved lock data keys ' \
-          '"acq_id", "ts", "ini_ttl", "lock_key", "rem_ttl", "spc_cnt", ' \
+          '"acq_id", "hst_id", "ts", "ini_ttl", "lock_key", "rem_ttl", "spc_cnt", ' \
           '"spc_ext_ttl", "l_spc_ext_ini_ttl", "l_spc_ext_ts", "l_spc_ts"'
         )
       end
@@ -218,6 +219,12 @@ module RedisQueuedLocks::Acquier::AcquireLock
         process_id,
         thread_id,
         fiber_id,
+        ractor_id,
+        identity
+      )
+      host_id = RedisQueuedLocks::Resource.host_identifier(
+        process_id,
+        thread_id,
         ractor_id,
         identity
       )
@@ -257,6 +264,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
           lock_key_queue,
           queue_ttl,
           acquier_id,
+          host_id,
           access_strategy,
           log_sampled,
           instr_sampled
@@ -264,8 +272,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
       end
 
       LogVisitor.start_lock_obtaining(
-        logger, log_sampled,
-        lock_key, queue_ttl, acquier_id, access_strategy
+        logger, log_sampled, lock_key,
+        queue_ttl, acquier_id, host_id, access_strategy
       )
 
       # Step 2: try to lock with timeout
@@ -284,8 +292,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
         while acq_process[:should_try]
 
           LogVisitor.start_try_to_lock_cycle(
-            logger, log_sampled,
-            lock_key, queue_ttl, acquier_id, access_strategy
+            logger, log_sampled, lock_key,
+            queue_ttl, acquier_id, host_id, access_strategy
           )
 
           # Step 2.X: check the actual score: is it in queue ttl limit or not?
@@ -294,8 +302,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
             acquier_position = RedisQueuedLocks::Resource.calc_initial_acquier_position
 
             LogVisitor.dead_score_reached__reset_acquier_position(
-              logger, log_sampled,
-              lock_key, queue_ttl, acquier_id, access_strategy
+              logger, log_sampled, lock_key,
+              queue_ttl, acquier_id, host_id, access_strategy
             )
           end
 
@@ -306,6 +314,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
             lock_key,
             lock_key_queue,
             acquier_id,
+            host_id,
             acquier_position,
             lock_ttl,
             queue_ttl,
@@ -330,35 +339,35 @@ module RedisQueuedLocks::Acquier::AcquireLock
             if acq_process[:result][:process] == :extendable_conflict_work_through
               # instrumetnation: (reentrant lock with ttl extension)
               LogVisitor.extendable_reentrant_lock_obtained(
-                logger, log_sampled,
-                result[:lock_key], queue_ttl, acquier_id, acq_time, access_strategy
+                logger, log_sampled, result[:lock_key],
+                queue_ttl, acquier_id, host_id, acq_time, access_strategy
               )
               InstrVisitor.extendable_reentrant_lock_obtained(
-                instrumenter, instr_sampled,
-                result[:lock_key], result[:ttl], result[:acq_id], result[:ts], acq_time,
+                instrumenter, instr_sampled, result[:lock_key],
+                result[:ttl], result[:acq_id], result[:hst_id], result[:ts], acq_time,
                 instrument
               )
             elsif acq_process[:result][:process] == :conflict_work_through
               # instrumetnation: (reentrant lock without ttl extension)
               LogVisitor.reentrant_lock_obtained(
-                logger, log_sampled,
-                result[:lock_key], queue_ttl, acquier_id, acq_time, access_strategy
+                logger, log_sampled, result[:lock_key],
+                queue_ttl, acquier_id, host_id, acq_time, access_strategy
               )
               InstrVisitor.reentrant_lock_obtained(
-                instrumenter, instr_sampled,
-                result[:lock_key], result[:ttl], result[:acq_id], result[:ts], acq_time,
+                instrumenter, instr_sampled, result[:lock_key],
+                result[:ttl], result[:acq_id], result[:hst_id], result[:ts], acq_time,
                 instrument
               )
             else
               # instrumentation: (classic lock obtain)
               # NOTE: classic is: acq_process[:result][:process] == :lock_obtaining
               LogVisitor.lock_obtained(
-                logger, log_sampled,
-                result[:lock_key], queue_ttl, acquier_id, acq_time, access_strategy
+                logger, log_sampled, result[:lock_key],
+                queue_ttl, acquier_id, host_id, acq_time, access_strategy
               )
               InstrVisitor.lock_obtained(
-                instrumenter, instr_sampled,
-                result[:lock_key], result[:ttl], result[:acq_id], result[:ts], acq_time,
+                instrumenter, instr_sampled, result[:lock_key],
+                result[:ttl], result[:acq_id], result[:hst_id], result[:ts], acq_time,
                 instrument
               )
             end
@@ -367,6 +376,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
             acq_process[:lock_info] = {
               lock_key: result[:lock_key],
               acq_id: result[:acq_id],
+              hst_id: result[:hst_id],
               ts: result[:ts],
               ttl: result[:ttl],
               process: result[:process]
@@ -464,6 +474,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
               logger,
               lock_key,
               acquier_id,
+              host_id,
               access_strategy,
               timed,
               ttl_shift,
@@ -493,6 +504,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                 acq_process[:lock_info][:lock_key],
                 acq_process[:lock_info][:ttl],
                 acq_process[:lock_info][:acq_id],
+                acq_process[:lock_info][:hst_id],
                 acq_process[:lock_info][:ts],
                 acq_process[:acq_time],
                 acq_process[:hold_time],
@@ -506,6 +518,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
                 acq_process[:lock_info][:lock_key],
                 acq_process[:lock_info][:ttl],
                 acq_process[:lock_info][:acq_id],
+                acq_process[:lock_info][:hst_id],
                 acq_process[:lock_info][:ts],
                 acq_process[:lock_info][:lock_key],
                 acq_process[:acq_time],

@@ -35,12 +35,17 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [queues_info](#queues_info---get-list-of-queues-with-their-info)
   - [clear_dead_requests](#clear_dead_requests)
   - [current_acquirer_id](#current_acquirer_id)
+  - [current_host_id](#current_host_id)
 - [Swarm Mode and Zombie Locks](#swarm-mode-and-zombie-locks)
   - [How to Swarm](#how-to-swarm)
     - [swarm_status](#swarm_status)
     - [swarm_info](#swarm_info)
-  - [probe_itself](#probe_itself)
-  - [flush_zobmies](#flush_zombies)
+    - [probe_hosts](#probe_hosts)
+    - [flush_zobmies](#flush_zombies)
+  - [zombies_info](#zombies_info)
+  - [zombie_locks](#zombie_locks)
+  - [zombie_acquiers](#zombie_acquiers)
+  - [zombie_hosts](#zombie_hosts)
 - [Lock Access Strategies](#lock-access-strategies)
   - [queued](#lock-access-strategies)
   - [random](#lock-access-strategies)
@@ -347,6 +352,7 @@ end
 - [queues_info](#queues_info---get-list-of-queues-with-their-info)
 - [clear_dead_requests](#clear_dead_requests)
 - [current_acquirer_id](#current_acquirer_id)
+- [current_host_id](#current_host_id)
 
 ---
 
@@ -661,6 +667,7 @@ rql.lock_info("my_lock")
 {
   "lock_key" => "rql:lock:my_lock",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
+  "hst_id" => "rql:acq:123/456/678/374dd74324",
   "ts" => 123456789,
   "ini_ttl" => 123456,
   "rem_ttl" => 123440,
@@ -806,6 +813,7 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
 - lock data (`Hash<String,String|Integer>`):
   - `"lock_key"` - `string` - lock key in redis;
   - `"acq_id"` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity);
+  - `"hst_id"` - `string` - host identifier (process_id/thread_id/ractor_id/identity);
   - `"ts"` - `numeric`/`epoch` - the time when lock was obtained;
   - `"init_ttl"` - `integer` - (milliseconds) initial lock key ttl;
   - `"rem_ttl"` - `integer` - (milliseconds) remaining lock key ttl;
@@ -828,6 +836,7 @@ rql.lock_info("your_lock_name")
 {
   "lock_key" => "rql:lock:your_lock_name",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
+  "hst_id" => "rql:acq:123/456/678/374dd74324",
   "ts" => 123456789.12345,
   "ini_ttl" => 5_000,
   "rem_ttl" => 4_999
@@ -843,6 +852,7 @@ rql.lock_info("your_lock_name")
 {
   "lock_key" => "rql:lock:your_lock_name",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
+  "hst_id" => "rql:acq:123/456/678/374dd74324",
   "ts" => 123456789.12345,
   "ini_ttl" => 5_000,
   "rem_ttl" => 4_999,
@@ -864,6 +874,7 @@ rql.lock_info("your_lock_name")
 {
   "lock_key" => "rql:lock:your_lock_name",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
+  "hst_id" => "rql:acq:123/456/678/374dd74324",
   "ts" => 123456789.12345,
   "ini_ttl" => 5_000,
   "rem_ttl" => 9_444,
@@ -1259,6 +1270,7 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
    :status=>:alive,
    :info=>{
     "acq_id"=>"rql:acq:41478/4320/4340/4360/848818f09d8c3420",
+    "hst_id"=>"rql:hst:41478/4320/4360/848818f09d8c3420"
     "ts"=>1711607112.670343,
     "ini_ttl"=>15000,
     "rem_ttl"=>13998}},
@@ -1408,15 +1420,62 @@ rql.current_acquirer_id
 
 ---
 
+#### #current_host_id
+
+<sup>\[[back to top](#usage)\]</sup>
+
+- get the current host identifier in RQL notation that you can use for debugging purposes during the lock analyzis;
+- the host is a ruby worker (a combination of process/thread/ractor) that is alive and can obtain locks;
+- the host is limited to `process`/`thread`/`ractor` (without `fiber`) combination cuz we have no abilities to extract
+  all fiber objects from the current ruby process when at least one ractor object is defined (**ObjectSpace** loses
+  abilities to extract `Fiber` and `Thread` objects after the any ractor is created) (`Thread` objects are analyzed
+  via `Thread.list` API which does not lose their abilites);
+- host identifier format:
+  ```ruby
+    "rql:hst:#{process_id}/#{thread_id}/#{ractor_id}"
+  ```
+- because of the moment that `#lock`/`#lock!` gives you a possibility to customize `process_id`,
+  `fiber_id`, `thread_id`, `ractor_id` and `unique identity` identifiers the `#current_host_id` method provides this possibility too
+  (except the `fiber_id` correspondingly);
+
+Accepts:
+
+- `process_id:` - (optional) `[Integer,Any]`
+  - `::Process.pid` by default;
+- `thread_id:` - (optional) `[Integer,Any]`;
+  - `::Thread.current.object_id` by default;
+- `ractor_id:` - (optional) `[Integer,Any]`;
+  - `::Ractor.current.object_id` by default;
+- `identity:` - (optional) `[String,Any]`;
+  - this value is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`;
+  - this value can be accessed from `RedisQueuedLock::Client#uniq_identity`;
+  - [Configuration](#configuration) documentation: see `config[:uniq_identifier]`;
+  - [#lock](#lock---obtain-a-lock) method documentation: see `uniq_identifier`;
+
+```ruby
+rql.current_host_id
+
+# =>
+"rql:acq:38529/4500/4360/66093702f24a3129"
+```
+
+---
+
 ## Swarm Mode and Zombie Locks
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
+> Eliminate zombie locks with a swarm.
+
 - [How to Swarm](#how-to-swarm)
   - [swarm_status](#swarm_status)
   - [swarm_info](#swarm_info)
-- [probe_itself](#probe_itself)
-- [flush_zobmies](#flush_zombies)
+  - [probe_hosts](#probe_hosts)
+  - [flush_zobmies](#flush_zombies)
+- [zombies_info](#zombies_info)
+- [zombie_locks](#zombie_locks)
+- [zombie_acquiers](#zombie_acquiers)
+- [zombie_hosts](#zombie_hosts)
 
 ---
 
@@ -1463,34 +1522,34 @@ rql.current_acquirer_id
 - default logs (raised from `#lock`/`#lock!`):
 
 ```ruby
-"[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
-"[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
-"[redis_queued_locks.dead_score_reached__reset_acquier_position]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
-"[redis_queued_locks.lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acq_time");
-"[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "acq_time");
-"[redis_queued_locks.reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "acq_time");
-"[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
-"[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
-"[redis_queued_locks.decrease_lock]" # (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.dead_score_reached__reset_acquier_position]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time");
+"[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "acq_time");
+"[redis_queued_locks.reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "acq_time");
+"[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.decrease_lock]" # (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat");
 ```
 
 - additional logs (raised from `#lock`/`#lock!` with `confg[:log_lock_try] == true`):
 
 ```ruby
-"[redis_queued_locks.try_lock.start]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
-"[redis_queued_locks.try_lock.rconn_fetched]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
-"[redis_queued_locks.try_lock.same_process_conflict_detected]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
-"[redis_queued_locks.try_lock.same_process_conflict_analyzed]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status");
-"[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", "last_ext_ttl", "last_ext_ts");
-"[redis_queued_locks.try_lock.reentrant_lock__work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", last_spc_ts);
-"[redis_queued_locks.try_lock.single_process_lock_conflict__dead_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "spc_status", "last_spc_ts");
-"[redis_queued_locks.try_lock.acq_added_to_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
-"[redis_queued_locks.try_lock.remove_expired_acqs]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
-"[redis_queued_locks.try_lock.get_first_from_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue");
-"[redis_queued_locks.try_lock.exit__queue_ttl_reached]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
-"[redis_queued_locks.try_lock.exit__no_first]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue", "<current_lock_data>");
-"[redis_queued_locks.try_lock.exit__lock_still_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
-"[redis_queued_locks.try_lock.obtain__free_to_acquire]" # (logs "lock_key", "queue_ttl", "acq_id", "acs_strat");
+"[redis_queued_locks.try_lock.start]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.try_lock.rconn_fetched]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.try_lock.same_process_conflict_detected]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.try_lock.same_process_conflict_analyzed]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status");
+"[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status", "last_ext_ttl", "last_ext_ts");
+"[redis_queued_locks.try_lock.reentrant_lock__work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status", last_spc_ts);
+"[redis_queued_locks.try_lock.single_process_lock_conflict__dead_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status", "last_spc_ts");
+"[redis_queued_locks.try_lock.acq_added_to_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.try_lock.remove_expired_acqs]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.try_lock.get_first_from_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue");
+"[redis_queued_locks.try_lock.exit__queue_ttl_reached]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.try_lock.exit__no_first]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "<current_lock_data>");
+"[redis_queued_locks.try_lock.exit__lock_still_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
+"[redis_queued_locks.try_lock.obtain__free_to_acquire]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
 ```
 
 ---
@@ -1540,6 +1599,7 @@ Detalized event semantics and payload structure:
   - payload:
     - `:ttl` - `integer`/`milliseconds` - lock ttl;
     - `:acq_id` - `string` - lock acquier identifier;
+    - `:hst_id` - `string` - lock's host identifier;
     - `:lock_key` - `string` - lock name;
     - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
@@ -1552,6 +1612,7 @@ Detalized event semantics and payload structure:
     - `:lock_key` - `string` - lock name;
     - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
     - `:acq_id` - `string` - lock acquier identifier;
+    - `:hst_id` - `string` - lock's host identifier;
     - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as extendable reentrant lock;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
     - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
@@ -1563,6 +1624,7 @@ Detalized event semantics and payload structure:
     - `:lock_key` - `string` - lock name;
     - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
     - `:acq_id` - `string` - lock acquier identifier;
+    - `:hst_id` - `string` - lock's host identifier;
     - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
     - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
@@ -1574,6 +1636,7 @@ Detalized event semantics and payload structure:
     - `:hold_time` - `float`/`milliseconds` - lock hold time;
     - `:ttl` - `integer`/`milliseconds` - lock ttl;
     - `:acq_id` - `string` - lock acquier identifier;
+    - `:hst_id` - `string` - lock's host identifier;
     - `:lock_key` - `string` - lock name;
     - `:ts` - `numeric`/`epoch` - the time when lock was obtained;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
@@ -1587,6 +1650,7 @@ Detalized event semantics and payload structure:
     - `:hold_time` - `float`/`milliseconds` - lock hold time;
     - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
     - `:acq_id` - `string` - lock acquier identifier;
+    - `:hst_id` - `string` - lock's host identifier;
     - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
     - `:lock_key` - `string` - lock name;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
@@ -1615,6 +1679,8 @@ Detalized event semantics and payload structure:
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
+- **Extremely Major**:
+  - Swarm Mode: eliminate zombie locks with a swarm;
 - **Major**:
   - lock request prioritization;
   - **strict redlock algorithm support** (support for many `RedisClient` instances);

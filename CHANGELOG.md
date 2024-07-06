@@ -1,4 +1,11 @@
 ## [Unreleased]
+### Added
+- (changelog draft) Brand New Extremely Major Feature: **Swarm Mode**: eliminate zombie locks with a swarm;
+- (changelog draft) (logs: added `hst_id`);
+- (changelog draft) (instrumentation: added `hst_id` field);
+- (changelog draft) (added **hst_id** to `#lock_info` / `#lock_data` / `#locks_info` method results);
+- (changelog draft) (`#current_host_id`);
+- (changelog draft) (added **hst_id** to `RedisQueuedLocks::TimedLockTimeoutError` error message);
 
 ## [1.8.0] - 2024-06-13
 ### Added

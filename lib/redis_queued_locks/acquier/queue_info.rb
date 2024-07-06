@@ -17,8 +17,8 @@ module RedisQueuedLocks::Acquier::QueueInfo
     #   - result format: {
     #     "lock_queue" => "rql:lock_queue:your_lock_name", # lock queue key in redis,
     #     queue: [
-    #       { "acq_id" => "rql:acq:process_id/thread_id", "score" => 123 },
-    #       { "acq_id" => "rql:acq:process_id/thread_id", "score" => 456 },
+    #       { "acq_id" => "rql:acq:123/456/789/987/identity", "score" => 123 },
+    #       { "acq_id" => "rql:acq:123/686/789/987/identity", "score" => 456 },
     #     ] # ordered set (by score) with information about an acquier and their position in queue
     #   }
     #

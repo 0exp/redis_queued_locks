@@ -25,13 +25,7 @@ module RedisQueuedLocks::Resource
   #
   # @api private
   # @since 1.9.0
-  SWARM_KEY = 'rql:swarm:acqs'
-
-  # @return [String]
-  #
-  # @api private
-  # @since 1.9.0
-  SWARM_FLUSH_LOCK_KEY = 'rql:swarm:flock'
+  SWARM_KEY = 'rql:swarm:hsts'
 
   # @return [Integer] Redis time error (in milliseconds).
   #
@@ -63,6 +57,22 @@ module RedisQueuedLocks::Resource
     # @since 1.0.0
     def acquier_identifier(process_id, thread_id, fiber_id, ractor_id, identity)
       "rql:acq:#{process_id}/#{thread_id}/#{fiber_id}/#{ractor_id}/#{identity}"
+    end
+
+    # @param process_id [Integer,String]
+    # @param thread_id [Integer,String]
+    # @param ractor_id [Integer,String]
+    # @param identity [String]
+    # @return [String]
+    #
+    # @api private
+    # @since 1.9.0
+    def host_identifier(process_id, thread_id, ractor_id, identity)
+      # NOTE:
+      #   - fiber's object_id is not used cuz we can't analyze fiber objects via ObjectSpace
+      #     after the any new Ractor object is created in the current process
+      #     (ObjectSpace no longer sees objects of Thread and Fiber classes after that);
+      "rql:hst:#{process_id}/#{thread_id}/#{ractor_id}/#{identity}"
     end
 
     # @param lock_name [String]
@@ -163,6 +173,33 @@ module RedisQueuedLocks::Resource
     # @since 1.0.0
     def get_process_id
       ::Process.pid
+    end
+
+    # @return [Array<String>]
+    #
+    # @api private
+    # @since 1.9.0
+    def possible_host_identifiers(identity)
+      # NOTE №1: we can not use ObjectSpace.each_object for Thread and Fiber cuz after the any
+      #   ractor creation the ObjectSpace stops seeing ::Thread and ::Fiber objects: each_object
+      #   for each of them returns `0`;
+      # NOTE №2: we have no any approach to count Fiber objects in the current process without
+      #   object space API (or super memory-expensive) so host identification works without fibers;
+      # NOTE №3: we still can extract thread objects via Thread.list API;
+      current_process_id = get_process_id
+
+      [].tap do |acquiers|
+        ::Thread.list.each do |thread|
+          ::ObjectSpace.each_object(::Ractor) do |ractor|
+            acquiers << host_identifier(
+              current_process_id,
+              thread.object_id,
+              ractor.object_id,
+              identity
+            )
+          end
+        end
+      end
     end
   end
 end

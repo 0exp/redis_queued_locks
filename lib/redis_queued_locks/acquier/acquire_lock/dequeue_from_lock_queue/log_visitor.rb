@@ -10,17 +10,20 @@ module RedisQueuedLocks::Acquier::AcquireLock::DequeueFromLockQueue::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @return [void]
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def dequeue_from_lock_queue(
     logger,
     log_sampled,
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy
   )
     return unless log_sampled
@@ -30,6 +33,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::DequeueFromLockQueue::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}"
     end rescue nil
   end

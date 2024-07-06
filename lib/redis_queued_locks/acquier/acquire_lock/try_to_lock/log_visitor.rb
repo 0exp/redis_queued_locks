@@ -12,11 +12,13 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @return [void]
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def start(
     logger,
     log_sampled,
@@ -24,6 +26,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy
   )
     return unless log_sampled && log_lock_try
@@ -33,6 +36,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}'"
     end rescue nil
   end
@@ -43,11 +47,13 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @return [void]
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def rconn_fetched(
     logger,
     log_sampled,
@@ -55,6 +61,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy
   )
     return unless log_sampled && log_lock_try
@@ -64,6 +71,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}'"
     end rescue nil
   end
@@ -74,11 +82,13 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @return [void]
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def same_process_conflict_detected(
     logger,
     log_sampled,
@@ -86,6 +96,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy
   )
     return unless log_sampled && log_lock_try
@@ -95,6 +106,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}'"
     end rescue nil
   end
@@ -105,12 +117,14 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @param sp_conflict_status [Symbol]
   # @return [void]
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def same_process_conflict_analyzed(
     logger,
     log_sampled,
@@ -118,6 +132,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy,
     sp_conflict_status
   )
@@ -128,6 +143,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}' " \
       "spc_status => '#{sp_conflict_status}'"
     end rescue nil
@@ -139,6 +155,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @param sp_conflict_status [Symbol]
   # @param ttl [Integer]
@@ -147,6 +164,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def reentrant_lock__extend_and_work_through(
     logger,
     log_sampled,
@@ -154,6 +172,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy,
     sp_conflict_status,
     ttl,
@@ -166,6 +185,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}' " \
       "spc_status => '#{sp_conflict_status}' " \
       "last_ext_ttl => #{ttl} " \
@@ -179,6 +199,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @param sp_conflict_status [Symbol]
   # @param spc_processed_timestamp [Float]
@@ -186,6 +207,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def reentrant_lock__work_through(
     logger,
     log_sampled,
@@ -193,6 +215,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy,
     sp_conflict_status,
     spc_processed_timestamp
@@ -204,6 +227,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}' " \
       "spc_status => '#{sp_conflict_status}' " \
       "last_spc_ts => '#{spc_processed_timestamp}'"
@@ -216,6 +240,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @param sp_conflict_status [Symbol]
   # @param spc_processed_timestamp [Float]
@@ -223,6 +248,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def single_process_lock_conflict__dead_lock(
     logger,
     log_sampled,
@@ -230,6 +256,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy,
     sp_conflict_status,
     spc_processed_timestamp
@@ -241,6 +268,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}' " \
       "spc_status => '#{sp_conflict_status}' " \
       "last_spc_ts => '#{spc_processed_timestamp}'"
@@ -253,11 +281,13 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @return [void]
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def acq_added_to_queue(
     logger,
     log_sampled,
@@ -265,6 +295,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy
   )
     return unless log_sampled && log_lock_try
@@ -274,6 +305,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}'"
     end rescue nil
   end
@@ -284,11 +316,13 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @return [void]
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def remove_expired_acqs(
     logger,
     log_sampled,
@@ -296,6 +330,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy
   )
     return unless log_sampled && log_lock_try
@@ -305,6 +340,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}'"
     end rescue nil
   end
@@ -315,12 +351,14 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @param waiting_acquier [String]
   # @return [void]
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def get_first_from_queue(
     logger,
     log_sampled,
@@ -328,6 +366,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy,
     waiting_acquier
   )
@@ -338,6 +377,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}' " \
       "first_acq_id_in_queue => '#{waiting_acquier}'"
     end rescue nil
@@ -349,11 +389,13 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @return [void]
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def exit__queue_ttl_reached(
     logger,
     log_sampled,
@@ -361,6 +403,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy
   )
     return unless log_sampled && log_lock_try
@@ -370,6 +413,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}'"
     end rescue nil
   end
@@ -380,6 +424,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @param waiting_acquier [String]
   # @param current_lock_data [Hash<String,Any>]
@@ -387,6 +432,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def exit__no_first(
     logger,
     log_sampled,
@@ -394,6 +440,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy,
     waiting_acquier,
     current_lock_data
@@ -405,6 +452,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}' " \
       "first_acq_id_in_queue => '#{waiting_acquier}' " \
       "<current_lock_data> => <<#{current_lock_data}>>"
@@ -417,6 +465,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @param waiting_acquier [String]
   # @param locked_by_acquier [String]
@@ -425,6 +474,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def exit__lock_still_obtained(
     logger,
     log_sampled,
@@ -432,6 +482,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy,
     waiting_acquier,
     locked_by_acquier,
@@ -444,6 +495,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}' " \
       "first_acq_id_in_queue => '#{waiting_acquier}' " \
       "locked_by_acq_id => '#{locked_by_acquier}' " \
@@ -457,11 +509,13 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
   # @param lock_key [String]
   # @param queue_ttl [Integer]
   # @param acquier_id [String]
+  # @param host_id [String]
   # @param access_strategy [Symbol]
   # @return [void]
   #
   # @api private
   # @since 1.7.0
+  # @version 1.9.0
   def obtain__free_to_acquire(
     logger,
     log_sampled,
@@ -469,6 +523,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
     lock_key,
     queue_ttl,
     acquier_id,
+    host_id,
     access_strategy
   )
     return unless log_sampled && log_lock_try
@@ -478,6 +533,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       "lock_key => '#{lock_key}' " \
       "queue_ttl => #{queue_ttl} " \
       "acq_id => '#{acquier_id}' " \
+      "hst_id => '#{host_id}' " \
       "acs_strat => '#{access_strategy}'"
     end rescue nil
   end
