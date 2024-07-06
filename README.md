@@ -38,7 +38,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [current_host_id](#current_host_id)
 - [Swarm Mode and Zombie Locks](#swarm-mode-and-zombie-locks)
   - [How to Swarm](#how-to-swarm)
-    - [Configuration](#)
+    - [configuration](#)
     - [swarm_status](#swarm_status)
     - [swarm_info](#swarm_info)
     - [probe_hosts](#probe_hosts)
@@ -1469,7 +1469,7 @@ rql.current_host_id
 > Eliminate zombie locks with a swarm.
 
 - [How to Swarm](#how-to-swarm)
-  - [Configuration](#)
+  - [configuration](#)
   - [swarm_status](#swarm_status)
   - [swarm_info](#swarm_info)
   - [probe_hosts](#probe_hosts)
