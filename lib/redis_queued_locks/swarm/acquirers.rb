@@ -8,10 +8,14 @@ module RedisQueuedLocks::Swarm::Acquirers
     # Format:
     #   {
     #     <acquirer id #1> => {
-    #       zombie: <Boolean>, last_probe_time: <Time>, last_probe_score: <Numeric>
+    #       zombie: <Boolean>,
+    #       last_probe_time: <Time>,
+    #       last_probe_score: <Numeric>
     #      },
     #     <acquirer id #2> => {
-    #       zombie: <Boolean>, last_probe_time: <Time>, last_probe_score: <Numeric>
+    #       zombie: <Boolean>,
+    #       last_probe_time: <Time>,
+    #       last_probe_score: <Numeric>
     #      },
     #     ...
     #   }
