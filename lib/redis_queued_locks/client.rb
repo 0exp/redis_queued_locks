@@ -260,6 +260,7 @@ class RedisQueuedLocks::Client
   )
     swarm.zombies_info(zombie_ttl:, lock_scan_size:)
   end
+  alias_method :zombies, :zombies_info
 
   # @param lock_name [String]
   #   Lock name to be obtained.
