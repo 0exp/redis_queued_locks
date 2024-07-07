@@ -121,6 +121,9 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #   - you can provide your own log sampler with bettter algorithm that should realize
     #     `sampling_happened?(percent) => boolean` interface
     #     (see `RedisQueuedLocks::Logging::Sampler` for example);
+    # @option log_sample_this [Boolean]
+    #   - marks the method that everything should be logged despite the enabled log sampling;
+    #   - makes sense when log sampling is enabled;
     # @option instr_sampling_enabled [Boolean]
     #   - enables <instrumentaion sampling>: only the configured percent
     #     of RQL cases will be instrumented;
@@ -139,6 +142,10 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #   - you can provide your own log sampler with bettter algorithm that should realize
     #     `sampling_happened?(percent) => boolean` interface
     #     (see `RedisQueuedLocks::Instrument::Sampler` for example);
+    # @option instr_sample_this [Boolean]
+    #   - marks the method that everything should be instrumneted
+    #     despite the enabled instrumentation sampling;
+    #   - makes sense when instrumentation sampling is enabled;
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -176,9 +183,11 @@ module RedisQueuedLocks::Acquier::AcquireLock
       log_sampling_enabled:,
       log_sampling_percent:,
       log_sampler:,
+      log_sample_this:,
       instr_sampling_enabled:,
       instr_sampling_percent:,
       instr_sampler:,
+      instr_sample_this:,
       &block
     )
       # Step 0: Prevent argument type incompatabilities
@@ -235,11 +244,13 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
       log_sampled = RedisQueuedLocks::Logging.should_log?(
         log_sampling_enabled,
+        log_sample_this,
         log_sampling_percent,
         log_sampler
       )
       instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
         instr_sampling_enabled,
+        instr_sample_this,
         instr_sampling_percent,
         instr_sampler
       )

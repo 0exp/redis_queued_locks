@@ -40,6 +40,9 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     #   - you can provide your own log sampler with bettter algorithm that should realize
     #     `sampling_happened?(percent) => boolean` interface
     #     (see `RedisQueuedLocks::Logging::Sampler` for example);
+    # @param log_sample_this [Boolean]
+    #   - marks the method that everything should be logged despite the enabled log sampling;
+    #   - makes sense when log sampling is enabled;
     # @param instr_sampling_enabled [Boolean]
     #   - enables <instrumentaion sampling>: only the configured percent
     #     of RQL cases will be instrumented;
@@ -58,6 +61,10 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
     #   - you can provide your own log sampler with bettter algorithm that should realize
     #     `sampling_happened?(percent) => boolean` interface
     #     (see `RedisQueuedLocks::Instrument::Sampler` for example);
+    # @param instr_sample_this [Boolean]
+    #   - marks the method that everything should be instrumneted
+    #     despite the enabled instrumentation sampling;
+    #   - makes sense when instrumentation sampling is enabled;
     # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
     #   Format: { ok: true, result: Hash<Symbol,Numeric> }
     #
@@ -73,9 +80,11 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,
+      log_sample_this,
       instr_sampling_enabled,
       instr_sampling_percent,
-      instr_sampler
+      instr_sampler,
+      instr_sample_this
     )
       rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
       fully_release_all_locks(redis, batch_size) => { ok:, result: }
@@ -85,6 +94,7 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
 
       instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
         instr_sampling_enabled,
+        instr_sample_this,
         instr_sampling_percent,
         instr_sampler
       )

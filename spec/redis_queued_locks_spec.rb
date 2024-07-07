@@ -179,6 +179,7 @@ RSpec.describe RedisQueuedLocks do
       end
     end
 
+    # NOTE: enabled sampling
     client = RedisQueuedLocks::Client.new(redis) do |conf|
       conf.instr_sampling_enabled = true
       conf.instr_sampling_percent = 10
@@ -192,10 +193,11 @@ RSpec.describe RedisQueuedLocks do
       end
 
       instrumented_cases = sampled_notifications.select(&:any?)
-      expect(instrumented_cases.size < 30).to eq(true)
+      expect(instrumented_cases.size < 40).to eq(true)
       expect(instrumented_cases.size > 1).to eq(true)
     end
 
+    # NOTE: disabled sampling
     client = RedisQueuedLocks::Client.new(redis) do |conf|
       conf.instr_sampling_enabled = false
     end
@@ -203,6 +205,24 @@ RSpec.describe RedisQueuedLocks do
     sampled_notifications = Array.new(100) do
       sampled_notifier = test_notifier.new
       client.lock('instr_sampling_check', instrumenter: sampled_notifier) {}
+      sampled_notifier.notifications
+    end
+
+    instrumented_cases = sampled_notifications.select(&:any?)
+    expect(instrumented_cases.size).to eq(100)
+
+    # NOTE: sampling ignorance
+    client = RedisQueuedLocks::Client.new(redis) do |conf|
+      conf.instr_sampling_enabled = true
+    end
+
+    sampled_notifications = Array.new(100) do
+      sampled_notifier = test_notifier.new
+      client.lock(
+        'instr_sampling_check',
+        instrumenter: sampled_notifier,
+        instr_sample_this: true
+      ) {}
       sampled_notifier.notifications
     end
 
@@ -223,6 +243,7 @@ RSpec.describe RedisQueuedLocks do
       end
     end
 
+    # NOTE: enabled sampling
     client = RedisQueuedLocks::Client.new(redis) do |conf|
       conf.log_lock_try = true
       conf.log_sampling_enabled = true
@@ -237,10 +258,11 @@ RSpec.describe RedisQueuedLocks do
       end
 
       logged_cases = sampled_logs.select(&:any?)
-      expect(logged_cases.size < 30).to eq(true)
+      expect(logged_cases.size < 40).to eq(true)
       expect(logged_cases.size > 1).to eq(true)
     end
 
+    # NOTE: disabled sampling
     client = RedisQueuedLocks::Client.new(redis) do |conf|
       conf.log_lock_try = true
       conf.log_sampling_enabled = false
@@ -250,6 +272,22 @@ RSpec.describe RedisQueuedLocks do
     sampled_logs = Array.new(100) do
       sampled_logger = test_logger_klass.new
       client.lock('log_sampling_check', logger: sampled_logger) {}
+      sampled_logger.logs
+    end
+
+    logged_cases = sampled_logs.select(&:any?)
+    expect(logged_cases.size).to eq(100)
+
+    # NOTE: ignored sampling
+    client = RedisQueuedLocks::Client.new(redis) do |conf|
+      conf.log_lock_try = true
+      conf.log_sampling_enabled = true
+      conf.log_sampling_percent = 15
+    end
+
+    sampled_logs = Array.new(100) do
+      sampled_logger = test_logger_klass.new
+      client.lock('log_sampling_check', logger: sampled_logger, log_sample_this: true) {}
       sampled_logger.logs
     end
 

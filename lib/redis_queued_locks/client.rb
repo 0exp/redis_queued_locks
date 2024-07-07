@@ -367,6 +367,9 @@ class RedisQueuedLocks::Client
   #   - you can provide your own log sampler with bettter algorithm that should realize
   #     `sampling_happened?(percent) => boolean` interface
   #     (see `RedisQueuedLocks::Logging::Sampler` for example);
+  # @option log_sample_this [Boolean]
+  #   - marks the method that everything should be logged despite the enabled log sampling;
+  #   - makes sense when log sampling is enabled;
   # @option instr_sampling_enabled [Boolean]
   #   - enables <instrumentaion sampling>: only the configured percent
   #     of RQL cases will be instrumented;
@@ -385,6 +388,10 @@ class RedisQueuedLocks::Client
   #   - you can provide your own log sampler with bettter algorithm that should realize
   #     `sampling_happened?(percent) => boolean` interface
   #     (see `RedisQueuedLocks::Instrument::Sampler` for example);
+  # @option instr_sample_this [Boolean]
+  #   - marks the method that everything should be instrumneted
+  #     despite the enabled instrumentation sampling;
+  #   - makes sense when instrumentation sampling is enabled;
   # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
   # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
@@ -418,9 +425,11 @@ class RedisQueuedLocks::Client
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
     log_sampler: config[:log_sampler],
+    log_sample_this: false,
     instr_sampling_enabled: config[:instr_sampling_enabled],
     instr_sampling_percent: config[:instr_sampling_percent],
     instr_sampler: config[:instr_sampler],
+    instr_sample_this: false,
     &block
   )
     RedisQueuedLocks::Acquier::AcquireLock.acquire_lock(
@@ -451,9 +460,11 @@ class RedisQueuedLocks::Client
       log_sampling_enabled:,
       log_sampling_percent:,
       log_sampler:,
+      log_sample_this:,
       instr_sampling_enabled:,
       instr_sampling_percent:,
       instr_sampler:,
+      instr_sample_this:,
       &block
     )
   end
@@ -487,9 +498,11 @@ class RedisQueuedLocks::Client
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
     log_sampler: config[:log_sampler],
+    log_sample_this: false,
     instr_sampling_enabled: config[:instr_sampling_enabled],
     instr_sampling_percent: config[:instr_sampling_percent],
     instr_sampler: config[:instr_sampler],
+    instr_sample_this: false,
     &block
   )
     lock(
@@ -515,9 +528,11 @@ class RedisQueuedLocks::Client
       log_sampling_enabled:,
       log_sampling_percent:,
       log_sampler:,
+      log_sample_this:,
       instr_sampling_enabled:,
       instr_sampling_percent:,
       instr_sampler:,
+      instr_sample_this:,
       &block
     )
   end
@@ -530,9 +545,11 @@ class RedisQueuedLocks::Client
   # @option log_sampling_enabled [Boolean]
   # @option log_sampling_percent [Integer]
   # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
   # @option instr_sampling_enabled [Boolean]
   # @option instr_sampling_percent [Integer]
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
   # @return [RedisQueuedLocks::Data, Hash<Symbol,Any>]
   #   Format: {
   #     ok: true/false,
@@ -556,9 +573,11 @@ class RedisQueuedLocks::Client
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
     log_sampler: config[:log_sampler],
+    log_sample_this: false,
     instr_sampling_enabled: config[:instr_sampling_enabled],
     instr_sampling_percent: config[:instr_sampling_percent],
-    instr_sampler: config[:instr_sampler]
+    instr_sampler: config[:instr_sampler],
+    instr_sample_this: false
   )
     RedisQueuedLocks::Acquier::ReleaseLock.release_lock(
       redis_client,
@@ -568,9 +587,11 @@ class RedisQueuedLocks::Client
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,
+      log_sample_this,
       instr_sampling_enabled,
       instr_sampling_percent,
-      instr_sampler
+      instr_sampler,
+      instr_sample_this
     )
   end
 
@@ -694,9 +715,11 @@ class RedisQueuedLocks::Client
   # @option log_sampling_enabled [Boolean]
   # @option log_sampling_percent [Integer]
   # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
   # @option instr_sampling_enabled [Boolean]
   # @option instr_sampling_percent [Integer]
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
   # @return [Hash<Symbol,Boolean|Symbol>]
   #   - { ok: true, result: :ttl_extended }
   #   - { ok: false, result: :async_expire_or_no_lock }
@@ -713,9 +736,11 @@ class RedisQueuedLocks::Client
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
     log_sampler: config[:log_sampler],
+    log_sample_this: false,
     instr_sampling_enabled: config[:instr_sampling_enabled],
     instr_sampling_percent: config[:instr_sampling_percent],
-    instr_sampler: config[:instr_sampler]
+    instr_sampler: config[:instr_sampler],
+    instr_sample_this: false
   )
     RedisQueuedLocks::Acquier::ExtendLockTTL.extend_lock_ttl(
       redis_client,
@@ -727,9 +752,11 @@ class RedisQueuedLocks::Client
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,
+      log_sample_this,
       instr_sampling_enabled,
       instr_sampling_percent,
-      instr_sampler
+      instr_sampler,
+      instr_sample_this
     )
   end
 
@@ -745,9 +772,11 @@ class RedisQueuedLocks::Client
   # @option log_sampling_enabled [Boolean]
   # @option log_sampling_percent [Integer]
   # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
   # @option instr_sampling_enabled [Boolean]
   # @option instr_sampling_percent [Integer]
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
   # @return [RedisQueuedLocks::Data,Hash<Symbol,Boolean|Hash<Symbol,Numeric>>]
   #   Example: { ok: true, result { rel_key_cnt: 100, rel_time: 0.01 } }
   #
@@ -762,9 +791,11 @@ class RedisQueuedLocks::Client
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
     log_sampler: config[:log_sampler],
+    log_sample_this: false,
     instr_sampling_enabled: config[:instr_sampling_enabled],
     instr_sampling_percent: config[:instr_sampling_percent],
-    instr_sampler: config[:instr_sampler]
+    instr_sampler: config[:instr_sampler],
+    instr_sample_this: false
   )
     RedisQueuedLocks::Acquier::ReleaseAllLocks.release_all_locks(
       redis_client,
@@ -775,9 +806,11 @@ class RedisQueuedLocks::Client
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,
+      log_sample_this,
       instr_sampling_enabled,
       instr_sampling_percent,
-      instr_sampler
+      instr_sampler,
+      instr_sample_this
     )
   end
 
@@ -868,9 +901,11 @@ class RedisQueuedLocks::Client
   # @option log_sampling_enabled [Boolean]
   # @option log_sampling_percent [Integer]
   # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
   # @option instr_sampling_enabled [Boolean]
   # @option instr_sampling_percent [Integer]
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
   # @return [Hash<Symbol,Boolean|Hash<Symbol,Set<String>>>]
   #   Format: { ok: true, result: { processed_queus: Set<String> } }
   #
@@ -886,9 +921,11 @@ class RedisQueuedLocks::Client
     log_sampling_enabled: config[:log_sampling_enabled],
     log_sampling_percent: config[:log_sampling_percent],
     log_sampler: config[:log_sampler],
+    log_sample_this: false,
     instr_sampling_enabled: config[:instr_sampling_enabled],
     instr_sampling_percent: config[:instr_sampling_percent],
-    instr_sampler: config[:instr_sampler]
+    instr_sampler: config[:instr_sampler],
+    instr_sample_this: false
   )
     RedisQueuedLocks::Acquier::ClearDeadRequests.clear_dead_requests(
       redis_client,
@@ -900,9 +937,11 @@ class RedisQueuedLocks::Client
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,
+      log_sample_this,
       instr_sampling_enabled,
       instr_sampling_percent,
-      instr_sampler
+      instr_sampler,
+      instr_sample_this
     )
   end
 end

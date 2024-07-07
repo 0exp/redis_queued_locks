@@ -9,14 +9,21 @@ module RedisQueuedLocks::Logging
 
   class << self
     # @param log_sampling_enabled [Boolean]
+    # @param log_sample_this [Boolean]
     # @param log_sampling_percent [Integer]
     # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     # @return [Boolean]
     #
     # @api private
     # @since 1.5.0
-    def should_log?(log_sampling_enabled, log_sampling_percent, log_sampler)
+    def should_log?(
+      log_sampling_enabled,
+      log_sample_this,
+      log_sampling_percent,
+      log_sampler
+    )
       return true unless log_sampling_enabled
+      return true if log_sample_this
       log_sampler.sampling_happened?(log_sampling_percent)
     end
 

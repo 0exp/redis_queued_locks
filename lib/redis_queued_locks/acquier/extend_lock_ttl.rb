@@ -22,9 +22,11 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
     # @param log_sampling_enabled [Boolean]
     # @param log_sampling_percent [Integer]
     # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+    # @param log_sample_this [Boolean]
     # @param instr_sampling_enabled [Boolean]
     # @param instr_sampling_percent [Integer]
     # @param instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+    # @param instr_sample_this [Boolean]
     # @return [Hash<Symbol,Boolean|Symbol>]
     #
     # @api private
@@ -40,9 +42,11 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,
+      log_sample_this,
       instr_sampling_enabled,
       instr_sampling_percent,
-      instr_sampler
+      instr_sampler,
+      instr_sample_this
     )
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
 

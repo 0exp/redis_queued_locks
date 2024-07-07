@@ -10,14 +10,21 @@ module RedisQueuedLocks::Instrument
 
   class << self
     # @param instr_sampling_enabled [Boolean]
+    # @param instr_sample_this [Boolean]
     # @param instr_sampling_percent [Integer]
     # @param instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
     # @return [Boolean]
     #
     # @api private
     # @since 1.6.0
-    def should_instrument?(instr_sampling_enabled, instr_sampling_percent, instr_sampler)
+    def should_instrument?(
+      instr_sampling_enabled,
+      instr_sample_this,
+      instr_sampling_percent,
+      instr_sampler
+    )
       return true unless instr_sampling_enabled
+      return true if instr_sample_this
       instr_sampler.sampling_happened?(instr_sampling_percent)
     end
 
