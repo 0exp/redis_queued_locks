@@ -271,7 +271,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # (default: false)
   # - adds additional debug logs;
   # - enables additional logs for each internal try-retry lock acquiring (a lot of logs can be generated depending on your retry configurations);
-  # - it adds following logs in addition to the existing:
+  # - it adds following debug logs in addition to the existing:
   #   - "[redis_queued_locks.try_lock.start]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
   #   - "[redis_queued_locks.try_lock.rconn_fetched]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
   #   - "[redis_queued_locks.try_lock.same_process_conflict_detected]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
