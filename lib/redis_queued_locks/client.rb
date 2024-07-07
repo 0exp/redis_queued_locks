@@ -210,6 +210,8 @@ class RedisQueuedLocks::Client
     swarm.flush_zombies(zombie_ttl:, lock_scan_size:, queue_scan_size:)
   end
 
+  # @option zombie_ttl [Integer]
+  # @option lock_scan_size [Integer]
   # @return [Set<String>]
   #
   # @api public
@@ -221,6 +223,8 @@ class RedisQueuedLocks::Client
     swarm.zombie_locks(zombie_ttl:, lock_scan_size:)
   end
 
+  # @option zombie_ttl [Integer]
+  # @option lock_scan_size [Integer]
   # @return [Set<String>]
   #
   # @api ppublic
@@ -232,6 +236,7 @@ class RedisQueuedLocks::Client
     swarm.zombie_acquiers(zombie_ttl:, lock_scan_size:)
   end
 
+  # @option zombie_ttl [Integer]
   # @return [Set<String>]
   #
   # @api public

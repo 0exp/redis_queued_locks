@@ -579,6 +579,7 @@ Return value:
       result: {
         lock_key: String, # acquierd lock key ("rql:lock:your_lock_name")
         acq_id: String, # acquier identifier ("process_id/thread_id/fiber_id/ractor_id/identity")
+        hst_id: String, # host identifier ("process_id/thread_id/ractor_id/identity")
         ts: Float, # time (epoch) when lock was obtained (float, Time#to_f)
         ttl: Integer, # lock's time to live in milliseconds (integer)
         process: Symbol # which logical process has acquired the lock (:lock_obtaining, :extendable_conflict_work_through, :conflict_work_through, :conflict_dead_lock)
@@ -593,6 +594,7 @@ Return value:
       result: {
         lock_key: "rql:lock:my_lock",
         acq_id: "rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
+        acq_id: "rql:acq:26672/2280/2320/70ea5dbf10ea1056",
         ts: 1711909612.653696,
         ttl: 10000,
         process: :lock_obtaining # for custom conflict strategies may be: :conflict_dead_lock, :conflict_work_through, :extendable_conflict_work_through

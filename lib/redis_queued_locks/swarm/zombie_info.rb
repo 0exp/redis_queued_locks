@@ -5,7 +5,7 @@
 module RedisQueuedLocks::Swarm::ZombieInfo
   class << self
     # @param redis_client [RedisClient]
-    # @param zombie_ttl [Numeric]
+    # @param zombie_ttl [Integer]
     # @param lock_scan_size [Integer]
     # @return [Hash<Symbol,Set<String>>]
     #   Format: {
@@ -23,7 +23,7 @@ module RedisQueuedLocks::Swarm::ZombieInfo
     end
 
     # @param redis_client [RedisClient]
-    # @param zombie_ttl [Numeric]
+    # @param zombie_ttl [Integer]
     # @param lock_scan_size [Integer]
     # @return [Set<String>]
     #
@@ -36,7 +36,7 @@ module RedisQueuedLocks::Swarm::ZombieInfo
     end
 
     # @param redis_client [RedisClient]
-    # @param zombie_ttl [Numeric]
+    # @param zombie_ttl [Integer]
     # @return [Set<String>]
     #
     # @api private
@@ -48,7 +48,7 @@ module RedisQueuedLocks::Swarm::ZombieInfo
     end
 
     # @param redis_client [RedisClient]
-    # @param zombie_ttl [Numeric]
+    # @param zombie_ttl [Integer]
     # @param lock_scan_size [Integer]
     # @return [Set<String>]
     #
@@ -63,7 +63,7 @@ module RedisQueuedLocks::Swarm::ZombieInfo
     private
 
     # @param rconn [RedisClient] redis connection obtained via `#with` from RedisClient instance;
-    # @param zombie_ttl [Numeric]
+    # @param zombie_ttl [Integer]
     # @return [Set<String>]
     #
     # @api private
@@ -77,7 +77,7 @@ module RedisQueuedLocks::Swarm::ZombieInfo
     end
 
     # @param rconn [RedisClient] redis connection obtained via `#with` from RedisClient instance;
-    # @param zombie_ttl [Numeric]
+    # @param zombie_ttl [Integer]
     # @param lock_scan_size [Integer]
     # @return [Set<String>]
     #
@@ -96,7 +96,7 @@ module RedisQueuedLocks::Swarm::ZombieInfo
     end
 
     # @param rconn [RedisClient] redis connection obtained via `#with` from RedisClient instance;
-    # @param zombie_ttl [Numeric]
+    # @param zombie_ttl [Integer]
     # @param lock_scan_size [Integer]
     # @return [Set<String>]
     #
@@ -115,7 +115,7 @@ module RedisQueuedLocks::Swarm::ZombieInfo
     end
 
     # @param rconn [RedisClient] redis connection obtained via `#with` from RedisClient instance;
-    # @param zombie_ttl [Numeric]
+    # @param zombie_ttl [Integer]
     # @param lock_scan_size [Integer]
     # @return [Hash<Symbol,<Set<String>>]
     #   Format: {
