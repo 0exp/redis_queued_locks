@@ -6,7 +6,7 @@
 - (changelog draft) (added **hst_id** to `#lock_info` / `#lock_data` / `#locks_info` method results);
 - (changelog draft) (`#current_host_id`);
 - (changelog draft) (added **hst_id** to `RedisQueuedLocks::TimedLockTimeoutError` error message);
-- (changelog draft) (an ability to mark any method as sampled for instrumentation/logging despite of the enabled instrumentation/log sampling;
+- (changelog draft) (an ability to mark any loggable/instrumentable method as sampled for instrumentation/logging despite of the enabled instrumentation/log sampling;
 
 ```ruby
 daiver => ~/Projects/redis_queued_locks  master [$]
