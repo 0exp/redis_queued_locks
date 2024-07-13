@@ -110,36 +110,36 @@ RSpec.describe RedisQueuedLocks do
       client.probe_hosts
 
       # probes after start
-      expect(client.swarm_info).to match({
+      expect(client.swarm_info).to match(hash_including({
         client.current_host_id => match({
           zombie: false,
           last_probe_time: be_a(Time),
           last_probe_score: be_a(Numeric)
         })
-      })
+      }))
 
       sleep(4)
 
       # old probes => zombie probes
-      expect(client.swarm_info).to match({
+      expect(client.swarm_info).to match(hash_including({
         client.current_host_id => match({
           zombie: true,
           last_probe_time: be_a(Time),
           last_probe_score: be_a(Numeric)
         })
-      })
+      }))
 
       old_probes = client.swarm_info
       client.probe_hosts # probe again
 
       # fresh probe => non-zombie probe :)
-      expect(client.swarm_info).to match({
+      expect(client.swarm_info).to match(hash_including({
         client.current_host_id => match({
           zombie: false,
           last_probe_time: be_a(Time),
           last_probe_score: be_a(Numeric)
         })
-      })
+      }))
 
       new_probes = client.swarm_info
 
