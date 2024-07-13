@@ -9,10 +9,282 @@ RSpec.describe RedisQueuedLocks do
 
   before do
     redis.call('FLUSHDB')
+    # drop immediatly cuz flsuhdb can be async
+    redis.call('DEL', RedisQueuedLocks::Resource::SWARM_KEY)
     RedisQueuedLocks.enable_debugger!
   end
 
-  after { redis.call('FLUSHDB') }
+  after do
+    # drop immediatly cuz flsuhdb can be async
+    redis.call('DEL', RedisQueuedLocks::Resource::SWARM_KEY)
+    redis.call('FLUSHDB')
+  end
+
+  describe 'swarm' do
+    specify 'swarm_status / swarm_info' do
+      aggregate_failures 'non-auto-swarmed => swarm is not initialized' do
+        client = RedisQueuedLocks::Client.new(redis) do |conf|
+          conf.swarm.auto_swarm = false
+          conf.swarm.probe_hosts.enabled_for_swarm = false
+          conf.swarm.flush_zombies.enabled_for_swarm = false
+        end
+
+        expect(client.swarm_info).to match({})
+        expect(client.swarm_status).to match({
+          auto_swarm: false,
+          supervisor: match({
+            running: false,
+            state: 'non_initialized',
+            observable: 'non_initialized'
+          }),
+          probe_hosts: match({
+            enabled: false,
+            thread: match({
+              running: false,
+              state: 'non_initialized'
+            }),
+            main_loop: match({
+              running: false,
+              state: 'non_initialized'
+            })
+          }),
+          flush_zombies: match({
+            enabled: false,
+            ractor: match({
+              running: false,
+              state: 'non_initialized'
+            }),
+            main_loop: match({
+              running: false,
+              state: 'non_initialized'
+            })
+          })
+        })
+      end
+
+      aggregate_failures 'default state: no autoswarm with enabled elements' do
+        client = RedisQueuedLocks::Client.new(redis)
+        expect(client.swarm_info).to match({})
+        expect(client.swarm_status).to match({
+          auto_swarm: false,
+          supervisor: match({
+            running: false,
+            state: 'non_initialized',
+            observable: 'non_initialized'
+          }),
+          probe_hosts: match({
+            enabled: true,
+            thread: match({
+              running: false,
+              state: 'non_initialized'
+            }),
+            main_loop: match({
+              running: false,
+              state: 'non_initialized'
+            })
+          }),
+          flush_zombies: match({
+            enabled: true,
+            ractor: match({
+              running: false,
+              state: 'non_initialized'
+            }),
+            main_loop: match({
+              running: false,
+              state: 'non_initialized'
+            })
+          })
+        })
+      end
+    end
+
+    specify 'manual host probing' do
+      client = RedisQueuedLocks::Client.new(redis) do |conf|
+        conf.swarm.auto_swarm = false
+        conf.swarm.flush_zombies.zombie_ttl = 4_000
+      end
+
+      # No probes at start
+      expect(client.swarm_info).to eq({})
+
+      client.probe_hosts
+
+      # probes after start
+      expect(client.swarm_info).to match({
+        client.current_host_id => match({
+          zombie: false,
+          last_probe_time: be_a(Time),
+          last_probe_score: be_a(Numeric)
+        })
+      })
+
+      sleep(4)
+
+      # old probes => zombie probes
+      expect(client.swarm_info).to match({
+        client.current_host_id => match({
+          zombie: true,
+          last_probe_time: be_a(Time),
+          last_probe_score: be_a(Numeric)
+        })
+      })
+
+      old_probes = client.swarm_info
+      client.probe_hosts # probe again
+
+      # fresh probe => non-zombie probe :)
+      expect(client.swarm_info).to match({
+        client.current_host_id => match({
+          zombie: false,
+          last_probe_time: be_a(Time),
+          last_probe_score: be_a(Numeric)
+        })
+      })
+
+      new_probes = client.swarm_info
+
+      # new fresh probes is greater than old (new last probe time, new last probe score)
+      expect(new_probes[client.current_host_id][:last_probe_time]).to(satisfy do |val|
+        val > old_probes[client.current_host_id][:last_probe_time]
+      end)
+      expect(new_probes[client.current_host_id][:last_probe_score]).to(satisfy do |val|
+        val > old_probes[client.current_host_id][:last_probe_score]
+      end)
+    end
+
+    specify 'zombie locks (with hosts and acquiers)' do
+      main_client = RedisQueuedLocks::Client.new(redis) do |conf|
+        conf.swarm.auto_swarm = true
+        conf.swarm.probe_hosts.enabled_for_swarm = true
+        conf.swarm.flush_zombies.enabled_for_swarm = false
+        conf.swarm.flush_zombies.zombie_ttl = 6_000
+        conf.swarm.flush_zombies.zombie_flush_period = 5
+      end
+
+      aggregate_failures 'no zombies at start' do
+        expect(main_client.zombie_locks).to eq(Set.new) # empty set
+        expect(main_client.zombie_hosts).to eq(Set.new) # empty set
+        expect(main_client.zombie_acquiers).to eq(Set.new) # empty set
+
+        expect(main_client.zombies_info).to match({
+          zombie_locks: Set.new,
+          zombie_hosts: Set.new,
+          zombie_acquirers: Set.new
+        })
+        expect(main_client.zombies).to match({
+          zombie_locks: Set.new,
+          zombie_hosts: Set.new,
+          zombie_acquirers: Set.new
+        })
+      end
+
+      outer_acquirer1 = nil
+      outer_host1 = nil
+      outer_acquirer2 = nil
+      outer_host2 = nil
+
+      outer_thread1 = Thread.new do
+        client = RedisQueuedLocks::Client.new(redis) do |conf|
+          conf.swarm.auto_swarm = true
+          conf.swarm.probe_hosts.enabled_for_swarm = true
+          conf.swarm.flush_zombies.enabled_for_swarm = false
+        end
+
+        outer_acquirer1 = client.current_acquier_id
+        outer_host1 = client.current_host_id
+
+        client.swarmize!
+        client.lock('long_lock', ttl: 500_000)
+      end
+
+      outer_thread2 = Thread.new do
+        client = RedisQueuedLocks::Client.new(redis) do |conf|
+          conf.swarm.auto_swarm = true
+          conf.swarm.probe_hosts.enabled_for_swarm = true
+          conf.swarm.flush_zombies.enabled_for_swarm = false
+        end
+
+        outer_acquirer2 = client.current_acquier_id
+        outer_host2 = client.current_host_id
+
+        client.swarmize!
+        client.lock('another_long_lock', ttl: 500_000)
+      end
+      until main_client.locked?('long_lock'); end
+      outer_thread1.kill
+      # long_lock now is a zombie lock cuz the holding thread is dead and
+      # does not work/host the lock anymore
+
+      until main_client.locked?('another_long_lock'); end
+      outer_thread2.kill
+      # lanother_ong_lock now is a zombie lock cuz the holding thread is dead and
+      # does not work/host the lock anymore
+
+      # NOTE: zombie TTL is not reached yet
+      aggregate_failures 'no zombies before the zombie ttl' do
+        expect(main_client.locked?('long_lock')).to eq(true)
+        expect(main_client.locked?('another_long_lock')).to eq(true)
+        expect(main_client.zombie_locks).to eq(Set.new) # empty set
+        expect(main_client.zombie_hosts).to eq(Set.new) # empty set
+        expect(main_client.zombie_acquiers).to eq(Set.new) # empty set
+
+        expect(main_client.zombies_info).to match({
+          zombie_locks: Set.new,
+          zombie_hosts: Set.new,
+          zombie_acquirers: Set.new
+        })
+        expect(main_client.zombies).to match({
+          zombie_locks: Set.new,
+          zombie_hosts: Set.new,
+          zombie_acquirers: Set.new
+        })
+      end
+
+      sleep(6) # wait for zombie ttl
+      # NOTE: zombie ttl is reached!
+
+      aggregate_failures 'dead lock hosting threads => zombie ttl is reached => zombies!' do
+        # ZOMBIE LOCKS
+        expect(main_client.locked?('long_lock')).to eq(true)
+        expect(main_client.locked?('another_long_lock')).to eq(true)
+
+        # ZOMBIE LOCKS
+        expect(main_client.zombie_locks).to eq(
+          Set.new(%w[rql:lock:long_lock rql:lock:another_long_lock])
+        )
+
+        # ZOMBIE LOCK HOSTS AND ACQUIRERS
+        expect(main_client.zombie_hosts).to include(outer_host1, outer_host2)
+        expect(main_client.zombie_acquiers).to include(outer_acquirer1, outer_acquirer2)
+
+        expect(main_client.zombies_info).to match({
+          zombie_locks: Set.new(%w[rql:lock:long_lock rql:lock:another_long_lock]),
+          zombie_hosts: include(outer_host1, outer_host2),
+          zombie_acquirers: include(outer_acquirer1, outer_acquirer2)
+        })
+        expect(main_client.zombies).to match({
+          zombie_locks: Set.new(%w[rql:lock:long_lock rql:lock:another_long_lock]),
+          zombie_hosts: include(outer_host1, outer_host2),
+          zombie_acquirers: include(outer_acquirer1, outer_acquirer2)
+        })
+      end
+
+      # KILL ZOMBIES by the SWARM: enable zombie flusher
+      main_client.configure do |config|
+        config.swarm.flush_zombies.enabled_for_swarm = true # enable zombie flusher
+      end
+      sleep(2 + 5) # wait for supervisor probe period (up zombie flusher) + zombie flush period
+      sleep(1) # wait for zombie killing
+
+      aggregate_failures 'zombies should be fully flushed' do
+        expect(main_client.locked?('long_lock')).to eq(false) # lock is unlocked
+        expect(main_client.locked?('another_long_lock')).to eq(false) # lock is unlocked
+        expect(main_client.zombie_locks).to eq(Set.new) # no zombie locks
+        expect(main_client.zombie_hosts).to eq(Set.new) # no zombie hosts
+        expect(main_client.zombie_acquiers).to eq(Set.new) # no zombie acquiers
+      end
+    end
+  end
 
   specify ':random access strategy' do
     client = RedisQueuedLocks::Client.new(redis) do |conf|
