@@ -187,17 +187,17 @@ module RedisQueuedLocks::Resource
       #   object space API (or super memory-expensive) so host identification works without fibers;
       # NOTE №3: we still can extract thread objects via Thread.list API;
       current_process_id = get_process_id
+      current_threads = ::Thread.list
+      current_ractor = ::Ractor.current
 
       [].tap do |acquiers|
-        ::Thread.list.each do |thread|
-          ::ObjectSpace.each_object(::Ractor) do |ractor|
-            acquiers << host_identifier(
-              current_process_id,
-              thread.object_id,
-              ractor.object_id,
-              identity
-            )
-          end
+        current_threads.each do |thread|
+          acquiers << host_identifier(
+            current_process_id,
+            thread.object_id,
+            current_ractor.object_id,
+            identity
+          )
         end
       end
     end

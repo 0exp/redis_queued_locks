@@ -35,7 +35,7 @@ class RedisQueuedLocks::Client
     setting :swarm do
       setting :auto_swarm, false
       setting :supervisor do
-        setting :liveness_probing_period, 2 # in seconds
+        setting :liveness_probing_period, 2 # NOTE: in seconds
       end
       setting :probe_hosts do
         setting :enabled_for_swarm, true
@@ -695,6 +695,17 @@ class RedisQueuedLocks::Client
       ractor_id,
       identity
     )
+  end
+
+  # Return the list of possible host identifiers that can be reached from the current ractor.
+  #
+  # @param identity [String] Unique identity (RedisQueuedLocks::Client#uniq_identity by default)
+  # @return [Array<String>]
+  #
+  # @api public
+  # @since 1.9.0
+  def possible_host_ids(identity = uniq_identity)
+    RedisQueuedLocks::Resource.possible_host_identifiers(identity)
   end
 
   # This method is non-atomic cuz redis does not provide an atomic function for TTL/PTTL extension.
