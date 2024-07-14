@@ -21,7 +21,7 @@ RSpec.describe RedisQueuedLocks do
   end
 
   describe 'swarm' do
-    specify 'supervisor keeps the swarm elements up and working' do
+    specify 'supervisor keeps the swarm elements up and running' do
 
     end
 
