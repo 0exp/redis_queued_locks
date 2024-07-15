@@ -39,9 +39,9 @@
   - an ability to fetch the current host id (your ruby worker host id): `#current_host_id`;
   - an ability to fetch all possible host ids in the current Ractor (all possible and reachable ruby workers from the current ractor): `#possible_host_ids`;
   - extended `RedisQueuedLocks::TimedLocktimeoutError` message: added `hst_id` field data from the lock data;
-- **Instrumentation Updates**:
+- **Instrumentation** updates:
   - added the `hst_id` field to each locking-process-related instrumentation event;
-- **Log Updates**:
+- **Logging** updates:
   - added `hst_id` field to each locking-process-related log;
 - **Logging/Instrumentation Sampling** updates:
   - an ability to mark any loggable/instrumentable method as sampled for instrumentation/logging despite of the enabled instrumentation/log sampling
