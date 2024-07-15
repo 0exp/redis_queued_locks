@@ -1,4 +1,6 @@
 ## [Unreleased]
+
+## [1.9.0] - 2024-07-15
 ### Added
 - Brand New Extremely Major Feature: **Swarm Mode** - eliminate zombie locks with a swarm:
   - works by `supervisor` + `actors` abstractions;
