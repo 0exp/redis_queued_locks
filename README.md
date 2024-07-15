@@ -1514,7 +1514,7 @@ rql.current_host_id
 
 > Eliminate zombie locks with a swarm.
 
-- **this documentation section is in progress**;
+**This documentation section is in progress!**;
 
 - [How to Swarm](#how-to-swarm)
   - [configuration](#)
