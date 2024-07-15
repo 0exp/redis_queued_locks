@@ -71,15 +71,15 @@ RSpec.describe RedisQueuedLocks do
     specify 'supervisor keeps the swarm elements up and running' do
       client = RedisQueuedLocks::Client.new(redis) do |conf|
         conf.swarm.auto_swarm = true
-        conf.swarm.supervisor.liveness_probing_period = 4
+        conf.swarm.supervisor.liveness_probing_period = 6
         conf.swarm.probe_hosts.probe_period = 2
       end
 
       # kill swarm elements. supervisor should up them soon.
       client.swarm.flush_zombies_element.try_kill!
-      sleep(0.5) # give a timespot to termiane all async elements
+      sleep(1) # give a timespot to termiane all async elements
       client.swarm.probe_hosts_element.try_kill!
-      sleep(0.5) # give a timespot to termiane all async elements
+      sleep(1) # give a timespot to termiane all async elements
 
       # check that killed elements are truely dead
       aggregate_failures 'swarm elements are dead' do
@@ -107,7 +107,7 @@ RSpec.describe RedisQueuedLocks do
       #   + some time for up the killed elements
       #   + time to probe hosts period
       #   + time to probe hosts activity ;)
-      sleep(4 + 1 + 2 + 1)
+      sleep(6 + 1 + 2 + 1)
 
       # check that elements are running
       aggregate_failures 'swarm is fully ressurected' do
