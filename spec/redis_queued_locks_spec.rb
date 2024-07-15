@@ -25,10 +25,10 @@ RSpec.describe RedisQueuedLocks do
       client = RedisQueuedLocks::Client.new(redis)
 
       uniq_identity = client.uniq_identity
-      current_thread_list = ::Thread.list
-      current_process_id = ::Process.pid
-      current_thread_id = ::Thread.current.object_id
-      current_ractor_id = ::Ractor.current.object_id
+      current_thread_list = Thread.list
+      current_process_id = Process.pid
+      current_thread_id = Thread.current.object_id
+      current_ractor_id = Ractor.current.object_id
 
       # verify current host
       expect(client.current_host_id).to eq(
