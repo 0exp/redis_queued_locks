@@ -1527,10 +1527,46 @@ rql.current_host_id
 - [zombie_acquiers](#zombie_acquiers)
 - [zombie_hosts](#zombie_hosts)
 
-##### Work and Usage Preview
+##### Work and Usage Preview (temporary example-based docs)
 
 <details>
-  <summary>- obtain some long living lock and kill the host process:</summary>
+  <summary>configuration:</summary>
+
+  ```ruby
+  redis_client = RedisClient.config.new_pool # NOTE: provide your own RedisClient instance
+
+  clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
+    # NOTE: auto-swarm your RQL client after initalization (run swarm elements and their supervisor)
+    config.swarm.auto_swarm = false
+
+    # supervisor configs
+    config.swarm.supervisor.liveness_probing_period = 2 # NOTE: in seconds
+
+    # (probe_hosts) host probing configuration
+    config.swarm.probe_hosts.enabled_for_swarm = true # NOTE: run host-probing from or not
+    config.swarm.probe_hosts.probe_period = 2 # NOTE: (in seconds) the period of time when the probing process is triggered
+    # (probe_hosts) individual redis config
+    config.swarm.probe_hosts.redis_config.sentinel = false # NOTE: individual redis config
+    config.swarm.probe_hosts.redis_config.pooled = false # NOTE: individual redis config
+    config.swarm.probe_hosts.redis_config.config = false # NOTE: individual redis config
+    config.swarm.probe_hosts.redis_config.pool_config = false # NOTE: individual redis config
+
+    # (flush_zombies) zombie flushing configuration
+    config.swarm.flush_zombies.enabled_for_swarm = true # NOTE: run zombie flushing or not
+    config.swarm.flush_zombies.zombie_flush_period = 10 # NOTE: (in seconds) period of time when the zombie flusher is triggered
+    config.swarm.flush_zombies.zombie_ttl = 15_000 # NOTE: (in milliseconds) when the lock/host/acquier is considered a zombie
+    config.swarm.flush_zombies.zombie_lock_scan_size = 500 # NOTE: scan sizec during zombie flushing
+    config.swarm.flush_zombies.zombie_queue_scan_size = 500 # NOTE: scan sizec during zombie flushing
+    # (flush_zombies) individual redis config
+    config.swarm.flush_zombies.redis_config.sentinel = false # NOTE: individual redis config
+    config.swarm.flush_zombies.redis_config.pooled = false # NOTE: individual redis config
+    config.swarm.flush_zombies.redis_config.config = false # NOTE: individual redis config
+    config.swarm.flush_zombies.redis_config.pool_config = false # NOTE: individual redis config
+  ```
+</details>
+
+<details>
+  <summary>obtain some long living lock and kill the host process:</summary>
 
   ```ruby
   daiver => ~/Projects/redis_queued_locks  master [$]
