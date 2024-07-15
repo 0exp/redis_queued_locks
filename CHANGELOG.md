@@ -45,7 +45,7 @@
   - added `hst_id` field to each locking-process-related log;
 - **Logging/Instrumentation Sampling** updates:
   - an ability to mark any loggable/instrumentable method as sampled for instrumentation/logging despite of the enabled instrumentation/log sampling
-    by providing the `log_sample_this: true` attribute and `instr_sample_this: true` attributes respectively;
+    by providing the `log_sample_this: true` attribute and `instr_sample_this: true` attribute respectively;
 
 ## [1.8.0] - 2024-06-13
 ### Added
