@@ -1480,7 +1480,7 @@ rql.current_acquirer_id
   via `Thread.list` API which does not lose their abilites);
 - host identifier format:
   ```ruby
-    "rql:hst:#{process_id}/#{thread_id}/#{ractor_id}"
+    "rql:hst:#{process_id}/#{thread_id}/#{ractor_id}/#{uniq_identity}"
   ```
 - because of the moment that `#lock`/`#lock!` gives you a possibility to customize `process_id`,
   `fiber_id`, `thread_id`, `ractor_id` and `unique identity` identifiers the `#current_host_id` method provides this possibility too
@@ -1494,7 +1494,7 @@ Accepts:
   - `::Thread.current.object_id` by default;
 - `ractor_id:` - (optional) `[Integer,Any]`;
   - `::Ractor.current.object_id` by default;
-- `identity:` - (optional) `[String,Any]`;
+- `identity:` - (optional) `[String]`;
   - this value is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`;
   - this value can be accessed from `RedisQueuedLock::Client#uniq_identity`;
   - [Configuration](#configuration) documentation: see `config[:uniq_identifier]`;
@@ -1507,6 +1507,42 @@ rql.current_host_id
 "rql:acq:38529/4500/4360/66093702f24a3129"
 ```
 
+#### #possible_host_ids
+
+<sup>\[[back to top](#usage)\]</sup>
+
+- return the list (`Array<String>`) of possible host identifiers that can be reached from the current ractor;
+- the host is a ruby worker (a combination of process/thread/ractor/identity) that is alive and can obtain locks;
+- the host is limited to `process`/`thread`/`ractor` (without `fiber`) combination cuz we have no abilities to extract
+  all fiber objects from the current ruby process when at least one ractor object is defined (**ObjectSpace** loses
+  abilities to extract `Fiber` and `Thread` objects after the any ractor is created) (`Thread` objects are analyzed
+  via `Thread.list` API which does not lose their abilites);
+- host identifier format:
+  ```ruby
+    "rql:hst:#{process_id}/#{thread_id}/#{ractor_id}/#{uniq_identity}"
+  ```
+
+Accepts:
+
+- `identity` - (optional) `[String]`;
+  - this value is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`;
+  - this value can be accessed from `RedisQueuedLock::Client#uniq_identity`;
+  - [Configuration](#configuration) documentation: see `config[:uniq_identifier]`;
+  - [#lock](#lock---obtain-a-lock) method documentation: see `uniq_identifier`;
+
+```ruby
+rql.possible_host_ids
+
+# =>
+[
+  "rql:hst:18814/2300/2280/5ce0c4582fc59c06", # process id / thread id / ractor id / uniq identity
+  "rql:hst:18814/2320/2280/5ce0c4582fc59c06", # ...
+  "rql:hst:18814/2340/2280/5ce0c4582fc59c06", # ...
+  "rql:hst:18814/2360/2280/5ce0c4582fc59c06", # ...
+  "rql:hst:18814/2380/2280/5ce0c4582fc59c06", # ...
+  "rql:hst:18814/2400/2280/5ce0c4582fc59c06"
+]
+```
 ---
 
 ## Swarm Mode and Zombie Locks
