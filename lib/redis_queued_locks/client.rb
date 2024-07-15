@@ -186,6 +186,7 @@ class RedisQueuedLocks::Client
   def swarm_status
     swarm.swarm_status
   end
+  alias_method :swarm_state, :swarm_status
 
   # @return [Hash<Symbol,Boolean|String|Float>]
   #

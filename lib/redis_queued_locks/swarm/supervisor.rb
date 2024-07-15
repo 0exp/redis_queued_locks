@@ -43,11 +43,11 @@ class RedisQueuedLocks::Swarm::Supervisor
     @observable = observable
     @visor = Thread.new do
       loop do
-        yield # CHECK: may be we need to intercept exceptions here;
+        yield rescue nil # TODO/CHECK: may be we need to process exceptions here
         sleep(rql_client.config[:swarm][:supervisor][:liveness_probing_period])
       end
     end
-    # NOTE: need to give a timespot to initialize ractor objects and their main loops;
+    # NOTE: need to give a timespot to initialize visor thread;
     sleep(0.1)
   end
 

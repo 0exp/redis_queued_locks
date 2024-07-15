@@ -179,12 +179,12 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
       when :is_active
         Ractor.yield(main_loop != nil && main_loop.alive?)
       when :start
-        main_loop.kill unless main_loop == nil
+        main_loop&.kill
         main_loop = yield # REFERENCE: `main_loop_spawner.call`
       when :stop
-        main_loop.kill unless main_loop == nil
+        main_loop&.kill
       when :kill
-        main_loop.kill unless main_loop == nil
+        main_loop&.kill
         exit
       end
     end

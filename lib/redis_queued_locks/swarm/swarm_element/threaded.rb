@@ -19,7 +19,17 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0
   attr_reader :swarm_element
 
-  # @return [Thread::SizedQueue]
+  # The main loop reference is only used inside the swarm element thread and
+  # swarm element termination. It should not be used everywhere else!
+  # This is strongly technical variable refenrece.
+  #
+  # @return [Thread,NilClass]
+  #
+  # @api private
+  # @since 1.9.0
+  attr_reader :main_loop
+
+  # @return [Thread::SizedQueue,NilClass]
   #
   # @api private
   # @since 1.9.0
@@ -45,8 +55,9 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   def initialize(rql_client)
     @rql_client = rql_client
     @swarm_element = nil
-    @swarm_element_commands = Thread::SizedQueue.new(1)
-    @swarm_element_results = Thread::SizedQueue.new(1)
+    @main_loop = nil # NOTE: strongly technical variable refenrece (see attr_reader docs)
+    @swarm_element_commands = nil
+    @swarm_element_results = nil
     @sync = RedisQueuedLocks::Utilities::Lock.new
   end
 
@@ -58,7 +69,6 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
     return unless enabled?
 
     sync.synchronize do
-      swarm_loop__stop
       swarm_element__termiante
       swarm!
       swarm_loop__start
@@ -88,7 +98,6 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0
   def try_kill!
     sync.synchronize do
-      swarm_loop__stop
       swarm_element__termiante
     end
   end
@@ -160,10 +169,15 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   #
   # @api private
   # @since 1.9.0
+  # rubocop:disable Metrics/MethodLength
   def swarm!
-    @swarm_element = Thread.new do
-      main_loop = nil
+    # NOTE: kill the main loop at start to prevent any async-thread-race-based memory leaks;
+    main_loop&.kill
 
+    @swarm_element_commands = Thread::SizedQueue.new(1)
+    @swarm_element_results = Thread::SizedQueue.new(1)
+
+    @swarm_element = Thread.new do
       loop do
         command = swarm_element_commands.pop
 
@@ -179,16 +193,17 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
           is_active = main_loop != nil && main_loop.alive?
           swarm_element_results.push({ ok: true, result: { is_active: } })
         when :start
-          main_loop.kill unless main_loop == nil
-          main_loop = spawn_main_loop!.tap { |thread| thread.abort_on_exception = false }
+          main_loop&.kill
+          @main_loop = spawn_main_loop!.tap { |thread| thread.abort_on_exception = false }
           swarm_element_results.push({ ok: true, result: nil })
         when :stop
-          main_loop.kill unless main_loop == nil
+          main_loop&.kill
           swarm_element_results.push({ ok: true, result: nil })
         end
       end
     end
   end
+  # rubocop:enable Metrics/MethodLength
 
   # @return [Thread] Thread with #abort_onexception == false that wraps loop'ed logic;
   #
@@ -223,7 +238,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @api private
   # @since 1.9.0
   def swarmed__alive?
-    swarmed? && swarm_element.alive?
+    swarmed? && swarm_element.alive? && !terminating?
   end
 
   # @return [Boolean]
@@ -231,7 +246,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @api private
   # @since 1.9.0
   def swarmed__dead?
-    swarmed? && !swarm_element.alive?
+    swarmed? && (!swarm_element.alive? || terminating?)
   end
 
   # @return [Boolean]
@@ -239,39 +254,52 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @api private
   # @since 1.9.0
   def swarmed__running?
-    swarmed__alive? && (swarm_loop__is_active.yield_self do |result|
+    swarmed__alive? && !terminating? && (swarm_loop__is_active.yield_self do |result|
       result && result[:ok] && result[:result][:is_active]
     end)
   end
+
+  # @return [Boolean,NilClass]
+  #
+  # @api private
+  # @since 1.9.0
+  # rubocop:disable Layout/MultilineOperationIndentation
+  def terminating?
+    swarm_element_commands == nil ||
+    swarm_element_commands&.closed? ||
+    swarm_element_results == nil ||
+    swarm_element_results&.closed?
+  end
+  # rubocop:enable Layout/MultilineOperationIndentation
 
   # @return [Boolean]
   #
   # @api private
   # @since 1.9.0
   def swarmed__stopped?
-    swarmed__alive? && !(swarm_loop__is_active.yield_self do |result|
+    swarmed__alive? && (terminating? || !(swarm_loop__is_active.yield_self do |result|
       result && result[:ok] && result[:result][:is_active]
-    end)
+    end))
   end
 
-  # @return [Boolean]
+  # @return [Boolean,NilClass]
   #
   # @api private
   # @since 1.9.0
   def swarm_loop__is_active
-    return if idle? || swarmed__dead?
+    return if idle? || swarmed__dead? || terminating?
     sync.synchronize do
       swarm_element_commands.push(:is_active)
       swarm_element_results.pop
     end
   end
 
-  # @return [Hash]
+  # @return [Hash,NilClass]
   #
   # @api private
   # @since 1.9.0
   def swarm_loop__status
-    return if idle? || swarmed__dead?
+    return if idle? || swarmed__dead? || terminating?
     sync.synchronize do
       swarm_element_commands.push(:status)
       swarm_element_results.pop
@@ -283,7 +311,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @api private
   # @since 1.9.0
   def swarm_loop__start
-    return if idle? || swarmed__dead?
+    return if idle? || swarmed__dead? || terminating?
     sync.synchronize do
       swarm_element_commands.push(:start)
       swarm_element_results.pop
@@ -295,7 +323,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @api private
   # @since 1.9.0
   def swarm_loop__stop
-    return if idle? || swarmed__dead?
+    return if idle? || swarmed__dead? || terminating?
     sync.synchronize do
       swarm_element_commands.push(:stop)
       swarm_element_results.pop
@@ -309,9 +337,14 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   def swarm_element__termiante
     return if idle? || swarmed__dead?
     sync.synchronize do
+      main_loop&.kill
       swarm_element.kill
+      swarm_element_commands.close
+      swarm_element_results.close
       swarm_element_commands.clear
       swarm_element_results.clear
+      @swarm_element_commands = nil
+      @swarm_element_results = nil
     end
   end
 end

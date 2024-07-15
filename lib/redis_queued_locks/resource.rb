@@ -188,14 +188,14 @@ module RedisQueuedLocks::Resource
       # NOTE №3: we still can extract thread objects via Thread.list API;
       current_process_id = get_process_id
       current_threads = ::Thread.list
-      current_ractor = ::Ractor.current
+      current_ractor_id = get_ractor_id
 
       [].tap do |acquiers|
         current_threads.each do |thread|
           acquiers << host_identifier(
             current_process_id,
             thread.object_id,
-            current_ractor.object_id,
+            current_ractor_id,
             identity
           )
         end

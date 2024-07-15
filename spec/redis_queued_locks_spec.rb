@@ -21,8 +21,111 @@ RSpec.describe RedisQueuedLocks do
   end
 
   describe 'swarm' do
-    specify 'supervisor keeps the swarm elements up and running' do
+    specify '#current_host_id, #possible_host_ids' do
+      client = RedisQueuedLocks::Client.new(redis)
 
+      uniq_identity = client.uniq_identity
+      current_thread_list = Thread.list
+      current_process_id = Process.pid
+      current_thread_id = Thread.current.object_id
+      current_ractor_id = Ractor.current.object_id
+
+      # verify current host
+      expect(client.current_host_id).to eq(
+        "rql:hst:#{current_process_id}/#{current_thread_id}/#{current_ractor_id}/#{uniq_identity}"
+      )
+
+      # collect possible hosts
+      expected_hosts = current_thread_list.map do |thread|
+        "rql:hst:#{current_process_id}/#{thread.object_id}/#{current_ractor_id}/#{uniq_identity}"
+      end
+      expect(client.possible_host_ids).to contain_exactly(*expected_hosts)
+
+      # add new possible hosts and make sure that these hosts are showing via possible_host_ids
+      new_thread1 = Thread.new { loop { sleep(0.5) } }
+      new_thread2 = Thread.new { loop { sleep(0.5) } }
+      # rubocop:disable Layout/LineLength
+      new_thread1_host_id =
+        "rql:hst:#{current_process_id}/#{new_thread1.object_id}/#{current_ractor_id}/#{uniq_identity}"
+      new_thread2_host_id =
+        "rql:hst:#{current_process_id}/#{new_thread2.object_id}/#{current_ractor_id}/#{uniq_identity}"
+      # rubocop:enable Layout/LineLength
+
+      expected_hosts << new_thread1_host_id
+      expected_hosts << new_thread2_host_id
+      expect(client.possible_host_ids).to contain_exactly(*expected_hosts)
+
+      # drop new created hosts and make sure that these hosts are not showing via possible_host_ids
+      new_thread1.tap(&:kill).tap(&:join)
+      new_thread2.tap(&:kill).tap(&:join)
+      new_current_thread_list = Thread.list
+      expected_hosts = new_current_thread_list.map do |thread|
+        "rql:hst:#{current_process_id}/#{thread.object_id}/#{current_ractor_id}/#{uniq_identity}"
+      end
+      last_possible_host_ids = client.possible_host_ids
+      expect(last_possible_host_ids).to contain_exactly(*expected_hosts)
+      expect(last_possible_host_ids).not_to include(new_thread1_host_id)
+      expect(last_possible_host_ids).not_to include(new_thread2_host_id)
+    end
+
+    specify 'supervisor keeps the swarm elements up and running' do
+      client = RedisQueuedLocks::Client.new(redis) do |conf|
+        conf.swarm.auto_swarm = true
+        conf.swarm.supervisor.liveness_probing_period = 4
+        conf.swarm.probe_hosts.probe_period = 2
+      end
+
+      # kill swarm elements. supervisor should up them soon.
+      client.swarm.flush_zombies_element.try_kill!
+      sleep(0.5) # give a timespot to termiane all async elements
+      client.swarm.probe_hosts_element.try_kill!
+      sleep(0.5) # give a timespot to termiane all async elements
+
+      # check that killed elements are truely dead
+      expect(client.swarm_status).to match({
+        auto_swarm: true,
+        supervisor: match({
+          running: true,
+          state: eq('sleep').or(eq('run')),
+          observable: 'initialized'
+        }),
+        probe_hosts: match({
+          enabled: true,
+          thread: match({ running: false, state: 'dead' }),
+          main_loop: match({ running: false, state: 'non_initialized' })
+        }),
+        flush_zombies: match({
+          enabled: true,
+          ractor: match({ running: false, state: 'terminated' }),
+          main_loop: match({ running: false, state: 'non_initialized' })
+        })
+      })
+
+      # sleep supervisor probing time
+      #   + some time for up the killed elements
+      #   + time to probe hosts period
+      #   + time to probe hosts activity ;)
+      sleep(4 + 1 + 2 + 1)
+
+      # # check that elements are running
+      expect(client.swarm_status).to match({
+        auto_swarm: true,
+        supervisor: match({
+          running: true,
+          state: eq('sleep').or(eq('run')),
+          observable: 'initialized'
+        }),
+        probe_hosts: match({
+          enabled: true,
+          thread: match({ running: true, state: eq('sleep').or(eq('run')) }),
+          main_loop: match({ running: true, state: eq('sleep').or(eq('run')) })
+        }),
+        flush_zombies: match({
+          enabled: true,
+          ractor: match({ running: true, state: 'running' }),
+          main_loop: match({ running: true, state: eq('sleep').or(eq('run')) })
+        })
+      })
     end
 
     specify 'swarm_status / swarm_info' do
@@ -137,7 +240,7 @@ RSpec.describe RedisQueuedLocks do
             last_probe_score: be_a(Numeric)
           })
         end
-        expect(client.swarm_info).to match(swarm_info)
+        expect(client.swarm_info).to match(hash_including(swarm_info))
 
         # try to kill the swarm and get the corresponding swarm state
         result = client.deswarmize!

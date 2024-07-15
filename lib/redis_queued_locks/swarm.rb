@@ -69,6 +69,7 @@ class RedisQueuedLocks::Swarm
       }
     end
   end
+  alias_method :swarm_state, :swarm_status
 
   # @option zombie_ttl [Integer]
   # @return [Hash<String,Hash<Symbol,Float|Time>>]

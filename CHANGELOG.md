@@ -1,6 +1,11 @@
 ## [Unreleased]
 ### Added
 - (changelog draft) Brand New Extremely Major Feature: **Swarm Mode**: eliminate zombie locks with a swarm;
+  - (changelog draft) new configs;
+  - (changelog draft): `#swarmize!`, `#deswarmize!`
+  - (changelog draft): `#swarm_status`/`#swarm_state`, `#swarm_info`
+  - (changelog draft): `#probe_hosts`, `#flush_zombies`
+  - (changelog_draft): `#zombie_locks`, `#zmobie_acquiers`, `#zombie_hosts`, `#zombies_info`/`#zombies`;
 - (changelog draft) (logs: added `hst_id`);
 - (changelog draft) (instrumentation: added `hst_id` field);
 - (changelog draft) (added **hst_id** to `#lock_info` / `#lock_data` / `#locks_info` method results);
