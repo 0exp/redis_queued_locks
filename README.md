@@ -37,7 +37,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [current_acquirer_id](#current_acquirer_id)
   - [current_host_id](#current_host_id)
 - [Swarm Mode and Zombie Locks](#swarm-mode-and-zombie-locks)
-  - [work and Usage preview (temporary example-based docs)](#work-and-usage-preview-temporary-example-based-docs)
+  - [work and usage preview (temporary example-based docs)](#work-and-usage-preview-temporary-example-based-docs)
   - [How to Swarm](#how-to-swarm)
     - [configuration](#)
     - [swarm_status](#swarm_status)
@@ -1530,10 +1530,14 @@ rql.current_host_id
 - [zombie_acquiers](#zombie_acquiers)
 - [zombie_hosts](#zombie_hosts)
 
+<hr>
+
 #### Work and Usage Preview (temporary example-based docs)
 
+<hr>
+
 <details>
-  <summary>configuration:</summary>
+  <summary>configuration</summary>
 
   ```ruby
   redis_client = RedisClient.config.new_pool # NOTE: provide your own RedisClient instance
@@ -1569,7 +1573,7 @@ rql.current_host_id
 </details>
 
 <details>
-  <summary>obtain some long living lock and kill the host process which will lead the lock becoming a zombie:</summary>
+  <summary>(seed a zombie) obtain some long living lock and kill the host process which will lead the lock becoming a zombie:</summary>
 
   ```ruby
   daiver => ~/Projects/redis_queued_locks  master [$]
@@ -1592,7 +1596,7 @@ rql.current_host_id
 </details>
 
 <details>
-  <summary>start another process, fetch the swarm info, see that our last process is a zombie now and their hosted lock is a zombie too:</summary>
+  <summary>(find zombies) start another process, fetch the swarm info, see that our last process is a zombie now and their hosted lock is a zombie too:</summary>
 
   ```ruby
   daiver => ~/Projects/redis_queued_locks  master [$] took 27.2s
@@ -1649,7 +1653,7 @@ rql.current_host_id
 </details>
 
 <details>
-  <summary>swarmize the new current ruby process that should run the flush zombies elemnt that will drop zombie locks, zombie hosts and their lock requests:</summary>
+  <summary>(kill zombies in a background) swarmize the new current ruby process that should run the flush zombies elemnt that will drop zombie locks, zombie hosts and their lock requests:</summary>
 
   ```ruby
   [8] pry(main)> rql.swarmize!
