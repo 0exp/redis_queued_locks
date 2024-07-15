@@ -1559,7 +1559,7 @@ rql.possible_host_ids
 
 > Eliminate zombie locks with a swarm.
 
-**This documentation section is in progress!** (see the changelog and usage preview for details at this moment)
+**This documentation section is in progress!** (see the changelog and theusage preview for details at this moment)
 
 [(work and usage preview (temporary example-based docs))](#work-and-usage-preview-temporary-example-based-docs)
 
