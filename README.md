@@ -1527,82 +1527,61 @@ rql.current_host_id
 - [zombie_acquiers](#zombie_acquiers)
 - [zombie_hosts](#zombie_hosts)
 
+#### **Temporary Usage Example**
 
+- obtain some long living lock and kill the host process:
 
 <details>
-  <summary>**(Temporary Usage Example)**</summary>
+  <summary>show example</summary>
 
-  - obtain some long living lock and kill the host process:
+  ```ruby
+  daiver => ~/Projects/redis_queued_locks  master [$]
+  ➜ bin/console
+  [1] pry(main)> rql = RedisQueuedLocks::Client.new(RedisClient.new);
+  [2] pry(main)> rql.swarmize!
+  /Users/daiver/Projects/redis_queued_locks/lib/redis_queued_locks/swarm/flush_zombies.rb:107: warning: Ractor is experimental, and the behavior may change in future versions of Ruby! Also there are many implementation issues.
+  => {:ok=>true, :result=>:swarming}
+  [3] pry(main)> rql.lock('kekpek', ttl: 1111111111)
+  => {:ok=>true,
+   :result=>
+    {:lock_key=>"rql:lock:kekpek",
+     :acq_id=>"rql:acq:17580/2260/2380/2280/3f16b93973612580",
+     :hst_id=>"rql:hst:17580/2260/2280/3f16b93973612580",
+     :ts=>1720305351.069259,
+     :ttl=>1111111111,
+     :process=>:lock_obtaining}}
+  [4] pry(main)> exit
+  ```
+</details>
 
-  <details>
-    <summary>show example</summary>
+- start another process, fetch the swarm info, see that our last process is dead/zombie now and their hosted lock is a zombie too:
 
-    ```ruby
-    daiver => ~/Projects/redis_queued_locks  master [$]
-    ➜ bin/console
-    [1] pry(main)> rql = RedisQueuedLocks::Client.new(RedisClient.new);
-    [2] pry(main)> rql.swarmize!
-    /Users/daiver/Projects/redis_queued_locks/lib/redis_queued_locks/swarm/flush_zombies.rb:107: warning: Ractor is experimental, and the behavior may change in future versions of Ruby! Also there are many implementation issues.
-    => {:ok=>true, :result=>:swarming}
-    [3] pry(main)> rql.lock('kekpek', ttl: 1111111111)
-    => {:ok=>true,
-     :result=>
-      {:lock_key=>"rql:lock:kekpek",
-       :acq_id=>"rql:acq:17580/2260/2380/2280/3f16b93973612580",
-       :hst_id=>"rql:hst:17580/2260/2280/3f16b93973612580",
-       :ts=>1720305351.069259,
-       :ttl=>1111111111,
-       :process=>:lock_obtaining}}
-    [4] pry(main)> exit
-    ```
-  </details>
+<details>
+  <summary>show example</summary>
 
-  - start another process, fetch the swarm info, see that our last process is dead/zombie now and their hosted lock is a zombie too:
-
-  <details>
-    <summary>show example</summary>
-
-    ```ruby
-    daiver => ~/Projects/redis_queued_locks  master [$] took 27.2s
-    ➜ bin/console
-    [1] pry(main)> rql = RedisQueuedLocks::Client.new(RedisClient.new);
-    [2] pry(main)> rql.swarm_info
-    => {"rql:hst:17580/2260/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 12897/262144 +0300, :last_probe_score=>1720305353.0491982},
-     "rql:hst:17580/2300/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 211107/4194304 +0300, :last_probe_score=>1720305353.0503318},
-     "rql:hst:17580/2320/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 106615/2097152 +0300, :last_probe_score=>1720305353.050838},
-     "rql:hst:17580/2260/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 26239/524288 +0300, :last_probe_score=>1720305353.050047},
-     "rql:hst:17580/2300/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 106359/2097152 +0300, :last_probe_score=>1720305353.050716},
-     "rql:hst:17580/2320/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 213633/4194304 +0300, :last_probe_score=>1720305353.050934},
-     "rql:hst:17580/2360/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 214077/4194304 +0300, :last_probe_score=>1720305353.05104},
-     "rql:hst:17580/2360/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 214505/4194304 +0300, :last_probe_score=>1720305353.051142},
-     "rql:hst:17580/2400/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 53729/1048576 +0300, :last_probe_score=>1720305353.05124},
-     "rql:hst:17580/2400/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 3365/65536 +0300, :last_probe_score=>1720305353.0513458}}
-    [3] pry(main)> rql.swarm_status
-    => {:auto_swarm=>false,
-     :supervisor=>{:running=>false, :state=>"non_initialized", :observable=>"non_initialized"},
-     :probe_hosts=>{:enabled=>true, :thread=>{:running=>false, :state=>"non_initialized"}, :main_loop=>{:running=>false, :state=>"non_initialized"}},
-     :flush_zombies=>{:enabled=>true, :ractor=>{:running=>false, :state=>"non_initialized"}, :main_loop=>{:running=>false, :state=>"non_initialized"}}}
-    [4] pry(main)> rql.zombies_info
-    => {:zombie_hosts=>
-      #<Set:
-       {"rql:hst:17580/2260/2280/3f16b93973612580",
-        "rql:hst:17580/2300/2280/3f16b93973612580",
-        "rql:hst:17580/2320/2280/3f16b93973612580",
-        "rql:hst:17580/2260/2340/3f16b93973612580",
-        "rql:hst:17580/2300/2340/3f16b93973612580",
-        "rql:hst:17580/2320/2340/3f16b93973612580",
-        "rql:hst:17580/2360/2280/3f16b93973612580",
-        "rql:hst:17580/2360/2340/3f16b93973612580",
-        "rql:hst:17580/2400/2280/3f16b93973612580",
-        "rql:hst:17580/2400/2340/3f16b93973612580"}>,
-     :zombie_acquirers=>#<Set: {"rql:acq:17580/2260/2380/2280/3f16b93973612580"}>,
-     :zombie_locks=>#<Set: {"rql:lock:kekpek"}>}
-    [5] pry(main)> rql.zombie_locks
-    => #<Set: {"rql:lock:kekpek"}>
-    [6] pry(main)> rql.zombie_acquiers
-    => #<Set: {"rql:acq:17580/2260/2380/2280/3f16b93973612580"}>
-    [7] pry(main)> rql.zombie_hosts
-    => #<Set:
+  ```ruby
+  daiver => ~/Projects/redis_queued_locks  master [$] took 27.2s
+  ➜ bin/console
+  [1] pry(main)> rql = RedisQueuedLocks::Client.new(RedisClient.new);
+  [2] pry(main)> rql.swarm_info
+  => {"rql:hst:17580/2260/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 12897/262144 +0300, :last_probe_score=>1720305353.0491982},
+   "rql:hst:17580/2300/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 211107/4194304 +0300, :last_probe_score=>1720305353.0503318},
+   "rql:hst:17580/2320/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 106615/2097152 +0300, :last_probe_score=>1720305353.050838},
+   "rql:hst:17580/2260/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 26239/524288 +0300, :last_probe_score=>1720305353.050047},
+   "rql:hst:17580/2300/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 106359/2097152 +0300, :last_probe_score=>1720305353.050716},
+   "rql:hst:17580/2320/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 213633/4194304 +0300, :last_probe_score=>1720305353.050934},
+   "rql:hst:17580/2360/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 214077/4194304 +0300, :last_probe_score=>1720305353.05104},
+   "rql:hst:17580/2360/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 214505/4194304 +0300, :last_probe_score=>1720305353.051142},
+   "rql:hst:17580/2400/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 53729/1048576 +0300, :last_probe_score=>1720305353.05124},
+   "rql:hst:17580/2400/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 3365/65536 +0300, :last_probe_score=>1720305353.0513458}}
+  [3] pry(main)> rql.swarm_status
+  => {:auto_swarm=>false,
+   :supervisor=>{:running=>false, :state=>"non_initialized", :observable=>"non_initialized"},
+   :probe_hosts=>{:enabled=>true, :thread=>{:running=>false, :state=>"non_initialized"}, :main_loop=>{:running=>false, :state=>"non_initialized"}},
+   :flush_zombies=>{:enabled=>true, :ractor=>{:running=>false, :state=>"non_initialized"}, :main_loop=>{:running=>false, :state=>"non_initialized"}}}
+  [4] pry(main)> rql.zombies_info
+  => {:zombie_hosts=>
+    #<Set:
      {"rql:hst:17580/2260/2280/3f16b93973612580",
       "rql:hst:17580/2300/2280/3f16b93973612580",
       "rql:hst:17580/2320/2280/3f16b93973612580",
@@ -1612,42 +1591,59 @@ rql.current_host_id
       "rql:hst:17580/2360/2280/3f16b93973612580",
       "rql:hst:17580/2360/2340/3f16b93973612580",
       "rql:hst:17580/2400/2280/3f16b93973612580",
-      "rql:hst:17580/2400/2340/3f16b93973612580"}>
-    ```
-  </details>
+      "rql:hst:17580/2400/2340/3f16b93973612580"}>,
+   :zombie_acquirers=>#<Set: {"rql:acq:17580/2260/2380/2280/3f16b93973612580"}>,
+   :zombie_locks=>#<Set: {"rql:lock:kekpek"}>}
+  [5] pry(main)> rql.zombie_locks
+  => #<Set: {"rql:lock:kekpek"}>
+  [6] pry(main)> rql.zombie_acquiers
+  => #<Set: {"rql:acq:17580/2260/2380/2280/3f16b93973612580"}>
+  [7] pry(main)> rql.zombie_hosts
+  => #<Set:
+   {"rql:hst:17580/2260/2280/3f16b93973612580",
+    "rql:hst:17580/2300/2280/3f16b93973612580",
+    "rql:hst:17580/2320/2280/3f16b93973612580",
+    "rql:hst:17580/2260/2340/3f16b93973612580",
+    "rql:hst:17580/2300/2340/3f16b93973612580",
+    "rql:hst:17580/2320/2340/3f16b93973612580",
+    "rql:hst:17580/2360/2280/3f16b93973612580",
+    "rql:hst:17580/2360/2340/3f16b93973612580",
+    "rql:hst:17580/2400/2280/3f16b93973612580",
+    "rql:hst:17580/2400/2340/3f16b93973612580"}>
+  ```
+</details>
 
-  - swarmize current ruby process that should run the flush zombies eleemnt that will drop zombie locks, hosts and lock requests:
+- swarmize current ruby process that should run the flush zombies eleemnt that will drop zombie locks, hosts and lock requests:
 
-  <details>
-    <summary>show example</summary>
+<details>
+  <summary>show example</summary>
 
-    ```ruby
-    [8] pry(main)> rql.swarmize!
-    /Users/daiver/Projects/redis_queued_locks/lib/redis_queued_locks/swarm/flush_zombies.rb:107: warning: Ractor is experimental, and the behavior may change in future versions of Ruby! Also there are many implementation issues.
-    => {:ok=>true, :result=>:swarming}
-    [9] pry(main)> rql.swarm_info
-    => {"rql:hst:17752/2260/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4012577/4194304 +0300, :last_probe_score=>1720305399.956673},
-     "rql:hst:17752/2300/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4015233/4194304 +0300, :last_probe_score=>1720305399.9573061},
-     "rql:hst:17752/2320/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4016755/4194304 +0300, :last_probe_score=>1720305399.957669},
-     "rql:hst:17752/2260/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 1003611/1048576 +0300, :last_probe_score=>1720305399.957118},
-     "rql:hst:17752/2300/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 2008027/2097152 +0300, :last_probe_score=>1720305399.957502},
-     "rql:hst:17752/2320/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 2008715/2097152 +0300, :last_probe_score=>1720305399.95783},
-     "rql:hst:17752/2360/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4018063/4194304 +0300, :last_probe_score=>1720305399.9579809},
-     "rql:hst:17752/2360/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 1004673/1048576 +0300, :last_probe_score=>1720305399.9581308}}
-    [10] pry(main)> rql.swarm_status
-    => {:auto_swarm=>false,
-     :supervisor=>{:running=>true, :state=>"sleep", :observable=>"initialized"},
-     :probe_hosts=>{:enabled=>true, :thread=>{:running=>true, :state=>"sleep"}, :main_loop=>{:running=>true, :state=>"sleep"}},
-     :flush_zombies=>{:enabled=>true, :ractor=>{:running=>true, :state=>"running"}, :main_loop=>{:running=>true, :state=>"sleep"}}}
-    [11] pry(main)> rql.zombies_info
-    => {:zombie_hosts=>#<Set: {}>, :zombie_acquirers=>#<Set: {}>, :zombie_locks=>#<Set: {}>}
-    [12] pry(main)> rql.zombie_acquiers
-    => #<Set: {}>
-    [13] pry(main)> rql.zombie_hosts
-    => #<Set: {}>
-    [14] pry(main)>
-    ```
-  </details>
+  ```ruby
+  [8] pry(main)> rql.swarmize!
+  /Users/daiver/Projects/redis_queued_locks/lib/redis_queued_locks/swarm/flush_zombies.rb:107: warning: Ractor is experimental, and the behavior may change in future versions of Ruby! Also there are many implementation issues.
+  => {:ok=>true, :result=>:swarming}
+  [9] pry(main)> rql.swarm_info
+  => {"rql:hst:17752/2260/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4012577/4194304 +0300, :last_probe_score=>1720305399.956673},
+   "rql:hst:17752/2300/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4015233/4194304 +0300, :last_probe_score=>1720305399.9573061},
+   "rql:hst:17752/2320/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4016755/4194304 +0300, :last_probe_score=>1720305399.957669},
+   "rql:hst:17752/2260/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 1003611/1048576 +0300, :last_probe_score=>1720305399.957118},
+   "rql:hst:17752/2300/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 2008027/2097152 +0300, :last_probe_score=>1720305399.957502},
+   "rql:hst:17752/2320/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 2008715/2097152 +0300, :last_probe_score=>1720305399.95783},
+   "rql:hst:17752/2360/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4018063/4194304 +0300, :last_probe_score=>1720305399.9579809},
+   "rql:hst:17752/2360/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 1004673/1048576 +0300, :last_probe_score=>1720305399.9581308}}
+  [10] pry(main)> rql.swarm_status
+  => {:auto_swarm=>false,
+   :supervisor=>{:running=>true, :state=>"sleep", :observable=>"initialized"},
+   :probe_hosts=>{:enabled=>true, :thread=>{:running=>true, :state=>"sleep"}, :main_loop=>{:running=>true, :state=>"sleep"}},
+   :flush_zombies=>{:enabled=>true, :ractor=>{:running=>true, :state=>"running"}, :main_loop=>{:running=>true, :state=>"sleep"}}}
+  [11] pry(main)> rql.zombies_info
+  => {:zombie_hosts=>#<Set: {}>, :zombie_acquirers=>#<Set: {}>, :zombie_locks=>#<Set: {}>}
+  [12] pry(main)> rql.zombie_acquiers
+  => #<Set: {}>
+  [13] pry(main)> rql.zombie_hosts
+  => #<Set: {}>
+  [14] pry(main)>
+  ```
 </details>
 
 ---
