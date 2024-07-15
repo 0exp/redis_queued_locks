@@ -1527,7 +1527,7 @@ rql.current_host_id
 - [zombie_acquiers](#zombie_acquiers)
 - [zombie_hosts](#zombie_hosts)
 
-#### **Temporary Usage Example**
+#### Temporary Usage Example
 
 - obtain some long living lock and kill the host process:
 
