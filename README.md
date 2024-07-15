@@ -1661,7 +1661,7 @@ rql.current_host_id
 <details>
   <summary>kill zombies in a background</summary>
 
-  - swarmize the new current ruby process that should run the flush zombies elemnt that will drop zombie locks, zombie hosts and their lock requests:
+  - swarmize the new current ruby process that should run the flush zombies element that will drop zombie locks, zombie hosts and their lock requests in a background:
 
   ```ruby
   [8] pry(main)> rql.swarmize!
