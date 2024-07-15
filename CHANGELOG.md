@@ -32,7 +32,7 @@
   - **general note**: each swarm element should have their own `RedisClient` instance so each have their own redis-client configuration
     and each of the can be configured separately (**RedisClient** multithreading limitation and **Ractor** limitations);
 - Added the `lock host` abstraction (`hst_id`):
-  - each lock is hosted by ruby workers now;
+  - each lock is hosted by some ruby workers so this fact is abstracted into the host identifier represended as a combination of `process_id`/`thread_id`/`ractor_id`/`uniq_identity`;
   - the ruby worker is a combination of `process_id`/`thread_id`/`ractor_id`/`uniq_identity`);
   - each lock stores the host id (`hst_id` field) indisde their data (for debugging purposes and zombie identification purposes);
   - every lock information method now includes `hst_id` field: `#lock_info`, `#lock_data`, `#locks_info`;
