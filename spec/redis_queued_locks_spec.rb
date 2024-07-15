@@ -122,7 +122,7 @@ RSpec.describe RedisQueuedLocks do
         }),
         flush_zombies: match({
           enabled: true,
-          ractor: match({ running: true, state: 'running' }),
+          ractor: match({ running: true, state: eq('running').or(eq('blocking')) }),
           main_loop: match({ running: true, state: eq('sleep').or(eq('run')) })
         })
       })
@@ -226,7 +226,7 @@ RSpec.describe RedisQueuedLocks do
           }),
           flush_zombies: match({
             enabled: true,
-            ractor: match({ running: true, state: 'running' }),
+            ractor: match({ running: true, state: eq('running').or(eq('blocking')) }),
             main_loop: match({ running: true, state: eq('sleep').or(eq('run')) })
           })
         })

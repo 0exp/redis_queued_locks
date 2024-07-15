@@ -23,6 +23,11 @@ module RedisQueuedLocks::Utilities
 
   # Ractor status as a string extracted from the object string representation.
   # This way is used cuz the ractor class has no any detailed status extraction API.
+  # Possible statuses (at the moment of Ruby@3.4):
+  #   - "created"
+  #   - "blocking"
+  #   - "running"
+  #   - "terminated"
   #
   # @return [Regexp]
   #
@@ -39,6 +44,12 @@ module RedisQueuedLocks::Utilities
     yield rescue nil
   end
 
+  # Possible statuses (at the moment of Ruby@3.4):
+  #   - "created"
+  #   - "blocking"
+  #   - "running"
+  #   - "terminated"
+  #
   # @param ractor [Ractor]
   # @return [String]
   #
