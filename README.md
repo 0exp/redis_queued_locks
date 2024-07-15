@@ -1527,12 +1527,10 @@ rql.current_host_id
 - [zombie_acquiers](#zombie_acquiers)
 - [zombie_hosts](#zombie_hosts)
 
-#### Temporary Usage Example
-
-- obtain some long living lock and kill the host process:
+##### Work and Usage Preview
 
 <details>
-  <summary>show example</summary>
+  <summary>- obtain some long living lock and kill the host process::</summary>
 
   ```ruby
   daiver => ~/Projects/redis_queued_locks  master [$]
@@ -1554,10 +1552,8 @@ rql.current_host_id
   ```
 </details>
 
-- start another process, fetch the swarm info, see that our last process is dead/zombie now and their hosted lock is a zombie too:
-
 <details>
-  <summary>show example</summary>
+  <summary>- start another process, fetch the swarm info, see that our last process is dead/zombie now and their hosted lock is a zombie too:</summary>
 
   ```ruby
   daiver => ~/Projects/redis_queued_locks  master [$] took 27.2s
@@ -1613,10 +1609,8 @@ rql.current_host_id
   ```
 </details>
 
-- swarmize current ruby process that should run the flush zombies eleemnt that will drop zombie locks, hosts and lock requests:
-
 <details>
-  <summary>show example</summary>
+  <summary>- swarmize current ruby process that should run the flush zombies eleemnt that will drop zombie locks, hosts and lock requests:</summary>
 
   ```ruby
   [8] pry(main)> rql.swarmize!
