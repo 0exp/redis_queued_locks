@@ -245,7 +245,7 @@ RSpec.describe RedisQueuedLocks do
         # try to kill the swarm and get the corresponding swarm state
         result = client.deswarmize!
         expect(result).to eq({ ok: true, result: :terminating })
-        sleep(1) # give a time to terminate async objects
+        sleep(2) # give a time to terminate async objects
 
         expect(client.swarm_status).to match({
           auto_swarm: true,
