@@ -1557,8 +1557,8 @@ rql.current_host_id
     # (probe_hosts) individual redis config
     config.swarm.probe_hosts.redis_config.sentinel = false # NOTE: individual redis config
     config.swarm.probe_hosts.redis_config.pooled = false # NOTE: individual redis config
-    config.swarm.probe_hosts.redis_config.config = false # NOTE: individual redis config
-    config.swarm.probe_hosts.redis_config.pool_config = false # NOTE: individual redis config
+    config.swarm.probe_hosts.redis_config.config = {} # NOTE: individual redis config
+    config.swarm.probe_hosts.redis_config.pool_config = {} # NOTE: individual redis config
 
     # (flush_zombies) zombie flushing configuration
     config.swarm.flush_zombies.enabled_for_swarm = true # NOTE: run zombie flushing or not
@@ -1569,8 +1569,8 @@ rql.current_host_id
     # (flush_zombies) individual redis config
     config.swarm.flush_zombies.redis_config.sentinel = false # NOTE: individual redis config
     config.swarm.flush_zombies.redis_config.pooled = false # NOTE: individual redis config
-    config.swarm.flush_zombies.redis_config.config = false # NOTE: individual redis config
-    config.swarm.flush_zombies.redis_config.pool_config = false # NOTE: individual redis config
+    config.swarm.flush_zombies.redis_config.config = {} # NOTE: individual redis config
+    config.swarm.flush_zombies.redis_config.pool_config = {} # NOTE: individual redis config
   ```
 </details>
 
