@@ -82,24 +82,26 @@ RSpec.describe RedisQueuedLocks do
       sleep(0.5) # give a timespot to termiane all async elements
 
       # check that killed elements are truely dead
-      expect(client.swarm_status).to match({
-        auto_swarm: true,
-        supervisor: match({
-          running: true,
-          state: eq('sleep').or(eq('run')),
-          observable: 'initialized'
-        }),
-        probe_hosts: match({
-          enabled: true,
-          thread: match({ running: false, state: 'dead' }),
-          main_loop: match({ running: false, state: 'non_initialized' })
-        }),
-        flush_zombies: match({
-          enabled: true,
-          ractor: match({ running: false, state: 'terminated' }),
-          main_loop: match({ running: false, state: 'non_initialized' })
+      aggregate_failures 'swarm elements are dead' do
+        expect(client.swarm_status).to match({
+          auto_swarm: true,
+          supervisor: match({
+            running: true,
+            state: eq('sleep').or(eq('run')),
+            observable: 'initialized'
+          }),
+          probe_hosts: match({
+            enabled: true,
+            thread: match({ running: false, state: 'dead' }),
+            main_loop: match({ running: false, state: 'non_initialized' })
+          }),
+          flush_zombies: match({
+            enabled: true,
+            ractor: match({ running: false, state: 'terminated' }),
+            main_loop: match({ running: false, state: 'non_initialized' })
+          })
         })
-      })
+      end
 
       # sleep supervisor probing time
       #   + some time for up the killed elements
@@ -107,25 +109,27 @@ RSpec.describe RedisQueuedLocks do
       #   + time to probe hosts activity ;)
       sleep(4 + 1 + 2 + 1)
 
-      # # check that elements are running
-      expect(client.swarm_status).to match({
-        auto_swarm: true,
-        supervisor: match({
-          running: true,
-          state: eq('sleep').or(eq('run')),
-          observable: 'initialized'
-        }),
-        probe_hosts: match({
-          enabled: true,
-          thread: match({ running: true, state: eq('sleep').or(eq('run')) }),
-          main_loop: match({ running: true, state: eq('sleep').or(eq('run')) })
-        }),
-        flush_zombies: match({
-          enabled: true,
-          ractor: match({ running: true, state: eq('running').or(eq('blocking')) }),
-          main_loop: match({ running: true, state: eq('sleep').or(eq('run')) })
+      # check that elements are running
+      aggregate_failures 'swarm is fully ressurected' do
+        expect(client.swarm_status).to match({
+          auto_swarm: true,
+          supervisor: match({
+            running: true,
+            state: eq('sleep').or(eq('run')),
+            observable: 'initialized'
+          }),
+          probe_hosts: match({
+            enabled: true,
+            thread: match({ running: true, state: eq('sleep').or(eq('run')) }),
+            main_loop: match({ running: true, state: eq('sleep').or(eq('run')) })
+          }),
+          flush_zombies: match({
+            enabled: true,
+            ractor: match({ running: true, state: eq('running').or(eq('blocking')) }),
+            main_loop: match({ running: true, state: eq('sleep').or(eq('run')) })
+          })
         })
-      })
+      end
     end
 
     specify 'swarm_status / swarm_info' do
