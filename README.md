@@ -1573,7 +1573,9 @@ rql.current_host_id
 </details>
 
 <details>
-  <summary>(seed a zombie) obtain some long living lock and kill the host process which will lead the lock becoming a zombie:</summary>
+  <summary>seed a zombie</summary>
+
+  - obtain some long living lock and kill the host process which will lead the lock becoming a zombie:
 
   ```ruby
   daiver => ~/Projects/redis_queued_locks  master [$]
@@ -1596,7 +1598,9 @@ rql.current_host_id
 </details>
 
 <details>
-  <summary>(find zombies) start another process, fetch the swarm info, see that our last process is a zombie now and their hosted lock is a zombie too:</summary>
+  <summary>find zombies**</summary>
+
+  - start another process, fetch the swarm info, see that our last process is a zombie now and their hosted lock is a zombie too:
 
   ```ruby
   daiver => ~/Projects/redis_queued_locks  master [$] took 27.2s
@@ -1653,7 +1657,9 @@ rql.current_host_id
 </details>
 
 <details>
-  <summary>(kill zombies in a background) swarmize the new current ruby process that should run the flush zombies elemnt that will drop zombie locks, zombie hosts and their lock requests:</summary>
+  <summary>kill zombies in a background</summary>
+
+  - swarmize the new current ruby process that should run the flush zombies elemnt that will drop zombie locks, zombie hosts and their lock requests:
 
   ```ruby
   [8] pry(main)> rql.swarmize!
