@@ -1536,8 +1536,6 @@ rql.current_host_id
 
 <sup>\[[back to top](#swarm-mode-and-zombie-locks)\]</sup>
 
-<hr>
-
 <details>
   <summary>configuration</summary>
 
