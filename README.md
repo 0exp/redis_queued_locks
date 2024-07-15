@@ -36,6 +36,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [clear_dead_requests](#clear_dead_requests)
   - [current_acquirer_id](#current_acquirer_id)
   - [current_host_id](#current_host_id)
+  - [possible_host_ids](#possible_host_ids)
 - [Swarm Mode and Zombie Locks](#swarm-mode-and-zombie-locks)
   - [work and usage preview (temporary example-based docs)](#work-and-usage-preview-temporary-example-based-docs)
   - [How to Swarm](#how-to-swarm)
@@ -357,6 +358,7 @@ end
 - [clear_dead_requests](#clear_dead_requests)
 - [current_acquirer_id](#current_acquirer_id)
 - [current_host_id](#current_host_id)
+- [possible_host_ids](#possible_host_ids)
 
 ---
 
