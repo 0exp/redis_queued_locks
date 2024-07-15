@@ -37,6 +37,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [current_acquirer_id](#current_acquirer_id)
   - [current_host_id](#current_host_id)
 - [Swarm Mode and Zombie Locks](#swarm-mode-and-zombie-locks)
+  - [work and usage preview (temporary example-based docs)](#work-and-usage-preview-temporary-example-based-docs)
   - [How to Swarm](#how-to-swarm)
     - [configuration](#)
     - [swarm_status](#swarm_status)
@@ -1514,6 +1515,10 @@ rql.current_host_id
 
 > Eliminate zombie locks with a swarm.
 
+**This documentation section is in progress!**
+
+[(work and usage preview (temporary example-based docs))](#work-and-usage-preview-temporary-example-based-docs)
+
 - [How to Swarm](#how-to-swarm)
   - [configuration](#)
   - [swarm_status](#swarm_status)
@@ -1524,6 +1529,167 @@ rql.current_host_id
 - [zombie_locks](#zombie_locks)
 - [zombie_acquiers](#zombie_acquiers)
 - [zombie_hosts](#zombie_hosts)
+
+<hr>
+
+#### Work and Usage Preview (temporary example-based docs)
+
+<sup>\[[back to top](#swarm-mode-and-zombie-locks)\]</sup>
+
+<hr>
+
+<details>
+  <summary>configuration</summary>
+
+  ```ruby
+  redis_client = RedisClient.config.new_pool # NOTE: provide your own RedisClient instance
+
+  clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
+    # NOTE: auto-swarm your RQL client after initalization (run swarm elements and their supervisor)
+    config.swarm.auto_swarm = false
+
+    # supervisor configs
+    config.swarm.supervisor.liveness_probing_period = 2 # NOTE: in seconds
+
+    # (probe_hosts) host probing configuration
+    config.swarm.probe_hosts.enabled_for_swarm = true # NOTE: run host-probing from or not
+    config.swarm.probe_hosts.probe_period = 2 # NOTE: (in seconds) the period of time when the probing process is triggered
+    # (probe_hosts) individual redis config
+    config.swarm.probe_hosts.redis_config.sentinel = false # NOTE: individual redis config
+    config.swarm.probe_hosts.redis_config.pooled = false # NOTE: individual redis config
+    config.swarm.probe_hosts.redis_config.config = false # NOTE: individual redis config
+    config.swarm.probe_hosts.redis_config.pool_config = false # NOTE: individual redis config
+
+    # (flush_zombies) zombie flushing configuration
+    config.swarm.flush_zombies.enabled_for_swarm = true # NOTE: run zombie flushing or not
+    config.swarm.flush_zombies.zombie_flush_period = 10 # NOTE: (in seconds) period of time when the zombie flusher is triggered
+    config.swarm.flush_zombies.zombie_ttl = 15_000 # NOTE: (in milliseconds) when the lock/host/acquier is considered a zombie
+    config.swarm.flush_zombies.zombie_lock_scan_size = 500 # NOTE: scan sizec during zombie flushing
+    config.swarm.flush_zombies.zombie_queue_scan_size = 500 # NOTE: scan sizec during zombie flushing
+    # (flush_zombies) individual redis config
+    config.swarm.flush_zombies.redis_config.sentinel = false # NOTE: individual redis config
+    config.swarm.flush_zombies.redis_config.pooled = false # NOTE: individual redis config
+    config.swarm.flush_zombies.redis_config.config = false # NOTE: individual redis config
+    config.swarm.flush_zombies.redis_config.pool_config = false # NOTE: individual redis config
+  ```
+</details>
+
+<details>
+  <summary>seed a zombie</summary>
+
+  - obtain some long living lock and kill the host process which will lead the lock becoming a zombie:
+
+  ```ruby
+  daiver => ~/Projects/redis_queued_locks  master [$]
+  ➜ bin/console
+  [1] pry(main)> rql = RedisQueuedLocks::Client.new(RedisClient.new);
+  [2] pry(main)> rql.swarmize!
+  /Users/daiver/Projects/redis_queued_locks/lib/redis_queued_locks/swarm/flush_zombies.rb:107: warning: Ractor is experimental, and the behavior may change in future versions of Ruby! Also there are many implementation issues.
+  => {:ok=>true, :result=>:swarming}
+  [3] pry(main)> rql.lock('kekpek', ttl: 1111111111)
+  => {:ok=>true,
+   :result=>
+    {:lock_key=>"rql:lock:kekpek",
+     :acq_id=>"rql:acq:17580/2260/2380/2280/3f16b93973612580",
+     :hst_id=>"rql:hst:17580/2260/2280/3f16b93973612580",
+     :ts=>1720305351.069259,
+     :ttl=>1111111111,
+     :process=>:lock_obtaining}}
+  [4] pry(main)> exit
+  ```
+</details>
+
+<details>
+  <summary>find zombies</summary>
+
+  - start another process, fetch the swarm info, see that our last process is a zombie now and their hosted lock is a zombie too:
+
+  ```ruby
+  daiver => ~/Projects/redis_queued_locks  master [$] took 27.2s
+  ➜ bin/console
+  [1] pry(main)> rql = RedisQueuedLocks::Client.new(RedisClient.new);
+  [2] pry(main)> rql.swarm_info
+  => {"rql:hst:17580/2260/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 12897/262144 +0300, :last_probe_score=>1720305353.0491982},
+   "rql:hst:17580/2300/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 211107/4194304 +0300, :last_probe_score=>1720305353.0503318},
+   "rql:hst:17580/2320/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 106615/2097152 +0300, :last_probe_score=>1720305353.050838},
+   "rql:hst:17580/2260/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 26239/524288 +0300, :last_probe_score=>1720305353.050047},
+   "rql:hst:17580/2300/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 106359/2097152 +0300, :last_probe_score=>1720305353.050716},
+   "rql:hst:17580/2320/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 213633/4194304 +0300, :last_probe_score=>1720305353.050934},
+   "rql:hst:17580/2360/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 214077/4194304 +0300, :last_probe_score=>1720305353.05104},
+   "rql:hst:17580/2360/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 214505/4194304 +0300, :last_probe_score=>1720305353.051142},
+   "rql:hst:17580/2400/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 53729/1048576 +0300, :last_probe_score=>1720305353.05124},
+   "rql:hst:17580/2400/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 3365/65536 +0300, :last_probe_score=>1720305353.0513458}}
+  [3] pry(main)> rql.swarm_status
+  => {:auto_swarm=>false,
+   :supervisor=>{:running=>false, :state=>"non_initialized", :observable=>"non_initialized"},
+   :probe_hosts=>{:enabled=>true, :thread=>{:running=>false, :state=>"non_initialized"}, :main_loop=>{:running=>false, :state=>"non_initialized"}},
+   :flush_zombies=>{:enabled=>true, :ractor=>{:running=>false, :state=>"non_initialized"}, :main_loop=>{:running=>false, :state=>"non_initialized"}}}
+  [4] pry(main)> rql.zombies_info
+  => {:zombie_hosts=>
+    #<Set:
+     {"rql:hst:17580/2260/2280/3f16b93973612580",
+      "rql:hst:17580/2300/2280/3f16b93973612580",
+      "rql:hst:17580/2320/2280/3f16b93973612580",
+      "rql:hst:17580/2260/2340/3f16b93973612580",
+      "rql:hst:17580/2300/2340/3f16b93973612580",
+      "rql:hst:17580/2320/2340/3f16b93973612580",
+      "rql:hst:17580/2360/2280/3f16b93973612580",
+      "rql:hst:17580/2360/2340/3f16b93973612580",
+      "rql:hst:17580/2400/2280/3f16b93973612580",
+      "rql:hst:17580/2400/2340/3f16b93973612580"}>,
+   :zombie_acquirers=>#<Set: {"rql:acq:17580/2260/2380/2280/3f16b93973612580"}>,
+   :zombie_locks=>#<Set: {"rql:lock:kekpek"}>}
+  [5] pry(main)> rql.zombie_locks
+  => #<Set: {"rql:lock:kekpek"}>
+  [6] pry(main)> rql.zombie_acquiers
+  => #<Set: {"rql:acq:17580/2260/2380/2280/3f16b93973612580"}>
+  [7] pry(main)> rql.zombie_hosts
+  => #<Set:
+   {"rql:hst:17580/2260/2280/3f16b93973612580",
+    "rql:hst:17580/2300/2280/3f16b93973612580",
+    "rql:hst:17580/2320/2280/3f16b93973612580",
+    "rql:hst:17580/2260/2340/3f16b93973612580",
+    "rql:hst:17580/2300/2340/3f16b93973612580",
+    "rql:hst:17580/2320/2340/3f16b93973612580",
+    "rql:hst:17580/2360/2280/3f16b93973612580",
+    "rql:hst:17580/2360/2340/3f16b93973612580",
+    "rql:hst:17580/2400/2280/3f16b93973612580",
+    "rql:hst:17580/2400/2340/3f16b93973612580"}>
+  ```
+</details>
+
+<details>
+  <summary>kill zombies in a background</summary>
+
+  - swarmize the new current ruby process that should run the flush zombies elemnt that will drop zombie locks, zombie hosts and their lock requests:
+
+  ```ruby
+  [8] pry(main)> rql.swarmize!
+  /Users/daiver/Projects/redis_queued_locks/lib/redis_queued_locks/swarm/flush_zombies.rb:107: warning: Ractor is experimental, and the behavior may change in future versions of Ruby! Also there are many implementation issues.
+  => {:ok=>true, :result=>:swarming}
+  [9] pry(main)> rql.swarm_info
+  => {"rql:hst:17752/2260/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4012577/4194304 +0300, :last_probe_score=>1720305399.956673},
+   "rql:hst:17752/2300/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4015233/4194304 +0300, :last_probe_score=>1720305399.9573061},
+   "rql:hst:17752/2320/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4016755/4194304 +0300, :last_probe_score=>1720305399.957669},
+   "rql:hst:17752/2260/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 1003611/1048576 +0300, :last_probe_score=>1720305399.957118},
+   "rql:hst:17752/2300/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 2008027/2097152 +0300, :last_probe_score=>1720305399.957502},
+   "rql:hst:17752/2320/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 2008715/2097152 +0300, :last_probe_score=>1720305399.95783},
+   "rql:hst:17752/2360/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4018063/4194304 +0300, :last_probe_score=>1720305399.9579809},
+   "rql:hst:17752/2360/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 1004673/1048576 +0300, :last_probe_score=>1720305399.9581308}}
+  [10] pry(main)> rql.swarm_status
+  => {:auto_swarm=>false,
+   :supervisor=>{:running=>true, :state=>"sleep", :observable=>"initialized"},
+   :probe_hosts=>{:enabled=>true, :thread=>{:running=>true, :state=>"sleep"}, :main_loop=>{:running=>true, :state=>"sleep"}},
+   :flush_zombies=>{:enabled=>true, :ractor=>{:running=>true, :state=>"running"}, :main_loop=>{:running=>true, :state=>"sleep"}}}
+  [11] pry(main)> rql.zombies_info
+  => {:zombie_hosts=>#<Set: {}>, :zombie_acquirers=>#<Set: {}>, :zombie_locks=>#<Set: {}>}
+  [12] pry(main)> rql.zombie_acquiers
+  => #<Set: {}>
+  [13] pry(main)> rql.zombie_hosts
+  => #<Set: {}>
+  [14] pry(main)>
+  ```
+</details>
 
 ---
 
@@ -1727,9 +1893,11 @@ Detalized event semantics and payload structure:
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
-- **Extremely Major**:
-  - Swarm Mode: eliminate zombie locks with a swarm;
 - **Major**:
+  - Swarm Updates:
+    - circuit-breaker for long-living failures of your infrastructure inside the swarm elements and supervisor:
+      the supervisor will stop (for some period of time or while the some factor will return false)
+      trying to ressurect unexpectedly terminated swarm elements, and will notify about this;
   - lock request prioritization;
   - **strict redlock algorithm support** (support for many `RedisClient` instances);
   - `#lock_series` - acquire a series of locks:
