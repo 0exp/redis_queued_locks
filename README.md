@@ -1479,7 +1479,7 @@ rql.current_acquirer_id
 <sup>\[[back to top](#usage)\]</sup>
 
 - get a current host identifier in RQL notation that you can use for debugging purposes during the lock analyzis;
-- the host is a ruby worker (a combination of process/thread/ractor) that is alive and can obtain locks;
+- the host is a ruby worker (a combination of process/thread/ractor/identity) that is alive and can obtain locks;
 - the host is limited to `process`/`thread`/`ractor` (without `fiber`) combination cuz we have no abilities to extract
   all fiber objects from the current ruby process when at least one ractor object is defined (**ObjectSpace** loses
   abilities to extract `Fiber` and `Thread` objects after the any ractor is created) (`Thread` objects are analyzed
