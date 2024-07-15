@@ -130,6 +130,8 @@ class RedisQueuedLocks::Swarm
     )
   end
 
+  # @option zombie_ttl [Integer]
+  # @option lock_scan_size [Integer]
   # @return [Set<String>]
   #
   # @api public
@@ -145,6 +147,8 @@ class RedisQueuedLocks::Swarm
     )
   end
 
+  # @option zombie_ttl [Integer]
+  # @option lock_scan_size [Integer]
   # @return [Set<String>]
   #
   # @api ppublic
@@ -160,6 +164,7 @@ class RedisQueuedLocks::Swarm
     )
   end
 
+  # @option zombie_ttl [Integer]
   # @return [Set<String>]
   #
   # @api public
@@ -168,6 +173,8 @@ class RedisQueuedLocks::Swarm
     RedisQueuedLocks::Swarm::ZombieInfo.zombie_hosts(rql_client.redis_client, zombie_ttl)
   end
 
+  # @option zombie_ttl [Integer]
+  # @option lock_sacn_size [Integer]
   # @return [Hash<Symbol,Set<String>>]
   #   Format: {
   #     zombie_hosts: <Set<String>>,
