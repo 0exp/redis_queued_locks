@@ -1534,6 +1534,8 @@ rql.current_host_id
 
 #### Work and Usage Preview (temporary example-based docs)
 
+<sup>\[[back to top](#swarm-mode-and-zombie-locks)\]</sup>
+
 <hr>
 
 <details>
@@ -1598,7 +1600,7 @@ rql.current_host_id
 </details>
 
 <details>
-  <summary>find zombies**</summary>
+  <summary>find zombies</summary>
 
   - start another process, fetch the swarm info, see that our last process is a zombie now and their hosted lock is a zombie too:
 
