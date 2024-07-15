@@ -54,7 +54,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 - [Lock Access Strategies](#lock-access-strategies)
   - [queued](#lock-access-strategies)
   - [random](#lock-access-strategies)
-- [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks)
+- [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks)
 - [Logging](#logging)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Events](#instrumentation-events)
@@ -467,7 +467,7 @@ def lock(
     - `:extendable_work_through` - continue working under the lock **with** lock's TTL extension;
     - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
     - `:dead_locking` - fail with deadlock exception;
-  - See [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks) documentation section for details;
+  - See [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks) documentation section for details;
 - `identity` - (optional) `[String]`
   - An unique string that is unique per `RedisQueuedLock::Client` instance. Resolves the
     collisions between the same process_id/thread_id/fiber_id/ractor_id identifiers on different
@@ -586,7 +586,7 @@ Return value:
     - `:extendable_conflict_work_through` - reentrant lock acquiring process with lock's TTL extension. Suitable for `conflict_strategy: :extendable_work_through`;
     - `:conflict_work_through` - reentrant lock acquiring process without lock's TTL extension. Suitable for `conflict_strategy: :work_through`;
     - `:dead_locking` - current process tries to acquire a lock that is already acquired by them. Suitalbe for `conflict_startegy: :dead_locking`;
-    - For more details see [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks) readme section;
+    - For more details see [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks) readme section;
   - For successful lock obtaining:
     ```ruby
     {
@@ -786,7 +786,7 @@ rql.lock('my_lock', retry_delay: 3000, ttl: 3000, access_strategy: :random)
   - (`RedisQueuedLocks::LockAlreadyObtainedError`) when `fail_fast` is `true` and lock is already obtained;
   - (`RedisQueuedLocks::LockAcquiermentTimeoutError`) `timeout` limit reached before lock is obtained;
   - (`RedisQueuedLocks::LockAcquiermentRetryLimitError`) `retry_count` limit reached before lock is obtained;
-  - (`RedisQueuedLocks::ConflictLockObtainError`) when `conflict_strategy: :dead_locking` is used and the "same-process-dead-lock" is happened (see [Dead locks and Reentrant locks](#dead-locks-and-reentrant-locks) for details);
+  - (`RedisQueuedLocks::ConflictLockObtainError`) when `conflict_strategy: :dead_locking` is used and the "same-process-dead-lock" is happened (see [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks) for details);
 
 ```ruby
 def lock!(
@@ -1763,7 +1763,7 @@ rql.possible_host_ids
 
 ---
 
-## Dead locks and Reentrant locks
+## Deadlocks and Reentrant locks
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
