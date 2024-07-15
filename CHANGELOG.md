@@ -3,7 +3,7 @@
 ## [1.9.0] - 2024-07-15
 ### Added
 - Brand New Extremely Major Feature: **Swarm Mode** - eliminate zombie locks with a swarm:
-  - works by `supervisor` + `actors` abstractions;
+  - works by `supervisor` + `actor model` abstractions;
   - all your ruby workers can become an element of the processs swarm;
   - each ruby worker of the swarm probes himself that he is alive;
   - worker that does not probes himselfs treats as a zombie;
