@@ -1,4 +1,6 @@
 ## [Unreleased]
+### Added
+- `RedisQueuedLocks::Swarm`: missing YARDocs;
 ### Removed
 - `RedisQueudLocks::Swarm`: some useless YARDocs;
 
