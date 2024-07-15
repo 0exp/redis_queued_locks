@@ -25,10 +25,10 @@ RSpec.describe RedisQueuedLocks do
       client = RedisQueuedLocks::Client.new(redis)
 
       uniq_identity = client.uniq_identity
-      current_thread_list = Thread.list
-      current_process_id = Process.pid
-      current_thread_id = Thread.current.object_id
-      current_ractor_id = Ractor.current.object_id
+      current_thread_list = ::Thread.list
+      current_process_id = ::Process.pid
+      current_thread_id = ::Thread.current.object_id
+      current_ractor_id = ::Ractor.current.object_id
 
       # verify current host
       expect(client.current_host_id).to eq(
@@ -207,7 +207,7 @@ RSpec.describe RedisQueuedLocks do
       aggregate_failures 'swarmed => swarm info => probes and zombie status' do
         client = RedisQueuedLocks::Client.new(redis) do |config|
           config.swarm.auto_swarm = true
-          config.swarm.probe_hosts.probe_period = 2
+          config.swarm.probe_hosts.probe_period = 3
           config.swarm.probe_hosts.enabled_for_swarm = true
           config.swarm.flush_zombies.enabled_for_swarm = true
         end
@@ -231,7 +231,7 @@ RSpec.describe RedisQueuedLocks do
           })
         })
 
-        sleep(3) # NOTE: wait for host probing
+        sleep(4) # NOTE: wait for host probing
 
         swarm_info = client.possible_host_ids.each_with_object({}) do |host_id, memo|
           memo[host_id] = match({
