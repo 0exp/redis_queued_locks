@@ -1735,6 +1735,14 @@ rql.possible_host_ids
   ```
 </details>
 
+<details>
+  <summary>swarm hosts key in Redis</summary>
+
+  ```ruby
+  "rql:swarm:hsts"
+  ```
+</details>
+
 ---
 
 ## Lock Access Strategies
