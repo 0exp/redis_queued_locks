@@ -1569,7 +1569,7 @@ rql.current_host_id
 </details>
 
 <details>
-  <summary>obtain some long living lock and kill the host process:</summary>
+  <summary>obtain some long living lock and kill the host process which will lead the lock becoming a zombie:</summary>
 
   ```ruby
   daiver => ~/Projects/redis_queued_locks  master [$]
