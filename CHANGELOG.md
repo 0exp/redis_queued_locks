@@ -1,111 +1,51 @@
 ## [Unreleased]
 ### Added
-- (changelog draft) Brand New Extremely Major Feature: **Swarm Mode**: eliminate zombie locks with a swarm;
-  - (changelog draft) new configs;
-  - (changelog draft): `#swarmize!`, `#deswarmize!`
-  - (changelog draft): `#swarm_status`/`#swarm_state`, `#swarm_info`
-  - (changelog draft): `#probe_hosts`, `#flush_zombies`
-  - (changelog_draft): `#zombie_locks`, `#zmobie_acquiers`, `#zombie_hosts`, `#zombies_info`/`#zombies`;
-- (changelog draft) (logs: added `hst_id`);
-- (changelog draft) (instrumentation: added `hst_id` field);
-- (changelog draft) (added **hst_id** to `#lock_info` / `#lock_data` / `#locks_info` method results);
-- (changelog draft) (`#current_host_id`);
-- (changelog draft) (`#possible_host_ids`);
-- (changelog draft) (added **hst_id** to `RedisQueuedLocks::TimedLockTimeoutError` error message);
-- (changelog draft) (an ability to mark any loggable/instrumentable method as sampled for instrumentation/logging despite of the enabled instrumentation/log sampling);
-
-```ruby
-daiver => ~/Projects/redis_queued_locks  master [$]
-➜ bin/console
-[1] pry(main)> rql = RedisQueuedLocks::Client.new(RedisClient.new);
-[2] pry(main)> rql.swarmize!
-/Users/daiver/Projects/redis_queued_locks/lib/redis_queued_locks/swarm/flush_zombies.rb:107: warning: Ractor is experimental, and the behavior may change in future versions of Ruby! Also there are many implementation issues.
-=> {:ok=>true, :result=>:swarming}
-[3] pry(main)> rql.lock('kekpek', ttl: 1111111111)
-=> {:ok=>true,
- :result=>
-  {:lock_key=>"rql:lock:kekpek",
-   :acq_id=>"rql:acq:17580/2260/2380/2280/3f16b93973612580",
-   :hst_id=>"rql:hst:17580/2260/2280/3f16b93973612580",
-   :ts=>1720305351.069259,
-   :ttl=>1111111111,
-   :process=>:lock_obtaining}}
-[4] pry(main)> exit
-daiver => ~/Projects/redis_queued_locks  master [$] took 27.2s
-➜ bin/console
-[1] pry(main)> rql = RedisQueuedLocks::Client.new(RedisClient.new);
-[2] pry(main)> rql.swarm_info
-=> {"rql:hst:17580/2260/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 12897/262144 +0300, :last_probe_score=>1720305353.0491982},
- "rql:hst:17580/2300/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 211107/4194304 +0300, :last_probe_score=>1720305353.0503318},
- "rql:hst:17580/2320/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 106615/2097152 +0300, :last_probe_score=>1720305353.050838},
- "rql:hst:17580/2260/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 26239/524288 +0300, :last_probe_score=>1720305353.050047},
- "rql:hst:17580/2300/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 106359/2097152 +0300, :last_probe_score=>1720305353.050716},
- "rql:hst:17580/2320/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 213633/4194304 +0300, :last_probe_score=>1720305353.050934},
- "rql:hst:17580/2360/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 214077/4194304 +0300, :last_probe_score=>1720305353.05104},
- "rql:hst:17580/2360/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 214505/4194304 +0300, :last_probe_score=>1720305353.051142},
- "rql:hst:17580/2400/2280/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 53729/1048576 +0300, :last_probe_score=>1720305353.05124},
- "rql:hst:17580/2400/2340/3f16b93973612580"=>{:zombie=>true, :last_probe_time=>2024-07-07 01:35:53 3365/65536 +0300, :last_probe_score=>1720305353.0513458}}
-[3] pry(main)> rql.swarm_status
-=> {:auto_swarm=>false,
- :supervisor=>{:running=>false, :state=>"non_initialized", :observable=>"non_initialized"},
- :probe_hosts=>{:enabled=>true, :thread=>{:running=>false, :state=>"non_initialized"}, :main_loop=>{:running=>false, :state=>"non_initialized"}},
- :flush_zombies=>{:enabled=>true, :ractor=>{:running=>false, :state=>"non_initialized"}, :main_loop=>{:running=>false, :state=>"non_initialized"}}}
-[4] pry(main)> rql.zombies_info
-=> {:zombie_hosts=>
-  #<Set:
-   {"rql:hst:17580/2260/2280/3f16b93973612580",
-    "rql:hst:17580/2300/2280/3f16b93973612580",
-    "rql:hst:17580/2320/2280/3f16b93973612580",
-    "rql:hst:17580/2260/2340/3f16b93973612580",
-    "rql:hst:17580/2300/2340/3f16b93973612580",
-    "rql:hst:17580/2320/2340/3f16b93973612580",
-    "rql:hst:17580/2360/2280/3f16b93973612580",
-    "rql:hst:17580/2360/2340/3f16b93973612580",
-    "rql:hst:17580/2400/2280/3f16b93973612580",
-    "rql:hst:17580/2400/2340/3f16b93973612580"}>,
- :zombie_acquirers=>#<Set: {"rql:acq:17580/2260/2380/2280/3f16b93973612580"}>,
- :zombie_locks=>#<Set: {"rql:lock:kekpek"}>}
-[5] pry(main)> rql.zombie_locks
-=> #<Set: {"rql:lock:kekpek"}>
-[6] pry(main)> rql.zombie_acquiers
-=> #<Set: {"rql:acq:17580/2260/2380/2280/3f16b93973612580"}>
-[7] pry(main)> rql.zombie_hosts
-=> #<Set:
- {"rql:hst:17580/2260/2280/3f16b93973612580",
-  "rql:hst:17580/2300/2280/3f16b93973612580",
-  "rql:hst:17580/2320/2280/3f16b93973612580",
-  "rql:hst:17580/2260/2340/3f16b93973612580",
-  "rql:hst:17580/2300/2340/3f16b93973612580",
-  "rql:hst:17580/2320/2340/3f16b93973612580",
-  "rql:hst:17580/2360/2280/3f16b93973612580",
-  "rql:hst:17580/2360/2340/3f16b93973612580",
-  "rql:hst:17580/2400/2280/3f16b93973612580",
-  "rql:hst:17580/2400/2340/3f16b93973612580"}>
-[8] pry(main)> rql.swarmize!
-/Users/daiver/Projects/redis_queued_locks/lib/redis_queued_locks/swarm/flush_zombies.rb:107: warning: Ractor is experimental, and the behavior may change in future versions of Ruby! Also there are many implementation issues.
-=> {:ok=>true, :result=>:swarming}
-[9] pry(main)> rql.swarm_info
-=> {"rql:hst:17752/2260/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4012577/4194304 +0300, :last_probe_score=>1720305399.956673},
- "rql:hst:17752/2300/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4015233/4194304 +0300, :last_probe_score=>1720305399.9573061},
- "rql:hst:17752/2320/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4016755/4194304 +0300, :last_probe_score=>1720305399.957669},
- "rql:hst:17752/2260/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 1003611/1048576 +0300, :last_probe_score=>1720305399.957118},
- "rql:hst:17752/2300/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 2008027/2097152 +0300, :last_probe_score=>1720305399.957502},
- "rql:hst:17752/2320/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 2008715/2097152 +0300, :last_probe_score=>1720305399.95783},
- "rql:hst:17752/2360/2280/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 4018063/4194304 +0300, :last_probe_score=>1720305399.9579809},
- "rql:hst:17752/2360/2340/89beef198021f16d"=>{:zombie=>false, :last_probe_time=>2024-07-07 01:36:39 1004673/1048576 +0300, :last_probe_score=>1720305399.9581308}}
-[10] pry(main)> rql.swarm_status
-=> {:auto_swarm=>false,
- :supervisor=>{:running=>true, :state=>"sleep", :observable=>"initialized"},
- :probe_hosts=>{:enabled=>true, :thread=>{:running=>true, :state=>"sleep"}, :main_loop=>{:running=>true, :state=>"sleep"}},
- :flush_zombies=>{:enabled=>true, :ractor=>{:running=>true, :state=>"running"}, :main_loop=>{:running=>true, :state=>"sleep"}}}
-[11] pry(main)> rql.zombies_info
-=> {:zombie_hosts=>#<Set: {}>, :zombie_acquirers=>#<Set: {}>, :zombie_locks=>#<Set: {}>}
-[12] pry(main)> rql.zombie_acquiers
-=> #<Set: {}>
-[13] pry(main)> rql.zombie_hosts
-=> #<Set: {}>
-[14] pry(main)>
-```
+- Brand New Extremely Major Feature: **Swarm Mode** - eliminate zombie locks with a swarm:
+  - works by `supervisor` + `actors` abstractions;
+  - all your ruby workers can become an element of the processs swarm;
+  - each ruby worker of the swarm probes himself that he is alive;
+  - worker that does not probes himselfs treats as a zombie;
+  - worekr becomes dead when your ruby process is dead, or thread is dead or your ractor is dead;
+  - each zombie's lock, acquier and position in queue are flushed in background via `flush_zombies` swarm element;
+  - the supervisor module keeps up and running each swarm melement (`probe_hosts` and `flush_zombies`):
+    - cuz each element works in background and can fail by any unexpected exception the supervisor guarantees that your elements will ressurect after that;
+  - each element can be deeply configured (and enabled/disabled);
+  - abilities:
+    - configurable swarming and deswarming (`#swarmize!`, `#deswarmize!`);
+    - encapsulated swarm interface;
+    - two fully isolated swarm elements: `probe_hosts` and `flush_zombies`;
+    - supervisor that keeps all elements running and wokring;
+    - an ability to check the swarm status (`#swarm_status`): who is working, who is dead, running status, internal main loop states, etc;
+    - an abiltiy to check the swarm information (`#swarm_info`): showing the current swarm hosts and their last probes and current zombie status;
+    - an ability to find zombie locks, zombie acquiers and zombie hosts (`#zombie_locks`, `#zombie_acquiers`, `#zombie_hosts`);
+    - an ability to extract the full zombie information (`#zombies_info`/`#zombies`);
+    - each zombie lock will be flushed in background by appropriated swarm element (`flush_zombies`);
+    - deeply configurable zombie factors: zombie ttl, host probing period, supervisor check period;
+    - an ability to manually probe hosts;
+    - an ability to flush zombies manually;
+    - you can made `swarm`-based logic by yourself (by manually runnable `#flush_zombies` and `#probe_hosts`);
+  - summarized interface:
+    - `#swarmize!`, `#deswarmize!`;
+    - `#swarm_status`/`#swarm_state`, `#swarm_info`
+    - `#zombie_locks`, `#zmobie_acquiers`, `#zombie_hosts`, `#zombies_info`/`#zombies`;
+    - manual abilities: `#probe_hosts`, `#flush_zombies`;
+  - **general note**: each swarm element should have their own `RedisClient` instance so each have their own redis-client configuration
+    and each of the can be configured separately (**RedisClient** multithreading limitation and **Ractor** limitations);
+- Added the `lock host` abstraction (`hst_id`):
+  - each lock is hosted by ruby workers now;
+  - the ruby worker is a combination of `process_id`/`thread_id`/`ractor_id`/`uniq_identity`);
+  - each lock stores the host id (`hst_id` field) indisde their data (for debugging purposes and zombie identification purposes);
+  - every lock information method now includes `hst_id` field: `#lock_info`, `#lock_data`, `#locks_info`;
+  - an ability to fetch the current host id (your ruby worker host id): `#current_host_id`;
+  - an ability to fetch all possible host ids in the current Ractor (all possible and reachable ruby workers from the current ractor): `#possible_host_ids`;
+  - extended `RedisQueuedLocks::TimedLocktimeoutError` message: added `hst_id` field data from the lock data;
+- **Instrumentation Updates**:
+  - added the `hst_id` field to each locking-process-related instrumentation event;
+- **Log Updates**:
+  - added `hst_id` field to each locking-process-related log;
+- **Logging/Instrumentation Sampling** updates:
+  - an ability to mark any loggable/instrumentable method as sampled for instrumentation/logging despite of the enabled instrumentation/log sampling
+    by providing the `log_sample_this: true` attribute and `instr_sample_this: true` attributes respectively;
 
 ## [1.8.0] - 2024-06-13
 ### Added
