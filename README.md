@@ -980,6 +980,7 @@ rql.queued?("your_lock_name") # => true/false
 
 - release the concrete lock with lock request queue;
 - queue will be relased first;
+- has an alias: `#release_lock`;
 - accepts:
   - `lock_name` - (required) `[String]` - the lock name that should be released.
   - `:logger` - (optional) `[::Logger,#debug]`
@@ -1055,6 +1056,7 @@ rql.unlock("your_lock_name")
 
 - release all obtained locks and related lock request queues;
 - queues will be released first;
+- has an alias: `#release_locks`;
 - accepts:
   - `:batch_size` - (optional) `[Integer]`
     - the size of batch of locks and lock queus that should be cleared under the one pipelined redis command at once;

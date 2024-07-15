@@ -48,6 +48,8 @@
 - **Logging/Instrumentation Sampling** updates:
   - an ability to mark any loggable/instrumentable method as sampled for instrumentation/logging despite of the enabled instrumentation/log sampling
     by providing the `log_sample_this: true` attribute and `instr_sample_this: true` attribute respectively;
+- an alias for `#clear_locks`: `#release_locks`;
+- an alias for `#unlock`: `#release_lock`;
 
 ## [1.8.0] - 2024-06-13
 ### Added

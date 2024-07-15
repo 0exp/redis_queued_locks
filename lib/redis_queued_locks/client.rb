@@ -596,6 +596,7 @@ class RedisQueuedLocks::Client
       instr_sample_this
     )
   end
+  alias_method :release_lock, :unlock
 
   # @param lock_name [String]
   # @return [Boolean]
@@ -826,6 +827,7 @@ class RedisQueuedLocks::Client
       instr_sample_this
     )
   end
+  alias_method :release_locks, :clear_locks
 
   # @option scan_size [Integer]
   #   The batch of scanned keys for Redis'es SCAN command.
