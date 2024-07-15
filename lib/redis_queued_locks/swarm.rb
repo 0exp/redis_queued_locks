@@ -188,7 +188,6 @@ class RedisQueuedLocks::Swarm
     )
   end
 
-  # @option silently [Boolean]
   # @return [NilClass,Hash<Symbol,Symbol|Boolean>]
   #
   # @api public
@@ -220,7 +219,6 @@ class RedisQueuedLocks::Swarm
     end
   end
 
-  # @option silently [Boolean]
   # @return [NilClass,Hash<Symbol,Symbol|Boolean>]
   #
   # @api public

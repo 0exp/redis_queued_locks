@@ -1,4 +1,6 @@
 ## [Unreleased]
+### Removed
+- `RedisQueudLocks::Swarm`: some useless YARDocs;
 
 ## [1.9.0] - 2024-07-15
 ### Added
