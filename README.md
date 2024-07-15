@@ -1894,12 +1894,12 @@ Detalized event semantics and payload structure:
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - **Major**:
-  - Swarm Updates:
+  - Swarm:
     - circuit-breaker for long-living failures of your infrastructure inside the swarm elements and supervisor:
       the supervisor will stop (for some period of time or while the some factor will return false)
       trying to ressurect unexpectedly terminated swarm elements, and will notify about this;
-    - logging (thread + ractor limitations);
-    - instrumentation (thread + ractor limitations);
+    - logging (thread/ractor has some limitations so the initial implementation does not include internal logging);
+    - instrumentation (thread/ractor has some limitations so the initial implementation does not include internal instrumentation);
   - lock request prioritization;
   - **strict redlock algorithm support** (support for many `RedisClient` instances);
   - `#lock_series` - acquire a series of locks:
