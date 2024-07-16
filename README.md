@@ -1830,8 +1830,8 @@ rql.possible_host_ids
 
 **NOTICE**: logging can be sampled via:
 - `config.log_samplign_enabled = true` (**false** by default);
-- `config.log_sampler = RedisQueuedLocks::Logging::Sampler` (used by default).
-- see **RedisQueuedLocks::Logging::Sampler** implementation in source code for customization details.
+- `config.log_sampler = RedisQueuedLocks::Logging::Sampler` (used by default);
+- see **RedisQueuedLocks::Logging::Sampler** implementation in source code for customization details;
 
 ```ruby
 # (default: RedisQueuedLocks::Logging::VoidLogger)
