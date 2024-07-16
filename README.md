@@ -1789,7 +1789,6 @@ rql.possible_host_ids
 
 - [Logging Configuration](#logging-configuration)
 
----
 
 - default logs (raised from `#lock`/`#lock!`):
 
