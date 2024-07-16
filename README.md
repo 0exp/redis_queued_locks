@@ -56,7 +56,9 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [random](#lock-access-strategies)
 - [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks)
 - [Logging](#logging)
+  - [Logging Configuration](#logging-configuration)
 - [Instrumentation](#instrumentation)
+  - [Instrumentation Configuration])(#instrumentation-configuration)
   - [Instrumentation Events](#instrumentation-events)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
@@ -1785,6 +1787,8 @@ rql.possible_host_ids
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
+- [Logging Configuration](#logging-configuration)
+
 - default logs (raised from `#lock`/`#lock!`):
 
 ```ruby
@@ -1820,13 +1824,82 @@ rql.possible_host_ids
 
 ---
 
+### Logging Configuration
+
+Logging can be sampled via `config.log_samplign_enabled = true` and `config.log_sampler = RedisQueuedLocks::Logging::Sampler` (this sampler is used by default).
+See `RedisQueuedLocks::Logging::Sampler` implementation in source code for customization details.
+
+```ruby
+  # (default: RedisQueuedLocks::Logging::VoidLogger)
+  # - the logger object;
+  # - should implement `debug(progname = nil, &block)` (minimal requirement) or be an instance of Ruby's `::Logger` class/subclass;
+  # - supports `SemanticLogger::Logger` (see "semantic_logger" gem)
+  # - at this moment the only debug logs are realised in following cases:
+  #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.dead_score_reached__reset_acquier_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
+  #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
+  #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
+  #   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  # - by default uses VoidLogger that does nothing;
+  config.logger = RedisQueuedLocks::Logging::VoidLogger
+
+  # (default: false)
+  # - adds additional debug logs;
+  # - enables additional logs for each internal try-retry lock acquiring (a lot of logs can be generated depending on your retry configurations);
+  # - it adds following debug logs in addition to the existing:
+  #   - "[redis_queued_locks.try_lock.start]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.rconn_fetched]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.same_process_conflict_detected]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.same_process_conflict_analyzed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status");
+  #   - "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status", "last_ext_ttl", "last_ext_ts");
+  #   - "[redis_queued_locks.try_lock.reentrant_lock__work_through]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status", last_spc_ts);
+  #   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat")";
+  #   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue");
+  #   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "<current_lock_data>");
+  #   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
+  #   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  config.log_lock_try = false
+
+  # (default: false)
+  # - enables <log sampling>: only the configured percent of RQL cases will be logged;
+  # - disabled by default;
+  # - works in tandem with <config.log_sampling_percent> and <log.sampler> configs;
+  config.log_sampling_enabled = false
+
+  # (default: 15)
+  # - the percent of cases that should be logged;
+  # - take an effect when <config.log_sampling_enalbed> is true;
+  # - works in tandem with <config.log_sampling_enabled> and <config.log_sampler> configs;
+  config.log_sampling_percent = 15
+
+  # (default: RedisQueuedLocks::Logging::Sampler)
+  # - percent-based log sampler that decides should be RQL case logged or not;
+  # - works in tandem with <config.log_sampling_enabled> and <config.log_sampling_percent> configs;
+  # - based on the ultra simple percent-based (weight-based) algorithm that uses SecureRandom.rand
+  #   method so the algorithm error is ~(0%..13%);
+  # - you can provide your own log sampler with bettter algorithm that should realize
+  #   `sampling_happened?(percent) => boolean` interface (see `RedisQueuedLocks::Logging::Sampler` for example);
+  config.log_sampler = RedisQueuedLocks::Logging::Sampler
+```
+
+---
+
 ## Instrumentation
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - [Instrumentation Events](#instrumentation-events)
+- [Instrumentation Configuration](#instrumentation-configuration)
 
 An instrumentation layer is incapsulated in `instrumenter` object stored in [config](#configuration) (`RedisQueuedLocks::Client#config[:instrumenter]`).
+
+Instrumentation can be sampled. See [Instrumentation Configuration](#instrumentation-configuration) section for details.
 
 Instrumenter object should provide `notify(event, payload)` method with the following signarue:
 
@@ -1840,6 +1913,45 @@ Instrumenter object should provide `notify(event, payload)` method with the foll
 - `RedisQueuedLocks::Instrument::VoidNotifier` - instrumenter that does nothing;
 
 By default `RedisQueuedLocks::Client` is configured with the void notifier (which means "instrumentation is disabled").
+
+---
+
+### Instrumentation Configuration
+
+Instrumentation can be sampled via `config.instr_sampling_enabled = true` and `config.instr_sampler = RedisQueuedLocks::Instrument::Sampler` (this sampler is used by default).
+See `RedisQueuedLocks::Instrument::Sampler` implementation in source code for customization details.
+
+```ruby
+  # (default: RedisQueuedLocks::Instrument::VoidNotifier)
+  # - instrumentation layer;
+  # - you can provide your own instrumenter that should realize `#notify(event, payload = {})` interface:
+  #   - event: <string> requried;
+  #   - payload: <hash> requried;
+  # - disabled by default via `VoidNotifier`;
+  config.instrumenter = RedisQueuedLocks::Instrument::ActiveSupport
+
+  # (default: false)
+  # - enables <instrumentaion sampling>: only the configured percent of RQL cases will be instrumented;
+  # - disabled by default;
+  # - works in tandem with <config.instr_sampling_percent and <log.instr_sampler>;
+  config.instr_sampling_enabled = false
+
+  # (default: 15)
+  # - the percent of cases that should be instrumented;
+  # - take an effect when <config.instr_sampling_enalbed> is true;
+  # - works in tandem with <config.instr_sampling_enabled> and <config.instr_sampler> configs;
+  config.instr_sampling_percent = 15
+
+  # (default: RedisQueuedLocks::Instrument::Sampler)
+  # - percent-based log sampler that decides should be RQL case instrumented or not;
+  # - works in tandem with <config.instr_sampling_enabled> and <config.instr_sampling_percent> configs;
+  # - based on the ultra simple percent-based (weight-based) algorithm that uses SecureRandom.rand
+  #   method so the algorithm error is ~(0%..13%);
+  # - you can provide your own log sampler with bettter algorithm that should realize
+  #   `sampling_happened?(percent) => boolean` interface (see `RedisQueuedLocks::Instrument::Sampler` for example);
+  config.instr_sampler = RedisQueuedLocks::Instrument::Sampler
+end
+```
 
 ---
 

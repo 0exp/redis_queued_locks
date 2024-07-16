@@ -1,6 +1,8 @@
 ## [Unreleased]
 ### Added
 - `RedisQueuedLocks::Swarm`: missing YARDocs;
+- `Logging Configuration` readme section;
+- `Instrumentation Configuration` readme section;
 ### Removed
 - `RedisQueudLocks::Swarm`: some useless YARDocs;
 
