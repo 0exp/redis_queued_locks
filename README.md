@@ -1789,7 +1789,7 @@ rql.possible_host_ids
 
 - [Logging Configuration](#logging-configuration)
 
-##### - default logs (raised from `#lock`/`#lock!`):
+##### default logs (raised from `#lock`/`#lock!`):
 
 ```ruby
 "[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
@@ -1803,7 +1803,7 @@ rql.possible_host_ids
 "[redis_queued_locks.decrease_lock]" # (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat");
 ```
 
-##### - additional logs (raised from `#lock`/`#lock!` with `confg[:log_lock_try] == true`):
+##### additional logs (raised from `#lock`/`#lock!` with `confg[:log_lock_try] == true`):
 
 ```ruby
 "[redis_queued_locks.try_lock.start]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
