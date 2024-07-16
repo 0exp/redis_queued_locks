@@ -58,7 +58,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 - [Logging](#logging)
   - [Logging Configuration](#logging-configuration)
 - [Instrumentation](#instrumentation)
-  - [Instrumentation Configuration])(#instrumentation-configuration)
+  - [Instrumentation Configuration](#instrumentation-configuration)
   - [Instrumentation Events](#instrumentation-events)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
@@ -1826,8 +1826,10 @@ rql.possible_host_ids
 
 ### Logging Configuration
 
-Logging can be sampled via `config.log_samplign_enabled = true` and `config.log_sampler = RedisQueuedLocks::Logging::Sampler` (this sampler is used by default).
-See `RedisQueuedLocks::Logging::Sampler` implementation in source code for customization details.
+**NOTICE**: logging can be sampled via:
+- `config.log_samplign_enabled = true` (**false** by default);
+- `config.log_sampler = RedisQueuedLocks::Logging::Sampler` (used by default).
+- see **RedisQueuedLocks::Logging::Sampler** implementation in source code for customization details.
 
 ```ruby
   # (default: RedisQueuedLocks::Logging::VoidLogger)
@@ -1918,8 +1920,10 @@ By default `RedisQueuedLocks::Client` is configured with the void notifier (whic
 
 ### Instrumentation Configuration
 
-Instrumentation can be sampled via `config.instr_sampling_enabled = true` and `config.instr_sampler = RedisQueuedLocks::Instrument::Sampler` (this sampler is used by default).
-See `RedisQueuedLocks::Instrument::Sampler` implementation in source code for customization details.
+**NOTICE**: instrumentation can be sampled via:
+- `config.instr_sampling_enabled = true` (**false** by default);
+- `config.instr_sampler = RedisQueuedLocks::Instrument::Sampler` (used by default).
+- see **RedisQueuedLocks::Instrument::Sampler** implementation in source code for customization details.
 
 ```ruby
   # (default: RedisQueuedLocks::Instrument::VoidNotifier)
