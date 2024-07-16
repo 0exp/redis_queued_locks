@@ -1826,6 +1826,8 @@ rql.possible_host_ids
 
 ### Logging Configuration
 
+<sup>\[[back to top](#table-of-contents)\]</sup>
+
 **NOTICE**: logging can be sampled via:
 - `config.log_samplign_enabled = true` (**false** by default);
 - `config.log_sampler = RedisQueuedLocks::Logging::Sampler` (used by default).
@@ -1919,6 +1921,8 @@ By default `RedisQueuedLocks::Client` is configured with the void notifier (whic
 ---
 
 ### Instrumentation Configuration
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
 
 **NOTICE**: instrumentation can be sampled via:
 - `config.instr_sampling_enabled = true` (**false** by default);
