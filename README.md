@@ -1617,6 +1617,7 @@ rql.possible_host_ids
     config.swarm.flush_zombies.redis_config.pooled = false # NOTE: individual redis config
     config.swarm.flush_zombies.redis_config.config = {} # NOTE: individual redis config
     config.swarm.flush_zombies.redis_config.pool_config = {} # NOTE: individual redis config
+  end
   ```
 </details>
 
