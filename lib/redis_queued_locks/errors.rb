@@ -13,6 +13,10 @@ module RedisQueuedLocks
   # @since 1.0.0
   LockAlreadyObtainedError = Class.new(Error)
 
+  # @api private
+  # @since 1.11.0
+  LockAcquiermentIntermediateTimeoutError = Class.new(::Timeout::Error)
+
   # @api public
   # @since 1.0.0
   LockAcquiermentTimeoutError = Class.new(Error)

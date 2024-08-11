@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
+require 'timeout'
 require 'redis-client'
 require 'qonfig'
-require 'timeout'
 require 'securerandom'
 require 'logger'
 require 'objspace'

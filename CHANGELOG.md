@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### [1.11.0] - 2024-08-11
+### Changed
+- Lock Acquierment Timeout (`acq_timeout`/`queue_ttl`): more correct timeout error interception
+  inside the `RedisQueuedLocks::Acquier::AcquireLock::WithAcqTimeout` logic that now raises and
+  intercepts an internal timeout error class in order to prevent interceptions of
+  other timeouts that can be raised from the wrapped block of code;
+
 ## [1.10.0] - 2024-08-11
 ### Changed
 - Timed invocations (`"timeed blocks of code"` / `timed: true`):

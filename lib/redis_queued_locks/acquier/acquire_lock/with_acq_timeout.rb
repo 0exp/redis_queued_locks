@@ -21,7 +21,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::WithAcqTimeout
   #
   # @api private
   # @since 1.0.0
-  # @version 1.8.0
+  # @version 1.11.0
   def with_acq_timeout(
     redis,
     timeout,
@@ -32,8 +32,12 @@ module RedisQueuedLocks::Acquier::AcquireLock::WithAcqTimeout
     on_timeout: nil,
     &block
   )
-    ::Timeout.timeout(timeout, &block)
-  rescue ::Timeout::Error
+    # TODO:
+    #   think about the runtime error class-object creation that perevent any timeout error
+    #   interception collisions (but remember: it can lead to regular internal ruby method/constant
+    #   cache invalidation);
+    ::Timeout.timeout(timeout, RedisQueuedLocks::LockAcquiermentIntermediateTimeoutError, &block)
+  rescue RedisQueuedLocks::LockAcquiermentIntermediateTimeoutError
     on_timeout.call unless on_timeout == nil
 
     if raise_errors
