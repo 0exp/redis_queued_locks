@@ -25,6 +25,10 @@ module RedisQueuedLocks
   # @since 1.0.0
   LockAcquiermentRetryLimitError = Class.new(Error)
 
+  # @api private
+  # @since 1.12.0
+  TimedLockIntermediateTimeoutError = Class.new(::Timeout::Error)
+
   # @api pulic
   # @since 1.0.0
   TimedLockTimeoutError = Class.new(Error)

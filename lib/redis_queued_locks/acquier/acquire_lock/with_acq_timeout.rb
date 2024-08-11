@@ -19,6 +19,8 @@ module RedisQueuedLocks::Acquier::AcquireLock::WithAcqTimeout
   #   Callback invoked on Timeout::Error.
   # @return [Any]
   #
+  # @raise [RedisQueuedLocks::LockAcquiermentIntermediateTimeoutError]
+  #
   # @api private
   # @since 1.0.0
   # @version 1.11.0

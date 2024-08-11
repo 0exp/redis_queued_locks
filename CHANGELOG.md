@@ -1,6 +1,10 @@
 ## [Unreleased]
 
-### [1.11.0] - 2024-08-11
+## [1.12.0] - 2024-08-11
+### Changed
+- Timed blocks of code and their timeout errors: reduced error message object allocations;
+
+## [1.11.0] - 2024-08-11
 ### Changed
 - Lock Acquierment Timeout (`acq_timeout`/`queue_ttl`): more correct timeout error interception
   inside the `RedisQueuedLocks::Acquier::AcquireLock::WithAcqTimeout` logic that now raises and

@@ -107,28 +107,22 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
   # @param block [Blcok]
   # @return [Any]
   #
+  # @raise [RedisQueuedLocks::TimedLockTimeoutError]
+  #
   # @api private
   # @since 1.3.0
-  # @version 1.10.0
+  # @version 1.12.0
   def yield_with_timeout(timeout, lock_key, lock_ttl, acquier_id, host_id, meta, &block)
-    ::Timeout.timeout(
-      timeout,
+    ::Timeout.timeout(timeout, RedisQueuedLocks::TimedLockIntermediateTimeoutError, &block)
+  rescue RedisQueuedLocks::TimedLockIntermediateTimeoutError
+    raise(
       RedisQueuedLocks::TimedLockTimeoutError,
-      # NOTE:
-      #   - this string is generated on each invocation cuz we need to raise custom exception
-      #     from the Timeout API in order to prevent incorred Timeout::Error interception when
-      #     the intercepted error is caused from the block not from the RQL;
-      #   - we can't omit this string object creation at the moment via original Ruby's Timeout API;
-      # TODO:
-      #   - refine Timeout#timeout (via Ruby's Refinement API) in order to provide lazy exception
-      #     message initialization;
       "Passed <timed> block of code exceeded the lock TTL " \
       "(lock: \"#{lock_key}\", " \
       "ttl: #{lock_ttl}, " \
       "meta: #{meta ? meta.inspect : '<no-meta>'}, " \
       "acq_id: \"#{acquier_id}\", " \
       "hst_id: \"#{host_id}\")",
-      &block
     )
   end
 end
