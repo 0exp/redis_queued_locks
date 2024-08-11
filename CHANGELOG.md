@@ -1,4 +1,6 @@
 ## [Unreleased]
+
+## [1.10.0] - 2024-08-11
 ### Changed
 - Timed invocations (`"timeed blocks of code"` / `timed: true`):
   - the way of timeout error interception has been changed:
