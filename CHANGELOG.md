@@ -8,6 +8,8 @@
       now uses `Timeout#timeout`'s custom exception class/message replacement API;
     - `rescue Timeout::Error` can lead to incorrect exception interception: intercept block's-related
       Timeout::Error that is not RQL-related error;
+- Updated development dependencies;
+- Some minor readme updates;
 ### Added
 - `RedisQueuedLocks::Swarm`: missing YARDocs;
 - Separated `Logging Configuration` readme section (that is placed inside the main configuration section already);
