@@ -1,4 +1,11 @@
 ## [Unreleased]
+### Changed
+- Timed invocations (`"timeed blocks of code"` / `timed: true`):
+  - the way of timeout error interception has been changed:
+    - instead of the `rescue Timeout::Error` around the block of code the timeout interception
+      now uses `Timeout#timeout`'s custom exception class/message replacement API;
+    - `rescue Timeout::Error` can lead to incorrect exception interception: intercept block's-related
+      Timeout::Error that is not RQL-related error;
 ### Added
 - `RedisQueuedLocks::Swarm`: missing YARDocs;
 - Separated `Logging Configuration` readme section (that is placed inside the main configuration section already);
