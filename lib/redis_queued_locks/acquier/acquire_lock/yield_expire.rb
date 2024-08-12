@@ -122,7 +122,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::YieldExpire
       "ttl: #{lock_ttl}, " \
       "meta: #{meta ? meta.inspect : '<no-meta>'}, " \
       "acq_id: \"#{acquier_id}\", " \
-      "hst_id: \"#{host_id}\")",
+      "hst_id: \"#{host_id}\")"
     )
   end
 end
