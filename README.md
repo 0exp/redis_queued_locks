@@ -2077,7 +2077,7 @@ Detalized event semantics and payload structure:
     the global "timeout request" queue and managed by a single global "timeout wathcer" thread). it should prevent any logic and timeout intersections,
     some GVL-related things and problem situations when the global watcher thread is "dead";
   - lock request prioritization;
-  - **strict redlock algorithm support** (support for many `RedisClient` instances that are fully independent (distributed));
+  - **strict redlock algorithm support** (support for many `RedisClient` instances that are fully independent (distributed redis instances));
   - `#lock_series` - acquire a series of locks:
     ```ruby
     rql.lock_series('lock_a', 'lock_b', 'lock_c') { puts 'locked' }
