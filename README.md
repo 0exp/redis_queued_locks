@@ -2075,7 +2075,7 @@ Detalized event semantics and payload structure:
     - swarm instrumentation (thread/ractor has some limitations so the initial implementation does not include swarm instrumentation);
   - isolated timeouts which are independent of internal Ruby's timeout implementation (where all timeouts are hostend inside
     the global "timeout request" queue and managed by a single global "timeout wathcer" thread). it should prevent any logic and timeout intersections,
-    some GVL-related things and problems when the global watcher thread is "dead";
+    some GVL-related things and problem situations when the global watcher thread is "dead";
   - lock request prioritization;
   - **strict redlock algorithm support** (support for many `RedisClient` instances that are fully independent (distributed));
   - `#lock_series` - acquire a series of locks:
