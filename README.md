@@ -2095,6 +2095,7 @@ Detalized event semantics and payload structure:
   - statistics with UI;
   - JSON log formatter;
   - RBS type signatures;
+  - **automatic** deadlock detection;
   - `go`-lang implementation;
 
 ---
