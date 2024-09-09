@@ -2088,6 +2088,7 @@ Detalized event semantics and payload structure:
   - **Experimental feature**: (non-`timed` locks): per-ruby-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
     the acquired lock for long-running blocks of code (that invoked "under" the lock
     whose ttl may expire before the block execution completes). It makes sense for non-`timed` locks *only*;
+  - sized lock queues (with an ability of dynamically growing size);
   - better code stylization (+ some refactorings);
   - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
   - Support for LIFO strategy;
