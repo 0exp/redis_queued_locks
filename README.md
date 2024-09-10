@@ -2098,7 +2098,7 @@ Detalized event semantics and payload structure:
   - RBS type signatures;
   - **automatic** deadlock detection;
   - `go`-lang implementation;
-  - (_research_) simplification and speedup of the internal "redis-communuication-and-data-store"-based algorithms;
+  - (_research_) simplification and speedup of the internal "redis-communuication-and-data-storing"-based algorithms;
 
 ---
 
