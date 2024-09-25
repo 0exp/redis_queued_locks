@@ -1,9 +1,14 @@
 ## [Unreleased]
+
+## [1.12.1]
 ### Changed
 - Internal Private API: an internal Reentrant's Lock utility (`RedisQueuedLocks::Utilities::Lock`) basis
   is changed from `::Mutex` to `::Monitor` in order to use Ruby's Core C-based
   implementation (prevent some Ruby-runtime based GVL-oriented locking) of re-entrant locks
   instead of the custom Ruby-based implementation;
+### Fixed
+- `redis_queued_locks.lock_hold_and_release` instrumentation event has incorrect `acq_time` payload value
+  (it incorrectly stores `lock_key` payload value);
 
 ## [1.12.0] - 2024-08-11
 ### Changed

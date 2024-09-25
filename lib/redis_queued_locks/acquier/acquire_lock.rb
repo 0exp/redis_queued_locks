@@ -154,7 +154,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.9.0
+    # @version 1.12.1
     def acquire_lock(
       redis,
       lock_name,
@@ -531,8 +531,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
                 acq_process[:lock_info][:acq_id],
                 acq_process[:lock_info][:hst_id],
                 acq_process[:lock_info][:ts],
-                acq_process[:lock_info][:lock_key],
                 acq_process[:acq_time],
+                acq_process[:hold_time],
                 instrument
               )
             end
