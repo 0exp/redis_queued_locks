@@ -2084,6 +2084,7 @@ Detalized event semantics and payload structure:
     ```
   - `light mode`: an ability to work without any debug and instrumentation logic and data (totally reduced debugging and instrumenting possibilities, but better performance);
 - **Minor**:
+  - Support for detailed `OpenTelemetry` tracing;
   - support for `Dragonfly` database backend (https://github.com/dragonflydb/dragonfly) (https://www.dragonflydb.io/);
   - (_research_) GVL-isolation for lock acquirement logic (try to bypass Ruby's "context-switching" in order to prevent any time-based affects on lock-acquirement logic);
   - Semantic error objects for unexpected Redis errors;
