@@ -3,7 +3,7 @@
 # @api private
 # @since 1.0.0
 # @version 1.7.0
-# rubocop:disable Metrics/ModuleLength, Metrics/BlockNesting
+# rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   require_relative 'try_to_lock/log_visitor'
 
@@ -91,7 +91,6 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
 
           # SP-Conflict Step X2: self-process dead lock moment started.
           # SP-Conflict CHECK (Step CHECK): check chosen strategy and flag the current status
-          # rubocop:disable Lint/DuplicateBranch
           case conflict_strategy
           when :work_through
             # <SP-Conflict Moment>: work through => exit
@@ -112,8 +111,6 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
             #     but is forgotten to be added here;
             sp_conflict_status = :conflict_wait_for_lock
           end
-          # rubocop:enable Lint/DuplicateBranch
-
           LogVisitor.same_process_conflict_analyzed(
             logger, log_sampled, log_lock_try, lock_key,
             queue_ttl, acquier_id, host_id, access_strategy, sp_conflict_status
@@ -399,4 +396,4 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock
   end
   # rubocop:enable Metrics/MethodLength, Metrics/PerceivedComplexity
 end
-# rubocop:enable Metrics/ModuleLength, Metrics/BlockNesting
+# rubocop:enable Metrics/ModuleLength
