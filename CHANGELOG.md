@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+## Changed
+- Updated development dependencies (`armitage-rubocop`);
+
 ## [1.12.1]
 ### Changed
 - Internal Private API: an internal Reentrant's Lock utility (`RedisQueuedLocks::Utilities::Lock`) basis
