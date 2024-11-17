@@ -1,0 +1,34 @@
+module RedisQueuedLocks
+  class Error < ::StandardError
+  end
+
+  class ArgumentError < ::ArgumentError
+  end
+
+  class LockAlreadyObtainedError < Error
+  end
+
+  class LockAcquiermentIntermediateTimeoutError < ::Timeout::Error
+  end
+
+  class LockAcquiermentTimeoutError < Error
+  end
+
+  class LockAcquiermentRetryLimitError < Error
+  end
+
+  class TimedLockIntermediateTimeoutError < ::Timeout::Error
+  end
+
+  class TimedLockTimeoutError < Error
+  end
+
+  class ConflictLockObtainError < Error
+  end
+
+  class SwarmError < Error
+  end
+
+  class SwarmArgumentError < ArgumentError
+  end
+end

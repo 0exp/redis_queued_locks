@@ -1,0 +1,7 @@
+module RedisQueuedLocks
+  module Instrument
+    def self.should_instrument?: (bool instr_sampling_enabled, bool instr_sample_this, bool instr_sampling_percent, untyped instr_sampler) -> bool
+    def self.valid_sampler?: (untyped sampler) -> bool
+    def self.valid_interface?: (untyped instrumenter) -> bool
+  end
+end

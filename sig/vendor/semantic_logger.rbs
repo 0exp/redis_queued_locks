@@ -1,0 +1,4 @@
+module SemanticLogger
+  class Logger
+  end
+end

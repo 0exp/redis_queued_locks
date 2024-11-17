@@ -1,0 +1,11 @@
+module RedisQueuedLocks
+  module Utilities
+    RACTOR_LIVENESS_PATTERN: ::Regexp
+    RACTOR_STATUS_PATTERN: ::Regexp
+
+    def self?.run_non_critical: () { (?) -> untyped } -> untyped?
+    def self?.ractor_status: (::Ractor ractor) -> ::String
+    def self?.ractor_alive?: (::Ractor ractor) -> bool
+    def self?.thread_start: (::Thread thread) -> ::String
+  end
+end

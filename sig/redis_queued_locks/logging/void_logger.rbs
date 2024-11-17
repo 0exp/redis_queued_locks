@@ -1,0 +1,15 @@
+module RedisQueuedLocks
+  module Logging
+    module VoidLogger
+      def self.warn: (?untyped? progname) { (?) -> untyped } -> nil
+      def self.unknown: (?untyped? progname) { (?) -> untyped } -> nil
+      def self.log: (?untyped? progname) { (?) -> untyped } -> nil
+      def self.info: (?untyped? progname) { (?) -> untyped } -> nil
+      def self.error: (?untyped? progname) { (?) -> untyped } -> nil
+      def self.fatal: (?untyped? progname) { (?) -> untyped } -> nil
+      def self.debug: (?untyped? progname) { (?) -> untyped } -> nil
+      def self.add: (*untyped) { (?) -> untyped } -> nil
+      def self.<<: (untyped message) -> nil
+    end
+  end
+end

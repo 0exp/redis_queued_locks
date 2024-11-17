@@ -1,0 +1,4 @@
+module RedisQueuedLocks
+  class Data < ::Hash
+  end
+end

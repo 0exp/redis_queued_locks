@@ -1,0 +1,7 @@
+module RedisQueuedLocks
+  module Instrument
+    module VoidNotifier
+      def self.notify: (::String event, ?::Hash[String|Symbol,untyped] payload) -> void
+    end
+  end
+end

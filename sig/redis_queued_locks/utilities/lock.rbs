@@ -1,0 +1,8 @@
+module RedisQueuedLocks
+  module Utilities
+    module Lock
+      @lock: ::Monitor
+      def synchronize: () { (?) -> untyped } -> untyped
+    end
+  end
+end

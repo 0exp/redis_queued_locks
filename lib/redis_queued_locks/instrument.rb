@@ -36,6 +36,7 @@ module RedisQueuedLocks::Instrument
     def valid_sampler?(sampler)
       return false unless sampler.respond_to?(:sampling_happened?)
 
+      # @type var m_obj: Method
       m_obj = sampler.method(:sampling_happened?)
       m_sig = m_obj.parameters
 
@@ -50,7 +51,7 @@ module RedisQueuedLocks::Instrument
         prm == :req || prm == :opt
       elsif m_sig.size == 2
         f_prm = m_sig[0][0]
-        s_prm = m_sign[1][0]
+        s_prm = m_sig[1][0]
 
         # rubocop:disable Layout/MultilineOperationIndentation
         f_prm == :req && s_prm == :block ||
@@ -69,13 +70,14 @@ module RedisQueuedLocks::Instrument
     def valid_interface?(instrumenter)
       if instrumenter == RedisQueuedLocks::Instrument::ActiveSupport
         # NOTE: active_support should be required in your app
-        defined?(::ActiveSupport::Notifications)
+        !!defined?(::ActiveSupport::Notifications)
       elsif instrumenter.respond_to?(:notify)
         # NOTE: the method signature should be (event, payload). Supported variants:
         #   => [[:req, :event], [:req, :payload]]
         #   => [[:req, :event], [:opt, :payload]]
         #   => [[:opt, :event], [:opt, :payload]]
 
+        # @type var m_obj: Method
         m_obj = instrumenter.method(:notify)
         m_sig = m_obj.parameters
 

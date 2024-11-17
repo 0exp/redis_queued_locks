@@ -1,47 +1,51 @@
 # frozen_string_literal: true
 
+# NOTE:
+#   the one-line definition style (like "Error = Class.new(::StandardError)")
+#   is not used cuz that style can not be correctly defined via RBS types: we can not
+#   identify the superclass of our class for a constant;
 module RedisQueuedLocks
   # @api public
   # @since 1.0.0
-  Error = Class.new(::StandardError)
+  class Error < ::StandardError; end
 
   # @api public
   # @since 1.0.0
-  ArgumentError = Class.new(::ArgumentError)
+  class ArgumentError < ::ArgumentError; end
 
   # @api public
   # @since 1.0.0
-  LockAlreadyObtainedError = Class.new(Error)
+  class LockAlreadyObtainedError < Error; end
 
   # @api private
   # @since 1.11.0
-  LockAcquiermentIntermediateTimeoutError = Class.new(::Timeout::Error)
+  class LockAcquiermentIntermediateTimeoutError < ::Timeout::Error; end
 
   # @api public
   # @since 1.0.0
-  LockAcquiermentTimeoutError = Class.new(Error)
+  class LockAcquiermentTimeoutError < Error; end
 
   # @api public
   # @since 1.0.0
-  LockAcquiermentRetryLimitError = Class.new(Error)
+  class LockAcquiermentRetryLimitError < Error; end
 
   # @api private
   # @since 1.12.0
-  TimedLockIntermediateTimeoutError = Class.new(::Timeout::Error)
+  class TimedLockIntermediateTimeoutError < ::Timeout::Error; end
 
   # @api pulic
   # @since 1.0.0
-  TimedLockTimeoutError = Class.new(Error)
+  class TimedLockTimeoutError < Error; end
 
   # @api public
   # @since 1.3.0
-  ConflictLockObtainError = Class.new(Error)
+  class ConflictLockObtainError < Error; end
 
   # @api public
   # @since 1.9.0
-  SwarmError = Class.new(Error)
+  class SwarmError < Error; end
 
   # @api public
   # @since 1.9.0
-  SwarmArgumentError = Class.new(ArgumentError)
+  class SwarmArgumentError < ArgumentError; end
 end

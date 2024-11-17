@@ -2,6 +2,8 @@
 
 ## Changed
 - Updated development dependencies (`armitage-rubocop`);
+## Added
+- Type signatures (`RBS`, see the `sig` directory) + `Steep` integration (see `Steepfile` for details);
 
 ## [1.12.1]
 ### Changed

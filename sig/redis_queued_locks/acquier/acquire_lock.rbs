@@ -1,0 +1,7 @@
+module RedisQueuedLocks
+  module Acquier
+    module AcquireLock
+      # def self.acquire_lock: (untyped redis, untyped lock_name, process_id: untyped, thread_id: untyped, fiber_id: untyped, ractor_id: untyped, ttl: untyped, queue_ttl: untyped, timeout: untyped, timed: untyped, retry_count: untyped, retry_delay: untyped, retry_jitter: untyped, raise_errors: untyped, instrumenter: untyped, identity: untyped, fail_fast: untyped, meta: untyped, detailed_acq_timeout_error: untyped, instrument: untyped, logger: untyped, log_lock_try: untyped, conflict_strategy: untyped, access_strategy: untyped, log_sampling_enabled: untyped, log_sampling_percent: untyped, log_sampler: untyped, log_sample_this: untyped, instr_sampling_enabled: untyped, instr_sampling_percent: untyped, instr_sampler: untyped, instr_sample_this: untyped) ?{ (?) -> untyped } -> untyped
+    end
+  end
+end

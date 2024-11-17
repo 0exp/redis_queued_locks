@@ -1,0 +1,13 @@
+module RedisQueuedLocks
+  module Debugger
+    DEBUG_ENABLED_METHOD: ::String
+    DEBUG_DISABLED_MEHTOD: ::String
+
+    self.@enabled: bool
+
+    def self.enable!: () -> void
+    def self.disable!: () -> void
+    def self.enabled?: () -> bool
+    def self.debug: (::String message) -> void
+  end
+end

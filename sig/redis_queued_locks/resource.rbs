@@ -1,0 +1,25 @@
+module RedisQueuedLocks
+  module Resource
+    KEY_PATTERN: ::String
+    LOCK_PATTERN: ::String
+    LOCK_QUEUE_PATTERN: ::String
+    SWARM_KEY: ::String
+    REDIS_TIMESHIFT_ERROR: ::Integer
+
+    def self.calc_uniq_identity: () -> ::String
+    def self.acquier_identifier: (::Integer|::String process_id, ::Integer|::String thread_id, ::Integer|::String fiber_id, ::Integer|::String ractor_id, ::String identity) -> ::String
+    def self.host_identifier: (::Integer|::string process_id, ::Integer|::String thread_id, ::Integer|::string ractor_id, ::String identity) -> ::String
+    def self.prepare_lock_key: (::String lock_name) -> ::String
+    def self.prepare_lock_queue: (::String lock_name) -> ::String
+    def self.calc_initial_acquier_position: () -> Float
+    def self.acquier_dead_score: (::Integer queue_ttl) -> Float
+    def self.calc_zombie_score: (Float zombie_ttl) -> Float
+    def self.dead_score_reached?: (Float acquier_position, ::Integer queue_ttl) -> bool
+    def self.lock_key_from_queue: (::String lock_queue) -> ::String
+    def self.get_thread_id: () -> ::Integer
+    def self.get_fiber_id: () -> ::Integer
+    def self.get_ractor_id: () -> ::Integer
+    def self.get_process_id: () -> ::Integer
+    def self.possible_host_identifiers: (::String identity) -> Array[::String]
+  end
+end

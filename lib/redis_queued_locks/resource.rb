@@ -186,10 +186,16 @@ module RedisQueuedLocks::Resource
       # NOTE №2: we have no any approach to count Fiber objects in the current process without
       #   object space API (or super memory-expensive) so host identification works without fibers;
       # NOTE №3: we still can extract thread objects via Thread.list API;
+
+      # @type var current_process_id: Integer
       current_process_id = get_process_id
+      # @type var current_threads: Array[::Thread]
       current_threads = ::Thread.list
+      # @type var current_ractor_id: Integer
       current_ractor_id = get_ractor_id
 
+      # steep:ignore:start
+      # NOTE: rbs/steep can't declare the type of dynamic `[]` variable mutated via tap :'(
       [].tap do |acquiers|
         current_threads.each do |thread|
           acquiers << host_identifier(
@@ -200,6 +206,7 @@ module RedisQueuedLocks::Resource
           )
         end
       end
+      # steep:ignore:end
     end
   end
 end

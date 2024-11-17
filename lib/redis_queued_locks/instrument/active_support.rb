@@ -11,7 +11,7 @@ module RedisQueuedLocks::Instrument::ActiveSupport
     # @api public
     # @since 1.0.0
     def notify(event, payload = {})
-      ::ActiveSupport::Notifications.instrument(event, payload)
+      ::ActiveSupport::Notifications.instrument(event, payload) # steep:ignore UnknownConstant
     end
   end
 end

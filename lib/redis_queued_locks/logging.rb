@@ -49,7 +49,7 @@ module RedisQueuedLocks::Logging
         prm == :req || prm == :opt
       elsif m_sig.size == 2
         f_prm = m_sig[0][0]
-        s_prm = m_sign[1][0]
+        s_prm = m_sig[1][0]
 
         # rubocop:disable Layout/MultilineOperationIndentation
         f_prm == :req && s_prm == :block ||
@@ -73,7 +73,10 @@ module RedisQueuedLocks::Logging
       #   - convinient/conventional way to support the popular `semantic_logger` library
       #   - see https://logger.rocketjob.io/
       #   - see https://github.com/reidmorrison/semantic_logger
+
+      # steep:ignore:start
       return true if defined?(::SemanticLogger::Logger) && logger.is_a?(::SemanticLogger::Logger)
+      # steep:ignore:end
 
       # NOTE: should provide `#debug` method.
       return false unless logger.respond_to?(:debug)
@@ -88,6 +91,7 @@ module RedisQueuedLocks::Logging
       #     => [[:rest], [:block, :block]]
       #     => [[:rest]]
 
+      # @type var m_obj: Method
       m_obj = logger.method(:debug)
       m_sig = m_obj.parameters
 
