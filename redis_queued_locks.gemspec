@@ -3,7 +3,7 @@
 require_relative 'lib/redis_queued_locks/version'
 
 Gem::Specification.new do |spec|
-  spec.required_ruby_version = '>= 3.3'
+  spec.required_ruby_version = '>= 3.1'
 
   spec.name = 'redis_queued_locks'
   spec.version = RedisQueuedLocks::VERSION
