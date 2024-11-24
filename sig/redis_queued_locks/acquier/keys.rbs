@@ -1,0 +1,7 @@
+module RedisQueuedLocks
+  module Acquier
+    module Keys
+      def self.keys: (::RedisClient redis_client, scan_size: ::Integer) -> ::Set[::String]
+    end
+  end
+end

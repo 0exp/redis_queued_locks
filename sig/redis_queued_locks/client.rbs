@@ -1,0 +1,59 @@
+module RedisQueuedLocks
+  class Client
+    include ::Qonfig::Configurable
+    include ::Qonfig::_ConfigInterface
+
+    @redis_client: ::RedisClient
+    @uniq_identity: ::String
+    @swarm: ::RedisQueuedLocks::Swarm
+
+    attr_reader redis_client: ::RedisClient
+    attr_accessor uniq_identity: ::String
+    attr_reader swarm: ::RedisQueuedLocks::Swarm
+
+    def initialize: (::RedisClient redis_client) { (?) -> untyped } -> void
+    def swarmize!: -> untyped
+    def deswarmize!: () -> untyped
+    def swarm_info: (?zombie_ttl: untyped) -> untyped
+
+    def swarm_status: () -> untyped
+    alias swarm_state swarm_status
+
+    def probe_hosts: () -> untyped
+    def flush_zombies: (?zombie_ttl: untyped, ?lock_scan_size: untyped, ?queue_scan_size: untyped) -> untyped
+    def zombie_locks: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
+    def zombie_acquiers: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
+    def zombie_hosts: (?zombie_ttl: untyped) -> untyped
+
+    def zombies_info: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
+    alias zombies zombies_info
+
+    def lock: (untyped lock_name, ?ttl: untyped, ?queue_ttl: untyped, ?timeout: untyped, ?timed: untyped, ?retry_count: untyped, ?retry_delay: untyped, ?retry_jitter: untyped, ?raise_errors: bool, ?fail_fast: bool, ?conflict_strategy: untyped, ?access_strategy: untyped, ?identity: untyped, ?meta: untyped?, ?detailed_acq_timeout_error: untyped, ?logger: untyped, ?log_lock_try: untyped, ?instrumenter: untyped, ?instrument: untyped?, ?log_sampling_enabled: untyped, ?log_sampling_percent: untyped, ?log_sampler: untyped, ?log_sample_this: bool, ?instr_sampling_enabled: untyped, ?instr_sampling_percent: untyped, ?instr_sampler: untyped, ?instr_sample_this: bool) { (?) -> untyped } -> untyped
+
+    def unlock: (untyped lock_name, ?logger: untyped, ?instrumenter: untyped, ?instrument: untyped?, ?log_sampling_enabled: untyped, ?log_sampling_percent: untyped, ?log_sampler: untyped, ?log_sample_this: bool, ?instr_sampling_enabled: untyped, ?instr_sampling_percent: untyped, ?instr_sampler: untyped, ?instr_sample_this: bool) -> untyped
+    alias release_lock unlock
+
+    def locked?: (untyped lock_name) -> untyped
+    def queued?: (untyped lock_name) -> untyped
+    def lock_info: (untyped lock_name) -> untyped
+    def queue_info: (untyped lock_name) -> untyped
+
+    def current_acquier_id: (?process_id: untyped, ?thread_id: untyped, ?fiber_id: untyped, ?ractor_id: untyped, ?identity: untyped) -> untyped
+
+    def current_host_id: (?process_id: untyped, ?thread_id: untyped, ?ractor_id: untyped, ?identity: untyped) -> untyped
+
+    def possible_host_ids: (?untyped identity) -> untyped
+
+    def extend_lock_ttl: (untyped lock_name, untyped milliseconds, ?logger: untyped, ?instrumenter: untyped, ?instrument: untyped?, ?log_sampling_enabled: untyped, ?log_sampling_percent: untyped, ?log_sampler: untyped, ?log_sample_this: bool, ?instr_sampling_enabled: untyped, ?instr_sampling_percent: untyped, ?instr_sampler: untyped, ?instr_sample_this: bool) -> untyped
+
+    def clear_locks: (?batch_size: untyped, ?logger: untyped, ?instrumenter: untyped, ?instrument: untyped?, ?log_sampling_enabled: untyped, ?log_sampling_percent: untyped, ?log_sampler: untyped, ?log_sample_this: bool, ?instr_sampling_enabled: untyped, ?instr_sampling_percent: untyped, ?instr_sampler: untyped, ?instr_sample_this: bool) -> untyped
+    alias release_locks clear_locks
+
+    def locks: (?scan_size: untyped, ?with_info: bool) -> untyped
+    def locks_info: (?scan_size: untyped) -> untyped
+    def queues: (?scan_size: untyped, ?with_info: bool) -> untyped
+    def queues_info: (?scan_size: untyped) -> untyped
+    def keys: (?scan_size: untyped) -> untyped
+    def clear_dead_requests: (?dead_ttl: untyped, ?scan_size: untyped, ?logger: untyped, ?instrumenter: untyped, ?instrument: untyped?, ?log_sampling_enabled: untyped, ?log_sampling_percent: untyped, ?log_sampler: untyped, ?log_sample_this: bool, ?instr_sampling_enabled: untyped, ?instr_sampling_percent: untyped, ?instr_sampler: untyped, ?instr_sample_this: bool) -> untyped
+  end
+end

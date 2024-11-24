@@ -1,2 +1,15 @@
 class RedisClient
+  class Pipeline
+    def call: (*untyped) -> untyped
+  end
+
+  class Multi
+    def call: (*untyped) -> untyped
+  end
+
+  def call: (*untyped) -> untyped
+  def pipelined: () { (Pipeline pipeline) -> untyped } -> untyped
+  def scan: (*untyped) { (::String key) -> untyped } -> untyped
+  def with: (?untyped) { (::RedisClient rconn) -> untyped } -> untyped
+  def multi: (?watch: ::Array[::String]) { (Multi transact) -> untyped } -> untyped
 end

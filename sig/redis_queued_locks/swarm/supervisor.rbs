@@ -1,0 +1,20 @@
+module RedisQueuedLocks
+  class Swarm
+    class Supervisor
+      include ::RedisQueuedLocks::Utilities
+
+      @rql_client: ::RedisQueuedLocks::Client
+      @visor: ::Thread?
+      @observable: ::Proc?
+
+      attr_reader rql_client: ::RedisQueuedLocks::Client
+      attr_reader visor: ::Thread?
+      attr_reader observable: ::Proc?
+
+      def initialize: (::RedisQueuedLocks::Client rql_client) -> void
+      def observe!: () { (?) -> untyped } -> void
+      def running?: () -> bool
+      def status: () -> { running: bool, state: ::String, observable: ::String }
+    end
+  end
+end

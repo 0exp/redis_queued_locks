@@ -6,19 +6,19 @@ module RedisQueuedLocks::Acquier::Keys
   class << self
     # @param redis_client [RedisClient]
     # @option scan_size [Integer]
-    # @return [Array<String>]
+    # @return [Set<String>]
     #
     # @api private
     # @since 1.0.0
     def keys(redis_client, scan_size:)
-      Set.new.tap do |keys|
+      Set.new.tap do |keyset|
+        # @type var keyset: ::Set[::String]
         redis_client.scan(
           'MATCH',
           RedisQueuedLocks::Resource::KEY_PATTERN,
           count: scan_size
         ) do |key|
-          # TODO: reduce unnecessary iterations
-          keys.add(key)
+          keyset.add(key)
         end
       end
     end

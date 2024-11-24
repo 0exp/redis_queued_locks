@@ -1,0 +1,23 @@
+module RedisQueuedLocks
+  module Acquier
+    module Queues
+      def self.queues: (
+        ::RedisClient redis_client,
+        scan_size: ::Integer,
+        with_info: bool
+      ) -> ::Set[::String|{ queue: ::String, requests: ::Hash[::String,::String|::Float] }]
+
+      private
+
+      def self.scan_queues: (
+        ::RedisClient redis_client,
+        ::Integer scan_size
+      ) -> ::Set[::String]
+
+      def self.extract_queues_info: (
+        ::RedisClient redis_client,
+        ::Set[::String] lock_queues
+      ) -> ::Set[{ queue: ::String, requests: ::Hash[::String,::String|::Float] }]
+    end
+  end
+end

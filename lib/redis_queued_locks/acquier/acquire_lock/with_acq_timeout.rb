@@ -17,6 +17,7 @@ module RedisQueuedLocks::Acquier::AcquireLock::WithAcqTimeout
   #   Add additional error data about lock queue and required lock to the timeout error or not.
   # @option on_timeout [Proc,NilClass]
   #   Callback invoked on Timeout::Error.
+  # @param block [Block] Custom logic that should be invoked under the obtained lock.
   # @return [Any]
   #
   # @raise [RedisQueuedLocks::LockAcquiermentIntermediateTimeoutError]
@@ -36,7 +37,10 @@ module RedisQueuedLocks::Acquier::AcquireLock::WithAcqTimeout
   )
     ::Timeout.timeout(timeout, RedisQueuedLocks::LockAcquiermentIntermediateTimeoutError, &block)
   rescue RedisQueuedLocks::LockAcquiermentIntermediateTimeoutError
-    on_timeout.call unless on_timeout == nil
+    if on_timeout != nil
+      # @type var on_timeout: ::Proc
+      on_timeout.call
+    end
 
     if raise_errors
       if detailed_acq_timeout_error

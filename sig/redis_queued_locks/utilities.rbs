@@ -6,6 +6,6 @@ module RedisQueuedLocks
     def self?.run_non_critical: () { (?) -> untyped } -> untyped?
     def self?.ractor_status: (::Ractor ractor) -> ::String
     def self?.ractor_alive?: (::Ractor ractor) -> bool
-    def self?.thread_start: (::Thread thread) -> ::String
+    def self?.thread_state: (::Thread thread) -> ::String
   end
 end

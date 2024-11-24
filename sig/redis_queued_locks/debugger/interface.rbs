@@ -1,0 +1,9 @@
+module RedisQueuedLocks
+  module Debugger
+    module Interface
+      def debug: (::String message) -> void
+      def enable_debugger!: () -> void
+      def disable_debugger!: () -> void
+    end
+  end
+end

@@ -90,7 +90,11 @@ module RedisQueuedLocks::Acquier::ReleaseLock
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
 
       rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
-      fully_release_lock(redis, lock_key, lock_key_queue) => { ok:, result: }
+      fully_release_lock(redis, lock_key, lock_key_queue) => { ok:, result: } # steep:ignore
+
+      # @type var ok: bool
+      # @type var result: ::RedisQueuedLocks::Data
+
       time_at = Time.now.to_f
       rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
       rel_time = ((rel_end_time - rel_start_time) / 1_000.0).ceil(2)
@@ -111,6 +115,7 @@ module RedisQueuedLocks::Acquier::ReleaseLock
         })
       end if instr_sampled
 
+      # steep:ignore:start
       RedisQueuedLocks::Data[
         ok: true,
         result: {
@@ -121,6 +126,7 @@ module RedisQueuedLocks::Acquier::ReleaseLock
           lock_res: result[:lock]
         }
       ]
+      # steep:ignore:end
     end
     # rubocop:enable Metrics/MethodLength
 
@@ -150,6 +156,9 @@ module RedisQueuedLocks::Acquier::ReleaseLock
         end
       end
 
+      # @type var result: [::Integer,::Integer]
+
+      # steep:ignore:start
       RedisQueuedLocks::Data[
         ok: true,
         result: {
@@ -157,6 +166,7 @@ module RedisQueuedLocks::Acquier::ReleaseLock
           lock: (result[1] != 0) ? :released : :nothing_to_release
         }
       ]
+      # steep:ignore:end
     end
   end
 end

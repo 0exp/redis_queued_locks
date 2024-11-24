@@ -101,7 +101,7 @@ module RedisQueuedLocks::Resource
       Time.now.to_f
     end
 
-    # @param queue_ttl [Integer] In seconds
+    # @param queue_ttl [Numeric] In seconds
     # @return [Float] Redis's <Set> score barrier for acquiers that should be removed from queue.
     #
     # @api private

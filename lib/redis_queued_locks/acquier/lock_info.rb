@@ -43,15 +43,19 @@ module RedisQueuedLocks::Acquier::LockInfo
         #     - lock is expired + re-obtained;
         nil
       else
+        # NOTE: the result of MULTI-command is an array of results of each internal command
+        #   - result[0] (HGETALL) (Hash<String,String>)
+        #     => (will be mutated further with different value types)
+        #   - result[1] (PTTL) (Integer)
+        #     => (without any mutation, integer is atomic)
+
+        # @type var result: [::Hash[::String,::String|::Float|::Integer],::Integer]
         hget_cmd_res = result[0]
         pttl_cmd_res = result[1]
 
         if hget_cmd_res == {} || pttl_cmd_res == -2 # NOTE: key does not exist
           nil
         else
-          # NOTE: the result of MULTI-command is an array of results of each internal command
-          #   - result[0] (HGETALL) (Hash<String,String>)
-          #   - result[1] (PTTL) (Integer)
           hget_cmd_res.tap do |lock_data|
             lock_data['lock_key'] = lock_key
             lock_data['ts'] = Float(lock_data['ts'])

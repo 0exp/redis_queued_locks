@@ -4,6 +4,7 @@ target :lib do
   signature 'sig'
 
   check 'lib'
+  ignore 'spec'
 
   library 'timeout'
   library 'securerandom'

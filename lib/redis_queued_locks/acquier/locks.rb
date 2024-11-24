@@ -50,9 +50,13 @@ module RedisQueuedLocks::Acquier::Locks
     def extract_locks_info(redis_client, lock_keys)
       # TODO: refactor with RedisQueuedLocks::Acquier::LockInfo
       Set.new.tap do |seeded_locks|
+        # @type var seeded_locks: ::Set[{ lock: ::String, status: :released|:alive, info: ::Hash[::String,untyped] }]
+
         # Step X: iterate each lock and extract their info
         lock_keys.each do |lock_key|
           # Step 1: extract lock info from redis
+
+          # @type var lock_info: ::Hash[::String,::String|::Float|::Integer]
           lock_info = redis_client.pipelined do |pipeline|
             pipeline.call('HGETALL', lock_key)
             pipeline.call('PTTL', lock_key)
@@ -61,6 +65,13 @@ module RedisQueuedLocks::Acquier::Locks
             if result == nil
               {}
             else
+              # NOTE: the result of MULTI-command is an array of results of each internal command
+              #   - result[0] (HGETALL) (Hash<String,String>)
+              #     => (will be mutated further with different value types)
+              #   - result[1] (PTTL) (Integer)
+              #     => (without any mutation, integer is atomic)
+
+              # @type var result: [::Hash[::String,::String|::Float|::Integer],::Integer]
               hget_cmd_res = result[0] # NOTE: HGETALL result (hash)
               pttl_cmd_res = result[1] # NOTE: PTTL result (integer)
 

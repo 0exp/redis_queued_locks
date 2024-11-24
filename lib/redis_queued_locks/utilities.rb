@@ -49,6 +49,7 @@ module RedisQueuedLocks::Utilities
   #   - "blocking"
   #   - "running"
   #   - "terminated"
+  #   - "unknown"
   #
   # @param ractor [Ractor]
   # @return [String]
@@ -56,7 +57,7 @@ module RedisQueuedLocks::Utilities
   # @api private
   # @since 1.9.0
   def ractor_status(ractor)
-    ractor.to_s.match(RACTOR_STATUS_PATTERN)[:status]
+    ractor.to_s.match(RACTOR_STATUS_PATTERN)[:status] # steep:ignore
   end
 
   # @param ractor [Ractor]
@@ -86,6 +87,6 @@ module RedisQueuedLocks::Utilities
     status = thread.status
     return 'dead' if status == false
     return 'failed' if status == nil
-    status
+    status #: ::String
   end
 end

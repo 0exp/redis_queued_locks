@@ -1,0 +1,24 @@
+module RedisQueuedLocks
+  module Acquier
+    module ExtendLockTTL
+      EXTEND_LOCK_PTTL: ::String
+
+      def self.extend_lock_ttl: (
+        ::RedisClient redis_client,
+        ::String lock_name,
+        ::Integer millisecond,
+        ::Logger|RedisQueuedLocks::_Loggable logger,
+        ::RedisQueuedLocks::_Instrumentable instrumenter,
+        untyped? instrument,
+        bool log_samling_enabled,
+        ::Integer log_sampling_percent,
+        untyped log_sampler,
+        bool sample_this,
+        bool instr_sampling_enabled,
+        ::Integer instr_sampling_percent,
+        ::RedisQueuedLocks::Instrument::_Sampler instr_sampler,
+        bool instr_sample_this
+      ) -> RedisQueuedLocks::Data
+    end
+  end
+end

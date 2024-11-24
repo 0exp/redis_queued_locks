@@ -1,0 +1,30 @@
+module RedisQueuedLocks
+  module Acquier
+    module ReleaseAllLocks
+      extend ::RedisQueuedLocks::Utilities
+
+      def self.release_all_locks: (
+        ::RedisClient redis,
+        ::Integer batch_size,
+        ::Logger|::RedisQueuedLocks::_Loggable logger,
+        untyped instrumenter,
+        untyped instrument,
+        bool log_sampling_enabled,
+        ::Integer log_sampling_percent,
+        untyped log_sampler,
+        bool log_sample_this,
+        bool instr_sampling_enabled,
+        ::Integer instr_sampling_percent,
+        untyped instr_sampler,
+        bool instr_sample_this
+      ) -> ::RedisQueuedLocks::Data
+
+      private
+
+      def self.fully_release_all_locks: (
+        ::RedisClient redis,
+        ::Integer batch_size
+      ) -> ::RedisQueuedLocks::Data
+    end
+  end
+end

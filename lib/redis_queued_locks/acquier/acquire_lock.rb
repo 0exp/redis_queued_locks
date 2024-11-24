@@ -256,6 +256,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
       )
 
       # Step X: intermediate result observer
+      # @type var acq_process: ::Hash[::Symbol,untyped]
       acq_process = {
         lock_info: {},
         should_try: true,
@@ -336,6 +337,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
             log_sampled,
             instr_sampled
           ) => { ok:, result: }
+          # @type var ok: bool
+          # @type var result: ::Symbol|::Hash[::Symbol,untyped]
 
           acq_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
           acq_time = ((acq_end_time - acq_start_time) / 1_000.0).ceil(2)
@@ -346,6 +349,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
           # Step 2.1: analyze an acquirement attempt
           if ok
+            # @type var result: ::Hash[::Symbol,untyped]
+
             # Step X: (instrumentation)
             if acq_process[:result][:process] == :extendable_conflict_work_through
               # instrumetnation: (reentrant lock with ttl extension)
@@ -397,6 +402,8 @@ module RedisQueuedLocks::Acquier::AcquireLock
             acq_process[:acq_time] = acq_time
             acq_process[:acq_end_time] = acq_end_time
           else
+            # @type var result: ::Symbol
+
             # Step 2.2: failed to acquire. anylize each case and act in accordance
             if acq_process[:result] == :fail_fast_no_try # Step 2.2.a: fail without try
               acq_process[:should_try] = false
@@ -415,9 +422,9 @@ module RedisQueuedLocks::Acquier::AcquireLock
 
               if raise_errors
                 raise(
-                  RedisQueuedLock::ConflictLockObtainError,
+                  RedisQueuedLocks::ConflictLockObtainError,
                   "Lock Conflict: trying to acquire the lock \"#{lock_key}\" " \
-                  "that is already acquired by the current acquier (acq_id: \"#{acquired_id}\")."
+                  "that is already acquired by the current acquier (acq_id: \"#{acquier_id}\")."
                 )
               end
             else
@@ -538,7 +545,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
             end
           end
         else
-          RedisQueuedLocks::Data[ok: true, result: acq_process[:lock_info]]
+          RedisQueuedLocks::Data[ok: true, result: acq_process[:lock_info]] # steep:ignore
         end
       else
         if acq_process[:result] != :retry_limit_reached &&
@@ -552,7 +559,7 @@ module RedisQueuedLocks::Acquier::AcquireLock
           acq_process[:result] = :timeout_reached
         end
         # Step 3.b: lock is not acquired (acquier is dequeued by timeout callback)
-        RedisQueuedLocks::Data[ok: false, result: acq_process[:result]]
+        RedisQueuedLocks::Data[ok: false, result: acq_process[:result]] # steep:ignore
       end
     end
   end

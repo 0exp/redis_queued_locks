@@ -1,0 +1,8 @@
+module Qonfig
+  interface _ConfigInterface
+    def config: () -> untyped
+  end
+
+  module Configurable
+  end
+end

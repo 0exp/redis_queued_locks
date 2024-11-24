@@ -1,2 +1,11 @@
 module RedisQueuedLocks
+  interface _Loggable
+    def debug: (?untyped? progname) { (?) -> untyped } -> untyped
+  end
+
+  interface _Instrumentable
+    def notify: (::String event, ?::Hash[String|Symbol,untyped] payload) -> void
+  end
+
+  extend ::RedisQueuedLocks::Debugger::Interface
 end

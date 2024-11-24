@@ -1,0 +1,30 @@
+module RedisQueuedLocks
+  module Acquier
+    module AcquireLock
+      module YieldExpire
+        module LogVisitor
+          def self.expire_lock: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy
+          ) -> void
+
+          def self.decrease_lock: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            ::String lock_key,
+            ::Integer decreased_ttl,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy
+          ) -> void
+        end
+      end
+    end
+  end
+end

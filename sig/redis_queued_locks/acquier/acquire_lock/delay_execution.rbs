@@ -1,0 +1,9 @@
+module RedisQueuedLocks
+  module Acquier
+    module AcquireLock
+      module DelayExecution
+        def delay_execution: (::Integer retry_delay, ::Integer retry_jitter) -> void
+      end
+    end
+  end
+end

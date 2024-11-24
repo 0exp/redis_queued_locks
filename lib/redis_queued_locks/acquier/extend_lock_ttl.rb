@@ -54,10 +54,11 @@ module RedisQueuedLocks::Acquier::ExtendLockTTL
       result = redis_client.call('EVAL', EXTEND_LOCK_PTTL, 1, lock_key, milliseconds)
       # TODO: upload scripts to the redis
 
+      # @type var result: ::Integer
       if result == 1
-        RedisQueuedLocks::Data[ok: true, result: :ttl_extended]
+        RedisQueuedLocks::Data[ok: true, result: :ttl_extended] # steep:ignore
       else
-        RedisQueuedLocks::Data[ok: false, result: :async_expire_or_no_lock]
+        RedisQueuedLocks::Data[ok: false, result: :async_expire_or_no_lock] # steep:ignore
       end
     end
   end

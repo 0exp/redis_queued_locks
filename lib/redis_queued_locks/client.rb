@@ -7,6 +7,7 @@ class RedisQueuedLocks::Client
   # @since 1.0.0
   include Qonfig::Configurable
 
+  # steep:ignore:start
   configuration do
     setting :retry_count, 3
     setting :retry_delay, 200 # NOTE: in milliseconds
@@ -117,6 +118,7 @@ class RedisQueuedLocks::Client
       # rubocop:enable Layout/MultilineOperationIndentation
     end
   end
+  # steep:ignore:end
 
   # @return [RedisClient]
   #
@@ -148,10 +150,12 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.0.0
   def initialize(redis_client, &configs)
-    configure(&configs)
-    @uniq_identity = config[:uniq_identifier].call
+    configure(&configs) # steep:ignore
+    @uniq_identity = config[:uniq_identifier].call # steep:ignore
     @redis_client = redis_client
-    @swarm = RedisQueuedLocks::Swarm.new(self).tap { |s| s.swarm! if config[:swarm][:auto_swarm] }
+    @swarm = RedisQueuedLocks::Swarm.new(self).tap do |swarm|
+      swarm.swarm! if config[:swarm][:auto_swarm]
+    end
   end
 
   # @return [Hash<Symbol,Boolean|Symbol>]
@@ -175,7 +179,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
-  def swarm_info(zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl])
+  def swarm_info(zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl]) # steep:ignore
     swarm.swarm_info(zombie_ttl:)
   end
 
@@ -204,9 +208,9 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.9.0
   def flush_zombies(
-    zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl],
-    lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size],
-    queue_scan_size: config[:swarm][:flush_zombies][:zombie_queue_scan_size]
+    zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl], # steep:ignore
+    lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size], # steep:ignore
+    queue_scan_size: config[:swarm][:flush_zombies][:zombie_queue_scan_size] # steep:ignore
   )
     swarm.flush_zombies(zombie_ttl:, lock_scan_size:, queue_scan_size:)
   end
@@ -218,8 +222,8 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.9.0
   def zombie_locks(
-    zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl],
-    lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size]
+    zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl], # steep:ignore
+    lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size] # steep:ignore
   )
     swarm.zombie_locks(zombie_ttl:, lock_scan_size:)
   end
@@ -231,8 +235,8 @@ class RedisQueuedLocks::Client
   # @api ppublic
   # @since 1.9.0
   def zombie_acquiers(
-    zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl],
-    lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size]
+    zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl], # steep:ignore
+    lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size] # steep:ignore
   )
     swarm.zombie_acquiers(zombie_ttl:, lock_scan_size:)
   end
@@ -242,7 +246,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
-  def zombie_hosts(zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl])
+  def zombie_hosts(zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl]) # steep:ignore
     swarm.zombie_hosts(zombie_ttl:)
   end
 
@@ -256,8 +260,8 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.9.0
   def zombies_info(
-    zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl],
-    lock_scan_size: config[:swarm][:flush_zombies][:zombie_ttl]
+    zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl], # steep:ignore
+    lock_scan_size: config[:swarm][:flush_zombies][:zombie_ttl] # steep:ignore
   )
     swarm.zombies_info(zombie_ttl:, lock_scan_size:)
   end
@@ -406,31 +410,31 @@ class RedisQueuedLocks::Client
   # rubocop:disable Metrics/MethodLength
   def lock(
     lock_name,
-    ttl: config[:default_lock_ttl],
-    queue_ttl: config[:default_queue_ttl],
-    timeout: config[:try_to_lock_timeout],
-    timed: config[:is_timed_by_default],
-    retry_count: config[:retry_count],
-    retry_delay: config[:retry_delay],
-    retry_jitter: config[:retry_jitter],
+    ttl: config[:default_lock_ttl], # steep:ignore
+    queue_ttl: config[:default_queue_ttl], # steep:ignore
+    timeout: config[:try_to_lock_timeout], # steep:ignore
+    timed: config[:is_timed_by_default], # steep:ignore
+    retry_count: config[:retry_count], # steep:ignore
+    retry_delay: config[:retry_delay], # steep:ignore
+    retry_jitter: config[:retry_jitter], # steep:ignore
     raise_errors: false,
     fail_fast: false,
-    conflict_strategy: config[:default_conflict_strategy],
-    access_strategy: config[:default_access_strategy],
+    conflict_strategy: config[:default_conflict_strategy], # steep:ignore
+    access_strategy: config[:default_access_strategy], # steep:ignore
     identity: uniq_identity,
     meta: nil,
-    detailed_acq_timeout_error: config[:detailed_acq_timeout_error],
-    logger: config[:logger],
-    log_lock_try: config[:log_lock_try],
-    instrumenter: config[:instrumenter],
+    detailed_acq_timeout_error: config[:detailed_acq_timeout_error], # steep:ignore
+    logger: config[:logger], # steep:ignore
+    log_lock_try: config[:log_lock_try], # steep:ignore
+    instrumenter: config[:instrumenter], # steep:ignore
     instrument: nil,
-    log_sampling_enabled: config[:log_sampling_enabled],
-    log_sampling_percent: config[:log_sampling_percent],
-    log_sampler: config[:log_sampler],
+    log_sampling_enabled: config[:log_sampling_enabled], # steep:ignore
+    log_sampling_percent: config[:log_sampling_percent], # steep:ignore
+    log_sampler: config[:log_sampler], # steep:ignore
     log_sample_this: false,
-    instr_sampling_enabled: config[:instr_sampling_enabled],
-    instr_sampling_percent: config[:instr_sampling_percent],
-    instr_sampler: config[:instr_sampler],
+    instr_sampling_enabled: config[:instr_sampling_enabled], # steep:ignore
+    instr_sampling_percent: config[:instr_sampling_percent], # steep:ignore
+    instr_sampler: config[:instr_sampler], # steep:ignore
     instr_sample_this: false,
     &block
   )
@@ -480,30 +484,30 @@ class RedisQueuedLocks::Client
   # rubocop:disable Metrics/MethodLength
   def lock!(
     lock_name,
-    ttl: config[:default_lock_ttl],
-    queue_ttl: config[:default_queue_ttl],
-    timeout: config[:try_to_lock_timeout],
-    timed: config[:is_timed_by_default],
-    retry_count: config[:retry_count],
-    retry_delay: config[:retry_delay],
-    retry_jitter: config[:retry_jitter],
+    ttl: config[:default_lock_ttl], # steep:ignore
+    queue_ttl: config[:default_queue_ttl], # steep:ignore
+    timeout: config[:try_to_lock_timeout], # steep:ignore
+    timed: config[:is_timed_by_default], # steep:ignore
+    retry_count: config[:retry_count], # steep:ignore
+    retry_delay: config[:retry_delay], # steep:ignore
+    retry_jitter: config[:retry_jitter], # steep:ignore
     fail_fast: false,
-    conflict_strategy: config[:default_conflict_strategy],
-    access_strategy: config[:default_access_strategy],
+    conflict_strategy: config[:default_conflict_strategy], # steep:ignore
+    access_strategy: config[:default_access_strategy], # steep:ignore
     identity: uniq_identity,
-    instrumenter: config[:instrumenter],
+    instrumenter: config[:instrumenter], # steep:ignore
     meta: nil,
-    detailed_acq_timeout_error: config[:detailed_acq_timeout_error],
-    logger: config[:logger],
-    log_lock_try: config[:log_lock_try],
+    detailed_acq_timeout_error: config[:detailed_acq_timeout_error], # steep:ignore
+    logger: config[:logger], # steep:ignore
+    log_lock_try: config[:log_lock_try], # steep:ignore
     instrument: nil,
-    log_sampling_enabled: config[:log_sampling_enabled],
-    log_sampling_percent: config[:log_sampling_percent],
-    log_sampler: config[:log_sampler],
+    log_sampling_enabled: config[:log_sampling_enabled], # steep:ignore
+    log_sampling_percent: config[:log_sampling_percent], # steep:ignore
+    log_sampler: config[:log_sampler], # steep:ignore
     log_sample_this: false,
-    instr_sampling_enabled: config[:instr_sampling_enabled],
-    instr_sampling_percent: config[:instr_sampling_percent],
-    instr_sampler: config[:instr_sampler],
+    instr_sampling_enabled: config[:instr_sampling_enabled], # steep:ignore
+    instr_sampling_percent: config[:instr_sampling_percent], # steep:ignore
+    instr_sampler: config[:instr_sampler], # steep:ignore
     instr_sample_this: false,
     &block
   )
@@ -569,16 +573,16 @@ class RedisQueuedLocks::Client
   # @version 1.6.0
   def unlock(
     lock_name,
-    logger: config[:logger],
-    instrumenter: config[:instrumenter],
+    logger: config[:logger], # steep:ignore
+    instrumenter: config[:instrumenter], # steep:ignore
     instrument: nil,
-    log_sampling_enabled: config[:log_sampling_enabled],
-    log_sampling_percent: config[:log_sampling_percent],
-    log_sampler: config[:log_sampler],
+    log_sampling_enabled: config[:log_sampling_enabled], # steep:ignore
+    log_sampling_percent: config[:log_sampling_percent], # steep:ignore
+    log_sampler: config[:log_sampler], # steep:ignore
     log_sample_this: false,
-    instr_sampling_enabled: config[:instr_sampling_enabled],
-    instr_sampling_percent: config[:instr_sampling_percent],
-    instr_sampler: config[:instr_sampler],
+    instr_sampling_enabled: config[:instr_sampling_enabled], # steep:ignore
+    instr_sampling_percent: config[:instr_sampling_percent], # steep:ignore
+    instr_sampler: config[:instr_sampler], # steep:ignore
     instr_sample_this: false
   )
     RedisQueuedLocks::Acquier::ReleaseLock.release_lock(
@@ -744,16 +748,16 @@ class RedisQueuedLocks::Client
   def extend_lock_ttl(
     lock_name,
     milliseconds,
-    logger: config[:logger],
-    instrumenter: config[:instrumenter],
+    logger: config[:logger], # steep:ignore
+    instrumenter: config[:instrumenter], # steep:ignore
     instrument: nil,
-    log_sampling_enabled: config[:log_sampling_enabled],
-    log_sampling_percent: config[:log_sampling_percent],
-    log_sampler: config[:log_sampler],
+    log_sampling_enabled: config[:log_sampling_enabled], # steep:ignore
+    log_sampling_percent: config[:log_sampling_percent], # steep:ignore
+    log_sampler: config[:log_sampler], # steep:ignore
     log_sample_this: false,
-    instr_sampling_enabled: config[:instr_sampling_enabled],
-    instr_sampling_percent: config[:instr_sampling_percent],
-    instr_sampler: config[:instr_sampler],
+    instr_sampling_enabled: config[:instr_sampling_enabled], # steep:ignore
+    instr_sampling_percent: config[:instr_sampling_percent], # steep:ignore
+    instr_sampler: config[:instr_sampler], # steep:ignore
     instr_sample_this: false
   )
     RedisQueuedLocks::Acquier::ExtendLockTTL.extend_lock_ttl(
@@ -798,17 +802,17 @@ class RedisQueuedLocks::Client
   # @since 1.0.0
   # @version 1.6.0
   def clear_locks(
-    batch_size: config[:lock_release_batch_size],
-    logger: config[:logger],
-    instrumenter: config[:instrumenter],
+    batch_size: config[:lock_release_batch_size], # steep:ignore
+    logger: config[:logger], # steep:ignore
+    instrumenter: config[:instrumenter], # steep:ignore
     instrument: nil,
-    log_sampling_enabled: config[:log_sampling_enabled],
-    log_sampling_percent: config[:log_sampling_percent],
-    log_sampler: config[:log_sampler],
+    log_sampling_enabled: config[:log_sampling_enabled], # steep:ignore
+    log_sampling_percent: config[:log_sampling_percent], # steep:ignore
+    log_sampler: config[:log_sampler], # steep:ignore
     log_sample_this: false,
-    instr_sampling_enabled: config[:instr_sampling_enabled],
-    instr_sampling_percent: config[:instr_sampling_percent],
-    instr_sampler: config[:instr_sampler],
+    instr_sampling_enabled: config[:instr_sampling_enabled], # steep:ignore
+    instr_sampling_percent: config[:instr_sampling_percent], # steep:ignore
+    instr_sampler: config[:instr_sampler], # steep:ignore
     instr_sample_this: false
   )
     RedisQueuedLocks::Acquier::ReleaseAllLocks.release_all_locks(
@@ -848,7 +852,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  def locks(scan_size: config[:key_extraction_batch_size], with_info: false)
+  def locks(scan_size: config[:key_extraction_batch_size], with_info: false) # steep:ignore
     RedisQueuedLocks::Acquier::Locks.locks(redis_client, scan_size:, with_info:)
   end
 
@@ -859,7 +863,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  def locks_info(scan_size: config[:key_extraction_batch_size])
+  def locks_info(scan_size: config[:key_extraction_batch_size]) # steep:ignore
     locks(scan_size:, with_info: true)
   end
 
@@ -879,7 +883,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  def queues(scan_size: config[:key_extraction_batch_size], with_info: false)
+  def queues(scan_size: config[:key_extraction_batch_size], with_info: false) # steep:ignore
     RedisQueuedLocks::Acquier::Queues.queues(redis_client, scan_size:, with_info:)
   end
 
@@ -890,7 +894,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  def queues_info(scan_size: config[:key_extraction_batch_size])
+  def queues_info(scan_size: config[:key_extraction_batch_size]) # steep:ignore
     queues(scan_size:, with_info: true)
   end
 
@@ -899,7 +903,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  def keys(scan_size: config[:key_extraction_batch_size])
+  def keys(scan_size: config[:key_extraction_batch_size]) # steep:ignore
     RedisQueuedLocks::Acquier::Keys.keys(redis_client, scan_size:)
   end
 
@@ -928,18 +932,18 @@ class RedisQueuedLocks::Client
   # @since 1.0.0
   # @version 1.6.0
   def clear_dead_requests(
-    dead_ttl: config[:dead_request_ttl],
-    scan_size: config[:lock_release_batch_size],
-    logger: config[:logger],
-    instrumenter: config[:instrumenter],
+    dead_ttl: config[:dead_request_ttl], # steep:ignore
+    scan_size: config[:lock_release_batch_size], # steep:ignore
+    logger: config[:logger], # steep:ignore
+    instrumenter: config[:instrumenter], # steep:ignore
     instrument: nil,
-    log_sampling_enabled: config[:log_sampling_enabled],
-    log_sampling_percent: config[:log_sampling_percent],
-    log_sampler: config[:log_sampler],
+    log_sampling_enabled: config[:log_sampling_enabled], # steep:ignore
+    log_sampling_percent: config[:log_sampling_percent], # steep:ignore
+    log_sampler: config[:log_sampler], # steep:ignore
     log_sample_this: false,
-    instr_sampling_enabled: config[:instr_sampling_enabled],
-    instr_sampling_percent: config[:instr_sampling_percent],
-    instr_sampler: config[:instr_sampler],
+    instr_sampling_enabled: config[:instr_sampling_enabled], # steep:ignore
+    instr_sampling_percent: config[:instr_sampling_percent], # steep:ignore
+    instr_sampler: config[:instr_sampler], # steep:ignore
     instr_sample_this: false
   )
     RedisQueuedLocks::Acquier::ClearDeadRequests.clear_dead_requests(

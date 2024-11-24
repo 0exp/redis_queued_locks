@@ -12,13 +12,14 @@ module RedisQueuedLocks::Acquier::QueueInfo
     #
     # @param redis_client [RedisClient]
     # @param lock_name [String]
-    # @return [Hash<String|Array<Hash<String,String|Numeric>>,NilClass]
+    # @return [Hash<String,Array<Hash<String,String|Numeric>>,NilClass]
     #   - `nil` is returned when lock queue does not exist;
     #   - result format: {
     #     "lock_queue" => "rql:lock_queue:your_lock_name", # lock queue key in redis,
-    #     queue: [
-    #       { "acq_id" => "rql:acq:123/456/789/987/identity", "score" => 123 },
-    #       { "acq_id" => "rql:acq:123/686/789/987/identity", "score" => 456 },
+    #     "queue" => [
+    #       { "acq_id" => "rql:acq:123/456/789/987/identity", "score" => 123.456 },
+    #       { "acq_id" => "rql:acq:123/686/789/987/identity", "score" => 456.789 },
+    #       ...
     #     ] # ordered set (by score) with information about an acquier and their position in queue
     #   }
     #
@@ -32,6 +33,7 @@ module RedisQueuedLocks::Acquier::QueueInfo
         pipeline.call('ZRANGE', lock_key_queue, '0', '-1', 'WITHSCORES')
       end
 
+      # @type var result: [::Integer,::Array[[::String,::Integer|::Float]]]
       exists_cmd_res = result[0]
       zrange_cmd_res = result[1]
 

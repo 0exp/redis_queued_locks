@@ -43,11 +43,11 @@ class RedisQueuedLocks::Swarm::Supervisor
     @observable = observable
     @visor = Thread.new do
       loop do
-        yield rescue nil # TODO/CHECK: may be we need to process exceptions here
+        yield rescue nil # TODO: (CHECK): may be we need to process exceptions here
         sleep(rql_client.config[:swarm][:supervisor][:liveness_probing_period])
       end
     end
-    # NOTE: need to give a timespot to initialize visor thread;
+    # NOTE: need to give a timespot to initialize a visor thread;
     sleep(0.1)
   end
 
@@ -56,7 +56,11 @@ class RedisQueuedLocks::Swarm::Supervisor
   # @api private
   # @since 1.9.0
   def running?
-    visor != nil && visor.alive?
+    # NOTE:
+    #   steep can not understand that visor.alive? is invoked on
+    #   `::Thread` here (not on `::Thread | nil` after the `nil`-check);
+    #   so we need to ignore this check temporary and wait the best future :)
+    visor != nil && visor.alive? # steep:ignore
   end
 
   # @return [void]
@@ -64,7 +68,11 @@ class RedisQueuedLocks::Swarm::Supervisor
   # @api private
   # @since 1.9.0
   def stop!
-    visor.kill if running?
+    # NOTE:
+    #   steep can not understand that visor.kill is invoked on
+    #   `::Thread` here (not on `::Thread | nil` after the `nil`-check);
+    #   so we need to ignore this check temporary and wait the best future :)
+    visor.kill if running? # steep:ignore
     @visor = nil
     @observable = nil
   end
@@ -74,10 +82,17 @@ class RedisQueuedLocks::Swarm::Supervisor
   # @api private
   # @since 1.9.0
   def status
+    # NOTE:
+    #   steep can not understand that thread_state(visor) is invoked on
+    #   `::Thread` here (not on `::Thread | nil` after the `nil`-check);
+    #   so we need to ignore this check temporary and wait the best future :)
+
+    # steep:ignore:start
     {
       running: running?,
       state: (visor == nil) ? 'non_initialized' : thread_state(visor),
       observable: (observable == nil) ? 'non_initialized' : 'initialized'
     }
+    # steep:ignore:end
   end
 end

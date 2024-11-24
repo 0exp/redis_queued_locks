@@ -1,4 +1,5 @@
 module ActiveSupport
   module Notifications
+    def self.instrument: (untyped event, untyped payload) -> untyped
   end
 end

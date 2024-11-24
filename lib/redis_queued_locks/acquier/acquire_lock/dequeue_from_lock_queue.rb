@@ -37,6 +37,6 @@ module RedisQueuedLocks::Acquier::AcquireLock::DequeueFromLockQueue
       logger, log_sampled,
       lock_key, queue_ttl, acquier_id, host_id, access_strategy
     )
-    RedisQueuedLocks::Data[ok: true, result: result]
+    RedisQueuedLocks::Data[ok: true, result: result] # steep:ignore
   end
 end

@@ -87,7 +87,11 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
       instr_sample_this
     )
       rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
-      fully_release_all_locks(redis, batch_size) => { ok:, result: }
+      fully_release_all_locks(redis, batch_size) => { ok:, result: } # steep:ignore
+
+      # @type var ok: bool
+      # @type var result: ::RedisQueuedLocks::Data
+
       time_at = Time.now.to_f
       rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
       rel_time = ((rel_end_time - rel_start_time) / 1_000.0).ceil(2)
@@ -100,17 +104,21 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
       )
 
       run_non_critical do
+        # steep:ignore:start
         instrumenter.notify('redis_queued_locks.explicit_all_locks_release', {
           at: time_at,
           rel_time: rel_time,
           rel_key_cnt: result[:rel_key_cnt]
         })
+        # steep:ignore:end
       end if instr_sampled
 
+      # steep:ignore:start
       RedisQueuedLocks::Data[
         ok: true,
         result: { rel_key_cnt: result[:rel_key_cnt], rel_time: rel_time }
       ]
+      # steep:ignore:end
     end
 
     private
@@ -149,7 +157,7 @@ module RedisQueuedLocks::Acquier::ReleaseAllLocks
         end
       end
 
-      RedisQueuedLocks::Data[ok: true, result: { rel_key_cnt: result.sum }]
+      RedisQueuedLocks::Data[ok: true, result: { rel_key_cnt: result.sum }] # steep:ignore
     end
   end
 end
