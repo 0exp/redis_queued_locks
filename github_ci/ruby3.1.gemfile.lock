@@ -1,5 +1,5 @@
 PATH
-  remote: .
+  remote: ..
   specs:
     redis_queued_locks (1.12.1)
       qonfig (~> 0.28)
@@ -8,7 +8,7 @@ PATH
 GEM
   remote: https://rubygems.org/
   specs:
-    activesupport (8.0.0)
+    activesupport (7.2.2)
       base64
       benchmark (>= 0.3)
       bigdecimal
@@ -20,16 +20,14 @@ GEM
       minitest (>= 5.1)
       securerandom (>= 0.3)
       tzinfo (~> 2.0, >= 2.0.5)
-      uri (>= 0.13.1)
-    armitage-rubocop (1.68.0.2)
-      rubocop (= 1.68.0)
-      rubocop-capybara (= 2.21.0)
-      rubocop-factory_bot (= 2.26.1)
-      rubocop-performance (= 1.23.0)
-      rubocop-rails (= 2.27.0)
+    armitage-rubocop (1.59.0)
+      rubocop (= 1.59.0)
+      rubocop-capybara (= 2.19.0)
+      rubocop-factory_bot (= 2.24.0)
+      rubocop-performance (= 1.20.1)
+      rubocop-rails (= 2.23.1)
       rubocop-rake (= 0.6.0)
-      rubocop-rspec (= 3.2.0)
-      rubocop-rspec_rails (= 2.30.0)
+      rubocop-rspec (= 2.25.0)
     ast (2.4.2)
     base64 (0.2.0)
     benchmark (0.4.0)
@@ -82,6 +80,7 @@ GEM
     redis-client (0.22.2)
       connection_pool
     regexp_parser (2.9.2)
+    rexml (3.3.9)
     rspec (3.13.0)
       rspec-core (~> 3.13.0)
       rspec-expectations (~> 3.13.0)
@@ -95,37 +94,37 @@ GEM
       diff-lcs (>= 1.2.0, < 2.0)
       rspec-support (~> 3.13.0)
     rspec-support (3.13.1)
-    rubocop (1.68.0)
+    rubocop (1.59.0)
       json (~> 2.3)
       language_server-protocol (>= 3.17.0)
       parallel (~> 1.10)
-      parser (>= 3.3.0.2)
+      parser (>= 3.2.2.4)
       rainbow (>= 2.2.2, < 4.0)
-      regexp_parser (>= 2.4, < 3.0)
-      rubocop-ast (>= 1.32.2, < 2.0)
+      regexp_parser (>= 1.8, < 3.0)
+      rexml (>= 3.2.5, < 4.0)
+      rubocop-ast (>= 1.30.0, < 2.0)
       ruby-progressbar (~> 1.7)
       unicode-display_width (>= 2.4.0, < 3.0)
     rubocop-ast (1.36.1)
       parser (>= 3.3.1.0)
-    rubocop-capybara (2.21.0)
+    rubocop-capybara (2.19.0)
       rubocop (~> 1.41)
-    rubocop-factory_bot (2.26.1)
-      rubocop (~> 1.61)
-    rubocop-performance (1.23.0)
+    rubocop-factory_bot (2.24.0)
+      rubocop (~> 1.33)
+    rubocop-performance (1.20.1)
       rubocop (>= 1.48.1, < 2.0)
-      rubocop-ast (>= 1.31.1, < 2.0)
-    rubocop-rails (2.27.0)
+      rubocop-ast (>= 1.30.0, < 2.0)
+    rubocop-rails (2.23.1)
       activesupport (>= 4.2.0)
       rack (>= 1.1)
-      rubocop (>= 1.52.0, < 2.0)
-      rubocop-ast (>= 1.31.1, < 2.0)
+      rubocop (>= 1.33.0, < 2.0)
+      rubocop-ast (>= 1.30.0, < 2.0)
     rubocop-rake (0.6.0)
       rubocop (~> 1.0)
-    rubocop-rspec (3.2.0)
-      rubocop (~> 1.61)
-    rubocop-rspec_rails (2.30.0)
-      rubocop (~> 1.61)
-      rubocop-rspec (~> 3, >= 3.0.1)
+    rubocop-rspec (2.25.0)
+      rubocop (~> 1.40)
+      rubocop-capybara (~> 2.17)
+      rubocop-factory_bot (~> 2.22)
     ruby-progressbar (1.13.0)
     securerandom (0.3.2)
     steep (1.8.3)
@@ -149,7 +148,6 @@ GEM
     tzinfo (2.0.6)
       concurrent-ruby (~> 1.0)
     unicode-display_width (2.6.0)
-    uri (1.0.2)
 
 PLATFORMS
   aarch64-linux-gnu
@@ -165,8 +163,8 @@ PLATFORMS
   x86_64-linux-musl
 
 DEPENDENCIES
-  activesupport
-  armitage-rubocop
+  activesupport (< 8)
+  armitage-rubocop (<= 1.59.0)
   bundler
   pry
   rake

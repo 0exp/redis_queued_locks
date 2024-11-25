@@ -49,19 +49,4 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency 'redis-client', '~> 0.20'
   spec.add_dependency 'qonfig', '~> 0.28'
-
-  # NOTE:
-  #   - steep depends on "activesupport";
-  #   - but "activesupport" requires "ruby >= 3.2";
-  #   - and RQL supports "ruby >= 3.1";
-  #   - so we need to downgrade "activesupport" dependency manually;
-  spec.add_development_dependency 'activesupport', '< 8'
-
-  spec.add_development_dependency 'armitage-rubocop'
-  spec.add_development_dependency 'bundler'
-  spec.add_development_dependency 'pry'
-  spec.add_development_dependency 'rake'
-  spec.add_development_dependency 'rbs'
-  spec.add_development_dependency 'rspec'
-  spec.add_development_dependency 'steep'
 end

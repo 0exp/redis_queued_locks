@@ -2,10 +2,10 @@
 
 source 'https://rubygems.org'
 
-gemspec
+gemspec path: '..'
 
-gem 'activesupport'
-gem 'armitage-rubocop'
+gem 'activesupport', '< 8'
+gem 'armitage-rubocop', '<= 1.59.0'
 gem 'bundler'
 gem 'pry'
 gem 'rake'

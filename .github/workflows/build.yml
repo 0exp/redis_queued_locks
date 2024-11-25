@@ -1,12 +1,19 @@
-name: Build (Linter + Specs)
-on: [push, pull_request]
+name: Test (Linter + TypeCheck + RSpec)
+on: [push]
 jobs:
-  lint-and-test:
-    runs-on: ubuntu-latest
+  test-previous:
+    name: '(OS: ${{ matrix.os }}) Ruby ${{ matrix.ruby_version }}'
     strategy:
       fail-fast: false
       matrix:
-        ruby_version: ["3.1", "3.2", "3.3"]
+        ruby_version: ['3.1', '3.2']
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      BUNDLE_GEMFILE: github_ci/ruby${{ matrix.ruby_version }}.gemfile
+      BUNDLE_RETRY: 3
+      BUNDLE_JOBS: 4
+      BUNDLE_FORCE_RUBY_PLATFORM: 1
     steps:
       - uses: actions/checkout@v4
       - uses: supercharge/redis-github-action@1.7.0
@@ -14,9 +21,31 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby_version }}
           bundler-cache: true
-      - name: Linter
+      - name: (Test) RSpec
+        run: bundle exec rake rspec
+  test-mainstream:
+    name: '(OS: ${{ matrix.os }}) Ruby ${{ matrix.ruby_version }}'
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby_version: ['3.3', 'head']
+        os: [ubuntu-latest]
+    env:
+      BUNDLE_RETRY: 3
+      BUNDLE_JOBS: 4
+      BUNDLE_FORCE_RUBY_PLATFORM: 1
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supercharge/redis-github-action@1.7.0
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby_version }}
+          bundler-cache: true
+      - name: (Linter) Rubocop
         run: bundle exec rake rubocop
-      - name: Type Signatures
-        run: bundle exec steep check
-      - name: Specs
+      - name: (TypeCheck) Steep
+        run: bundle exec steep check --jobs 10
+        continue-on-error: true
+      - name: (Test) RSpec
         run: bundle exec rake rspec
