@@ -1,0 +1,26 @@
+module RedisQueuedLocks
+  class Swarm
+    module RedisClientBuilder
+      def self.build: (
+        ?pooled: bool,
+        ?sentinel: bool,
+        ?config: ::Hash[untyped,untyped],
+        ?pool_config: ::Hash[untyped,untyped]
+      ) -> ::RedisClient
+
+      private
+
+      def self.sentinel_config: (::Hash[::Symbol,untyped] config) -> ::RedisClient::SentinelConfig
+      def self.non_sentinel_config: (::Hash[::Symbol,untyped] config) -> ::RedisClient::Config
+
+      def self.pooled_client: (
+        ::RedisClient::Config|::RedisClient::SentinelConfig redis_config,
+        ::Hash[::Symbol,untyped] pool_config
+      ) -> ::RedisClient # TODO: -> RedisClient::Pooled
+
+      def self.non_pooled_client: (
+        ::RedisClient::Config|::RedisClient::SentinelConfig redis_config
+      ) -> ::RedisClient
+    end
+  end
+end

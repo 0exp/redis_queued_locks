@@ -8,7 +8,7 @@ module RedisQueuedLocks
       def self.error: (?untyped? progname) { (?) -> untyped } -> nil
       def self.fatal: (?untyped? progname) { (?) -> untyped } -> nil
       def self.debug: (?untyped? progname) { (?) -> untyped } -> nil
-      def self.add: (*untyped) { (?) -> untyped } -> nil
+       def self.add: (?untyped? severity, ?untyped? message, ?untyped? progname) { (?) -> untyped } -> nil
       def self.<<: (untyped message) -> nil
     end
   end

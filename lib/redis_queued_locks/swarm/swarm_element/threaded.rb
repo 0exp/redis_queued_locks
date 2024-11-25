@@ -35,7 +35,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0
   attr_reader :swarm_element_commands
 
-  # @return [Thread::SizedQueue]
+  # @return [Thread::SizedQueue,NilClass]
   #
   # @api private
   # @since 1.9.0
@@ -106,7 +106,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   #
   # @api private
   # @since 1.9.0
-  def enabled?
+  def enabled? # steep:ignore
     # NOTE: provide an <is enabled> logic here by analyzing the redis queued locks config.
   end
 
@@ -129,12 +129,12 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   def status
     sync.synchronize do
       thread_running = swarmed__alive?
-      thread_state = swarmed? ? thread_state(swarm_element) : 'non_initialized'
+      thread_state = swarmed? ? thread_state(swarm_element) : 'non_initialized' # steep:ignore
 
       main_loop_running = swarmed__running?
       main_loop_state = begin
         if main_loop_running
-          swarm_loop__status[:result][:main_loop][:state]
+          swarm_loop__status[:result][:main_loop][:state] # steep:ignore
         else
           'non_initialized'
         end
@@ -179,26 +179,34 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
 
     @swarm_element = Thread.new do
       loop do
-        command = swarm_element_commands.pop
+        command = swarm_element_commands.pop # steep:ignore
 
         case command
         when :status
+          # steep:ignore:start
           main_loop_alive = main_loop != nil && main_loop.alive?
+          # steep:ignore:end
+
+          # steep:ignore:start
           main_loop_state = (main_loop == nil) ? 'non_initialized' : thread_state(main_loop)
+          # steep:ignore:end
+
+          # steep:ignore:start
           swarm_element_results.push({
             ok: true,
             result: { main_loop: { alive: main_loop_alive, state: main_loop_state } }
           })
+          # steep:ignore:end
         when :is_active
-          is_active = main_loop != nil && main_loop.alive?
-          swarm_element_results.push({ ok: true, result: { is_active: } })
+          is_active = main_loop != nil && main_loop.alive? # steep:ignore
+          swarm_element_results.push({ ok: true, result: { is_active: } }) # steep:ignore
         when :start
           main_loop&.kill
           @main_loop = spawn_main_loop!.tap { |thread| thread.abort_on_exception = false }
-          swarm_element_results.push({ ok: true, result: nil })
+          swarm_element_results.push({ ok: true, result: nil }) # steep:ignore
         when :stop
           main_loop&.kill
-          swarm_element_results.push({ ok: true, result: nil })
+          swarm_element_results.push({ ok: true, result: nil }) # steep:ignore
         end
       end
     end
@@ -209,7 +217,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   #
   # @api private
   # @since 1.9.0
-  def spawn_main_loop!
+  def spawn_main_loop! # steep:ignore
     # NOTE:
     #   - provide the swarm element looped logic here wrapped into the thread;
     #   - created thread will be reconfigured inside the swarm_element logic with a
@@ -238,7 +246,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @api private
   # @since 1.9.0
   def swarmed__alive?
-    swarmed? && swarm_element.alive? && !terminating?
+    swarmed? && swarm_element.alive? && !terminating? # steep:ignore
   end
 
   # @return [Boolean]
@@ -246,7 +254,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @api private
   # @since 1.9.0
   def swarmed__dead?
-    swarmed? && (!swarm_element.alive? || terminating?)
+    swarmed? && (!swarm_element.alive? || terminating?) # steep:ignore
   end
 
   # @return [Boolean]
@@ -255,7 +263,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0
   def swarmed__running?
     swarmed__alive? && !terminating? && (swarm_loop__is_active.yield_self do |result|
-      result && result[:ok] && result[:result][:is_active]
+      result && result[:ok] && result[:result][:is_active] # steep:ignore
     end)
   end
 
@@ -278,7 +286,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0
   def swarmed__stopped?
     swarmed__alive? && (terminating? || !(swarm_loop__is_active.yield_self do |result|
-      result && result[:ok] && result[:result][:is_active]
+      result && result[:ok] && result[:result][:is_active] # steep:ignore
     end))
   end
 
@@ -289,8 +297,8 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   def swarm_loop__is_active
     return if idle? || swarmed__dead? || terminating?
     sync.synchronize do
-      swarm_element_commands.push(:is_active)
-      swarm_element_results.pop
+      swarm_element_commands.push(:is_active) # steep:ignore
+      swarm_element_results.pop # steep:ignore
     end
   end
 
@@ -301,8 +309,8 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   def swarm_loop__status
     return if idle? || swarmed__dead? || terminating?
     sync.synchronize do
-      swarm_element_commands.push(:status)
-      swarm_element_results.pop
+      swarm_element_commands.push(:status) # steep:ignore
+      swarm_element_results.pop # steep:ignore
     end
   end
 
@@ -313,8 +321,8 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   def swarm_loop__start
     return if idle? || swarmed__dead? || terminating?
     sync.synchronize do
-      swarm_element_commands.push(:start)
-      swarm_element_results.pop
+      swarm_element_commands.push(:start) # steep:ignore
+      swarm_element_results.pop # steep:ignore
     end
   end
 
@@ -325,8 +333,8 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   def swarm_loop__stop
     return if idle? || swarmed__dead? || terminating?
     sync.synchronize do
-      swarm_element_commands.push(:stop)
-      swarm_element_results.pop
+      swarm_element_commands.push(:stop) # steep:ignore
+      swarm_element_results.pop # steep:ignore
     end
   end
 
@@ -338,11 +346,11 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
     return if idle? || swarmed__dead?
     sync.synchronize do
       main_loop&.kill
-      swarm_element.kill
-      swarm_element_commands.close
-      swarm_element_results.close
-      swarm_element_commands.clear
-      swarm_element_results.clear
+      swarm_element.kill # steep:ignore
+      swarm_element_commands.close # steep:ignore
+      swarm_element_results.close # steep:ignore
+      swarm_element_commands.clear # steep:ignore
+      swarm_element_results.clear # steep:ignore
       @swarm_element_commands = nil
       @swarm_element_results = nil
     end

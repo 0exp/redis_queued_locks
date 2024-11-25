@@ -30,10 +30,12 @@ module RedisQueuedLocks::Swarm::Acquirers
     def acquirers(redis_client, zombie_ttl)
       redis_client.with do |rconn|
         rconn.call('HGETALL', RedisQueuedLocks::Resource::SWARM_KEY).tap do |swarm_acqs|
+          # @type var swarm_acqs: ::Hash[::String,untyped]
           swarm_acqs.transform_values! do |last_probe|
+            # @type var last_probe: ::String
             last_probe_score = last_probe.to_f
             last_probe_time = Time.at(last_probe_score)
-            zombie_score = RedisQueuedLocks::Resource.calc_zombie_score(zombie_ttl / 1_000)
+            zombie_score = RedisQueuedLocks::Resource.calc_zombie_score(zombie_ttl / 1_000.0)
             is_zombie = last_probe_score < zombie_score
             { zombie: is_zombie, last_probe_time:, last_probe_score: }
           end

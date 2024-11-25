@@ -21,7 +21,7 @@ class RedisQueuedLocks::Swarm::ProbeHosts < RedisQueuedLocks::Swarm::SwarmElemen
     # @since 1.9.0
     def probe_hosts(redis_client, uniq_identity)
       possible_hosts = RedisQueuedLocks::Resource.possible_host_identifiers(uniq_identity)
-      probed_hosts = {}
+      probed_hosts = {} #: ::Hash[::String,::Float]
 
       redis_client.with do |rconn|
         possible_hosts.each do |host_id|
@@ -34,7 +34,7 @@ class RedisQueuedLocks::Swarm::ProbeHosts < RedisQueuedLocks::Swarm::SwarmElemen
           probed_hosts[host_id] = probe_score
         end
 
-        RedisQueuedLocks::Data[ok: true, result: probed_hosts]
+        RedisQueuedLocks::Data[ok: true, result: probed_hosts] # steep:ignore
       end
     end
   end

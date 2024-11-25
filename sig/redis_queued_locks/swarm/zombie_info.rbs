@@ -1,0 +1,53 @@
+module RedisQueuedLocks
+  class Swarm
+    module ZombieInfo
+      def self.zombies_info: (
+        ::RedisClient redis_client,
+        ::Integer zombie_ttl,
+        ::Integer lock_scan_size
+      ) -> { zombie_hosts: ::Set[::String], zombie_acquirers: ::Set[::String], zombie_locks: ::Set[::String] }
+
+      def self.zombie_locks: (
+        ::RedisClient redis_client,
+        ::Integer zombie_ttl,
+        ::Integer lock_scan_size
+      ) -> ::Set[::String]
+
+      def self.zombie_hosts: (
+        ::RedisClient redis_client,
+        ::Integer zombie_ttl
+      ) -> ::Set[::String]
+
+      def self.zombie_acquiers: (
+        ::RedisClient redis_client,
+        ::Integer zombie_ttl,
+        ::Integer lock_scan_size
+      ) -> ::Set[::String]
+
+      private
+
+      def self.extract_zombie_hosts: (
+        ::RedisClient rconn,
+        ::Integer zombie_ttl
+      ) -> ::Set[::String]
+
+      def self.extract_zombie_locks: (
+        ::RedisClient rconn,
+        ::Integer zombie_ttl,
+        ::Integer lock_scan_size
+      ) -> ::Set[::String]
+
+      def self.extract_zombie_acquiers: (
+        ::RedisClient rconn,
+        ::Integer zombie_ttl,
+        ::Integer lock_scan_size
+      ) -> ::Set[::String]
+
+      def self.extract_all: (
+        ::RedisClient rconn,
+        ::Integer zombie_ttl,
+        ::Integer lock_scan_size
+      ) -> { zombie_hosts: ::Set[::String], zombie_acquirers: ::Set[::String], zombie_locks: ::Set[::String] }
+    end
+  end
+end

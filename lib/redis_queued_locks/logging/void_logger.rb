@@ -60,11 +60,15 @@ module RedisQueuedLocks::Logging::VoidLogger
     # @since 1.0.0
     def debug(progname = nil, &block); end
 
+    # @param severity [Any]
+    # @param message [Any]
+    # @param progname [Any]
+    # @param block [Block]
+    # @return [void]
+    #
     # @api public
     # @since 1.0.0
-    # steep:ignore:start
-    def add(*, &block); end
-    # steep:ignore:end
+    def add(severity = nil, message = nil, progname = nil, &block); end
 
     # @param message [Any]
     # @retorun [void]

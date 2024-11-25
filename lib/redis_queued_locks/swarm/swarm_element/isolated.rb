@@ -80,7 +80,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   #
   # @api private
   # @since 1.9.0
-  def enabled?
+  def enabled? # steep:ignore
     # NOTE: provide an <is enabled> logic here by analyzing the redis queued locks config.
   end
 
@@ -102,14 +102,16 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   def status
     sync.synchronize do
       ractor_running = swarmed__alive?
-      ractor_state = swarmed? ? ractor_status(swarm_element) : 'non_initialized'
+      ractor_state = swarmed? ? ractor_status(swarm_element) : 'non_initialized' # steep:ignore
 
       main_loop_running = nil
       main_loop_state = nil
       begin
         main_loop_running = swarmed__running?
+        # steep:ignore:start
         main_loop_state =
           main_loop_running ? swarm_loop__status[:main_loop][:state] : 'non_initialized'
+        # steep:ignore:end
       rescue Ractor::ClosedError
         # NOTE: it can happend when you run RedisQueuedLocks::Swarm#deswarm!;
         main_loop_running = false
@@ -160,6 +162,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
     #   to provide better code readability (it is placed next to the method inside
     #   wich it should be called (see #swarm!)). That's why some rubocop cops are disabled.
 
+    # @type var main_loop: ::Thread?
     main_loop = nil
 
     loop do
@@ -167,24 +170,25 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
 
       case command
       when :status
-        main_loop_alive = main_loop != nil && main_loop.alive?
+        main_loop_alive = main_loop != nil && main_loop.alive? # steep:ignore
         main_loop_state =
           if main_loop == nil
             'non_initialized'
           else
             # NOTE: (full name resolution): ractor has no syntax-based constatnt context;
+            # # @type var main_loop: ::Thread
             RedisQueuedLocks::Utilities.thread_state(main_loop)
           end
         Ractor.yield({ main_loop: { alive: main_loop_alive, state: main_loop_state } })
       when :is_active
-        Ractor.yield(main_loop != nil && main_loop.alive?)
+        Ractor.yield(main_loop != nil && main_loop.alive?) # steep:ignore
       when :start
-        main_loop.kill if main_loop != nil
+        main_loop.kill if main_loop != nil # steep:ignore
         main_loop = yield # REFERENCE: `main_loop_spawner.call`
       when :stop
-        main_loop.kill if main_loop != nil
+        main_loop.kill if main_loop != nil # steep:ignore
       when :kill
-        main_loop.kill if main_loop != nil
+        main_loop.kill if main_loop != nil # steep:ignore
         exit
       end
     end
@@ -212,7 +216,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   # @api private
   # @since 1.9.0
   def swarmed__alive?
-    swarm_element != nil && ractor_alive?(swarm_element)
+    swarm_element != nil && ractor_alive?(swarm_element) # steep:ignore
   end
 
   # @return [Boolean]
@@ -220,7 +224,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   # @api private
   # @since 1.9.0
   def swarmed__dead?
-    swarm_element != nil && !ractor_alive?(swarm_element)
+    swarm_element != nil && !ractor_alive?(swarm_element) # steep:ignore
   end
 
   # @return [Boolean]
@@ -228,7 +232,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   # @api private
   # @since 1.9.0
   def swarmed__running?
-    swarm_element != nil && ractor_alive?(swarm_element) && swarm_loop__is_active
+    swarm_element != nil && ractor_alive?(swarm_element) && swarm_loop__is_active # steep:ignore
   end
 
   # @return [Boolean]
@@ -236,7 +240,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   # @api private
   # @since 1.9.0
   def swarmed__stopped?
-    swarm_element != nil && ractor_alive?(swarm_element) && !swarm_loop__is_active
+    swarm_element != nil && ractor_alive?(swarm_element) && !swarm_loop__is_active # steep:ignore
   end
 
   # @return [Boolean]
@@ -244,7 +248,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   # @api private
   # @since 1.9.0
   def swarm_loop__is_active
-    return if idle? || swarmed__dead?
+    return false if idle? || swarmed__dead?
     sync.synchronize { swarm_element.send(:is_active).take }
   end
 

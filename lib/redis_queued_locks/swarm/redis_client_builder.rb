@@ -28,7 +28,7 @@ module RedisQueuedLocks::Swarm::RedisClientBuilder
     private
 
     # @param config [Hash]
-    # @return [RedisClient::Config]
+    # @return [RedisClient::SentinelConfig]
     #
     # @api private
     # @since 1.9.0

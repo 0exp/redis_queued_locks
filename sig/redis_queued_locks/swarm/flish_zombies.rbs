@@ -1,7 +1,0 @@
-module RedisQueuedLocks
-  class Swarm
-    class FlushZombies
-      def initialize: (::RedisQueuedLocks::Client rql_client) -> void
-    end
-  end
-end

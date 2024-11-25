@@ -50,7 +50,9 @@ module RedisQueuedLocks::Acquier::Locks
     def extract_locks_info(redis_client, lock_keys)
       # TODO: refactor with RedisQueuedLocks::Acquier::LockInfo
       Set.new.tap do |seeded_locks|
+        # rubocop:disable Layout/LineLength
         # @type var seeded_locks: ::Set[{ lock: ::String, status: :released|:alive, info: ::Hash[::String,untyped] }]
+        # rubocop:enable Layout/LineLength
 
         # Step X: iterate each lock and extract their info
         lock_keys.each do |lock_key|
@@ -63,7 +65,7 @@ module RedisQueuedLocks::Acquier::Locks
           end.yield_self do |result| # Step 2: format the result
             # Step 2.X: lock is released
             if result == nil
-              {}
+              {} #: ::Hash[::String,::String|::Float|::Integer]
             else
               # NOTE: the result of MULTI-command is an array of results of each internal command
               #   - result[0] (HGETALL) (Hash<String,String>)
@@ -77,7 +79,7 @@ module RedisQueuedLocks::Acquier::Locks
 
               # Step 2.Y: lock is released
               if hget_cmd_res == {} || pttl_cmd_res == -2 # NOTE: key does not exist
-                {}
+                {} #: ::Hash[::String,::String|::Float|::Integer]
               else
                 # Step 2.Z: lock is alive => format received info + add additional rem_ttl info
                 hget_cmd_res.tap do |lock_data|

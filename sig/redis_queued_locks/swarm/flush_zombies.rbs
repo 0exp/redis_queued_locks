@@ -1,0 +1,15 @@
+module RedisQueuedLocks
+  class Swarm
+    class FlushZombies < SwarmElement::Isolated
+      def self.flush_zombies: (
+        ::RedisClient redis_client,
+        ::Integer zombie_ttl,
+        ::Integer lock_scan_size,
+        ::Integer queue_scan_size
+      ) -> ::RedisQueuedLocks::Data
+
+      def enabled?: () -> bool
+      def swarm!: () -> void
+    end
+  end
+end

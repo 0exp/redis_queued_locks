@@ -1,0 +1,41 @@
+module RedisQueuedLocks
+  class Swarm
+    module SwarmElement
+      class Isolated
+        include ::RedisQueuedLocks::Utilities
+
+        @rql_client: ::RedisQueuedLocks::Client
+        @swarm_element: ::Ractor?
+        @sync: ::RedisQueuedLocks::Utilities::Lock
+
+        attr_reader rql_client: ::RedisQueuedLocks::Client
+        attr_reader swarm_element: ::Ractor?
+        attr_reader sync: ::RedisQueuedLocks::Utilities::Lock
+
+        def initialize: (::RedisQueuedLocks::Client rql_client) -> void
+        def try_swarm!: () -> void
+        def reswarm_if_dead!: () -> void
+        def try_kill!: () -> void
+        def enabled?: () -> bool
+        def status: () -> { enabled: bool, ractor: { running: bool, state: ::String }, main_loop: { running: bool, state: ::String } }
+
+        def self.swarm_loop: () { () -> ::Thread } -> void
+
+        private
+
+        def swarm!: () -> void
+        def idle?: () -> bool
+        def swarmed?: () -> bool
+        def swarmed__alive?: () -> bool
+        def swarmed__dead?: () -> bool
+        def swarmed__running?: () -> bool
+        def swarmed__stopped?: () -> bool
+        def swarm_loop__is_active: () -> bool
+        def swarm_loop__status: () -> ::Hash[untyped,untyped]?
+        def swarm_loop__start: () -> void
+        def swarm_loop__pause: () -> void
+        def swarm_loop__kill: () -> void
+      end
+    end
+  end
+end

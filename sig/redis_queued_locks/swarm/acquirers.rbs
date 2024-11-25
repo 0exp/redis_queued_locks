@@ -1,0 +1,10 @@
+module RedisQueuedLocks
+  class Swarm
+    module Acquirers
+      def self.acquirers: (
+        ::RedisClient redis_client,
+        ::Integer zombie_ttl
+      ) -> ::Hash[::String, { zombie: bool, last_probe_time: ::Time, last_probe_score: ::Integer|::Float }]
+    end
+  end
+end

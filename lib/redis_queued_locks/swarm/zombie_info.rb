@@ -69,7 +69,7 @@ module RedisQueuedLocks::Swarm::ZombieInfo
     # @api private
     # @since 1.9.0
     def extract_zombie_hosts(rconn, zombie_ttl)
-      zombie_score = RedisQueuedLocks::Resource.calc_zombie_score(zombie_ttl / 1_000)
+      zombie_score = RedisQueuedLocks::Resource.calc_zombie_score(zombie_ttl / 1_000.0)
       swarmed_hosts = rconn.call('HGETALL', RedisQueuedLocks::Resource::SWARM_KEY)
       swarmed_hosts.each_with_object(Set.new) do |(hst_id, ts), zombies|
         (zombies << hst_id) if (zombie_score > ts.to_f)

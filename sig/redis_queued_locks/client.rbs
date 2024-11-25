@@ -28,9 +28,79 @@ module RedisQueuedLocks
     def zombies_info: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
     alias zombies zombies_info
 
-    def lock: (untyped lock_name, ?ttl: untyped, ?queue_ttl: untyped, ?timeout: untyped, ?timed: untyped, ?retry_count: untyped, ?retry_delay: untyped, ?retry_jitter: untyped, ?raise_errors: bool, ?fail_fast: bool, ?conflict_strategy: untyped, ?access_strategy: untyped, ?identity: untyped, ?meta: untyped?, ?detailed_acq_timeout_error: untyped, ?logger: untyped, ?log_lock_try: untyped, ?instrumenter: untyped, ?instrument: untyped?, ?log_sampling_enabled: untyped, ?log_sampling_percent: untyped, ?log_sampler: untyped, ?log_sample_this: bool, ?instr_sampling_enabled: untyped, ?instr_sampling_percent: untyped, ?instr_sampler: untyped, ?instr_sample_this: bool) { (?) -> untyped } -> untyped
+    def lock: (
+      untyped lock_name,
+      ?ttl: untyped,
+      ?queue_ttl: untyped,
+      ?timeout: untyped,
+      ?timed: untyped,
+      ?retry_count: untyped,
+      ?retry_delay: untyped,
+      ?retry_jitter: untyped,
+      ?raise_errors: bool,
+      ?fail_fast: bool,
+      ?conflict_strategy: untyped,
+      ?access_strategy: untyped,
+      ?identity: untyped,
+      ?meta: untyped?,
+      ?detailed_acq_timeout_error: untyped,
+      ?logger: untyped,
+      ?log_lock_try: untyped,
+      ?instrumenter: untyped,
+      ?instrument: untyped?,
+      ?log_sampling_enabled: untyped,
+      ?log_sampling_percent: untyped,
+      ?log_sampler: untyped,
+      ?log_sample_this: bool,
+      ?instr_sampling_enabled: untyped,
+      ?instr_sampling_percent: untyped,
+      ?instr_sampler: untyped,
+      ?instr_sample_this: bool
+    ) { (?) -> untyped } -> untyped
 
-    def unlock: (untyped lock_name, ?logger: untyped, ?instrumenter: untyped, ?instrument: untyped?, ?log_sampling_enabled: untyped, ?log_sampling_percent: untyped, ?log_sampler: untyped, ?log_sample_this: bool, ?instr_sampling_enabled: untyped, ?instr_sampling_percent: untyped, ?instr_sampler: untyped, ?instr_sample_this: bool) -> untyped
+    def lock!: (
+      untyped lock_name,
+      ?ttl: untyped,
+      ?queue_ttl: untyped,
+      ?timeout: untyped,
+      ?timed: untyped,
+      ?retry_count: untyped,
+      ?retry_delay: untyped,
+      ?retry_jitter: untyped,
+      ?fail_fast: bool,
+      ?conflict_strategy: untyped,
+      ?access_strategy: untyped,
+      ?identity: untyped,
+      ?instrumenter: untyped,
+      ?meta: untyped?,
+      ?detailed_acq_timeout_error: untyped,
+      ?logger: untyped,
+      ?log_lock_try: untyped,
+      ?instrument: untyped?,
+      ?log_sampling_enabled: untyped,
+      ?log_sampling_percent: untyped,
+      ?log_sampler: untyped,
+      ?log_sample_this: bool,
+      ?instr_sampling_enabled: untyped,
+      ?instr_sampling_percent: untyped,
+      ?instr_sampler: untyped,
+      ?instr_sample_this: bool,
+    ) { (?) -> untyped } -> untyped
+
+    def unlock: (
+      untyped lock_name,
+      ?logger: untyped,
+      ?instrumenter: untyped,
+      ?instrument: untyped?,
+      ?log_sampling_enabled: untyped,
+      ?log_sampling_percent: untyped,
+      ?log_sampler: untyped,
+      ?log_sample_this: bool,
+      ?instr_sampling_enabled: untyped,
+      ?instr_sampling_percent: untyped,
+      ?instr_sampler: untyped,
+      ?instr_sample_this: bool
+    ) -> untyped
     alias release_lock unlock
 
     def locked?: (untyped lock_name) -> untyped

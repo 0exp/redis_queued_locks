@@ -7,9 +7,26 @@ class RedisClient
     def call: (*untyped) -> untyped
   end
 
+  class SentinelConfig
+    def new_pool: (**untyped) -> ::RedisClient # TODO: -> Pooled
+    def new_client: (**untyped) -> ::RedisClient
+  end
+
+  class Config
+    def new_pool: (**untyped) -> ::RedisClient # TODO: -> Pooled
+    def new_client: (**untyped) -> ::RedisClient
+  end
+
+  class Pooled
+    def call: (*untyped) -> untyped
+  end
+
   def call: (*untyped) -> untyped
   def pipelined: () { (Pipeline pipeline) -> untyped } -> untyped
   def scan: (*untyped) { (::String key) -> untyped } -> untyped
   def with: (?untyped) { (::RedisClient rconn) -> untyped } -> untyped
   def multi: (?watch: ::Array[::String]) { (Multi transact) -> untyped } -> untyped
+
+  def self.sentinel: (**untyped) -> SentinelConfig
+  def self.config: (**untyped) -> Config
 end

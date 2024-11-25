@@ -4,6 +4,7 @@
 # @since 1.7.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
+  # rubocop:disable Metrics/ClassLength
   class << self
     # @param logger [::Logger,#debug]
     # @param log_sampled [Boolean]
@@ -537,5 +538,6 @@ module RedisQueuedLocks::Acquier::AcquireLock::TryToLock::LogVisitor
       end rescue nil
     end
   end
+  # rubocop:enable Metrics/ClassLength
 end
 # rubocop:enable Metrics/ModuleLength

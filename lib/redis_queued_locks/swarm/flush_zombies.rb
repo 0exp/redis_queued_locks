@@ -30,7 +30,7 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
         # Step 1:
         #   calculate zombie score (the time marker that shows acquirers that
         #   have not announced live probes for a long time)
-        zombie_score = RedisQueuedLocks::Resource.calc_zombie_score(zombie_ttl / 1_000)
+        zombie_score = RedisQueuedLocks::Resource.calc_zombie_score(zombie_ttl / 1_000.0)
 
         # Step 2: extract zombie acquirers from the swarm list
         zombie_hosts = rconn.call('HGETALL', RedisQueuedLocks::Resource::SWARM_KEY)
@@ -39,19 +39,21 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
         end
 
         # Step X: exit if we have no any zombie acquirer
+        # steep:ignore:start
         next RedisQueuedLocks::Data[
           ok: true,
           deleted_zombie_hosts: Set.new,
           deleted_zombie_acquirers: Set.new,
           deleted_zombie_locks: Set.new,
         ] if zombie_hosts.empty?
+        # steep:ignore:end
 
         # Step 3: find zombie locks held by zombies and delete them
         # TODO: indexing (in order to prevent full database scan);
         # NOTE: original redis does not support indexing so we need to use
         #   internal data structers to simulate data indexing (such as sorted sets or lists);
-        zombie_locks = Set.new
-        zombie_acquiers = Set.new
+        zombie_locks = Set.new #: ::Set[::String]
+        zombie_acquiers = Set.new #: ::Set[::String]
 
         rconn.scan(
           'MATCH', RedisQueuedLocks::Resource::LOCK_PATTERN, count: lock_scan_size
@@ -62,7 +64,9 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
             zombie_acquiers << acquier_id
           end
         end
-        rconn.call('DEL', *zombie_locks) if zombie_locks.any?
+
+        # NOTE: (steep ignorance) steep can't use Sets for splats
+        rconn.call('DEL', *zombie_locks) if zombie_locks.any? # steep:ignore
 
         # Step 4: find zombie requests => and drop them
         # TODO: indexing (in order to prevent full database scan);
@@ -80,12 +84,14 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
         rconn.call('HDEL', RedisQueuedLocks::Resource::SWARM_KEY, *zombie_hosts)
 
         # Step 6: inform about deleted zombies
+        # steep:ignore:start
         RedisQueuedLocks::Data[
           ok: true,
           deleted_zombie_hosts: zombie_hosts,
           deleted_zombie_acquiers: zombie_acquiers,
           deleted_zombie_locks: zombie_locks
         ]
+        # steep:ignore:end
       end
     end
     # rubocop:enable Metrics/MethodLength
