@@ -11,6 +11,8 @@ AllCops:
     - lib/**/*.rb
     - spec/**/*.rb
     - Gemfile
+    - gemfiles/ruby3.1.gemfile
+    - gemfiles/ruby3.2.gemfile
     - Rakefile
     - redis_queued_locks.gemspec
     - bin/console
