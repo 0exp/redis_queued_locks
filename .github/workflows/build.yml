@@ -16,5 +16,7 @@ jobs:
           bundler-cache: true
       - name: Linter
         run: bundle exec rake rubocop
+      - name: Type Signatures
+        run: bundle exec steep check
       - name: Specs
         run: bundle exec rake rspec
