@@ -1,4 +1,4 @@
-name: Test (Linter + TypeCheck + RSpec)
+name: Build (Linter + TypeCheck + RSpec)
 on: [push]
 jobs:
   test-previous:
