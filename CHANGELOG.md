@@ -6,6 +6,7 @@
 - CI is splitted to "mainstream ruby version" and "previous actually maintaned ruby versions";
 ## Added
 - Type signatures (`RBS`, see the `sig` directory) + `Steep` integration (see `Steepfile` for details);
+- CI: added `TypeCheck` step;
 
 ## [1.12.1]
 ### Changed
