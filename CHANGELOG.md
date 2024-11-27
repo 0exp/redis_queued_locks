@@ -3,6 +3,7 @@
 ## Changed
 - Updated development dependencies (`armitage-rubocop`);
 - Constant renaming: all constants and constant parts were renamed from `Acquier` to `Acquirer`;
+- CI is splitted to "mainstream ruby version" and "previous actually maintaned ruby versions";
 ## Added
 - Type signatures (`RBS`, see the `sig` directory) + `Steep` integration (see `Steepfile` for details);
 

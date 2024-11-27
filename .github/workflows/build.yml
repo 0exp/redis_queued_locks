@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ruby_version: ['3.3', 'head']
+        ruby_version: ['3.3']
         os: [ubuntu-latest]
     env:
       BUNDLE_RETRY: 3
