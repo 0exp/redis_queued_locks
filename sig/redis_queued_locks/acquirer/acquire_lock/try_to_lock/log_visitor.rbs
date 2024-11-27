@@ -1,0 +1,177 @@
+module RedisQueuedLocks
+  module Acquirer
+    module AcquireLock
+      module TryToLock
+        module LogVisitor
+          def self.start: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy
+          ) -> void
+
+          def self.rconn_fetched: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy
+          ) -> void
+
+          def self.same_process_conflict_detected: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy
+          ) -> void
+
+          def self.same_process_conflict_analyzed: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy,
+            ::Symbol sp_conflict_status
+          ) -> void
+
+          def self.reentrant_lock__extend_and_work_through: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy,
+            ::Symbol sp_conflict_status,
+            ::Integer? ttl,
+            ::Float spc_processed_timestamp
+          ) -> void
+
+          def self.reentrant_lock__work_through: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy,
+            ::Symbol sp_conflict_status,
+            ::Float spc_processed_timestamp
+          ) -> void
+
+          def self.single_process_lock_conflict__dead_lock: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy,
+            ::Symbol sp_conflict_status,
+            ::Float spc_processed_timestamp
+          ) -> void
+
+          def self.acq_added_to_queue: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy
+          ) -> void
+
+          def self.remove_expired_acqs: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy
+          ) -> void
+
+          def self.get_first_from_queue: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy,
+            ::String? waiting_acquier
+          ) -> void
+
+          def self.exit__queue_ttl_reached: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy
+          ) -> void
+
+          def self.exit__no_first: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy,
+            ::String? waiting_acquier,
+            ::Hash[::String,untyped] current_lock_data
+          ) -> void
+
+          def self.exit__lock_still_obtained: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy,
+            ::String? waiting_acquier,
+            ::String locked_by_acquier,
+            ::Hash[::String,untyped] current_lock_data
+          ) -> void
+
+          def self.obtain__free_to_acquire: (
+            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            bool log_sampled,
+            bool log_lock_try,
+            ::String lock_key,
+            ::Integer queue_ttl,
+            ::String acquier_id,
+            ::String host_id,
+            ::Symbol access_strategy
+          ) -> void
+        end
+      end
+    end
+  end
+end

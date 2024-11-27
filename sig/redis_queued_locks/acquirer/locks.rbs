@@ -1,0 +1,23 @@
+module RedisQueuedLocks
+  module Acquirer
+    module Locks
+      def self.locks: (
+        ::RedisClient redis_client,
+        scan_size: ::Integer,
+        with_info: bool
+      ) -> ::Set[::String|::Set[{ lock: ::String, status: :released|:alive, info: ::Hash[::String,untyped] }]]
+
+      private
+
+      def self.scan_locks: (
+        ::RedisClient redis_client,
+        ::Integer scan_size
+      ) -> ::Set[::String]
+
+      def self.extract_locks_info: (
+        ::RedisClient redis_client,
+        ::Set[::String] lock_keys
+      ) -> ::Set[{ lock: ::String, status: :released|:alive, info: ::Hash[::String,untyped] }]
+    end
+  end
+end

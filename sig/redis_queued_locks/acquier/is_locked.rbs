@@ -1,7 +1,0 @@
-module RedisQueuedLocks
-  module Acquier
-    module IsLocked
-      def self.locked?: (::RedisClient redis_client, ::String lock_name) -> bool
-    end
-  end
-end

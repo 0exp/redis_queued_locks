@@ -1,0 +1,28 @@
+module RedisQueuedLocks
+  module Acquirer
+    module AcquireLock
+      module TryToLock
+        EXTEND_LOCK_PTTL: ::String
+
+        def try_to_lock: (
+          ::RedisClient redis,
+          ::Logger|::RedisQueuedLocks::_Loggable logger,
+          bool log_lock_try,
+          ::String lock_key,
+          ::String lock_key_queue,
+          ::String acquier_id,
+          ::String host_id,
+          ::Integer|::Float acquier_position,
+          ::Integer? ttl,
+          ::Integer queue_ttl,
+          bool fail_fast,
+          ::Symbol conflict_strategy,
+          ::Symbol access_strategy,
+          ::Hash[::String|Symbol,untyped]? meta,
+          bool log_sampled,
+          bool instr_sampled
+        ) -> ::RedisQueuedLocks::Data
+      end
+    end
+  end
+end

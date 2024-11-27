@@ -2,6 +2,7 @@
 
 ## Changed
 - Updated development dependencies (`armitage-rubocop`);
+- Constant renaming: all constants and constant parts were renamed from `Acquier` to `Acquirer`;
 ## Added
 - Type signatures (`RBS`, see the `sig` directory) + `Steep` integration (see `Steepfile` for details);
 
@@ -21,7 +22,7 @@
 
 ## [1.11.0] - 2024-08-11
 ### Changed
-- Lock Acquierment Timeout (`acq_timeout`/`queue_ttl`): more correct timeout error interception
+- Lock Acquirement Timeout (`acq_timeout`/`queue_ttl`): more correct timeout error interception
   inside the `RedisQueuedLocks::Acquier::AcquireLock::WithAcqTimeout` logic that now raises and
   intercepts an internal timeout error class in order to prevent interceptions of
   other timeouts that can be raised from the wrapped block of code;

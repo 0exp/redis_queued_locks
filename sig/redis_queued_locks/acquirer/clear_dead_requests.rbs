@@ -1,0 +1,29 @@
+module RedisQueuedLocks
+  module Acquirer
+    module ClearDeadRequests
+      def self.clear_dead_requests: (
+        ::RedisClient redis_client,
+        ::Integer scan_size,
+        ::Integer dead_ttl,
+        ::Logger|::RedisQueuedLocks::_Loggable logger,
+        untyped instrumenter,
+        untyped? instrument,
+        bool log_sampling_enabled,
+        ::Integer log_sampling_percent,
+        untyped log_sampler,
+        bool log_sample_this,
+        bool instr_sampling_enabled,
+        ::Integer instr_sampling_percent,
+        untyped instr_sampler,
+        bool instr_sample_this
+      ) -> ::RedisQueuedLocks::Data
+
+      private
+
+      def self.each_lock_queue: (
+        ::RedisClient redis_client,
+        ::Integer scan_size
+      ) { (::String lock_queue) -> untyped } -> ::Enumerator
+    end
+  end
+end

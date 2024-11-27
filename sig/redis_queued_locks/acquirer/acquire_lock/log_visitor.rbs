@@ -1,0 +1,70 @@
+module RedisQueuedLocks
+  module Acquirer
+    module AcquireLock
+      module LogVisitor
+        def self.start_lock_obtaining: (
+          ::Logger|RedisQueuedLocks::_Loggable logger,
+          bool log_sampled,
+          ::String lock_key,
+          ::Integer queue_ttl,
+          ::String acquier_id,
+          ::String host_id,
+          ::Symbol access_strategy
+        ) -> void
+
+        def self.start_try_to_lock_cycle: (
+          ::Logger|RedisQueuedLocks::_Loggable logger,
+          bool log_sampled,
+          ::String lock_key,
+          ::Integer queue_ttl,
+          ::String acquier_id,
+          ::String host_id,
+          ::Symbol access_strategy
+        ) -> void
+
+        def self.dead_score_reached__reset_acquier_position: (
+          ::Logger|RedisQueuedLocks::_Loggable logger,
+          bool log_sampled,
+          ::String lock_key,
+          ::Integer queue_ttl,
+          ::String acquier_id,
+          ::String host_id,
+          ::Symbol access_strategy
+        ) -> void
+
+        def self.extendable_reentrant_lock_obtained: (
+          ::Logger|RedisQueuedLocks::_Loggable logger,
+          bool log_sampled,
+          ::String lock_key,
+          ::Integer queue_ttl,
+          ::String acquier_id,
+          ::String host_id,
+          ::Integer|::Float acq_time,
+          ::Symbol access_strategy
+        ) -> void
+
+        def self.reentrant_lock_obtained: (
+          ::Logger|RedisQueuedLocks::_Loggable logger,
+          bool log_sampled,
+          ::String lock_key,
+          ::Integer queue_ttl,
+          ::String acquier_id,
+          ::String host_id,
+          ::Integer|::Float acq_time,
+          ::Symbol access_strategy
+        ) -> void
+
+        def self.lock_obtained: (
+          ::Logger|RedisQueuedLocks::_Loggable logger,
+          bool log_sampled,
+          ::String lock_key,
+          ::Integer queue_ttl,
+          ::String acquier_id,
+          ::String host_id,
+          ::Integer|::Float acq_time,
+          ::Symbol access_strategy
+        ) -> void
+      end
+    end
+  end
+end

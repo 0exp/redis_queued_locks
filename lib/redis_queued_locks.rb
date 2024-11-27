@@ -17,7 +17,7 @@ module RedisQueuedLocks
   require_relative 'redis_queued_locks/data'
   require_relative 'redis_queued_locks/debugger'
   require_relative 'redis_queued_locks/resource'
-  require_relative 'redis_queued_locks/acquier'
+  require_relative 'redis_queued_locks/acquirer'
   require_relative 'redis_queued_locks/instrument'
   require_relative 'redis_queued_locks/swarm'
   require_relative 'redis_queued_locks/client'

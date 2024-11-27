@@ -49,7 +49,6 @@ module RedisQueuedLocks::Utilities
   #   - "blocking"
   #   - "running"
   #   - "terminated"
-  #   - "unknown"
   #
   # @param ractor [Ractor]
   # @return [String]

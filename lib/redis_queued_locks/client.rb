@@ -438,7 +438,7 @@ class RedisQueuedLocks::Client
     instr_sample_this: false,
     &block
   )
-    RedisQueuedLocks::Acquier::AcquireLock.acquire_lock(
+    RedisQueuedLocks::Acquirer::AcquireLock.acquire_lock(
       redis_client,
       lock_name,
       process_id: RedisQueuedLocks::Resource.get_process_id,
@@ -585,7 +585,7 @@ class RedisQueuedLocks::Client
     instr_sampler: config[:instr_sampler], # steep:ignore
     instr_sample_this: false
   )
-    RedisQueuedLocks::Acquier::ReleaseLock.release_lock(
+    RedisQueuedLocks::Acquirer::ReleaseLock.release_lock(
       redis_client,
       lock_name,
       instrumenter,
@@ -608,7 +608,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.0.0
   def locked?(lock_name)
-    RedisQueuedLocks::Acquier::IsLocked.locked?(redis_client, lock_name)
+    RedisQueuedLocks::Acquirer::IsLocked.locked?(redis_client, lock_name)
   end
 
   # @param lock_name [String]
@@ -617,7 +617,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.0.0
   def queued?(lock_name)
-    RedisQueuedLocks::Acquier::IsQueued.queued?(redis_client, lock_name)
+    RedisQueuedLocks::Acquirer::IsQueued.queued?(redis_client, lock_name)
   end
 
   # @param lock_name [String]
@@ -626,7 +626,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.0.0
   def lock_info(lock_name)
-    RedisQueuedLocks::Acquier::LockInfo.lock_info(redis_client, lock_name)
+    RedisQueuedLocks::Acquirer::LockInfo.lock_info(redis_client, lock_name)
   end
 
   # @param lock_name [String]
@@ -635,7 +635,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.0.0
   def queue_info(lock_name)
-    RedisQueuedLocks::Acquier::QueueInfo.queue_info(redis_client, lock_name)
+    RedisQueuedLocks::Acquirer::QueueInfo.queue_info(redis_client, lock_name)
   end
 
   # Retrun the current acquirer identifier.
@@ -760,7 +760,7 @@ class RedisQueuedLocks::Client
     instr_sampler: config[:instr_sampler], # steep:ignore
     instr_sample_this: false
   )
-    RedisQueuedLocks::Acquier::ExtendLockTTL.extend_lock_ttl(
+    RedisQueuedLocks::Acquirer::ExtendLockTTL.extend_lock_ttl(
       redis_client,
       lock_name,
       milliseconds,
@@ -815,7 +815,7 @@ class RedisQueuedLocks::Client
     instr_sampler: config[:instr_sampler], # steep:ignore
     instr_sample_this: false
   )
-    RedisQueuedLocks::Acquier::ReleaseAllLocks.release_all_locks(
+    RedisQueuedLocks::Acquirer::ReleaseAllLocks.release_all_locks(
       redis_client,
       batch_size,
       logger,
@@ -853,7 +853,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.0.0
   def locks(scan_size: config[:key_extraction_batch_size], with_info: false) # steep:ignore
-    RedisQueuedLocks::Acquier::Locks.locks(redis_client, scan_size:, with_info:)
+    RedisQueuedLocks::Acquirer::Locks.locks(redis_client, scan_size:, with_info:)
   end
 
   # Extracts lock keys with their info. See #locks(with_info: true) for details.
@@ -884,7 +884,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.0.0
   def queues(scan_size: config[:key_extraction_batch_size], with_info: false) # steep:ignore
-    RedisQueuedLocks::Acquier::Queues.queues(redis_client, scan_size:, with_info:)
+    RedisQueuedLocks::Acquirer::Queues.queues(redis_client, scan_size:, with_info:)
   end
 
   # Extracts lock queues with their info. See #queues(with_info: true) for details.
@@ -904,7 +904,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.0.0
   def keys(scan_size: config[:key_extraction_batch_size]) # steep:ignore
-    RedisQueuedLocks::Acquier::Keys.keys(redis_client, scan_size:)
+    RedisQueuedLocks::Acquirer::Keys.keys(redis_client, scan_size:)
   end
 
   # @option dead_ttl [Integer]
@@ -946,7 +946,7 @@ class RedisQueuedLocks::Client
     instr_sampler: config[:instr_sampler], # steep:ignore
     instr_sample_this: false
   )
-    RedisQueuedLocks::Acquier::ClearDeadRequests.clear_dead_requests(
+    RedisQueuedLocks::Acquirer::ClearDeadRequests.clear_dead_requests(
       redis_client,
       scan_size,
       dead_ttl,

@@ -1,0 +1,10 @@
+module RedisQueuedLocks
+  module Acquirer
+    module LockInfo
+      def self.lock_info: (
+        ::RedisClient redis_client,
+        ::String lock_name
+      ) -> ::Hash[::String,::String|::Float|::Integer]?
+    end
+  end
+end

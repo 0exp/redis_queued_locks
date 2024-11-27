@@ -1,4 +1,4 @@
 module RedisQueuedLocks
-  module Acquier
+  module Acquirer
   end
 end
