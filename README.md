@@ -50,7 +50,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [zombies_info](#zombies_info)
   - [zombie_locks](#zombie_locks)
   - [zombie_hosts](#zombie_hosts)
-  - [zombie_acquiers](#zombie_acquiers)
+  - [zombie_acquirers](#zombie_acquirers)
 - [Lock Access Strategies](#lock-access-strategies)
   - [queued](#lock-access-strategies)
   - [random](#lock-access-strategies)
@@ -251,7 +251,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # (default: -> { RedisQueuedLocks::Resource.calc_uniq_identity })
   # - uniqude idenfitier that is uniq per process/pod;
   # - prevents potential lock-acquirement collisions bettween different process/pods
-  #   that have identical process_id/thread_id/fiber_id/ractor_id (identivcal acquier ids);
+  #   that have identical process_id/thread_id/fiber_id/ractor_id (identivcal acquirer ids);
   # - it is calculated once per `RedisQueudLocks::Client` instance;
   # - expects the proc object;
   # - `SecureRandom.hex(8)` by default;
@@ -264,7 +264,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - at this moment the only debug logs are realised in following cases:
   #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
   #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-  #   - "[redis_queued_locks.dead_score_reached__reset_acquier_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.dead_score_reached__reset_acquirer_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
   #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
   #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
   #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
@@ -375,7 +375,7 @@ end
   - the block's result will be returned;
 - If block is not passed:
   - the obtained lock will be released after lock's ttl;
-  - the lock information will be returned (hash with technical info that contains: lock key, acquier identifier, acquirement timestamp, lock's ttl, type of obtaining process, etc);
+  - the lock information will be returned (hash with technical info that contains: lock key, acquirer identifier, acquirement timestamp, lock's ttl, type of obtaining process, etc);
 
 ```ruby
 def lock(
@@ -594,8 +594,8 @@ Return value:
     {
       ok: true,
       result: {
-        lock_key: String, # acquierd lock key ("rql:lock:your_lock_name")
-        acq_id: String, # acquier identifier ("process_id/thread_id/fiber_id/ractor_id/identity")
+        lock_key: String, # acquirerd lock key ("rql:lock:your_lock_name")
+        acq_id: String, # acquirer identifier ("process_id/thread_id/fiber_id/ractor_id/identity")
         hst_id: String, # host identifier ("process_id/thread_id/ractor_id/identity")
         ts: Float, # time (epoch) when lock was obtained (float, Time#to_f)
         ttl: Integer, # lock's time to live in milliseconds (integer)
@@ -786,8 +786,8 @@ rql.lock('my_lock', retry_delay: 3000, ttl: 3000, access_strategy: :random)
 - `#lock!` - exceptional lock obtaining;
 - fails when (and with):
   - (`RedisQueuedLocks::LockAlreadyObtainedError`) when `fail_fast` is `true` and lock is already obtained;
-  - (`RedisQueuedLocks::LockAcquiermentTimeoutError`) `timeout` limit reached before lock is obtained;
-  - (`RedisQueuedLocks::LockAcquiermentRetryLimitError`) `retry_count` limit reached before lock is obtained;
+  - (`RedisQueuedLocks::LockAcquirementTimeoutError`) `timeout` limit reached before lock is obtained;
+  - (`RedisQueuedLocks::LockAcquirementRetryLimitError`) `retry_count` limit reached before lock is obtained;
   - (`RedisQueuedLocks::ConflictLockObtainError`) when `conflict_strategy: :dead_locking` is used and the "same-process-dead-lock" is happened (see [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks) for details);
 
 ```ruby
@@ -834,7 +834,7 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
 - returns `nil` if lock does not exist;
 - lock data (`Hash<String,String|Integer>`):
   - `"lock_key"` - `string` - lock key in redis;
-  - `"acq_id"` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity);
+  - `"acq_id"` - `string` - acquirer identifier (process_id/thread_id/fiber_id/ractor_id/identity);
   - `"hst_id"` - `string` - host identifier (process_id/thread_id/ractor_id/identity);
   - `"ts"` - `numeric`/`epoch` - the time when lock was obtained;
   - `"init_ttl"` - `integer` - (milliseconds) initial lock key ttl;
@@ -927,12 +927,12 @@ you can receive the lock queue info with empty queue value (an empty array).
 - queue represents the ordered set of lock key reqests:
   - set is ordered by score in ASC manner (inside the Redis Set);
   - score is represented as a timestamp when the lock request was made;
-  - represents the acquier identifier and their score as an array of hashes;
+  - represents the acquirer identifier and their score as an array of hashes;
 - returns `nil` if lock queue does not exist;
 - lock queue data (`Hash<String,String|Array<Hash<String|Numeric>>`):
   - `"lock_queue"` - `string` - lock queue key in redis;
   - `"queue"` - `array` - an array of lock requests (array of hashes):
-    - `"acq_id"` - `string` - acquier identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
+    - `"acq_id"` - `string` - acquirer identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
     - `"score"` - `float`/`epoch` - time when the lock request was made (epoch);
 
 ```ruby
@@ -1340,7 +1340,7 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
 - returns `Set<Hash<Symbol,Any>>` (see [#queue_info](#queue_info) and examples below for details).
   - contained data: `{ queue: String, requests: Array<Hash<String,Any>> }`
   - `:queue` - `String` - lock key queue in Redis;
-  - `:requests` - `Array<Hash<String,Any>>` - lock requests in the que with their acquier id and score.
+  - `:requests` - `Array<Hash<String,Any>>` - lock requests in the que with their acquirer id and score.
 
 ```ruby
 rql.queues_info # or rql.qeuues_info(scan_size: 123)
@@ -1576,7 +1576,7 @@ rql.possible_host_ids
 - [zombies_info](#zombies_info)
 - [zombie_locks](#zombie_locks)
 - [zombie_hosts](#zombie_hosts)
-- [zombie_acquiers](#zombie_acquiers)
+- [zombie_acquirers](#zombie_acquirers)
 
 <hr>
 
@@ -1609,7 +1609,7 @@ rql.possible_host_ids
     # (flush_zombies) zombie flushing configuration
     config.swarm.flush_zombies.enabled_for_swarm = true # NOTE: run zombie flushing or not
     config.swarm.flush_zombies.zombie_flush_period = 10 # NOTE: (in seconds) period of time when the zombie flusher is triggered
-    config.swarm.flush_zombies.zombie_ttl = 15_000 # NOTE: (in milliseconds) when the lock/host/acquier is considered a zombie
+    config.swarm.flush_zombies.zombie_ttl = 15_000 # NOTE: (in milliseconds) when the lock/host/acquirer is considered a zombie
     config.swarm.flush_zombies.zombie_lock_scan_size = 500 # NOTE: scan sizec during zombie flushing
     config.swarm.flush_zombies.zombie_queue_scan_size = 500 # NOTE: scan sizec during zombie flushing
     # (flush_zombies) individual redis config
@@ -1688,7 +1688,7 @@ rql.possible_host_ids
    :zombie_locks=>#<Set: {"rql:lock:kekpek"}>}
   [5] pry(main)> rql.zombie_locks
   => #<Set: {"rql:lock:kekpek"}>
-  [6] pry(main)> rql.zombie_acquiers
+  [6] pry(main)> rql.zombie_acquirers
   => #<Set: {"rql:acq:17580/2260/2380/2280/3f16b93973612580"}>
   [7] pry(main)> rql.zombie_hosts
   => #<Set:
@@ -1730,7 +1730,7 @@ rql.possible_host_ids
    :flush_zombies=>{:enabled=>true, :ractor=>{:running=>true, :state=>"running"}, :main_loop=>{:running=>true, :state=>"sleep"}}}
   [11] pry(main)> rql.zombies_info
   => {:zombie_hosts=>#<Set: {}>, :zombie_acquirers=>#<Set: {}>, :zombie_locks=>#<Set: {}>}
-  [12] pry(main)> rql.zombie_acquiers
+  [12] pry(main)> rql.zombie_acquirers
   => #<Set: {}>
   [13] pry(main)> rql.zombie_hosts
   => #<Set: {}>
@@ -1796,7 +1796,7 @@ rql.possible_host_ids
 ```ruby
 "[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
 "[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-"[redis_queued_locks.dead_score_reached__reset_acquier_position]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.dead_score_reached__reset_acquirer_position]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
 "[redis_queued_locks.lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time");
 "[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "acq_time");
 "[redis_queued_locks.reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "acq_time");
@@ -1843,7 +1843,7 @@ rql.possible_host_ids
 # - at this moment the only debug logs are realised in following cases:
 #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
 #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-#   - "[redis_queued_locks.dead_score_reached__reset_acquier_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+#   - "[redis_queued_locks.dead_score_reached__reset_acquirer_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
 #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
 #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
 #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
@@ -1985,7 +1985,7 @@ Detalized event semantics and payload structure:
   - raised from `#lock`/`#lock!`;
   - payload:
     - `:ttl` - `integer`/`milliseconds` - lock ttl;
-    - `:acq_id` - `string` - lock acquier identifier;
+    - `:acq_id` - `string` - lock acquirer identifier;
     - `:hst_id` - `string` - lock's host identifier;
     - `:lock_key` - `string` - lock name;
     - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend;
@@ -1998,7 +1998,7 @@ Detalized event semantics and payload structure:
   - payload:
     - `:lock_key` - `string` - lock name;
     - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
-    - `:acq_id` - `string` - lock acquier identifier;
+    - `:acq_id` - `string` - lock acquirer identifier;
     - `:hst_id` - `string` - lock's host identifier;
     - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as extendable reentrant lock;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
@@ -2010,7 +2010,7 @@ Detalized event semantics and payload structure:
   - payload:
     - `:lock_key` - `string` - lock name;
     - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
-    - `:acq_id` - `string` - lock acquier identifier;
+    - `:acq_id` - `string` - lock acquirer identifier;
     - `:hst_id` - `string` - lock's host identifier;
     - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
     - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
@@ -2022,7 +2022,7 @@ Detalized event semantics and payload structure:
   - payload:
     - `:hold_time` - `float`/`milliseconds` - lock hold time;
     - `:ttl` - `integer`/`milliseconds` - lock ttl;
-    - `:acq_id` - `string` - lock acquier identifier;
+    - `:acq_id` - `string` - lock acquirer identifier;
     - `:hst_id` - `string` - lock's host identifier;
     - `:lock_key` - `string` - lock name;
     - `:ts` - `numeric`/`epoch` - the time when lock was obtained;
@@ -2036,7 +2036,7 @@ Detalized event semantics and payload structure:
   - payload:
     - `:hold_time` - `float`/`milliseconds` - lock hold time;
     - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
-    - `:acq_id` - `string` - lock acquier identifier;
+    - `:acq_id` - `string` - lock acquirer identifier;
     - `:hst_id` - `string` - lock's host identifier;
     - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
     - `:lock_key` - `string` - lock name;
@@ -2093,7 +2093,7 @@ Detalized event semantics and payload structure:
     whose ttl may expire before the block execution completes). It makes sense for non-`timed` locks *only*;
   - sized lock queues (with an ability of dynamically growing size);
   - better code stylization (+ some refactorings);
-  - `RedisQueuedLocks::Acquier::Try.try_to_lock` - detailed successful result analization;
+  - `RedisQueuedLocks::Acquirer::Try.try_to_lock` - detailed successful result analization;
   - Support for LIFO strategy;
   - better specs with 100% test coverage (total specs rework);
   - statistics with UI;

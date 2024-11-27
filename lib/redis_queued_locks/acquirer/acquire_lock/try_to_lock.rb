@@ -21,9 +21,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param log_lock_try [Boolean]
   # @param lock_key [String]
   # @param lock_key_queue [String]
-  # @param acquier_id [String]
+  # @param acquirer_id [String]
   # @param host_id [String]
-  # @param acquier_position [Numeric]
+  # @param acquirer_position [Numeric]
   # @param ttl [Integer]
   # @param queue_ttl [Integer]
   # @param fail_fast [Boolean]
@@ -44,9 +44,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     log_lock_try,
     lock_key,
     lock_key_queue,
-    acquier_id,
+    acquirer_id,
     host_id,
-    acquier_position,
+    acquirer_position,
     ttl,
     queue_ttl,
     fail_fast,
@@ -66,19 +66,19 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
     LogVisitor.start(
       logger, log_sampled, log_lock_try, lock_key,
-      queue_ttl, acquier_id, host_id, access_strategy
+      queue_ttl, acquirer_id, host_id, access_strategy
     )
 
     # Step X: start to work with lock acquiring
     result = redis.with do |rconn|
       LogVisitor.rconn_fetched(
         logger, log_sampled, log_lock_try, lock_key,
-        queue_ttl, acquier_id, host_id, access_strategy
+        queue_ttl, acquirer_id, host_id, access_strategy
       )
 
       # Step 0:
       #   watch the lock key changes (and discard acquirement if lock is already
-      #   obtained by another acquier during the current lock acquiremntt)
+      #   obtained by another acquirer during the current lock acquiremntt)
       rconn.multi(watch: [lock_key]) do |transact|
         # SP-Conflict status PREPARING: get the current lock obtainer
         current_lock_obtainer = rconn.call('HGET', lock_key, 'acq_id')
@@ -86,10 +86,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         sp_conflict_status = nil
 
         # SP-Conflict Step X1: calculate the current deadlock status
-        if current_lock_obtainer != nil && acquier_id == current_lock_obtainer
+        if current_lock_obtainer != nil && acquirer_id == current_lock_obtainer
           LogVisitor.same_process_conflict_detected(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquier_id, host_id, access_strategy
+            queue_ttl, acquirer_id, host_id, access_strategy
           )
 
           # SP-Conflict Step X2: self-process dead lock moment started.
@@ -116,7 +116,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           end
           LogVisitor.same_process_conflict_analyzed(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquier_id, host_id, access_strategy, sp_conflict_status
+            queue_ttl, acquirer_id, host_id, access_strategy, sp_conflict_status
           )
         end
 
@@ -159,7 +159,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # @type var spc_processed_timestamp: ::Float
           LogVisitor.reentrant_lock__extend_and_work_through(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquier_id, host_id, access_strategy,
+            queue_ttl, acquirer_id, host_id, access_strategy,
             sp_conflict_status, ttl, spc_processed_timestamp
           )
         # SP-Conflict-Step X2: switch to dead lock logic or not
@@ -186,7 +186,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # @type var spc_processed_timestamp: ::Float
           LogVisitor.reentrant_lock__work_through(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquier_id, host_id, access_strategy,
+            queue_ttl, acquirer_id, host_id, access_strategy,
             sp_conflict_status, spc_processed_timestamp
           )
         # SP-Conflict-Step X2: switch to dead lock logic or not
@@ -198,7 +198,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # @type var spc_processed_timestamp: ::Float
           LogVisitor.single_process_lock_conflict__dead_lock(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquier_id, host_id, access_strategy,
+            queue_ttl, acquirer_id, host_id, access_strategy,
             sp_conflict_status, spc_processed_timestamp
           )
         # Reached the SP-Non-Conflict Mode (NOTE):
@@ -208,84 +208,84 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # Fast-Step X1: lock is already obtained. fail fast leads to "no try".
           inter_result = :fail_fast_no_try
         else
-          # Step 1: add an acquier to the lock acquirement queue
-          rconn.call('ZADD', lock_key_queue, 'NX', acquier_position, acquier_id)
+          # Step 1: add an acquirer to the lock acquirement queue
+          rconn.call('ZADD', lock_key_queue, 'NX', acquirer_position, acquirer_id)
 
           LogVisitor.acq_added_to_queue(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquier_id, host_id, access_strategy
+            queue_ttl, acquirer_id, host_id, access_strategy
           )
 
-          # Step 2.1: drop expired acquiers from the lock queue
+          # Step 2.1: drop expired acquirers from the lock queue
           rconn.call(
             'ZREMRANGEBYSCORE',
             lock_key_queue,
             '-inf',
-            RedisQueuedLocks::Resource.acquier_dead_score(queue_ttl)
+            RedisQueuedLocks::Resource.acquirer_dead_score(queue_ttl)
           )
 
           LogVisitor.remove_expired_acqs(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquier_id, host_id, access_strategy
+            queue_ttl, acquirer_id, host_id, access_strategy
           )
 
-          # Step 3: get the actual acquier waiting in the queue
-          waiting_acquier = Array(rconn.call('ZRANGE', lock_key_queue, '0', '0')).first
+          # Step 3: get the actual acquirer waiting in the queue
+          waiting_acquirer = Array(rconn.call('ZRANGE', lock_key_queue, '0', '0')).first
 
           LogVisitor.get_first_from_queue(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquier_id, host_id, access_strategy, waiting_acquier
+            queue_ttl, acquirer_id, host_id, access_strategy, waiting_acquirer
           )
 
           # Step PRE-4.x: check if the request time limit is reached
           #   (when the current try self-removes itself from queue (queue ttl has come))
-          if waiting_acquier == nil
+          if waiting_acquirer == nil
             LogVisitor.exit__queue_ttl_reached(
               logger, log_sampled, log_lock_try, lock_key,
-              queue_ttl, acquier_id, host_id, access_strategy
+              queue_ttl, acquirer_id, host_id, access_strategy
             )
 
             inter_result = :dead_score_reached
             # Step STRATEGY: check the stragegy and corresponding preventing factor
-            # Step STRATEGY (queued): check the actual acquier: is it ours? are we aready to lock?
-          elsif access_strategy == :queued && waiting_acquier != acquier_id
+            # Step STRATEGY (queued): check the actual acquirer: is it ours? are we aready to lock?
+          elsif access_strategy == :queued && waiting_acquirer != acquirer_id
             # Step ROLLBACK 1.1: our time hasn't come yet. retry!
 
             LogVisitor.exit__no_first(
               logger, log_sampled, log_lock_try, lock_key,
-              queue_ttl, acquier_id, host_id, access_strategy, waiting_acquier,
+              queue_ttl, acquirer_id, host_id, access_strategy, waiting_acquirer,
               rconn.call('HGETALL', lock_key).to_h
             )
-            inter_result = :acquier_is_not_first_in_queue
+            inter_result = :acquirer_is_not_first_in_queue
             # Step STRAGEY: successfull (:queued OR :random)
-          elsif (access_strategy == :queued && waiting_acquier == acquier_id) ||
+          elsif (access_strategy == :queued && waiting_acquirer == acquirer_id) ||
                 (access_strategy == :random)
             # NOTE: our time has come! let's try to acquire the lock!
 
             # Step 5: find the lock -> check if the our lock is already acquired
-            locked_by_acquier = rconn.call('HGET', lock_key, 'acq_id')
+            locked_by_acquirer = rconn.call('HGET', lock_key, 'acq_id')
 
-            if locked_by_acquier
+            if locked_by_acquirer
               # Step ROLLBACK 2: required lock is stil acquired. retry!
 
               LogVisitor.exit__lock_still_obtained(
                 logger, log_sampled, log_lock_try, lock_key,
-                queue_ttl, acquier_id, host_id, access_strategy,
-                waiting_acquier, locked_by_acquier,
+                queue_ttl, acquirer_id, host_id, access_strategy,
+                waiting_acquirer, locked_by_acquirer,
                 rconn.call('HGETALL', lock_key).to_h
               )
               inter_result = :lock_is_still_acquired
             else
               # NOTE: required lock is free and ready to be acquired! acquire!
 
-              # Step 6.1: remove our acquier from waiting queue
-              transact.call('ZREM', lock_key_queue, acquier_id)
+              # Step 6.1: remove our acquirer from waiting queue
+              transact.call('ZREM', lock_key_queue, acquirer_id)
 
-              # Step 6.2: acquire a lock and store an info about the acquier and host
+              # Step 6.2: acquire a lock and store an info about the acquirer and host
               transact.call(
                 'HSET',
                 lock_key,
-                'acq_id', acquier_id,
+                'acq_id', acquirer_id,
                 'hst_id', host_id,
                 'ts', (timestamp = Time.now.to_f),
                 'ini_ttl', ttl,
@@ -297,7 +297,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
               LogVisitor.obtain__free_to_acquire(
                 logger, log_sampled, log_lock_try, lock_key,
-                queue_ttl, acquier_id, host_id, access_strategy
+                queue_ttl, acquirer_id, host_id, access_strategy
               )
             end
           end
@@ -327,7 +327,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           RedisQueuedLocks::Data[ok: true, result: {
             process: :extendable_conflict_work_through,
             lock_key: lock_key,
-            acq_id: acquier_id,
+            acq_id: acquirer_id,
             hst_id: host_id,
             ts: spc_processed_timestamp,
             ttl: ttl
@@ -341,7 +341,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           RedisQueuedLocks::Data[ok: true, result: {
             process: :extendable_conflict_work_through,
             lock_key: lock_key,
-            acq_id: acquier_id,
+            acq_id: acquirer_id,
             hst_id: host_id,
             ts: spc_processed_timestamp,
             ttl: ttl
@@ -369,7 +369,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       RedisQueuedLocks::Data[ok: true, result: {
         process: :conflict_work_through,
         lock_key: lock_key,
-        acq_id: acquier_id,
+        acq_id: acquirer_id,
         hst_id: host_id,
         ts: spc_processed_timestamp,
         ttl: ttl
@@ -384,7 +384,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       RedisQueuedLocks::Data[ok: false, result: inter_result] # steep:ignore
     when inter_result == :dead_score_reached
       RedisQueuedLocks::Data[ok: false, result: inter_result] # steep:ignore
-    when inter_result == :lock_is_still_acquired || inter_result == :acquier_is_not_first_in_queue
+    when inter_result == :lock_is_still_acquired || inter_result == :acquirer_is_not_first_in_queue
       # Step 7.b: lock is still acquired by another process => failed to acquire
       RedisQueuedLocks::Data[ok: false, result: inter_result] # steep:ignore
     when result == nil || (result.is_a?(::Array) && result.empty?)
@@ -407,7 +407,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       RedisQueuedLocks::Data[ok: true, result: {
         process: :lock_obtaining,
         lock_key: lock_key,
-        acq_id: acquier_id,
+        acq_id: acquirer_id,
         hst_id: host_id,
         ts: timestamp,
         ttl: ttl

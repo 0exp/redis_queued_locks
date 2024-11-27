@@ -18,7 +18,7 @@ module RedisQueuedLocks
         ::Integer zombie_ttl
       ) -> ::Set[::String]
 
-      def self.zombie_acquiers: (
+      def self.zombie_acquirers: (
         ::RedisClient redis_client,
         ::Integer zombie_ttl,
         ::Integer lock_scan_size
@@ -37,7 +37,7 @@ module RedisQueuedLocks
         ::Integer lock_scan_size
       ) -> ::Set[::String]
 
-      def self.extract_zombie_acquiers: (
+      def self.extract_zombie_acquirers: (
         ::RedisClient rconn,
         ::Integer zombie_ttl,
         ::Integer lock_scan_size

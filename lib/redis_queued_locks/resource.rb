@@ -55,7 +55,7 @@ module RedisQueuedLocks::Resource
     #
     # @api private
     # @since 1.0.0
-    def acquier_identifier(process_id, thread_id, fiber_id, ractor_id, identity)
+    def acquirer_identifier(process_id, thread_id, fiber_id, ractor_id, identity)
       "rql:acq:#{process_id}/#{thread_id}/#{fiber_id}/#{ractor_id}/#{identity}"
     end
 
@@ -97,16 +97,16 @@ module RedisQueuedLocks::Resource
     #
     # @api private
     # @since 1.0.0
-    def calc_initial_acquier_position
+    def calc_initial_acquirer_position
       Time.now.to_f
     end
 
     # @param queue_ttl [Numeric] In seconds
-    # @return [Float] Redis's <Set> score barrier for acquiers that should be removed from queue.
+    # @return [Float] Redis's <Set> score barrier for acquirers that should be removed from queue.
     #
     # @api private
     # @since 1.0.0
-    def acquier_dead_score(queue_ttl)
+    def acquirer_dead_score(queue_ttl)
       Time.now.to_f - queue_ttl
     end
 
@@ -119,9 +119,9 @@ module RedisQueuedLocks::Resource
       Time.now.to_f - zombie_ttl
     end
 
-    # @param acquier_position [Float]
+    # @param acquirer_position [Float]
     #   A time (epoch, seconds.milliseconds) that represents
-    #   the acquier position in lock request queue.
+    #   the acquirer position in lock request queue.
     # @parma queue_ttl [Integer]
     #   In second.
     # @return [Boolean]
@@ -129,8 +129,8 @@ module RedisQueuedLocks::Resource
     #
     # @api private
     # @since 1.0.0
-    def dead_score_reached?(acquier_position, queue_ttl)
-      (acquier_position + queue_ttl) < Time.now.to_f
+    def dead_score_reached?(acquirer_position, queue_ttl)
+      (acquirer_position + queue_ttl) < Time.now.to_f
     end
 
     # @param lock_queue [String]
@@ -196,9 +196,9 @@ module RedisQueuedLocks::Resource
 
       # steep:ignore:start
       # NOTE: rbs/steep can't declare the type of dynamic `[]` variable mutated via tap :'(
-      [].tap do |acquiers|
+      [].tap do |acquirers|
         current_threads.each do |thread|
-          acquiers << host_identifier(
+          acquirers << host_identifier(
             current_process_id,
             thread.object_id,
             current_ractor_id,

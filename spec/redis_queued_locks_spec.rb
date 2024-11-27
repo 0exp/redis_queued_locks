@@ -359,12 +359,12 @@ RSpec.describe RedisQueuedLocks do
       }))
 
       zombie_host = client.current_host_id
-      zombie_acquier = client.current_acquier_id
+      zombie_acquirer = client.current_acquirer_id
       zombie_lock = 'rql:lock:super-mega-long-lock'
 
       expect(client.locked?('super-mega-long-lock')).to eq(true)
       expect(client.zombie_locks).to include(zombie_lock)
-      expect(client.zombie_acquiers).to include(zombie_acquier)
+      expect(client.zombie_acquirers).to include(zombie_acquirer)
       expect(client.zombie_hosts).to include(zombie_host)
 
       # try to flush them all
@@ -373,17 +373,17 @@ RSpec.describe RedisQueuedLocks do
         expect(result).to match({
           ok: true,
           deleted_zombie_hosts: include(zombie_host),
-          deleted_zombie_acquiers: include(zombie_acquier),
+          deleted_zombie_acquirers: include(zombie_acquirer),
           deleted_zombie_locks: include(zombie_lock)
         })
         expect(client.locked?('super-mega-long-lock')).to eq(false)
         expect(client.zombie_locks).to eq(Set.new)
-        expect(client.zombie_acquiers).not_to include(zombie_acquier)
+        expect(client.zombie_acquirers).not_to include(zombie_acquirer)
         expect(client.zombie_hosts).not_to include(zombie_host)
       end
     end
 
-    specify '(auto-swarming!): zombie locks (with hosts and acquiers)' do
+    specify '(auto-swarming!): zombie locks (with hosts and acquirers)' do
       main_client = RedisQueuedLocks::Client.new(redis) do |conf|
         conf.swarm.auto_swarm = true
         conf.swarm.probe_hosts.enabled_for_swarm = true
@@ -395,7 +395,7 @@ RSpec.describe RedisQueuedLocks do
       aggregate_failures 'no zombies at start' do
         expect(main_client.zombie_locks).to eq(Set.new) # empty set
         expect(main_client.zombie_hosts).to eq(Set.new) # empty set
-        expect(main_client.zombie_acquiers).to eq(Set.new) # empty set
+        expect(main_client.zombie_acquirers).to eq(Set.new) # empty set
 
         expect(main_client.zombies_info).to match({
           zombie_locks: Set.new,
@@ -421,7 +421,7 @@ RSpec.describe RedisQueuedLocks do
           conf.swarm.flush_zombies.enabled_for_swarm = false
         end
 
-        outer_acquirer1 = client.current_acquier_id
+        outer_acquirer1 = client.current_acquirer_id
         outer_host1 = client.current_host_id
 
         client.swarmize!
@@ -435,7 +435,7 @@ RSpec.describe RedisQueuedLocks do
           conf.swarm.flush_zombies.enabled_for_swarm = false
         end
 
-        outer_acquirer2 = client.current_acquier_id
+        outer_acquirer2 = client.current_acquirer_id
         outer_host2 = client.current_host_id
 
         client.swarmize!
@@ -457,7 +457,7 @@ RSpec.describe RedisQueuedLocks do
         expect(main_client.locked?('another_long_lock')).to eq(true)
         expect(main_client.zombie_locks).to eq(Set.new) # empty set
         expect(main_client.zombie_hosts).to eq(Set.new) # empty set
-        expect(main_client.zombie_acquiers).to eq(Set.new) # empty set
+        expect(main_client.zombie_acquirers).to eq(Set.new) # empty set
 
         expect(main_client.zombies_info).to match({
           zombie_locks: Set.new,
@@ -486,7 +486,7 @@ RSpec.describe RedisQueuedLocks do
 
         # ZOMBIE LOCK HOSTS AND ACQUIRERS
         expect(main_client.zombie_hosts).to include(outer_host1, outer_host2)
-        expect(main_client.zombie_acquiers).to include(outer_acquirer1, outer_acquirer2)
+        expect(main_client.zombie_acquirers).to include(outer_acquirer1, outer_acquirer2)
 
         expect(main_client.zombies_info).to match({
           zombie_locks: Set.new(%w[rql:lock:long_lock rql:lock:another_long_lock]),
@@ -512,7 +512,7 @@ RSpec.describe RedisQueuedLocks do
         expect(main_client.locked?('another_long_lock')).to eq(false) # lock is unlocked
         expect(main_client.zombie_locks).to eq(Set.new) # no zombie locks
         expect(main_client.zombie_hosts).to eq(Set.new) # no zombie hosts
-        expect(main_client.zombie_acquiers).to eq(Set.new) # no zombie acquiers
+        expect(main_client.zombie_acquirers).to eq(Set.new) # no zombie acquirers
       end
     end
   end
@@ -1218,7 +1218,7 @@ RSpec.describe RedisQueuedLocks do
       client.lock('kek.dead.lock2', ttl: 50_000, queue_ttl: 60, timeout: nil, retry_count: nil)
     end
     sleep(1)
-    # kill acquiers => requests will live in redis now (zombie requests! bu!)
+    # kill acquirers => requests will live in redis now (zombie requests! bu!)
     lockers1.each(&:kill)
     lockers2.each(&:kill)
     locker3.kill
@@ -1649,11 +1649,11 @@ RSpec.describe RedisQueuedLocks do
 
     expect do
       client.lock('some-long-lock', timeout: 2, retry_count: nil, raise_errors: true)
-    end.to raise_error(RedisQueuedLocks::LockAcquiermentTimeoutError)
+    end.to raise_error(RedisQueuedLocks::LockAcquirementTimeoutError)
 
     common_timeout_error = begin
       client.lock('some-long-lock', timeout: 2, retry_count: nil, raise_errors: true)
-    rescue RedisQueuedLocks::LockAcquiermentTimeoutError => error
+    rescue RedisQueuedLocks::LockAcquirementTimeoutError => error
       error
     end
 
@@ -1672,7 +1672,7 @@ RSpec.describe RedisQueuedLocks do
         raise_errors: true,
         detailed_acq_timeout_error: true
       )
-    rescue RedisQueuedLocks::LockAcquiermentTimeoutError => error
+    rescue RedisQueuedLocks::LockAcquirementTimeoutError => error
       error
     end
 
@@ -1694,7 +1694,7 @@ RSpec.describe RedisQueuedLocks do
         raise_errors: true,
         detailed_acq_timeout_error: true
       )
-    rescue RedisQueuedLocks::LockAcquiermentTimeoutError => error
+    rescue RedisQueuedLocks::LockAcquirementTimeoutError => error
       error
     end
 
@@ -1726,7 +1726,7 @@ RSpec.describe RedisQueuedLocks do
       expect(timed_lock_error.message).to include('lock: "rql:lock:some-timed-lock",')
       expect(timed_lock_error.message).to include('ttl: 1000,')
       expect(timed_lock_error.message).to include('meta: <no-meta>,')
-      expect(timed_lock_error.message).to include("acq_id: \"#{client.current_acquier_id}\"")
+      expect(timed_lock_error.message).to include("acq_id: \"#{client.current_acquirer_id}\"")
       expect(timed_lock_error.message).to include("hst_id: \"#{client.current_host_id}\"")
     end
 
@@ -1747,7 +1747,7 @@ RSpec.describe RedisQueuedLocks do
         "meta: #{{ kek: 'pek' }.inspect}"
       )
       expect(timed_lock_error_with_meta.message).to include(
-        "acq_id: \"#{client.current_acquier_id}\""
+        "acq_id: \"#{client.current_acquirer_id}\""
       )
       expect(timed_lock_error_with_meta.message).to include(
         "hst_id: \"#{client.current_host_id}\""
@@ -1776,11 +1776,11 @@ RSpec.describe RedisQueuedLocks do
 
     expect do
       client.lock!('some-kek-super-pek', retry_count: 1)
-    end.to raise_error(RedisQueuedLocks::LockAcquiermentRetryLimitError)
+    end.to raise_error(RedisQueuedLocks::LockAcquirementRetryLimitError)
 
     expect do
       client.lock!('some-kek-super-pek', retry_count: 1, timeout: 1)
-    end.to raise_error(RedisQueuedLocks::LockAcquiermentRetryLimitError)
+    end.to raise_error(RedisQueuedLocks::LockAcquirementRetryLimitError)
   end
 
   specify 'lock_info, queue_info' do

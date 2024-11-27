@@ -19,15 +19,15 @@ module RedisQueuedLocks
 
   # @api private
   # @since 1.11.0
-  class LockAcquiermentIntermediateTimeoutError < ::Timeout::Error; end
+  class LockAcquirementIntermediateTimeoutError < ::Timeout::Error; end
 
   # @api public
   # @since 1.0.0
-  class LockAcquiermentTimeoutError < Error; end
+  class LockAcquirementTimeoutError < Error; end
 
   # @api public
   # @since 1.0.0
-  class LockAcquiermentRetryLimitError < Error; end
+  class LockAcquirementRetryLimitError < Error; end
 
   # @api private
   # @since 1.12.0

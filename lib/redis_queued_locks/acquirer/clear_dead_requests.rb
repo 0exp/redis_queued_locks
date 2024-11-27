@@ -39,7 +39,7 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
       instr_sampler,
       instr_sample_this
     )
-      dead_score = RedisQueuedLocks::Resource.acquier_dead_score(dead_ttl / 1_000.0)
+      dead_score = RedisQueuedLocks::Resource.acquirer_dead_score(dead_ttl / 1_000.0)
 
       # @type var result: ::Set[::String]
       result = Set.new.tap do |processed_queues|

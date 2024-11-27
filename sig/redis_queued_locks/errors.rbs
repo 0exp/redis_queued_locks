@@ -8,13 +8,13 @@ module RedisQueuedLocks
   class LockAlreadyObtainedError < Error
   end
 
-  class LockAcquiermentIntermediateTimeoutError < ::Timeout::Error
+  class LockAcquirementIntermediateTimeoutError < ::Timeout::Error
   end
 
-  class LockAcquiermentTimeoutError < Error
+  class LockAcquirementTimeoutError < Error
   end
 
-  class LockAcquiermentRetryLimitError < Error
+  class LockAcquirementRetryLimitError < Error
   end
 
   class TimedLockIntermediateTimeoutError < ::Timeout::Error

@@ -20,7 +20,7 @@ module RedisQueuedLocks::Acquirer::QueueInfo
     #       { "acq_id" => "rql:acq:123/456/789/987/identity", "score" => 123.456 },
     #       { "acq_id" => "rql:acq:123/686/789/987/identity", "score" => 456.789 },
     #       ...
-    #     ] # ordered set (by score) with information about an acquier and their position in queue
+    #     ] # ordered set (by score) with information about an acquirer and their position in queue
     #   }
     #
     # @api private

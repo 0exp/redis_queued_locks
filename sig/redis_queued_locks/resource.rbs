@@ -7,7 +7,7 @@ module RedisQueuedLocks
     REDIS_TIMESHIFT_ERROR: ::Integer
 
     def self.calc_uniq_identity: () -> ::String
-    def self.acquier_identifier: (
+    def self.acquirer_identifier: (
       ::Integer|::String process_id,
       ::Integer|::String thread_id,
       ::Integer|::String fiber_id,
@@ -24,10 +24,10 @@ module RedisQueuedLocks
 
     def self.prepare_lock_key: (::String lock_name) -> ::String
     def self.prepare_lock_queue: (::String lock_name) -> ::String
-    def self.calc_initial_acquier_position: () -> ::Float
-    def self.acquier_dead_score: (::Integer|::Float queue_ttl) -> ::Float
+    def self.calc_initial_acquirer_position: () -> ::Float
+    def self.acquirer_dead_score: (::Integer|::Float queue_ttl) -> ::Float
     def self.calc_zombie_score: (::Float zombie_ttl) -> ::Float
-    def self.dead_score_reached?: (::Float acquier_position, ::Integer queue_ttl) -> bool
+    def self.dead_score_reached?: (::Float acquirer_position, ::Integer queue_ttl) -> bool
     def self.lock_key_from_queue: (::String lock_queue) -> ::String
     def self.get_thread_id: () -> ::Integer
     def self.get_fiber_id: () -> ::Integer

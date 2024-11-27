@@ -141,7 +141,7 @@ class RedisQueuedLocks::Client
   attr_reader :swarm
 
   # @param redis_client [RedisClient]
-  #   Redis connection manager, which will be used for the lock acquierment and distribution.
+  #   Redis connection manager, which will be used for the lock acquirerment and distribution.
   #   It should be an instance of RedisClient.
   # @param configs [Block]
   #   Custom configs for in-runtime configuration.
@@ -234,11 +234,11 @@ class RedisQueuedLocks::Client
   #
   # @api ppublic
   # @since 1.9.0
-  def zombie_acquiers(
+  def zombie_acquirers(
     zombie_ttl: config[:swarm][:flush_zombies][:zombie_ttl], # steep:ignore
     lock_scan_size: config[:swarm][:flush_zombies][:zombie_lock_scan_size] # steep:ignore
   )
-    swarm.zombie_acquiers(zombie_ttl:, lock_scan_size:)
+    swarm.zombie_acquirers(zombie_ttl:, lock_scan_size:)
   end
 
   # @option zombie_ttl [Integer]
@@ -253,7 +253,7 @@ class RedisQueuedLocks::Client
   # @return [Hash<Symbol,Set<String>>]
   #   Format: {
   #     zombie_hosts: <Set<String>>,
-  #     zombie_acquiers: <Set<String>>,
+  #     zombie_acquirers: <Set<String>>,
   #     zombie_locks: <Set<String>>
   #   }
   #
@@ -647,7 +647,7 @@ class RedisQueuedLocks::Client
   # @option identity [String] Unique per-process string. See `config[:uniq_identifier]`.
   # @return [String]
   #
-  # @see RedisQueuedLocks::Resource.acquier_identifier
+  # @see RedisQueuedLocks::Resource.acquirer_identifier
   # @see RedisQueuedLocks::Resource.get_process_id
   # @see RedisQueuedLocks::Resource.get_thread_id
   # @see RedisQueuedLocks::Resource.get_fiber_id
@@ -656,14 +656,14 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.8.0
-  def current_acquier_id(
+  def current_acquirer_id(
     process_id: RedisQueuedLocks::Resource.get_process_id,
     thread_id: RedisQueuedLocks::Resource.get_thread_id,
     fiber_id: RedisQueuedLocks::Resource.get_fiber_id,
     ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
     identity: uniq_identity
   )
-    RedisQueuedLocks::Resource.acquier_identifier(
+    RedisQueuedLocks::Resource.acquirer_identifier(
       process_id,
       thread_id,
       fiber_id,

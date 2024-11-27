@@ -19,7 +19,7 @@ module RedisQueuedLocks
     def probe_hosts: () -> untyped
     def flush_zombies: (?zombie_ttl: untyped, ?lock_scan_size: untyped, ?queue_scan_size: untyped) -> untyped
     def zombie_locks: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
-    def zombie_acquiers: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
+    def zombie_acquirers: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
     def zombie_hosts: (?zombie_ttl: untyped) -> untyped
     def zombies_info: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
     def swarm!: () -> untyped

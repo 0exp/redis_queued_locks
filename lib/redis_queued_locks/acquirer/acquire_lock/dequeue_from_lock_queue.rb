@@ -10,7 +10,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
   # @param lock_key [String]
   # @param lock_key_queue [String]
   # @param queue_ttl [Integer]
-  # @param acquier_id [String]
+  # @param acquirer_id [String]
   # @param host_id [String]
   # @param access_strategy [Symbol]
   # @param log_sampled [Boolean]
@@ -26,16 +26,16 @@ module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
     lock_key,
     lock_key_queue,
     queue_ttl,
-    acquier_id,
+    acquirer_id,
     host_id,
     access_strategy,
     log_sampled,
     instr_sampled
   )
-    result = redis.call('ZREM', lock_key_queue, acquier_id)
+    result = redis.call('ZREM', lock_key_queue, acquirer_id)
     LogVisitor.dequeue_from_lock_queue(
       logger, log_sampled,
-      lock_key, queue_ttl, acquier_id, host_id, access_strategy
+      lock_key, queue_ttl, acquirer_id, host_id, access_strategy
     )
     RedisQueuedLocks::Data[ok: true, result: result] # steep:ignore
   end

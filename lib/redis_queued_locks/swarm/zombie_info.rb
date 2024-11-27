@@ -54,9 +54,9 @@ module RedisQueuedLocks::Swarm::ZombieInfo
     #
     # @api private
     # @since 1.9.0
-    def zombie_acquiers(redis_client, zombie_ttl, lock_scan_size)
+    def zombie_acquirers(redis_client, zombie_ttl, lock_scan_size)
       redis_client.with do |rconn|
-        extract_zombie_acquiers(rconn, zombie_ttl, lock_scan_size)
+        extract_zombie_acquirers(rconn, zombie_ttl, lock_scan_size)
       end
     end
 
@@ -89,7 +89,7 @@ module RedisQueuedLocks::Swarm::ZombieInfo
       rconn.scan(
         'MATCH', RedisQueuedLocks::Resource::LOCK_PATTERN, count: lock_scan_size
       ) do |lock_key|
-        _acquier_id, host_id = rconn.call('HMGET', lock_key, 'acq_id', 'hst_id')
+        _acquirer_id, host_id = rconn.call('HMGET', lock_key, 'acq_id', 'hst_id')
         zombie_locks << lock_key if zombie_hosts.include?(host_id)
       end
       zombie_locks
@@ -102,14 +102,14 @@ module RedisQueuedLocks::Swarm::ZombieInfo
     #
     # @api private
     # @since 1.9.0
-    def extract_zombie_acquiers(rconn, zombie_ttl, lock_scan_size)
+    def extract_zombie_acquirers(rconn, zombie_ttl, lock_scan_size)
       zombie_hosts = extract_zombie_hosts(rconn, zombie_ttl)
       zombie_acquirers = Set.new
       rconn.scan(
         'MATCH', RedisQueuedLocks::Resource::LOCK_PATTERN, count: lock_scan_size
       ) do |lock_key|
-        acquier_id, host_id = rconn.call('HMGET', lock_key, 'acq_id', 'hst_id')
-        zombie_acquirers << acquier_id if zombie_hosts.include?(host_id)
+        acquirer_id, host_id = rconn.call('HMGET', lock_key, 'acq_id', 'hst_id')
+        zombie_acquirers << acquirer_id if zombie_hosts.include?(host_id)
       end
       zombie_acquirers
     end
@@ -133,9 +133,9 @@ module RedisQueuedLocks::Swarm::ZombieInfo
       rconn.scan(
         'MATCH', RedisQueuedLocks::Resource::LOCK_PATTERN, count: lock_scan_size
       ) do |lock_key|
-        acquier_id, host_id = rconn.call('HMGET', lock_key, 'acq_id', 'hst_id')
+        acquirer_id, host_id = rconn.call('HMGET', lock_key, 'acq_id', 'hst_id')
         if zombie_hosts.include?(host_id)
-          zombie_acquirers << acquier_id
+          zombie_acquirers << acquirer_id
           zombie_locks << lock_key
         end
       end

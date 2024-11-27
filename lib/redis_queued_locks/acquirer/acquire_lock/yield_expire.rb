@@ -18,7 +18,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @param redis [RedisClient] Redis connection.
   # @param logger [::Logger,#debug] Logger object.
   # @param lock_key [String] Obtained lock key that should be expired.
-  # @param acquier_id [String] Acquirer identifier.
+  # @param acquirer_id [String] Acquirer identifier.
   # @param host_id [String] Host identifier.
   # @param access_strategy [Symbol] Lock obtaining strategy.
   # @param timed [Boolean] Should the lock be wrapped by Timeout with with lock's ttl
@@ -43,7 +43,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
     redis,
     logger,
     lock_key,
-    acquier_id,
+    acquirer_id,
     host_id,
     access_strategy,
     timed,
@@ -79,7 +79,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
         end
         # steep:ignore:end
 
-        yield_with_timeout(timeout, lock_key, ttl, acquier_id, host_id, meta, &block)
+        yield_with_timeout(timeout, lock_key, ttl, acquirer_id, host_id, meta, &block)
       else
         yield
       end
@@ -88,7 +88,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
     if should_expire
       LogVisitor.expire_lock(
         logger, log_sampled, lock_key,
-        queue_ttl, acquier_id, host_id, access_strategy
+        queue_ttl, acquirer_id, host_id, access_strategy
       )
       redis.call('EXPIRE', lock_key, '0')
     elsif should_decrease
@@ -101,7 +101,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
       if decreased_ttl > 0
         LogVisitor.decrease_lock(
           logger, log_sampled, lock_key,
-          decreased_ttl, queue_ttl, acquier_id, host_id, access_strategy
+          decreased_ttl, queue_ttl, acquirer_id, host_id, access_strategy
         )
         # NOTE:# NOTE: EVAL signature -> <lua script>, (number of keys), *(keys), *(arguments)
         redis.call('EVAL', DECREASE_LOCK_PTTL, 1, lock_key, decreased_ttl)
@@ -116,7 +116,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @param timeout [Float]
   # @parma lock_key [String]
   # @param lock_ttl [Integer,NilClass]
-  # @param acquier_id [String]
+  # @param acquirer_id [String]
   # @param host_id [String]
   # @param meta [NilClass,Hash<Symbol|String,Any>]
   # @param block [Blcok]
@@ -127,7 +127,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @api private
   # @since 1.3.0
   # @version 1.12.0
-  def yield_with_timeout(timeout, lock_key, lock_ttl, acquier_id, host_id, meta, &block)
+  def yield_with_timeout(timeout, lock_key, lock_ttl, acquirer_id, host_id, meta, &block)
     ::Timeout.timeout(timeout, RedisQueuedLocks::TimedLockIntermediateTimeoutError, &block)
   rescue RedisQueuedLocks::TimedLockIntermediateTimeoutError
     raise(
@@ -136,7 +136,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
       "(lock: \"#{lock_key}\", " \
       "ttl: #{lock_ttl}, " \
       "meta: #{meta ? meta.inspect : '<no-meta>'}, " \
-      "acq_id: \"#{acquier_id}\", " \
+      "acq_id: \"#{acquirer_id}\", " \
       "hst_id: \"#{host_id}\")"
     )
   end

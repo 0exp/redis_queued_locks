@@ -2,8 +2,13 @@
 
 ## Changed
 - Updated development dependencies (`armitage-rubocop`);
-- Constant renaming: all constants and constant parts were renamed from `Acquier` to `Acquirer`;
 - CI is splitted to "mainstream ruby version" and "previous actually maintaned ruby versions";
+- `Acquier` -> `Acquirer`, `Acquierment` -> `Acquirement` (typos):
+  - [**Breaking**] Constant renaming: all constants and constant parts were renamed from `Acquier` to `Acquirer`;
+  - [**Breaking**] Method and variable names renaming: all `acquier` text parts of method/variable names were renamed to `acquirer`;
+  - [**Breaking**] Logs: all `acquier` text parts of each log message type were renamed to `acquirer`;
+  - [**Breaking**] Instrumentation:  all `acquier` text parts of each event name were renamed to `acquirer`;
+  - [**Breaking**] Exceptions: all `Acquierment` exception constant name parts were renamed to `Acquirement`;
 ## Added
 - Type signatures (`RBS`, see the `sig` directory) + `Steep` integration (see `Steepfile` for details);
 - CI: added `TypeCheck` step;
@@ -54,7 +59,7 @@
   - each ruby worker of the swarm probes himself that he is alive;
   - worker that does not probes himselfs treats as a zombie;
   - worekr becomes dead when your ruby process is dead, or thread is dead or your ractor is dead;
-  - each zombie's lock, acquier and position in queue are flushed in background via `flush_zombies` swarm element;
+  - each zombie's lock, acquirer and position in queue are flushed in background via `flush_zombies` swarm element;
   - the supervisor module keeps up and running each swarm melement (`probe_hosts` and `flush_zombies`):
     - cuz each element works in background and can fail by any unexpected exception the supervisor guarantees that your elements will ressurect after that;
   - each element can be deeply configured (and enabled/disabled);
@@ -65,7 +70,7 @@
     - supervisor that keeps all elements running and wokring;
     - an ability to check the swarm status (`#swarm_status`): who is working, who is dead, running status, internal main loop states, etc;
     - an abiltiy to check the swarm information (`#swarm_info`): showing the current swarm hosts and their last probes and current zombie status;
-    - an ability to find zombie locks, zombie acquiers and zombie hosts (`#zombie_locks`, `#zombie_acquiers`, `#zombie_hosts`);
+    - an ability to find zombie locks, zombie acquirers and zombie hosts (`#zombie_locks`, `#zombie_acquiers`, `#zombie_hosts`);
     - an ability to extract the full zombie information (`#zombies_info`/`#zombies`);
     - each zombie lock will be flushed in background by appropriated swarm element (`flush_zombies`);
     - deeply configurable zombie factors: zombie ttl, host probing period, supervisor check period;
@@ -264,7 +269,7 @@
 
 ## [0.0.27] - 2024-03-21
 ### Changed
-- Better acquier position accuracy: acquier position in lock queue
+- Better acquirer position accuracy: acquirer position in lock queue
   should be represented as EPOCH in seconds+microseconds (previously: simply in seconds);
 
 ## [0.0.26] - 2024-03-21
@@ -343,7 +348,7 @@
 
 ## [0.0.9] - 2024-02-27
 ### Changed
-- The lock acquier identifier (`acq_id`) now includes the fiber id, the ractor id and an unique per-process
+- The lock acquirer identifier (`acq_id`) now includes the fiber id, the ractor id and an unique per-process
   10 byte string. It is added in order to prevent collisions between different processes/pods
   that will have the same process id / thread id identifiers (cuz it is an object_id integers) that can lead
   to the same position with the same `acq_id` for different processes/pods in the lock request queue.

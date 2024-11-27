@@ -22,7 +22,7 @@ module RedisQueuedLocks
     def probe_hosts: () -> untyped
     def flush_zombies: (?zombie_ttl: untyped, ?lock_scan_size: untyped, ?queue_scan_size: untyped) -> untyped
     def zombie_locks: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
-    def zombie_acquiers: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
+    def zombie_acquirers: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
     def zombie_hosts: (?zombie_ttl: untyped) -> untyped
 
     def zombies_info: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
@@ -108,7 +108,7 @@ module RedisQueuedLocks
     def lock_info: (untyped lock_name) -> untyped
     def queue_info: (untyped lock_name) -> untyped
 
-    def current_acquier_id: (?process_id: untyped, ?thread_id: untyped, ?fiber_id: untyped, ?ractor_id: untyped, ?identity: untyped) -> untyped
+    def current_acquirer_id: (?process_id: untyped, ?thread_id: untyped, ?fiber_id: untyped, ?ractor_id: untyped, ?identity: untyped) -> untyped
 
     def current_host_id: (?process_id: untyped, ?thread_id: untyped, ?ractor_id: untyped, ?identity: untyped) -> untyped
 

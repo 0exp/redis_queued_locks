@@ -8,7 +8,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor
     # @param log_sampled [Boolean]
     # @param lock_key [String]
     # @param queue_ttl [Integer]
-    # @param acquier_id [String]
+    # @param acquirer_id [String]
     # @param host_id [String]
     # @param access_strategy [Symbol]
     # @return [void]
@@ -21,7 +21,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor
       log_sampled,
       lock_key,
       queue_ttl,
-      acquier_id,
+      acquirer_id,
       host_id,
       access_strategy
     )
@@ -31,7 +31,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor
         "[redis_queued_locks.expire_lock] " \
         "lock_key => '#{lock_key}' " \
         "queue_ttl => #{queue_ttl} " \
-        "acq_id => '#{acquier_id}' " \
+        "acq_id => '#{acquirer_id}' " \
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}'"
       end rescue nil
@@ -42,7 +42,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor
     # @param lock_key [String]
     # @param decreased_ttl [Integer]
     # @param queue_ttl [Integer]
-    # @param acquier_id [String]
+    # @param acquirer_id [String]
     # @param host_id [String]
     # @param access_strategy [Symbol]
     # @return [void]
@@ -56,7 +56,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor
       lock_key,
       decreased_ttl,
       queue_ttl,
-      acquier_id,
+      acquirer_id,
       host_id,
       access_strategy
     )
@@ -67,7 +67,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor
         "lock_key => '#{lock_key}' " \
         "decreased_ttl => #{decreased_ttl} " \
         "queue_ttl => #{queue_ttl} " \
-        "acq_id => '#{acquier_id}' " \
+        "acq_id => '#{acquirer_id}' " \
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}'"
       end rescue nil

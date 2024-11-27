@@ -10,7 +10,7 @@ module RedisQueuedLocks::Acquirer::LockInfo
     #   - `nil` is returned when lock key does not exist or expired;
     #   - result format: {
     #     'lock_key' => "rql:lock:your_lockname", # acquired lock key
-    #     'acq_id' => "rql:acq:123/456/789/987/uniqstring", # lock acquier identifier
+    #     'acq_id' => "rql:acq:123/456/789/987/uniqstring", # lock acquirer identifier
     #     'hst_id' => "rql:hst:123/456/987/uniqstring", # lock host identifier
     #     'ts' => 123456789.2649841, # <locked at> time stamp (epoch, seconds.microseconds)
     #     'ini_ttl' => 123456789, # initial lock key ttl (milliseconds)

@@ -32,7 +32,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     # @param redis [RedisClient]
     #   Redis connection client.
     # @param lock_name [String]
-    #   Lock name to be acquier.
+    #   Lock name to be acquirer.
     # @option process_id [Integer,String]
     #   The process that want to acquire a lock.
     # @option thread_id [Integer,String]
@@ -224,7 +224,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       end
 
       # Step 1: prepare lock requirements (generate lock name, calc lock ttl, etc).
-      acquier_id = RedisQueuedLocks::Resource.acquier_identifier(
+      acquirer_id = RedisQueuedLocks::Resource.acquirer_identifier(
         process_id,
         thread_id,
         fiber_id,
@@ -240,7 +240,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       lock_ttl = ttl
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
-      acquier_position = RedisQueuedLocks::Resource.calc_initial_acquier_position
+      acquirer_position = RedisQueuedLocks::Resource.calc_initial_acquirer_position
 
       log_sampled = RedisQueuedLocks::Logging.should_log?(
         log_sampling_enabled,
@@ -275,7 +275,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           lock_key,
           lock_key_queue,
           queue_ttl,
-          acquier_id,
+          acquirer_id,
           host_id,
           access_strategy,
           log_sampled,
@@ -285,7 +285,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
 
       LogVisitor.start_lock_obtaining(
         logger, log_sampled, lock_key,
-        queue_ttl, acquier_id, host_id, access_strategy
+        queue_ttl, acquirer_id, host_id, access_strategy
       )
 
       # Step 2: try to lock with timeout
@@ -305,17 +305,17 @@ module RedisQueuedLocks::Acquirer::AcquireLock
 
           LogVisitor.start_try_to_lock_cycle(
             logger, log_sampled, lock_key,
-            queue_ttl, acquier_id, host_id, access_strategy
+            queue_ttl, acquirer_id, host_id, access_strategy
           )
 
           # Step 2.X: check the actual score: is it in queue ttl limit or not?
-          if RedisQueuedLocks::Resource.dead_score_reached?(acquier_position, queue_ttl)
+          if RedisQueuedLocks::Resource.dead_score_reached?(acquirer_position, queue_ttl)
             # Step 2.X.X: dead score reached => re-queue the lock request with the new score;
-            acquier_position = RedisQueuedLocks::Resource.calc_initial_acquier_position
+            acquirer_position = RedisQueuedLocks::Resource.calc_initial_acquirer_position
 
-            LogVisitor.dead_score_reached__reset_acquier_position(
+            LogVisitor.dead_score_reached__reset_acquirer_position(
               logger, log_sampled, lock_key,
-              queue_ttl, acquier_id, host_id, access_strategy
+              queue_ttl, acquirer_id, host_id, access_strategy
             )
           end
 
@@ -325,9 +325,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             log_lock_try,
             lock_key,
             lock_key_queue,
-            acquier_id,
+            acquirer_id,
             host_id,
-            acquier_position,
+            acquirer_position,
             lock_ttl,
             queue_ttl,
             fail_fast,
@@ -356,7 +356,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
               # instrumetnation: (reentrant lock with ttl extension)
               LogVisitor.extendable_reentrant_lock_obtained(
                 logger, log_sampled, result[:lock_key],
-                queue_ttl, acquier_id, host_id, acq_time, access_strategy
+                queue_ttl, acquirer_id, host_id, acq_time, access_strategy
               )
               InstrVisitor.extendable_reentrant_lock_obtained(
                 instrumenter, instr_sampled, result[:lock_key],
@@ -367,7 +367,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
               # instrumetnation: (reentrant lock without ttl extension)
               LogVisitor.reentrant_lock_obtained(
                 logger, log_sampled, result[:lock_key],
-                queue_ttl, acquier_id, host_id, acq_time, access_strategy
+                queue_ttl, acquirer_id, host_id, acq_time, access_strategy
               )
               InstrVisitor.reentrant_lock_obtained(
                 instrumenter, instr_sampled, result[:lock_key],
@@ -379,7 +379,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
               # NOTE: classic is: acq_process[:result][:process] == :lock_obtaining
               LogVisitor.lock_obtained(
                 logger, log_sampled, result[:lock_key],
-                queue_ttl, acquier_id, host_id, acq_time, access_strategy
+                queue_ttl, acquirer_id, host_id, acq_time, access_strategy
               )
               InstrVisitor.lock_obtained(
                 instrumenter, instr_sampled, result[:lock_key],
@@ -424,7 +424,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
                 raise(
                   RedisQueuedLocks::ConflictLockObtainError,
                   "Lock Conflict: trying to acquire the lock \"#{lock_key}\" " \
-                  "that is already acquired by the current acquier (acq_id: \"#{acquier_id}\")."
+                  "that is already acquired by the current acquirer (acq_id: \"#{acquirer_id}\")."
                 )
               end
             else
@@ -450,7 +450,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
 
                   if raise_errors
                     raise(
-                      RedisQueuedLocks::LockAcquiermentRetryLimitError,
+                      RedisQueuedLocks::LockAcquirementRetryLimitError,
                       "Failed to acquire the lock \"#{lock_key}\" " \
                       "for the given retry_count limit (#{retry_count} times)."
                     )
@@ -491,7 +491,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
               redis,
               logger,
               lock_key,
-              acquier_id,
+              acquirer_id,
               host_id,
               access_strategy,
               timed,
@@ -558,7 +558,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           #   - **(notice: in other cases the lock obtaining time and tries count are infinite)
           acq_process[:result] = :timeout_reached
         end
-        # Step 3.b: lock is not acquired (acquier is dequeued by timeout callback)
+        # Step 3.b: lock is not acquired (acquirer is dequeued by timeout callback)
         RedisQueuedLocks::Data[ok: false, result: acq_process[:result]] # steep:ignore
       end
     end

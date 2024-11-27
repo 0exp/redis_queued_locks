@@ -110,7 +110,7 @@ class RedisQueuedLocks::Swarm
   #   RedisQueuedLocks::Data[
   #     ok: <Boolean>,
   #     deleted_zombie_hosts: <Set<String>>,
-  #     deleted_zombie_acquiers: <Set<String>>,
+  #     deleted_zombie_acquirers: <Set<String>>,
   #     deleted_zombie_locks: <Set<String>>
   #   ]
   # ]
@@ -153,11 +153,11 @@ class RedisQueuedLocks::Swarm
   #
   # @api ppublic
   # @since 1.9.0
-  def zombie_acquiers(
+  def zombie_acquirers(
     zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
     lock_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size]
   )
-    RedisQueuedLocks::Swarm::ZombieInfo.zombie_acquiers(
+    RedisQueuedLocks::Swarm::ZombieInfo.zombie_acquirers(
       rql_client.redis_client,
       zombie_ttl,
       lock_scan_size

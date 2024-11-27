@@ -20,7 +20,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
   # @param block [Block] Custom logic that should be invoked under the obtained lock.
   # @return [Any]
   #
-  # @raise [RedisQueuedLocks::LockAcquiermentIntermediateTimeoutError]
+  # @raise [RedisQueuedLocks::LockAcquirementIntermediateTimeoutError]
+  # @raise [RedisQueuedLocks::LockAcquirementTimeoutError]
   #
   # @api private
   # @since 1.0.0
@@ -35,8 +36,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
     on_timeout: nil,
     &block
   )
-    ::Timeout.timeout(timeout, RedisQueuedLocks::LockAcquiermentIntermediateTimeoutError, &block)
-  rescue RedisQueuedLocks::LockAcquiermentIntermediateTimeoutError
+    ::Timeout.timeout(timeout, RedisQueuedLocks::LockAcquirementIntermediateTimeoutError, &block)
+  rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError
     if on_timeout != nil
       # @type var on_timeout: ::Proc
       on_timeout.call
@@ -52,7 +53,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
 
         # rubocop:disable Metrics/BlockNesting
         raise(
-          RedisQueuedLocks::LockAcquiermentTimeoutError,
+          RedisQueuedLocks::LockAcquirementTimeoutError,
           "Failed to acquire the lock \"#{lock_key}\" " \
           "for the given <#{timeout} seconds> timeout. Details: " \
           "<Lock Data> => #{lock_info ? lock_info.inspect : '<no_data>'}; " \
@@ -61,7 +62,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
         # rubocop:enable Metrics/BlockNesting
       else
         raise(
-          RedisQueuedLocks::LockAcquiermentTimeoutError,
+          RedisQueuedLocks::LockAcquirementTimeoutError,
           "Failed to acquire the lock \"#{lock_key}\" " \
           "for the given <#{timeout} seconds> timeout."
         )

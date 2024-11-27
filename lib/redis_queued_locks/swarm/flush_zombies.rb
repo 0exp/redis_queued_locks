@@ -12,7 +12,7 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
     #   RedisQueuedLocks::Data[
     #     ok: <Boolean>,
     #     deleted_zombie_hosts: <Set<String>>,
-    #     deleted_zombie_acquiers: <Set<String>>,
+    #     deleted_zombie_acquirers: <Set<String>>,
     #     deleted_zombie_locks: <Set<String>>
     #   ]
     # ]
@@ -53,15 +53,15 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
         # NOTE: original redis does not support indexing so we need to use
         #   internal data structers to simulate data indexing (such as sorted sets or lists);
         zombie_locks = Set.new #: ::Set[::String]
-        zombie_acquiers = Set.new #: ::Set[::String]
+        zombie_acquirers = Set.new #: ::Set[::String]
 
         rconn.scan(
           'MATCH', RedisQueuedLocks::Resource::LOCK_PATTERN, count: lock_scan_size
         ) do |lock_key|
-          acquier_id, host_id = rconn.call('HMGET', lock_key, 'acq_id', 'hst_id')
+          acquirer_id, host_id = rconn.call('HMGET', lock_key, 'acq_id', 'hst_id')
           if zombie_hosts.include?(host_id)
             zombie_locks << lock_key
-            zombie_acquiers << acquier_id
+            zombie_acquirers << acquirer_id
           end
         end
 
@@ -75,8 +75,8 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
         rconn.scan(
           'MATCH', RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN, count: queue_scan_size
         ) do |lock_queue|
-          zombie_acquiers.each do |zombie_acquier|
-            rconn.call('ZREM', lock_queue, zombie_acquier)
+          zombie_acquirers.each do |zombie_acquirer|
+            rconn.call('ZREM', lock_queue, zombie_acquirer)
           end
         end
 
@@ -88,7 +88,7 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
         RedisQueuedLocks::Data[
           ok: true,
           deleted_zombie_hosts: zombie_hosts,
-          deleted_zombie_acquiers: zombie_acquiers,
+          deleted_zombie_acquirers: zombie_acquirers,
           deleted_zombie_locks: zombie_locks
         ]
         # steep:ignore:end
