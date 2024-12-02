@@ -2098,7 +2098,6 @@ Detalized event semantics and payload structure:
   - better specs with 100% test coverage (total specs rework);
   - statistics with UI;
   - JSON log formatter;
-  - RBS type signatures;
   - **automatic** deadlock detection;
   - `go`-lang implementation;
   - (_research_) simplification and speedup of the internal "redis-communuication-and-data-storing"-based algorithms;
