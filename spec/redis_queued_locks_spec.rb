@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # NOTE:
-#   - these specs will be totally reworked;
+#   - these specs will be totally reworked (this is a reason of using rspec-retry);
 #   - this code is not ideal and final,
 #     it is written only for behavior testing and funcionality checking;
 RSpec.describe RedisQueuedLocks do

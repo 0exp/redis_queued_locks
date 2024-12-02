@@ -1,10 +1,19 @@
 # frozen_string_literal: true
 
-require 'redis_queued_locks'
+require_relative 'setup_simplecov'
+
+SimpleCov.start
+
+require 'rspec/retry'
 require 'pry'
-require 'securerandom'
+require 'redis_queued_locks'
 
 RSpec.configure do |config|
+  # NOTE: (github-ci) (rspec-retry) temporary decision for non-refactored tests
+  config.verbose_retry = true # (rspec-retry)
+  config.display_try_failure_messages = true # (rspec-retry)
+  config.default_retry_count = 5 # (rsec-retry)
+
   Kernel.srand config.seed
   config.order = :random
   config.filter_run_when_matching :focus
