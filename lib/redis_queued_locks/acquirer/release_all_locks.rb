@@ -65,7 +65,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     #   - marks the method that everything should be instrumneted
     #     despite the enabled instrumentation sampling;
     #   - makes sense when instrumentation sampling is enabled;
-    # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>]
+    # @return [Hash<Symbol,Any>]
     #   Format: { ok: true, result: Hash<Symbol,Numeric> }
     #
     # @api private
@@ -90,7 +90,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
       fully_release_all_locks(redis, batch_size) => { ok:, result: } # steep:ignore
 
       # @type var ok: bool
-      # @type var result: ::RedisQueuedLocks::Data
+      # @type var result: Hash[Symbol,Integer]
 
       time_at = Time.now.to_f
       rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
@@ -104,21 +104,17 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
       )
 
       run_non_critical do
-        # steep:ignore:start
         instrumenter.notify('redis_queued_locks.explicit_all_locks_release', {
           at: time_at,
           rel_time: rel_time,
           rel_key_cnt: result[:rel_key_cnt]
         })
-        # steep:ignore:end
       end if instr_sampled
 
-      # steep:ignore:start
-      RedisQueuedLocks::Data[
+      {
         ok: true,
         result: { rel_key_cnt: result[:rel_key_cnt], rel_time: rel_time }
-      ]
-      # steep:ignore:end
+      }
     end
 
     private
@@ -127,7 +123,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     #
     # @param redis [RedisClient]
     # @param batch_size [Integer]
-    # @return [RedisQueuedLocks::Data,Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
+    # @return [Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
     #   - Exmaple: { ok: true, result: { rel_key_cnt: 12345 } }
     #
     # @api private
@@ -157,7 +153,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
         end
       end
 
-      RedisQueuedLocks::Data[ok: true, result: { rel_key_cnt: result.sum }] # steep:ignore
+      { ok: true, result: { rel_key_cnt: result.sum } }
     end
   end
 end

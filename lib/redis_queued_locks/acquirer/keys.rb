@@ -12,7 +12,7 @@ module RedisQueuedLocks::Acquirer::Keys
     # @since 1.0.0
     def keys(redis_client, scan_size:)
       Set.new.tap do |keyset|
-        # @type var keyset: ::Set[::String]
+        # @type var keyset: Set[String]
         redis_client.scan(
           'MATCH',
           RedisQueuedLocks::Resource::KEY_PATTERN,

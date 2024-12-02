@@ -400,7 +400,7 @@ class RedisQueuedLocks::Client
   #   - makes sense when instrumentation sampling is enabled;
   # @param block [Block]
   #   A block of code that should be executed after the successfully acquired lock.
-  # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
+  # @return [Hash<Symbol,Any>,yield]
   #   - Format: { ok: true/false, result: Symbol/Hash }.
   #   - If block is given the result of block's yeld will be returned.
   #
@@ -556,7 +556,7 @@ class RedisQueuedLocks::Client
   # @option instr_sampling_percent [Integer]
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
   # @option instr_sample_this [Boolean]
-  # @return [RedisQueuedLocks::Data, Hash<Symbol,Any>]
+  # @return [Hash<Symbol,Any>]
   #   Format: {
   #     ok: true/false,
   #     result: {
@@ -795,7 +795,7 @@ class RedisQueuedLocks::Client
   # @option instr_sampling_percent [Integer]
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
   # @option instr_sample_this [Boolean]
-  # @return [RedisQueuedLocks::Data,Hash<Symbol,Boolean|Hash<Symbol,Numeric>>]
+  # @return [Hash<Symbol,Boolean|Hash<Symbol,Numeric>>]
   #   Example: { ok: true, result { rel_key_cnt: 100, rel_time: 0.01 } }
   #
   # @api public

@@ -63,17 +63,17 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
       if timed && ttl != nil
         # NOTE:
         #   - steep is ignored cuz steep can not recognize `::Integer - ::Integer|::Float`
-        #     operation here for some mystical reason (it tryes to fined overloadd `-`
-        #     method for integer and fails on it);
+        #     operation here for some mystical reason (it tryes to find overloadd `-` method for
+        #     integer and fails on it);
         #   - so we need to ignore steep here at all and manually set the type of each
         #     variable for the correct following variable type recognitions;
 
         # steep:ignore:start
-        # @type var ttl: ::Integer
-        # @type var ttl_shift: ::Float|::Integer
-        # @type var timeout: ::Float
+        # @type var ttl: Integer
+        # @type var ttl_shift: Float|Integer
+        # @type var timeout: Float
         timeout = ((ttl - ttl_shift) / 1_000.0).yield_self do |time|
-          # @type var time: ::Float
+          # @type var time: Float
           # NOTE: time in <seconds> cuz Ruby's Timeout requires <seconds>
           (time < 0) ? 0.0 : time
         end
@@ -93,9 +93,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
       redis.call('EXPIRE', lock_key, '0')
     elsif should_decrease
       finish_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)
-      # @type var initial_time: ::Integer
+      # @type var initial_time: Integer
       spent_time = (finish_time - initial_time)
-      # @type var ttl: ::Integer
+      # @type var ttl: Integer
       decreased_ttl = ttl - spent_time - RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
 
       if decreased_ttl > 0

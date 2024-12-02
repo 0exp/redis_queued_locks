@@ -15,7 +15,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
   # @param access_strategy [Symbol]
   # @param log_sampled [Boolean]
   # @param instr_sampled [Boolean]
-  # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Any }
+  # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Integer }
   #
   # @api private
   # @since 1.7.0
@@ -32,11 +32,14 @@ module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
     log_sampled,
     instr_sampled
   )
+    # @type var result: Integer
     result = redis.call('ZREM', lock_key_queue, acquirer_id)
+
     LogVisitor.dequeue_from_lock_queue(
       logger, log_sampled,
       lock_key, queue_ttl, acquirer_id, host_id, access_strategy
     )
-    RedisQueuedLocks::Data[ok: true, result: result] # steep:ignore
+
+    { ok: true, result: result }
   end
 end

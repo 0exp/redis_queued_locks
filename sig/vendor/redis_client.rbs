@@ -1,4 +1,18 @@
 class RedisClient
+  interface _Client
+    def call: (*untyped) -> untyped
+    def pipelined: () { (Pipeline pipeline) -> untyped } -> untyped
+    def scan: (*untyped) { (String key) -> untyped } -> untyped
+    def multi: (?watch: Array[String]) { (Multi transact) -> untyped } -> untyped
+    def with: (?untyped) { (::RedisClient|::RedisClient::Pooled rconn) -> untyped } -> untyped
+  end
+
+  include _Client
+
+  class Pooled
+    include _Client
+  end
+
   class Pipeline
     def call: (*untyped) -> untyped
   end
@@ -8,25 +22,18 @@ class RedisClient
   end
 
   class SentinelConfig
-    def new_pool: (**untyped) -> ::RedisClient # TODO: -> Pooled
+    def new_pool: (**untyped) -> ::RedisClient::Pooled
     def new_client: (**untyped) -> ::RedisClient
   end
 
   class Config
-    def new_pool: (**untyped) -> ::RedisClient # TODO: -> Pooled
+    def new_pool: (**untyped) -> ::RedisClient::Pooled
     def new_client: (**untyped) -> ::RedisClient
   end
 
-  class Pooled
-    def call: (*untyped) -> untyped
-  end
-
-  def call: (*untyped) -> untyped
-  def pipelined: () { (Pipeline pipeline) -> untyped } -> untyped
-  def scan: (*untyped) { (::String key) -> untyped } -> untyped
-  def with: (?untyped) { (::RedisClient rconn) -> untyped } -> untyped
-  def multi: (?watch: ::Array[::String]) { (Multi transact) -> untyped } -> untyped
-
   def self.sentinel: (**untyped) -> SentinelConfig
   def self.config: (**untyped) -> Config
+
+  type client = ::RedisClient | ::RedisClient::Pooled
+  type config = ::RedisClient::Config | ::RedisClient::SentinelConfig
 end

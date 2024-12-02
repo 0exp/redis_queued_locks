@@ -65,7 +65,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     #   - marks the method that everything should be instrumneted
     #     despite the enabled instrumentation sampling;
     #   - makes sense when instrumentation sampling is enabled;
-    # @return [RedisQueuedLocks::Data,Hash<Symbol,Boolean<Hash<Symbol,Numeric|String|Symbol>>]
+    # @return [Hash<Symbol,Boolean<Hash<Symbol,Numeric|String|Symbol>>]
     #   Format: { ok: true/false, result: Hash<Symbol,Numeric|String|Symbol> }
     #
     # @api private
@@ -93,7 +93,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
       fully_release_lock(redis, lock_key, lock_key_queue) => { ok:, result: } # steep:ignore
 
       # @type var ok: bool
-      # @type var result: ::RedisQueuedLocks::Data
+      # @type var result: Hash[Symbol,Symbol]
 
       time_at = Time.now.to_f
       rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
@@ -115,8 +115,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
         })
       end if instr_sampled
 
-      # steep:ignore:start
-      RedisQueuedLocks::Data[
+      {
         ok: true,
         result: {
           rel_time: rel_time,
@@ -125,8 +124,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
           queue_res: result[:queue],
           lock_res: result[:lock]
         }
-      ]
-      # steep:ignore:end
+      }
     end
     # rubocop:enable Metrics/MethodLength
 
@@ -137,7 +135,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     # @param redis [RedisClient]
     # @param lock_key [String]
     # @param lock_key_queue [String]
-    # @return [RedisQueuedLocks::Data,Hash<Symbol,Boolean|Hash<Symbol,Symbol>>]
+    # @return [Hash<Symbol,Boolean|Hash<Symbol,Symbol>>]
     #   Format: {
     #     ok: true/false,
     #     result: {
@@ -149,6 +147,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     # @api private
     # @since 1.0.0
     def fully_release_lock(redis, lock_key, lock_key_queue)
+      # @type var result: [Integer,Integer]
       result = redis.with do |rconn|
         rconn.multi do |transact|
           transact.call('ZREMRANGEBYSCORE', lock_key_queue, '-inf', '+inf')
@@ -156,17 +155,13 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
         end
       end
 
-      # @type var result: [::Integer,::Integer]
-
-      # steep:ignore:start
-      RedisQueuedLocks::Data[
+      {
         ok: true,
         result: {
           queue: (result[0] != 0) ? :released : :nothing_to_release,
           lock: (result[1] != 0) ? :released : :nothing_to_release
         }
-      ]
-      # steep:ignore:end
+      }
     end
   end
 end

@@ -1,29 +1,30 @@
+use RedisQueuedLocks as RQL
+use RedisClient as RC
+
 module RedisQueuedLocks
   module Acquirer
     module ClearDeadRequests
+      type clearResult = { ok: bool, result: { processed_queues: Set[String] } }
       def self.clear_dead_requests: (
-        ::RedisClient redis_client,
-        ::Integer scan_size,
-        ::Integer dead_ttl,
-        ::Logger|::RedisQueuedLocks::_Loggable logger,
-        untyped instrumenter,
+        RC::client redis_client,
+        Integer scan_size,
+        Integer dead_ttl,
+        RQL::loggerObj logger,
+        RQL::instrObj instrumenter,
         untyped? instrument,
         bool log_sampling_enabled,
-        ::Integer log_sampling_percent,
-        untyped log_sampler,
+        Integer log_sampling_percent,
+        RQL::Logging::samplerObj log_sampler,
         bool log_sample_this,
         bool instr_sampling_enabled,
-        ::Integer instr_sampling_percent,
-        untyped instr_sampler,
+        Integer instr_sampling_percent,
+        RQL::Instrument::samplerObj instr_sampler,
         bool instr_sample_this
-      ) -> ::RedisQueuedLocks::Data
+      ) -> clearResult
 
       private
 
-      def self.each_lock_queue: (
-        ::RedisClient redis_client,
-        ::Integer scan_size
-      ) { (::String lock_queue) -> untyped } -> ::Enumerator
+      def self.each_lock_queue: (RC::client redis_client, Integer scan_size) { (String lock_queue) -> untyped } -> Enumerator[String]
     end
   end
 end

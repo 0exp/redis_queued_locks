@@ -1,23 +1,18 @@
+use RedisClient as RC
+
 module RedisQueuedLocks
   module Acquirer
     module Locks
-      def self.locks: (
-        ::RedisClient redis_client,
-        scan_size: ::Integer,
-        with_info: bool
-      ) -> ::Set[::String|::Set[{ lock: ::String, status: :released|:alive, info: ::Hash[::String,untyped] }]]
+      type lockList = Set[String]
+      type locksInfo = Set[{ lock: String, status: Symbol, info: Hash[String,String|Float|Integer] }]
+      type locks = lockList | locksInfo
+
+      def self.locks: (RC::client redis_client, scan_size: Integer, with_info: bool) -> locks
 
       private
 
-      def self.scan_locks: (
-        ::RedisClient redis_client,
-        ::Integer scan_size
-      ) -> ::Set[::String]
-
-      def self.extract_locks_info: (
-        ::RedisClient redis_client,
-        ::Set[::String] lock_keys
-      ) -> ::Set[{ lock: ::String, status: :released|:alive, info: ::Hash[::String,untyped] }]
+      def self.scan_locks: (RC::client redis_client, Integer scan_size) -> lockList
+      def self.extract_locks_info: (RC::client redis_client, Set[::String] lock_keys) -> locksInfo
     end
   end
 end

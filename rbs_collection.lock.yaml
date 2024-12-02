@@ -1,0 +1,36 @@
+---
+path: ".gem_rbs_collection"
+gems:
+- name: connection_pool
+  version: '2.4'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 0a6ea105a0afc7eaee4494585a7775f47eea6145
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: logger
+  version: '0'
+  source:
+    type: stdlib
+- name: monitor
+  version: '0'
+  source:
+    type: stdlib
+- name: objspace
+  version: '0'
+  source:
+    type: stdlib
+- name: qonfig
+  version: 0.29.0
+  source:
+    type: rubygems
+- name: securerandom
+  version: '0'
+  source:
+    type: stdlib
+- name: timeout
+  version: '0'
+  source:
+    type: stdlib
+gemfile_lock_path: Gemfile.lock

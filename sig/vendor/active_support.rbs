@@ -1,5 +1,5 @@
 module ActiveSupport
   module Notifications
-    def self.instrument: (untyped event, untyped payload) -> untyped
+    def self.instrument: (String event, Hash[untyped, untyped] payload) -> untyped
   end
 end

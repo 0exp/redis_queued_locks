@@ -45,7 +45,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   Lock's time to live (in milliseconds). Nil means "without timeout".
     # @option queue_ttl [Integer]
     #   Lifetime of the acuier's lock request. In seconds.
-    # @option timeout [Integer]
+    # @option timeout [Integer,NilClass]
     #   Time period whe should try to acquire the lock (in seconds).
     # @option timed [Boolean]
     #   Limit the invocation time period of the passed block of code by the lock's TTL.
@@ -148,7 +148,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   - makes sense when instrumentation sampling is enabled;
     # @param [Block]
     #   A block of code that should be executed after the successfully acquired lock.
-    # @return [RedisQueuedLocks::Data,Hash<Symbol,Any>,yield]
+    # @return [Hash<Symbol,Any>,yield]
     #  - Format: { ok: true/false, result: Any }
     #  - If block is given the result of block's yeld will be returned.
     #
@@ -256,7 +256,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       )
 
       # Step X: intermediate result observer
-      # @type var acq_process: ::Hash[::Symbol,untyped]
+      # @type var acq_process: Hash[Symbol,untyped]
       acq_process = {
         lock_info: {},
         should_try: true,
@@ -319,6 +319,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             )
           end
 
+          # NOTE: (steep ignorance) pattern matching is not supported in steep
+          # steep:ignore:start
           try_to_lock(
             redis,
             logger,
@@ -337,8 +339,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             log_sampled,
             instr_sampled
           ) => { ok:, result: }
+          # steep:ignore:end
+
           # @type var ok: bool
-          # @type var result: ::Symbol|::Hash[::Symbol,untyped]
+          # @type var result: Symbol|Hash[Symbol,untyped]
 
           acq_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
           acq_time = ((acq_end_time - acq_start_time) / 1_000.0).ceil(2)
@@ -349,7 +353,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
 
           # Step 2.1: analyze an acquirement attempt
           if ok
-            # @type var result: ::Hash[::Symbol,untyped]
+            # @type var result: Hash[Symbol,untyped]
 
             # Step X: (instrumentation)
             if acq_process[:result][:process] == :extendable_conflict_work_through
@@ -402,7 +406,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             acq_process[:acq_time] = acq_time
             acq_process[:acq_end_time] = acq_end_time
           else
-            # @type var result: ::Symbol
+            # @type var result: Symbol
 
             # Step 2.2: failed to acquire. anylize each case and act in accordance
             if acq_process[:result] == :fail_fast_no_try # Step 2.2.a: fail without try
@@ -545,7 +549,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             end
           end
         else
-          RedisQueuedLocks::Data[ok: true, result: acq_process[:lock_info]] # steep:ignore
+          # rubocop:disable Layout/LineLength
+          { ok: true, result: acq_process[:lock_info] } #: { ok: bool, result: Hash[Symbol,untyped] }
+          # rubocop:enable Layout/LineLength
         end
       else
         if acq_process[:result] != :retry_limit_reached &&
@@ -559,7 +565,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           acq_process[:result] = :timeout_reached
         end
         # Step 3.b: lock is not acquired (acquirer is dequeued by timeout callback)
-        RedisQueuedLocks::Data[ok: false, result: acq_process[:result]] # steep:ignore
+        { ok: false, result: acq_process[:result] } #: { ok: bool, result: Symbol }
       end
     end
   end

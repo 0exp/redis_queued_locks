@@ -1,7 +1,8 @@
 module RedisQueuedLocks
   module Utilities
     class Lock
-      @lock: ::Monitor
+      @lock: Monitor
+
       def initialize: () -> void
       def synchronize: () { (?) -> untyped } -> untyped
     end

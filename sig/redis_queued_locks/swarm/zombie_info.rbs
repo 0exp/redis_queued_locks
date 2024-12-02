@@ -1,53 +1,26 @@
+use RedisClient as RC
+
 module RedisQueuedLocks
   class Swarm
     module ZombieInfo
-      def self.zombies_info: (
-        ::RedisClient redis_client,
-        ::Integer zombie_ttl,
-        ::Integer lock_scan_size
-      ) -> { zombie_hosts: ::Set[::String], zombie_acquirers: ::Set[::String], zombie_locks: ::Set[::String] }
+      type zombieInfo = { zombie_hosts: Set[String], zombie_acquirers: Set[String], zombie_locks: Set[String] }
+      def self.zombies_info: (RC::client redis_client, Integer zombie_ttl, Integer lock_scan_size) -> zombieInfo
 
-      def self.zombie_locks: (
-        ::RedisClient redis_client,
-        ::Integer zombie_ttl,
-        ::Integer lock_scan_size
-      ) -> ::Set[::String]
+      type zombieLocks = Set[String]
+      def self.zombie_locks: (RC::client redis_client, Integer zombie_ttl, Integer lock_scan_size) -> zombieLocks
 
-      def self.zombie_hosts: (
-        ::RedisClient redis_client,
-        ::Integer zombie_ttl
-      ) -> ::Set[::String]
+      type zombieHosts = Set[String]
+      def self.zombie_hosts: (RC::client redis_client, Integer zombie_ttl) -> zombieHosts
 
-      def self.zombie_acquirers: (
-        ::RedisClient redis_client,
-        ::Integer zombie_ttl,
-        ::Integer lock_scan_size
-      ) -> ::Set[::String]
+      type zombieAcquirers = Set[String]
+      def self.zombie_acquirers: (RC::client redis_client, Integer zombie_ttl, Integer lock_scan_size) -> zombieAcquirers
 
       private
 
-      def self.extract_zombie_hosts: (
-        ::RedisClient rconn,
-        ::Integer zombie_ttl
-      ) -> ::Set[::String]
-
-      def self.extract_zombie_locks: (
-        ::RedisClient rconn,
-        ::Integer zombie_ttl,
-        ::Integer lock_scan_size
-      ) -> ::Set[::String]
-
-      def self.extract_zombie_acquirers: (
-        ::RedisClient rconn,
-        ::Integer zombie_ttl,
-        ::Integer lock_scan_size
-      ) -> ::Set[::String]
-
-      def self.extract_all: (
-        ::RedisClient rconn,
-        ::Integer zombie_ttl,
-        ::Integer lock_scan_size
-      ) -> { zombie_hosts: ::Set[::String], zombie_acquirers: ::Set[::String], zombie_locks: ::Set[::String] }
+      def self.extract_zombie_hosts: (RC::client rconn, Integer zombie_ttl) -> zombieHosts
+      def self.extract_zombie_locks: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieLocks
+      def self.extract_zombie_acquirers: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieAcquirers
+      def self.extract_all: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieInfo
     end
   end
 end

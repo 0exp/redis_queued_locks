@@ -7,7 +7,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::DelayExecution
   #
   # @param retry_delay [Integer] In milliseconds
   # @param retry_jitter [Integer] In milliseconds
-  # @return [void]
+  # @return [Integer] Slept seconds
   #
   # @api private
   # @since 1.0.0

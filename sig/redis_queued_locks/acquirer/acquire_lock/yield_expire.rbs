@@ -1,21 +1,24 @@
+use RedisQueuedLocks as RQL
+use RedisClient as RC
+
 module RedisQueuedLocks
   module Acquirer
     module AcquireLock
       module YieldExpire
-        DECREASE_LOCK_PTTL: ::String
+        DECREASE_LOCK_PTTL: String
 
         def yield_expire: (
-          ::RedisClient redis,
-          ::Logger|::RedisQueuedLocks::_Loggable logger,
-          ::String lock_key,
-          ::String acquirer_id,
-          ::String host_id,
-          ::Symbol access_strategy,
+          RC::client redis,
+          RQL::loggerObj logger,
+          String lock_key,
+          String acquirer_id,
+          String host_id,
+          Symbol access_strategy,
           bool timed,
-          ::Integer|::Float ttl_shift,
-          ::Integer? ttl,
-          ::Integer queue_ttl,
-          ::Hash[::String|::Symbol,untyped]? meta,
+          Integer|Float ttl_shift,
+          Integer? ttl,
+          Integer queue_ttl,
+          Hash[String|Symbol,untyped]? meta,
           bool log_sampled,
           bool instr_sampled,
           bool should_expire,
@@ -25,12 +28,12 @@ module RedisQueuedLocks
         private
 
         def yield_with_timeout: (
-          ::Float timeout,
-          ::String lock_key,
-          ::Integer? lock_ttl,
-          ::String acquirer_id,
-          ::String host_id,
-          ::Hash[::String|::Symbol,untyped]? meta,
+          Float timeout,
+          String lock_key,
+          Integer? lock_ttl,
+          String acquirer_id,
+          String host_id,
+          Hash[String|Symbol,untyped]? meta,
         ) { (?) -> untyped } -> untyped
       end
     end

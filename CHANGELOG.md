@@ -1,6 +1,5 @@
 ## [Unreleased]
-
-## Changed
+### Changed
 - Updated development dependencies (`armitage-rubocop`);
 - CI is splitted to "mainstream ruby version" and "previous actually maintaned ruby versions";
 - `Acquier` -> `Acquirer`, `Acquierment` -> `Acquirement` (typos):
@@ -9,9 +8,12 @@
   - [**Breaking**] Logs: all `acquier` text parts of each log message type were renamed to `acquirer`;
   - [**Breaking**] Instrumentation:  all `acquier` text parts of each event name were renamed to `acquirer`;
   - [**Breaking**] Exceptions: all `Acquierment` exception constant name parts were renamed to `Acquirement`;
-## Added
-- Type signatures (`RBS`, see the `sig` directory) + `Steep` integration (see `Steepfile` for details);
-- CI: added `TypeCheck` step;
+### Added
+- **Type Checking**:
+  - the code is fully typed;
+  - (steep + rbs) officialy supported `RBS` with a `Steep` integration that works
+  in **strict mode** (see `sig` directory, `Steepfile` config, `sig/manifest.yml` and `rbs_collection.yml` for dependencies);
+  - Added `TypeCheck` step to CI/CD;
 
 ## [1.12.1]
 ### Changed

@@ -1,30 +1,40 @@
+use RedisQueuedLocks as RQL
+use RedisClient as RC
+
 module RedisQueuedLocks
   module Acquirer
     module ReleaseLock
-      extend ::RedisQueuedLocks::Utilities
+      extend RQL::Utilities
 
+      type releaseResult = {
+        ok: bool,
+        result: {
+          rel_time: Integer|Float,
+          rel_key: String,
+          rel_queue: String,
+          queue_res: Symbol,
+          lock_res: Symbol
+        }
+      }
       def self.release_lock: (
-        ::RedisClient redis,
-        ::String lock_name,
-        untyped instrumenter,
-        ::Logger|::RedisQueuedLocks::_Loggable logger,
+        RC::client redis,
+        String lock_name,
+        RQL::instrObj instrumenter,
+        RQL::loggerObj logger,
         bool log_sampling_enabled,
-        ::Integer log_samplingPercent,
-        untyped log_sampler,
+        Integer log_samplingPercent,
+        RQL::Logging::samplerObj log_sampler,
         bool log_sample_this,
         bool instr_sampling_enabled,
-        ::Integer instr_sampling_percent,
-        untyped instr_sampler,
+        Integer instr_sampling_percent,
+        RQL::Instrument::samplerObj instr_sampler,
         bool instr_sample_this
-      ) -> untyped
+      ) -> releaseResult
 
       private
 
-      def self.fully_release_lock: (
-        ::RedisClient redis,
-        ::String lock_key,
-        ::String lock_key_queue
-      ) -> untyped
+      type fullReleaseResult = { ok: bool, result: { queue: Symbol, lock: Symbol } }
+      def self.fully_release_lock: (RC::client redis, String lock_key, String lock_key_queue) -> fullReleaseResult
     end
   end
 end

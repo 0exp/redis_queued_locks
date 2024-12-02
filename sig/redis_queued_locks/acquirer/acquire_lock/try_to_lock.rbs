@@ -1,27 +1,44 @@
+use RedisQueuedLocks as RQL
+use RedisClient as RC
+
 module RedisQueuedLocks
   module Acquirer
     module AcquireLock
       module TryToLock
-        EXTEND_LOCK_PTTL: ::String
+        EXTEND_LOCK_PTTL: String
+
+        # { ok: bool, result: Symbol }
+        # { ok: bool, result: Symbol }
+        # {
+        #   ok: bool,
+        #   result: {
+        #     process: Symbol,
+        #     lock_key: String,
+        #     acq_id: String,
+        #     hst_id: String,
+        #     ts: Integer?,
+        #     ttl: Integer?
+        #   }
+        # }
 
         def try_to_lock: (
-          ::RedisClient redis,
-          ::Logger|::RedisQueuedLocks::_Loggable logger,
+          RC::client redis,
+          RQL::loggerObj logger,
           bool log_lock_try,
-          ::String lock_key,
-          ::String lock_key_queue,
-          ::String acquirer_id,
-          ::String host_id,
-          ::Integer|::Float acquirer_position,
-          ::Integer? ttl,
-          ::Integer queue_ttl,
+          String lock_key,
+          String lock_key_queue,
+          String acquirer_id,
+          String host_id,
+          Integer|Float acquirer_position,
+          Integer? ttl,
+          Integer queue_ttl,
           bool fail_fast,
-          ::Symbol conflict_strategy,
-          ::Symbol access_strategy,
-          ::Hash[::String|Symbol,untyped]? meta,
+          Symbol conflict_strategy,
+          Symbol access_strategy,
+          Hash[String|Symbol,untyped]? meta,
           bool log_sampled,
           bool instr_sampled
-        ) -> ::RedisQueuedLocks::Data
+        ) -> { ok: bool, result: Symbol|Hash[Symbol,untyped] }
       end
     end
   end

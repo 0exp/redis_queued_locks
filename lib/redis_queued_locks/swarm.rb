@@ -83,16 +83,7 @@ class RedisQueuedLocks::Swarm
     )
   end
 
-  # @return [
-  #   RedisQueuedLocks::Data[
-  #     ok: <Boolean>,
-  #     result: {
-  #       host_id1 <String> => score1 <String>,
-  #       host_id2 <String> => score2 <String>,
-  #       etc...
-  #     }
-  #   ]
-  # ]
+  # @return [Hash<Symbol,Hash[String,Float]]
   #
   # @api public
   # @since 1.9.0
@@ -106,14 +97,7 @@ class RedisQueuedLocks::Swarm
   # @option zombie_ttl [Integer]
   # @option lock_scan_size [Integer]
   # @option queue_scan_size [Integer]
-  # @return [
-  #   RedisQueuedLocks::Data[
-  #     ok: <Boolean>,
-  #     deleted_zombie_hosts: <Set<String>>,
-  #     deleted_zombie_acquirers: <Set<String>>,
-  #     deleted_zombie_locks: <Set<String>>
-  #   ]
-  # ]
+  # @return [Hash<Bool,Set<String>]
   #
   # @api public
   # @since 1.9.0
@@ -176,11 +160,6 @@ class RedisQueuedLocks::Swarm
   # @option zombie_ttl [Integer]
   # @option lock_sacn_size [Integer]
   # @return [Hash<Symbol,Set<String>>]
-  #   Format: {
-  #     zombie_hosts: <Set<String>>,
-  #     zombie_acquirers: <Set<String>>,
-  #     zombie_locks: <Set<String>>
-  #   }
   #
   # @api public
   # @since 1.9.0
@@ -195,7 +174,7 @@ class RedisQueuedLocks::Swarm
     )
   end
 
-  # @return [NilClass,Hash<Symbol,Symbol|Boolean>]
+  # @return [Hash<Symbol,Symbol|Boolean>] Example: { ok: true, result: :swarming }
   #
   # @api public
   # @since 1.9.0
@@ -222,11 +201,11 @@ class RedisQueuedLocks::Swarm
       # NOTE: need to give a little timespot to initialize ractor objects and their main loops;
       sleep(0.1)
 
-      RedisQueuedLocks::Data[ok: true, result: :swarming]
+      { ok: true, result: :swarming }
     end
   end
 
-  # @return [NilClass,Hash<Symbol,Symbol|Boolean>]
+  # @return [Hash<Symbol,Symbol|Boolean>] Example: { ok: true, result: :terminating }
   #
   # @api public
   # @since 1.9.0
@@ -239,7 +218,7 @@ class RedisQueuedLocks::Swarm
       # NOTE: need to give a little timespot to stop ractor objects and their main loops;
       sleep(0.1)
 
-      RedisQueuedLocks::Data[ok: true, result: :terminating]
+      { ok: true, result: :terminating }
     end
   end
 end

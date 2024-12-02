@@ -1,21 +1,26 @@
+use RedisQueuedLocks as RQL
+
 module RedisQueuedLocks
   class Swarm
     class Supervisor
-      include ::RedisQueuedLocks::Utilities
+      include RQL::Utilities
 
-      @rql_client: ::RedisQueuedLocks::Client
-      @visor: ::Thread?
-      @observable: ::Proc?
+      @rql_client: RQL::Client
+      @visor: Thread?
+      @observable: Proc?
 
-      attr_reader rql_client: ::RedisQueuedLocks::Client
-      attr_reader visor: ::Thread?
-      attr_reader observable: ::Proc?
+      attr_reader rql_client: RQL::Client
+      attr_reader visor: Thread?
+      attr_reader observable: Proc?
 
-      def initialize: (::RedisQueuedLocks::Client rql_client) -> void
+      def initialize: (RQL::Client rql_client) -> void
+
+      type supervisorStatus = { running: bool, state: String, observable: String }
+      def status: () -> supervisorStatus
+
       def observe!: () { (?) -> untyped } -> void
       def running?: () -> bool
       def stop!: () -> void
-      def status: () -> { running: bool, state: ::String, observable: ::String }
     end
   end
 end

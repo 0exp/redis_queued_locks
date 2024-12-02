@@ -1,13 +1,13 @@
+use RedisClient as RC
+
 module RedisQueuedLocks
   class Swarm
     class ProbeHosts < SwarmElement::Threaded
-      def self.probe_hosts: (
-        ::RedisClient redis_client,
-        ::String uniq_identity
-      ) -> ::RedisQueuedLocks::Data
+      type livingHosts = { ok: bool, result: Hash[String,Float] }
+      def self.probe_hosts: (RC::client redis_client, String uniq_identity) -> livingHosts
 
       def enabled?: () -> bool
-      def spawn_main_loop!: () -> ::Thread
+      def spawn_main_loop!: () -> Thread
     end
   end
 end

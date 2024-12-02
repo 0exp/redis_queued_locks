@@ -57,11 +57,11 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     instr_sampled
   )
     # Step X: intermediate invocation results
-    # @type var inter_result: ::Symbol?
+    # @type var inter_result: Symbol?
     inter_result = nil
-    # @type var timestamp: ::Float?
+    # @type var timestamp: Float?
     timestamp = nil
-    # @type var spc_processed_timestamp: ::Float?
+    # @type var spc_processed_timestamp: Float?
     spc_processed_timestamp = nil
 
     LogVisitor.start(
@@ -155,8 +155,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           )
           inter_result = :extendable_conflict_work_through
 
-          # @type var sp_conflict_status: ::Symbol
-          # @type var spc_processed_timestamp: ::Float
+          # @type var sp_conflict_status: Symbol
+          # @type var spc_processed_timestamp: Float
           LogVisitor.reentrant_lock__extend_and_work_through(
             logger, log_sampled, log_lock_try, lock_key,
             queue_ttl, acquirer_id, host_id, access_strategy,
@@ -182,8 +182,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
             'l_spc_ts', (spc_processed_timestamp = Time.now.to_f)
           )
 
-          # @type var sp_conflict_status: ::Symbol
-          # @type var spc_processed_timestamp: ::Float
+          # @type var sp_conflict_status: Symbol
+          # @type var spc_processed_timestamp: Float
           LogVisitor.reentrant_lock__work_through(
             logger, log_sampled, log_lock_try, lock_key,
             queue_ttl, acquirer_id, host_id, access_strategy,
@@ -194,8 +194,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           inter_result = :conflict_dead_lock
           spc_processed_timestamp = Time.now.to_f
 
-          # @type var sp_conflict_status: ::Symbol
-          # @type var spc_processed_timestamp: ::Float
+          # @type var sp_conflict_status: Symbol
+          # @type var spc_processed_timestamp: Float
           LogVisitor.single_process_lock_conflict__dead_lock(
             logger, log_sampled, log_lock_try, lock_key,
             queue_ttl, acquirer_id, host_id, access_strategy,
@@ -323,75 +323,74 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         #   3. HINCRBY (increased spc count) (OK for != nil)
         #   4. HSET (store the last spc time and ttl data) (OK for == 2 or != nil)
         if result[0] != nil && result[1] != nil && result[2] != nil && result[3] != nil
-          # steep:ignore:start
-          RedisQueuedLocks::Data[ok: true, result: {
-            process: :extendable_conflict_work_through,
-            lock_key: lock_key,
-            acq_id: acquirer_id,
-            hst_id: host_id,
-            ts: spc_processed_timestamp,
-            ttl: ttl
-          }]
-          # steep:ignore:end
+          {
+            ok: true,
+            result: {
+              process: :extendable_conflict_work_through,
+              lock_key: lock_key,
+              acq_id: acquirer_id,
+              hst_id: host_id,
+              ts: spc_processed_timestamp,
+              ttl: ttl
+            }
+          }
         elsif result[0] != nil
           # NOTE: that is enough to the fact that the lock is extended but <TODO>
           # TODO: add detalized overview (log? some in-line code clarifications?) of the result
-
-          # steep:ignore:start
-          RedisQueuedLocks::Data[ok: true, result: {
-            process: :extendable_conflict_work_through,
-            lock_key: lock_key,
-            acq_id: acquirer_id,
-            hst_id: host_id,
-            ts: spc_processed_timestamp,
-            ttl: ttl
-          }]
-          # steep:ignore:end
+          {
+            ok: true,
+            result: {
+              process: :extendable_conflict_work_through,
+              lock_key: lock_key,
+              acq_id: acquirer_id,
+              hst_id: host_id,
+              ts: spc_processed_timestamp,
+              ttl: ttl
+            }
+          }
         else
           # NOTE: unknown behaviour :thinking:
-          RedisQueuedLocks::Data[ok: false, result: :unknown] # steep:ignore
+          { ok: false, result: :unknown }
         end
       elsif result == nil || (result.is_a?(::Array) && result.empty?)
         # NOTE: the lock key was changed durign an SPC logic execution
-
-        # steep:ignore:start
-        RedisQueuedLocks::Data[ok: false, result: :lock_is_acquired_during_acquire_race]
-        # steep:ignore:end
+        { ok: false, result: :lock_is_acquired_during_acquire_race }
       else
         # NOTE: unknown behaviour :thinking:. this part is not reachable at the moment.
-        RedisQueuedLocks::Data[ok: false, result: :unknown] # steep:ignore
+        { ok: false, result: :unknown }
       end
     when inter_result == :conflict_work_through
       # Step 7.same_process_conflict.B:
       #   - conflict_work_through case => yield <block> without lock realesing/extending
-
-      # steep:ignore:start
-      RedisQueuedLocks::Data[ok: true, result: {
-        process: :conflict_work_through,
-        lock_key: lock_key,
-        acq_id: acquirer_id,
-        hst_id: host_id,
-        ts: spc_processed_timestamp,
-        ttl: ttl
-      }]
-      # steep:ignore:end
+      {
+        ok: true,
+        result: {
+          process: :conflict_work_through,
+          lock_key: lock_key,
+          acq_id: acquirer_id,
+          hst_id: host_id,
+          ts: spc_processed_timestamp,
+          ttl: ttl
+        }
+      }
     when inter_result == :conflict_dead_lock
       # Step 7.same_process_conflict.C:
       #  - deadlock. should fail in acquirement logic;
-      RedisQueuedLocks::Data[ok: false, result: inter_result] # steep:ignore
+      { ok: false, result: :conflict_dead_lock }
     when fail_fast && inter_result == :fail_fast_no_try
       # Step 7.a: lock is still acquired and we should exit from the logic as soon as possible
-      RedisQueuedLocks::Data[ok: false, result: inter_result] # steep:ignore
+      { ok: false, result: :fail_fast_no_try }
     when inter_result == :dead_score_reached
-      RedisQueuedLocks::Data[ok: false, result: inter_result] # steep:ignore
-    when inter_result == :lock_is_still_acquired || inter_result == :acquirer_is_not_first_in_queue
+      { ok: false, result: :dead_score_reached }
+    when inter_result == :lock_is_still_acquired
       # Step 7.b: lock is still acquired by another process => failed to acquire
-      RedisQueuedLocks::Data[ok: false, result: inter_result] # steep:ignore
+      { ok: false, result: :lock_is_still_acquired }
+    when inter_result == :acquirer_is_not_first_in_queue
+      # Step 7.c: lock is still acquired by another process => failed to acquire
+      { ok: false, result: :acquirer_is_not_first_in_queue }
     when result == nil || (result.is_a?(::Array) && result.empty?)
-      # Step 7.c: lock is already acquired durign the acquire race => failed to acquire
-      # steep:ignore:start
-      RedisQueuedLocks::Data[ok: false, result: :lock_is_acquired_during_acquire_race]
-      # steep:ignore:end
+      # Step 7.d: lock is already acquired durign the acquire race => failed to acquire
+      { ok: false, result: :lock_is_acquired_during_acquire_race }
     when result.is_a?(::Array) && result.size == 3 # NOTE: 3 is a count of redis lock commands
       # TODO:
       #   => (!) analyze the command result and do actions with the depending on it;
@@ -403,19 +402,20 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       #   3. pexpire should return 1 (expiration time is successfully applied)
 
       # Step 7.d: locked! :) let's go! => successfully acquired
-      # steep:ignore:start
-      RedisQueuedLocks::Data[ok: true, result: {
-        process: :lock_obtaining,
-        lock_key: lock_key,
-        acq_id: acquirer_id,
-        hst_id: host_id,
-        ts: timestamp,
-        ttl: ttl
-      }]
-      # steep:ignore:end
+      {
+        ok: true,
+        result: {
+          process: :lock_obtaining,
+          lock_key: lock_key,
+          acq_id: acquirer_id,
+          hst_id: host_id,
+          ts: timestamp,
+          ttl: ttl
+        }
+      }
     else
       # Ste 7.3: unknown behaviour :thinking:
-      RedisQueuedLocks::Data[ok: false, result: :unknown] # steep:ignore
+      { ok: false, result: :unknown }
     end
     # rubocop:enable Lint/DuplicateBranch
   end

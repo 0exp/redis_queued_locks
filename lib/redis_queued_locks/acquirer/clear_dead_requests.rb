@@ -41,9 +41,9 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
     )
       dead_score = RedisQueuedLocks::Resource.acquirer_dead_score(dead_ttl / 1_000.0)
 
-      # @type var result: ::Set[::String]
+      # @type var result: Set[String]
       result = Set.new.tap do |processed_queues|
-        # @type var processed_queues: ::Set[::String]
+        # @type var processed_queues: Set[String]
         redis_client.with do |rconn|
           each_lock_queue(rconn, scan_size) do |lock_queue|
             rconn.call('ZREMRANGEBYSCORE', lock_queue, '-inf', dead_score)
@@ -52,7 +52,7 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
         end
       end
 
-      RedisQueuedLocks::Data[ok: true, result: { processed_queues: result }] # steep:ignore
+      { ok: true, result: { processed_queues: result } }
     end
 
     private

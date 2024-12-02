@@ -1,9 +1,9 @@
 module RedisQueuedLocks
   module Logging
     module Sampler
-      SAMPLING_PERCENT_RANGE: ::Range[::Integer]
+      SAMPLING_PERCENT_RANGE: Range[Integer]
 
-      def self.sampling_happened?: (::Integer sampling_percent) -> bool
+      def self.sampling_happened?: (Integer sampling_percent) -> bool
     end
   end
 end

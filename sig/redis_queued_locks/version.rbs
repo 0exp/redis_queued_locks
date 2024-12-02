@@ -1,3 +1,3 @@
 module RedisQueuedLocks
-  VERSION: ::String
+  VERSION: String
 end

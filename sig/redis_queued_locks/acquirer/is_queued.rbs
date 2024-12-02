@@ -1,7 +1,9 @@
+use RedisClient as RC
+
 module RedisQueuedLocks
   module Acquirer
     module IsQueued
-      def self.queued?: (::RedisClient redis_client, ::String lock_name) -> bool
+      def self.queued?: (RC::client redis_client, String lock_name) -> bool
     end
   end
 end

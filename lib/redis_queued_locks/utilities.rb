@@ -86,6 +86,6 @@ module RedisQueuedLocks::Utilities
     status = thread.status
     return 'dead' if status == false
     return 'failed' if status == nil
-    status #: ::String
+    status #: String
   end
 end

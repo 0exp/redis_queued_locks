@@ -1,7 +1,10 @@
+use RedisClient as RC
+
 module RedisQueuedLocks
   module Acquirer
     module Keys
-      def self.keys: (::RedisClient redis_client, scan_size: ::Integer) -> ::Set[::String]
+      type keyList = Set[String]
+      def self.keys: (RC::client redis_client, scan_size: Integer) -> keyList
     end
   end
 end

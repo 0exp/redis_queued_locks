@@ -7,7 +7,7 @@ module RedisQueuedLocks::Swarm::RedisClientBuilder
     # @option pooled [Boolean]
     # @option sentinel [Boolean]
     # @option config [Hash]
-    # @return [RedisClient]
+    # @return [RedisClient|RedisClient::Pooled]
     #
     # @api private
     # @since 1.9.0
@@ -47,7 +47,7 @@ module RedisQueuedLocks::Swarm::RedisClientBuilder
 
     # @param redis_config [ReidsClient::Config]
     # @param pool_config [Hash]
-    # @return [RedisClient]
+    # @return [RedisClient::Pooled]
     #
     # @api private
     # @since 1.9.0

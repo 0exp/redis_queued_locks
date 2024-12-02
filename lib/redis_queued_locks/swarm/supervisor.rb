@@ -87,12 +87,10 @@ class RedisQueuedLocks::Swarm::Supervisor
     #   `::Thread` here (not on `::Thread | nil` after the `nil`-check);
     #   so we need to ignore this check temporary and wait the best future :)
 
-    # steep:ignore:start
     {
       running: running?,
-      state: (visor == nil) ? 'non_initialized' : thread_state(visor),
+      state: (visor == nil) ? 'non_initialized' : thread_state(visor), # steep:ignore
       observable: (observable == nil) ? 'non_initialized' : 'initialized'
     }
-    # steep:ignore:end
   end
 end
