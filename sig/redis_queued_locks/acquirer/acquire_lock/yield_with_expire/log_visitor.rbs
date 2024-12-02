@@ -1,27 +1,29 @@
+use RedisQueuedLocks as RQL
+
 module RedisQueuedLocks
   module Acquirer
     module AcquireLock
       module YieldExpire
         module LogVisitor
           def self.expire_lock: (
-            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            RQL::loggerObj logger,
             bool log_sampled,
-            ::String lock_key,
-            ::Integer queue_ttl,
-            ::String acquirer_id,
-            ::String host_id,
-            ::Symbol access_strategy
+            String lock_key,
+            Integer queue_ttl,
+            String acquirer_id,
+            String host_id,
+            Symbol access_strategy
           ) -> void
 
           def self.decrease_lock: (
-            ::Logger|::RedisQueuedLocks::_Loggable logger,
+            RQL::loggerObj logger,
             bool log_sampled,
-            ::String lock_key,
-            ::Integer decreased_ttl,
-            ::Integer queue_ttl,
-            ::String acquirer_id,
-            ::String host_id,
-            ::Symbol access_strategy
+            String lock_key,
+            Integer decreased_ttl,
+            Integer queue_ttl,
+            String acquirer_id,
+            String host_id,
+            Symbol access_strategy
           ) -> void
         end
       end

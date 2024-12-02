@@ -1,66 +1,68 @@
+use RedisQueuedLocks as RQL
+
 module RedisQueuedLocks
   module Acquirer
     module AcquireLock
       module InstrVisitor
         def self.extendable_reentrant_lock_obtained: (
-          ::RedisQueuedLocks::_Instrumentable instrumenter,
+          RQL::instrObj instrumenter,
           bool instr_sampled,
-          ::String lock_key,
-          ::Integer? ttl,
-          ::String acq_id,
-          ::String hst_id,
-          ::Integer|::Float ts,
-         ::Integer|::Float acq_time,
+          String lock_key,
+          Integer? ttl,
+          String acq_id,
+          String hst_id,
+          Integer|Float ts,
+          Integer|Float acq_time,
           untyped? instrument
         ) -> void
 
         def self.reentrant_lock_obtained: (
-          ::RedisQueuedLocks::_Instrumentable instrumenter,
+          RQL::instrObj instrumenter,
           bool instr_sampled,
-          ::String lock_key,
-          ::Integer? ttl,
-          ::String acq_id,
-          ::String hst_id,
-         ::Integer|::Float ts,
-         ::Integer|::Float acq_time,
+          String lock_key,
+          Integer? ttl,
+          String acq_id,
+          String hst_id,
+          Integer|Float ts,
+          Integer|Float acq_time,
           untyped? instrument
         ) -> void
 
         def self.lock_obtained: (
-          ::RedisQueuedLocks::_Instrumentable instrumenter,
+          RQL::instrObj instrumenter,
           bool instr_sampled,
-          ::String lock_key,
-          ::Integer? ttl,
-          ::String acq_id,
-          ::String hst_id,
-         ::Integer|::Float ts,
-         ::Integer|::Float acq_time,
+          String lock_key,
+          Integer? ttl,
+          String acq_id,
+          String hst_id,
+          Integer|Float ts,
+          Integer|Float acq_time,
           untyped? instrument
         ) -> void
 
         def self.reentrant_lock_hold_completes: (
-          ::RedisQueuedLocks::_Instrumentable instrumenter,
+          RQL::instrObj instrumenter,
           bool instr_sampled,
-          ::String lock_key,
-          ::Integer? ttl,
-          ::String acq_id,
-          ::String hst_id,
-         ::Integer|::Float ts,
-         ::Integer|::Float acq_time,
-         ::Integer|::Float hold_time,
+          String lock_key,
+          Integer? ttl,
+          String acq_id,
+          String hst_id,
+          Integer|Float ts,
+          Integer|Float acq_time,
+          Integer|Float hold_time,
           untyped? instrument
         ) -> void
 
         def self.lock_hold_and_release: (
-          ::RedisQueuedLocks::_Instrumentable instrumenter,
+          RQL::instrObj instrumenter,
           bool instr_sampled,
-          ::String lock_key,
-          ::Integer? ttl,
-          ::String acq_id,
-          ::String hst_id,
-         ::Integer|::Float ts,
-         ::Integer|::Float acq_time,
-         ::Integer|::Float hold_time,
+          String lock_key,
+          Integer? ttl,
+          String acq_id,
+          String hst_id,
+          Integer|Float ts,
+          Integer|Float acq_time,
+          Integer|Float hold_time,
           untyped? instrument
         ) -> void
       end

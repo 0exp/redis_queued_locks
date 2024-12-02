@@ -51,21 +51,21 @@ module RedisQueuedLocks::Acquirer::Locks
       # TODO: refactor with RedisQueuedLocks::Acquier::LockInfo
       Set.new.tap do |seeded_locks|
         # rubocop:disable Layout/LineLength
-        # @type var seeded_locks: ::Set[{ lock: ::String, status: :released|:alive, info: ::Hash[::String,untyped] }]
+        # @type var seeded_locks: Set[{ lock: String, status: :released|:alive, info: Hash[String,untyped] }]
         # rubocop:enable Layout/LineLength
 
         # Step X: iterate each lock and extract their info
         lock_keys.each do |lock_key|
           # Step 1: extract lock info from redis
 
-          # @type var lock_info: ::Hash[::String,::String|::Float|::Integer]
+          # @type var lock_info: Hash[String,String|Float|Integer]
           lock_info = redis_client.pipelined do |pipeline|
             pipeline.call('HGETALL', lock_key)
             pipeline.call('PTTL', lock_key)
           end.yield_self do |result| # Step 2: format the result
             # Step 2.X: lock is released
             if result == nil
-              {} #: ::Hash[::String,::String|::Float|::Integer]
+              {} #: Hash[String,String|Float|Integer]
             else
               # NOTE: the result of MULTI-command is an array of results of each internal command
               #   - result[0] (HGETALL) (Hash<String,String>)
@@ -73,13 +73,13 @@ module RedisQueuedLocks::Acquirer::Locks
               #   - result[1] (PTTL) (Integer)
               #     => (without any mutation, integer is atomic)
 
-              # @type var result: [::Hash[::String,::String|::Float|::Integer],::Integer]
+              # @type var result: [Hash[String,String|Float|Integer],Integer]
               hget_cmd_res = result[0] # NOTE: HGETALL result (hash)
               pttl_cmd_res = result[1] # NOTE: PTTL result (integer)
 
               # Step 2.Y: lock is released
               if hget_cmd_res == {} || pttl_cmd_res == -2 # NOTE: key does not exist
-                {} #: ::Hash[::String,::String|::Float|::Integer]
+                {} #: Hash[String,String|Float|Integer]
               else
                 # Step 2.Z: lock is alive => format received info + add additional rem_ttl info
                 hget_cmd_res.tap do |lock_data|

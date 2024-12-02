@@ -49,7 +49,7 @@ module RedisQueuedLocks::Acquirer::LockInfo
         #   - result[1] (PTTL) (Integer)
         #     => (without any mutation, integer is atomic)
 
-        # @type var result: [::Hash[::String,::String|::Float|::Integer],::Integer]
+        # @type var result: [Hash[String,String|Float|Integer],Integer]
         hget_cmd_res = result[0]
         pttl_cmd_res = result[1]
 

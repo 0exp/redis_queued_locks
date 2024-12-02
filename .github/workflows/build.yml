@@ -45,7 +45,7 @@ jobs:
       - name: (Linter) Rubocop
         run: bundle exec rake rubocop
       - name: (TypeCheck) Steep
-        run: bundle exec steep check --jobs 10
+        run: bundle exec rbs collection install && bundle exec steep check --jobs 10
         continue-on-error: true
       - name: (Test) RSpec
         run: bundle exec rake rspec

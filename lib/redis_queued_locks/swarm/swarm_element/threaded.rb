@@ -263,7 +263,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0
   def swarmed__running?
     swarmed__alive? && !terminating? && (swarm_loop__is_active.yield_self do |result|
-      result && result[:ok] && result[:result][:is_active] # steep:ignore
+      result != nil && result[:ok] && result[:result][:is_active] # steep:ignore
     end)
   end
 

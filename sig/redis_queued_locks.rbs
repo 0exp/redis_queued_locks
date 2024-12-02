@@ -4,8 +4,11 @@ module RedisQueuedLocks
   end
 
   interface _Instrumentable
-    def notify: (::String event, ?::Hash[untyped,untyped] payload) -> void
+    def notify: (String event, ?Hash[untyped,untyped] payload) -> void
   end
+
+  type loggerObj = Object & _Loggable
+  type instrObj = Object & _Instrumentable
 
   extend ::RedisQueuedLocks::Debugger::Interface
 end

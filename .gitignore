@@ -8,3 +8,4 @@
 /tmp/
 .rspec_status
 *.gem
+/.gem_rbs_collection/

@@ -33,7 +33,7 @@ module RedisQueuedLocks::Acquirer::QueueInfo
         pipeline.call('ZRANGE', lock_key_queue, '0', '-1', 'WITHSCORES')
       end
 
-      # @type var result: [::Integer,::Array[[::String,::Integer|::Float]]]
+      # @type var result: [Integer,Array[[String,Integer|Float]]]
       exists_cmd_res = result[0]
       zrange_cmd_res = result[1]
 

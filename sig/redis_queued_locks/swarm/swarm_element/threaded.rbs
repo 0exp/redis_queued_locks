@@ -1,35 +1,43 @@
+use RedisQueuedLocks as RQL
+
 module RedisQueuedLocks
   class Swarm
     module SwarmElement
       class Threaded
-        include ::RedisQueuedLocks::Utilities
+        include RQL::Utilities
 
-        @rql_client: ::RedisQueuedLocks::Client
-        @swarm_element: ::Thread?
-        @main_loop: ::Thread?
-        @swarm_element_commands: ::Thread::SizedQueue[::Symbol]?
-        @swarm_element_results: ::Thread::SizedQueue[{ ok: bool, result: ::Hash[untyped,untyped]}]?
-        @sync: ::RedisQueuedLocks::Utilities::Lock
+        @rql_client: RQL::Client
+        @swarm_element: Thread?
+        @main_loop: Thread?
+        @swarm_element_commands: Thread::SizedQueue[Symbol]?
+        @swarm_element_results: Thread::SizedQueue[{ ok: bool, result: Hash[untyped,untyped] }]?
+        @sync: RQL::Utilities::Lock
 
-        attr_reader rql_client: ::RedisQueuedLocks::Client
-        attr_reader swarm_element: ::Thread?
-        attr_reader main_loop: ::Thread?
-        attr_reader swarm_element_commands: ::Thread::SizedQueue[::Symbol]?
-        attr_reader swarm_element_results: ::Thread::SizedQueue[{ ok: bool, result: ::Hash[untyped,untyped]}]?
-        attr_reader sync: ::RedisQueuedLocks::Utilities::Lock
+        attr_reader rql_client: RQL::Client
+        attr_reader swarm_element: Thread?
+        attr_reader main_loop: Thread?
+        attr_reader swarm_element_commands: Thread::SizedQueue[Symbol]?
+        attr_reader swarm_element_results: Thread::SizedQueue[{ ok: bool, result: Hash[untyped,untyped] }]?
+        attr_reader sync: RQL::Utilities::Lock
 
-        def initialize: (::RedisQueuedLocks::Client rql_client) -> void
+        def initialize: (RQL::Client rql_client) -> void
 
         def try_swarm!: () -> void
         def reswarm_if_dead!: () -> void
         def try_kill!: () -> void
         def enabled?: () -> bool
-        def status: () -> { enabled: bool, thread: { running: bool, state: ::String }, main_loop: { running: bool, state: ::String } }
+
+        type elementStatus = {
+          enabled: bool,
+          thread: { running: bool, state: String },
+          main_loop: { running: bool, state: String }
+        }
+        def status: () -> elementStatus
 
         private
 
         def swarm!: () -> void
-        def spawn_main_loop!: () -> ::Thread
+        def spawn_main_loop!: () -> Thread
         def idle?: () -> bool
         def swarmed?: () -> bool
         def swarmed__alive?: () -> bool
@@ -37,8 +45,13 @@ module RedisQueuedLocks
         def swarmed__running?: () -> bool
         def terminating?: () -> bool?
         def swarmed__stopped?: () -> bool
-        def swarm_loop__is_active: () -> (nil|bool|::Hash[untyped,untyped])
-        def swarm_loop__status: () -> ::Hash[untyped,untyped]?
+
+        type swarmLoopIsActive = { ok: bool, result: { is_active: bool } }
+        def swarm_loop__is_active: () -> swarmLoopIsActive?
+
+        type swarmLoopStatus = { ok: bool, result: { main_loop: { alive: bool, state: String } } }
+        def swarm_loop__status: () -> swarmLoopStatus?
+
         def swarm_loop__start: () -> void
         def swarm_loop__stop: () -> void
         def swarm_element__termiante: () -> void

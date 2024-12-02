@@ -1,46 +1,50 @@
+use RedisQueuedLocks as RQL
+use RedisClient as RC
+
 module RedisQueuedLocks
   module Acquirer
     module AcquireLock
-      extend ::RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
-      extend ::RedisQueuedLocks::Acquirer::AcquireLock::DelayExecution
-      extend ::RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
-      extend ::RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
-      extend ::RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
+      extend RQL::Acquirer::AcquireLock::TryToLock
+      extend RQL::Acquirer::AcquireLock::DelayExecution
+      extend RQL::Acquirer::AcquireLock::YieldExpire
+      extend RQL::Acquirer::AcquireLock::WithAcqTimeout
+      extend RQL::Acquirer::AcquireLock::DequeueFromLockQueue
 
+      type acquireResult = ({ ok: bool, result: untyped }|untyped)
       def self.acquire_lock: (
-        ::RedisClient redis,
-        ::String lock_name,
-        process_id: ::Integer|::String,
-        thread_id: ::Integer|::String,
-        fiber_id: ::Integer|::String,
-        ractor_id: ::Integer|::String,
-        ttl: ::Integer?,
-        queue_ttl: ::Integer,
-        timeout: ::Integer,
+        RC::client redis,
+        String lock_name,
+        process_id: Integer|String,
+        thread_id: Integer|String,
+        fiber_id: Integer|String,
+        ractor_id: Integer|String,
+        ttl: Integer?,
+        queue_ttl: Integer,
+        timeout: Integer?,
         timed: bool,
-        retry_count: ::Integer?,
-        retry_delay: ::Integer,
-        retry_jitter: ::Integer,
+        retry_count: Integer?,
+        retry_delay: Integer,
+        retry_jitter: Integer,
         raise_errors: bool,
-        instrumenter: untyped, # [#notify]
-        identity: ::String,
+        instrumenter: RQL::instrObj,
+        identity: String,
         fail_fast: bool,
-        meta: ::Hash[String|Symbol,untyped]?,
+        meta: Hash[String|Symbol,untyped]?,
         detailed_acq_timeout_error: bool,
-        logger: ::Logger|::RedisQueuedLocks::_Loggable,
+        logger: RQL::loggerObj,
         log_lock_try: bool,
         instrument: untyped?,
-        conflict_strategy: ::Symbol,
-        access_strategy: ::Symbol,
+        conflict_strategy: Symbol,
+        access_strategy: Symbol,
         log_sampling_enabled: bool,
-        log_sampling_percent: ::Integer,
-        log_sampler: untyped,
+        log_sampling_percent: Integer,
+        log_sampler: RQL::Logging::samplerObj,
         log_sample_this: bool,
         instr_sampling_enabled: bool,
-        instr_sampling_percent: ::Integer,
-        instr_sampler: ::RedisQueuedLocks::Instrument::_Sampler,
+        instr_sampling_percent: Integer,
+        instr_sampler: RQL::Instrument::samplerObj,
         instr_sample_this: bool
-      ) { (?) -> untyped } -> (::RedisQueuedLocks::Data|{ ok: bool, result: untyped })
+      ) { (?) -> untyped } -> acquireResult
     end
   end
 end

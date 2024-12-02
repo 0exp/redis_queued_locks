@@ -1,12 +1,10 @@
+use RedisClient as RC
+
 module RedisQueuedLocks
   class Swarm
     class FlushZombies < SwarmElement::Isolated
-      def self.flush_zombies: (
-        ::RedisClient redis_client,
-        ::Integer zombie_ttl,
-        ::Integer lock_scan_size,
-        ::Integer queue_scan_size
-      ) -> ::RedisQueuedLocks::Data
+      type flushedZombies = { ok: bool, deleted_zombie_hosts: Set[String], deleted_zombie_acquirers: Set[String], deleted_zombie_locks: Set[String] }
+      def self.flush_zombies: (RC::client redis_client, Integer zombie_ttl, Integer lock_scan_size, Integer queue_scan_size) -> flushedZombies
 
       def enabled?: () -> bool
       def swarm!: () -> void

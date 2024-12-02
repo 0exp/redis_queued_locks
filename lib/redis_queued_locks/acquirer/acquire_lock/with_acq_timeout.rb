@@ -39,7 +39,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
     ::Timeout.timeout(timeout, RedisQueuedLocks::LockAcquirementIntermediateTimeoutError, &block)
   rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError
     if on_timeout != nil
-      # @type var on_timeout: ::Proc
+      # @type var on_timeout: Proc
       on_timeout.call
     end
 

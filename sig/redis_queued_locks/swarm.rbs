@@ -1,28 +1,41 @@
+use RedisQueuedLocks as RQL
+
 module RedisQueuedLocks
   class Swarm
-    @rql_client: ::RedisQueuedLocks::Client
-    @supervisor: ::RedisQueuedLocks::Swarm::Supervisor
-    @probe_hosts_element: ::RedisQueuedLocks::Swarm::ProbeHosts
-    @flush_zombies_element: ::RedisQueuedLocks::Swarm::FlushZombies
-    @sync: ::RedisQueuedLocks::Utilities::Lock
+    @rql_client: RQL::Client
+    @supervisor: RQL::Swarm::Supervisor
+    @probe_hosts_element: RQL::Swarm::ProbeHosts
+    @flush_zombies_element: RQL::Swarm::FlushZombies
+    @sync: RQL::Utilities::Lock
 
-    attr_reader rql_client: ::RedisQueuedLocks::Client
-    attr_reader supervisor: ::RedisQueuedLocks::Swarm::Supervisor
-    attr_reader probe_hosts_element: ::RedisQueuedLocks::Swarm::ProbeHosts
-    attr_reader flush_zombies_element: ::RedisQueuedLocks::Swarm::FlushZombies
-    attr_reader sync: ::RedisQueuedLocks::Utilities::Lock
+    attr_reader rql_client: RQL::Client
+    attr_reader supervisor: RQL::Swarm::Supervisor
+    attr_reader probe_hosts_element: RQL::Swarm::ProbeHosts
+    attr_reader flush_zombies_element: RQL::Swarm::FlushZombies
+    attr_reader sync: RQL::Utilities::Lock
 
-    def initialize: (::RedisQueuedLocks::Client rql_client) -> void
+    def initialize: (RQL::Client rql_client) -> void
 
-    def swarm_status: () -> untyped
-    def swarm_info: (?zombie_ttl: untyped) -> untyped
-    def probe_hosts: () -> untyped
-    def flush_zombies: (?zombie_ttl: untyped, ?lock_scan_size: untyped, ?queue_scan_size: untyped) -> untyped
-    def zombie_locks: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
-    def zombie_acquirers: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
-    def zombie_hosts: (?zombie_ttl: untyped) -> untyped
-    def zombies_info: (?zombie_ttl: untyped, ?lock_scan_size: untyped) -> untyped
-    def swarm!: () -> untyped
-    def deswarm!: () -> untyped
+    type swarmStatus = {
+      auto_swarm: bool,
+      supervisor: RQL::Swarm::Supervisor::supervisorStatus,
+      probe_hosts: RQL::Swarm::SwarmElement::Threaded::elementStatus,
+      flush_zombies: RQL::Swarm::SwarmElement::Isolated::elementStatus
+    }
+    def swarm_status: () -> swarmStatus
+
+    def swarm_info: (?zombie_ttl: Integer) -> RQL::Swarm::Acquirers::acquirersList
+    def probe_hosts: () -> RQL::Swarm::ProbeHosts::livingHosts
+    def flush_zombies: (?zombie_ttl: Integer, ?lock_scan_size: Integer, ?queue_scan_size: Integer) -> RQL::Swarm::FlushZombies::flushedZombies
+    def zombie_locks: (?zombie_ttl: Integer, ?lock_scan_size: Integer) -> RQL::Swarm::ZombieInfo::zombieLocks
+    def zombie_acquirers: (?zombie_ttl: Integer, ?lock_scan_size: Integer) -> RQL::Swarm::ZombieInfo::zombieAcquirers
+    def zombie_hosts: (?zombie_ttl: Integer) -> RQL::Swarm::ZombieInfo::zombieHosts
+    def zombies_info: (?zombie_ttl: Integer, ?lock_scan_size: Integer) -> RQL::Swarm::ZombieInfo::zombieInfo
+
+    type swarmizeResult = { ok: bool, result: Symbol }
+    def swarm!: () -> swarmizeResult
+
+    type deswarmizeResult = { ok: bool, result: Symbol }
+    def deswarm!: () -> deswarmizeResult
   end
 end

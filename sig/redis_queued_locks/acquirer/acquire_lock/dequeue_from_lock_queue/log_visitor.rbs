@@ -1,16 +1,18 @@
+use RedisQueuedLocks as RQL
+
 module RedisQueuedLocks
   module Acquirer
     module AcquireLock
       module DequeueFromLockQueue
         module LogVisitor
           def self.dequeue_from_lock_queue: (
-            ::Logger|RedisQueuedLocks::_Loggable logger,
+            RQL::loggerObj logger,
             bool log_sampled,
-            ::String lock_key,
-            ::Integer queue_ttl,
-            ::String acquirer_id,
-            ::String host_id,
-            ::Symbol access_strategy
+            String lock_key,
+            Integer queue_ttl,
+            String acquirer_id,
+            String host_id,
+            Symbol access_strategy
           ) -> void
         end
       end

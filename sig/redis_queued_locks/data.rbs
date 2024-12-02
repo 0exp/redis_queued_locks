@@ -1,4 +1,6 @@
+# frozen_string_literal: true
+
 module RedisQueuedLocks
-  class Data < ::Hash
+  class Data < Hash[untyped,untyped]
   end
 end

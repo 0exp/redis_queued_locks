@@ -189,7 +189,7 @@ module RedisQueuedLocks::Resource
 
       # @type var current_process_id: Integer
       current_process_id = get_process_id
-      # @type var current_threads: Array[::Thread]
+      # @type var current_threads: Array[Thread]
       current_threads = ::Thread.list
       # @type var current_ractor_id: Integer
       current_ractor_id = get_ractor_id

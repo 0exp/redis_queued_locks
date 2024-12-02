@@ -1,30 +1,32 @@
+use RedisQueuedLocks as RQL
+use RedisClient as RC
+
 module RedisQueuedLocks
   module Acquirer
     module ReleaseAllLocks
-      extend ::RedisQueuedLocks::Utilities
+      extend RQL::Utilities
 
+      type releaseResult = { ok: bool, result: { rel_key_cnt: Integer, rel_time: Integer|Float } }
       def self.release_all_locks: (
-        ::RedisClient redis,
-        ::Integer batch_size,
-        ::Logger|::RedisQueuedLocks::_Loggable logger,
-        untyped instrumenter,
+        RC::client redis,
+        Integer batch_size,
+        RQL::loggerObj logger,
+        RQL::instrObj instrumenter,
         untyped instrument,
         bool log_sampling_enabled,
-        ::Integer log_sampling_percent,
-        untyped log_sampler,
+        Integer log_sampling_percent,
+        RQL::Logging::samplerObj log_sampler,
         bool log_sample_this,
         bool instr_sampling_enabled,
-        ::Integer instr_sampling_percent,
-        untyped instr_sampler,
+        Integer instr_sampling_percent,
+        RQL::Instrument::samplerObj instr_sampler,
         bool instr_sample_this
-      ) -> ::RedisQueuedLocks::Data
+      ) -> releaseResult
 
       private
 
-      def self.fully_release_all_locks: (
-        ::RedisClient redis,
-        ::Integer batch_size
-      ) -> ::RedisQueuedLocks::Data
+      type fullRelesaeResult = { ok: bool, result: { rel_key_cnt: Integer } }
+      def self.fully_release_all_locks: (RC::client redis, Integer batch_size) -> fullRelesaeResult
     end
   end
 end

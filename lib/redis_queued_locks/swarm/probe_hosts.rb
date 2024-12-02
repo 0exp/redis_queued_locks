@@ -4,24 +4,25 @@
 # @since 1.9.0
 class RedisQueuedLocks::Swarm::ProbeHosts < RedisQueuedLocks::Swarm::SwarmElement::Threaded
   class << self
+    # Returns a list of living hosts as a element command result. Result example:
+    # {
+    #   ok: <Boolean>,
+    #   result: {
+    #     host_id1 <String> => score1 <String>,
+    #     host_id2 <String> => score2 <String>,
+    #     etc...
+    #   }
+    # }
+    #
     # @param redis_client [RedisClient]
     # @param uniq_identity [String]
-    # @return [
-    #   RedisQueuedLocks::Data[
-    #     ok: <Boolean>,
-    #     result: {
-    #       host_id1 <String> => score1 <String>,
-    #       host_id2 <String> => score2 <String>,
-    #       etc...
-    #     }
-    #   ]
-    # ]
+    # @return [::Hash]
     #
     # @api private
     # @since 1.9.0
     def probe_hosts(redis_client, uniq_identity)
       possible_hosts = RedisQueuedLocks::Resource.possible_host_identifiers(uniq_identity)
-      probed_hosts = {} #: ::Hash[::String,::Float]
+      probed_hosts = {} #: Hash[String,Float]
 
       redis_client.with do |rconn|
         possible_hosts.each do |host_id|
@@ -33,9 +34,9 @@ class RedisQueuedLocks::Swarm::ProbeHosts < RedisQueuedLocks::Swarm::SwarmElemen
           )
           probed_hosts[host_id] = probe_score
         end
-
-        RedisQueuedLocks::Data[ok: true, result: probed_hosts] # steep:ignore
       end
+
+      { ok: true, result: probed_hosts }
     end
   end
 

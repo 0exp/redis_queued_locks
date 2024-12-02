@@ -25,6 +25,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   # @since 1.9.0
   attr_reader :sync
 
+  # @param rql_client [RedisQueuedLocks::Client]
   # @return [void]
   #
   # @api private
@@ -84,8 +85,8 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
     # NOTE: provide an <is enabled> logic here by analyzing the redis queued locks config.
   end
 
-  # @return [Hash<Symbol,Boolean|Hash<Symbol,String|Boolean>>]
-  #   Format: {
+  # @return [Hash<Symbol,Boolean|Hash<Symbol,String|Boolean>>] Format:
+  #   {
   #     enabled: <Boolean>,
   #     ractor: {
   #       running: <Boolean>,
@@ -104,8 +105,6 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
       ractor_running = swarmed__alive?
       ractor_state = swarmed? ? ractor_status(swarm_element) : 'non_initialized' # steep:ignore
 
-      main_loop_running = nil
-      main_loop_state = nil
       begin
         main_loop_running = swarmed__running?
         # steep:ignore:start
@@ -113,7 +112,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
           main_loop_running ? swarm_loop__status[:main_loop][:state] : 'non_initialized'
         # steep:ignore:end
       rescue Ractor::ClosedError
-        # NOTE: it can happend when you run RedisQueuedLocks::Swarm#deswarm!;
+        # NOTE: it can happend when you running RedisQueuedLocks::Swarm#deswarm!
         main_loop_running = false
         main_loop_state = 'non_initialized'
       end
@@ -162,7 +161,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
     #   to provide better code readability (it is placed next to the method inside
     #   wich it should be called (see #swarm!)). That's why some rubocop cops are disabled.
 
-    # @type var main_loop: ::Thread?
+    # @type var main_loop: Thread?
     main_loop = nil
 
     loop do
@@ -175,8 +174,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
           if main_loop == nil
             'non_initialized'
           else
-            # NOTE: (full name resolution): ractor has no syntax-based constatnt context;
-            # # @type var main_loop: ::Thread
+            # @type var main_loop: Thread
             RedisQueuedLocks::Utilities.thread_state(main_loop)
           end
         Ractor.yield({ main_loop: { alive: main_loop_alive, state: main_loop_state } })

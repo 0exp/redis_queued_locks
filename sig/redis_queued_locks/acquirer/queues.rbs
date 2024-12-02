@@ -1,23 +1,18 @@
+use RedisClient as RC
+
 module RedisQueuedLocks
   module Acquirer
     module Queues
-      def self.queues: (
-        ::RedisClient redis_client,
-        scan_size: ::Integer,
-        with_info: bool
-      ) -> ::Set[::String|{ queue: ::String, requests: ::Hash[::String,::String|::Float] }]
+      type queueList = Set[String]
+      type queuesInfo = Set[{ queue: String, requests: Array[Hash[String,String|Float]] }]
+      type queues = queueList | queuesInfo
+
+      def self.queues: (RC::client redis_client, scan_size: Integer, with_info: bool) -> queues
 
       private
 
-      def self.scan_queues: (
-        ::RedisClient redis_client,
-        ::Integer scan_size
-      ) -> ::Set[::String]
-
-      def self.extract_queues_info: (
-        ::RedisClient redis_client,
-        ::Set[::String] lock_queues
-      ) -> ::Set[{ queue: ::String, requests: ::Hash[::String,::String|::Float] }]
+      def self.scan_queues: (RC::client redis_client, Integer scan_size) -> queueList
+      def self.extract_queues_info: (RC::client redis_client, Set[String] lock_queues) ->  queuesInfo
     end
   end
 end

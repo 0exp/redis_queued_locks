@@ -1,10 +1,10 @@
+use RedisClient as RC
+
 module RedisQueuedLocks
   module Acquirer
     module LockInfo
-      def self.lock_info: (
-        ::RedisClient redis_client,
-        ::String lock_name
-      ) -> ::Hash[::String,::String|::Float|::Integer]?
+      type lockInfo = Hash[String,String|Float|Integer]
+      def self.lock_info: (RC::client redis_client, String lock_name) -> lockInfo?
     end
   end
 end
