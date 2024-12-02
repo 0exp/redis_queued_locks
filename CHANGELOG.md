@@ -8,6 +8,8 @@
   - [**Breaking**] Logs: all `acquier` text parts of each log message type were renamed to `acquirer`;
   - [**Breaking**] Instrumentation:  all `acquier` text parts of each event name were renamed to `acquirer`;
   - [**Breaking**] Exceptions: all `Acquierment` exception constant name parts were renamed to `Acquirement`;
+- [**Breaking**] `RedisQueuedLocks::Data` is not used (**temporary**) as result type of some APIs.
+  This type is inherited from Hash and can not be used as a record type in `steep`/`rbs` (working on it);
 ### Added
 - **Type Checking**:
   - the code is fully typed;
