@@ -16,8 +16,8 @@
   - (steep + rbs) officialy supported `RBS` with a `Steep` integration that works
   in **strict mode** (see `sig` directory, `Steepfile` config, `sig/manifest.yml` and `rbs_collection.yml` for dependencies);
   - Added `TypeCheck` step to CI/CD;
-- Test coverage checks (via `simplecov` with `html` and `lcov` formats).
-  Temporary locked on `~95%` and without CI integration cuz we need to refactor tests in first;
+- Test coverage checks (via `simplecov` with `html` and `lcov` formats). Temporary disabled `minimum_coverage` config (and the CI step is not configured yet)
+  cuz we need to refactor tests in first;
 - CI: `rspec-retry` is temporary added until the tests are fully refactored;
 
 ## [1.12.1]
