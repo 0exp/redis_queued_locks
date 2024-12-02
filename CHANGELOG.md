@@ -9,15 +9,13 @@
   - [**Breaking**] Instrumentation:  all `acquier` text parts of each event name were renamed to `acquirer`;
   - [**Breaking**] Exceptions: all `Acquierment` exception constant name parts were renamed to `Acquirement`;
 - [**Breaking**] `RedisQueuedLocks::Data` is not used (**temporary**) as result type of some APIs.
-  This type is inherited from Hash and can not be used as a record type in `steep`/`rbs` (working on it);
+  The reason is that this type can not be used as a record type in `steep`/`rbs` (working on it);
 ### Added
 - **Type Checking**:
-  - the code is fully typed;
-  - (steep + rbs) officialy supported `RBS` with a `Steep` integration that works
-  in **strict mode** (see `sig` directory, `Steepfile` config, `sig/manifest.yml` and `rbs_collection.yml` for dependencies);
-  - Added `TypeCheck` step to CI/CD;
-- Test coverage checks (via `simplecov` with `html` and `lcov` formats). Temporary disabled `minimum_coverage` config (and the CI step is not configured yet)
-  cuz we need to refactor tests in first;
+  - library codebase is fully typed;
+  - Integrated `RBS` with `Steep` that is configured on **strict mode** (see `sig` directory, `Steepfile` config, `sig/manifest.yml` and `rbs_collection.yml` for dependencies);
+  - Added `TypeCheck` CI/CD step;
+- Test coverage (via `simplecov` with `html` and `lcov` formats). `minimum_coverage` config is temporary disabled (and the CI step is not configured yet) cuz we need to refactor tests in first;
 - CI: `rspec-retry` is temporary added until the tests are fully refactored;
 
 ## [1.12.1]
