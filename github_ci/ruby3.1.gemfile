@@ -11,7 +11,7 @@ gem 'pry'
 gem 'rake'
 gem 'rbs'
 gem 'rspec'
-gem 'rspec-retry'
+gem 'rspec-retry'  # NOTE: temporary decision for non-refactored tests
 gem 'simplecov'
 gem 'simplecov-lcov'
 gem 'steep'
