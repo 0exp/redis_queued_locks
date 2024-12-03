@@ -194,9 +194,10 @@ module RedisQueuedLocks::Resource
       # @type var current_ractor_id: Integer
       current_ractor_id = get_ractor_id
 
+      # NOTE: steep can't resolve a type of dynamic `[]` literal mutated via inline tap;
       # steep:ignore:start
-      # NOTE: rbs/steep can't declare the type of dynamic `[]` variable mutated via tap :'(
       [].tap do |acquirers|
+        # @type var acquirers: Array[String]
         current_threads.each do |thread|
           acquirers << host_identifier(
             current_process_id,
