@@ -2101,6 +2101,8 @@ Detalized event semantics and payload structure:
   - **automatic** deadlock detection;
   - `go`-lang implementation;
   - (_research_) simplification and speedup of the internal "redis-communuication-and-data-storing"-based algorithms;
+  - TypeChecking: (rbs) type signature testing (`RUBYOPT='-rrbs/test/setup' bundle exec rspec`);
+  - TypeChecking: (steep) 100%-typed calls (`steep stats` in CI);
 
 ---
 
