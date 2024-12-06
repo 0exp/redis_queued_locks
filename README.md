@@ -2103,6 +2103,7 @@ Detalized event semantics and payload structure:
   - (_research_) simplification and speedup of the internal "redis-communuication-and-data-storing"-based algorithms;
   - TypeChecking: (rbs) type signature testing (`RUBYOPT='-rrbs/test/setup' bundle exec rspec`);
   - TypeChecking: (steep) 100%-typed calls (`steep stats` in CI);
+  - `unlock_on:`-option in lock/lock! logic in order to suppoert auto-unlocking on any exception rasaied under the invoked block (invoked under the lock);
 
 ---
 
