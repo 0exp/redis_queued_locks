@@ -2082,9 +2082,10 @@ Detalized event semantics and payload structure:
     ```ruby
     rql.lock_series('lock_a', 'lock_b', 'lock_c') { puts 'locked' }
     ```
-  - `light mode`: an ability to work without any debug and instrumentation logic and data (totally reduced debugging and instrumenting possibilities, but better performance);
+  - an ability to release all locks and all requests of the concrete acquirer id or host id (or both in validation-orianted combination);
 - **Minor**:
   - Support for detailed `OpenTelemetry` tracing;
+  - `light mode`: an ability to work without any debug and instrumentation logic and data (totally reduced debugging and instrumenting possibilities, but better performance);
   - support for `Dragonfly` database backend (https://github.com/dragonflydb/dragonfly) (https://www.dragonflydb.io/);
   - (_research_) GVL-isolation for lock acquirement logic (try to bypass Ruby's "context-switching" in order to prevent any time-based affects on lock-acquirement logic);
   - Semantic error objects for unexpected Redis errors;
