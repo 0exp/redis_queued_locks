@@ -46,10 +46,15 @@ module RedisQueuedLocks::Instrument
       #     => [[:opt, :sampling_percent]]
       #     => [[:req, :sampling_percent], [:block, :block]]
       #     => [[:opt, :sampling_percent], [:block, :block]]
-      if m_sig.size == 1
+      case m_sig.size
+      when 1
+        # => [[:req, :sampling_percent]]
+        # => [[:opt, :sampling_percent]]
         prm = m_sig[0][0]
         prm == :req || prm == :opt
-      elsif m_sig.size == 2
+      when 2
+        # => [[:req, :sampling_percent], [:block, :block]]
+        # => [[:opt, :sampling_percent], [:block, :block]]
         f_prm = m_sig[0][0]
         s_prm = m_sig[1][0]
 

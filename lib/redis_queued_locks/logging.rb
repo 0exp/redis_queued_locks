@@ -73,7 +73,7 @@ module RedisQueuedLocks::Logging
       #   - convinient/conventional way to support the popular `semantic_logger` library
       #     - see https://logger.rocketjob.io/
       #     - see https://github.com/reidmorrison/semantic_logger
-      #   - convinient/conventional way to support the popular `broadcast` RoR's logger;
+      #   - convinient/conventional way to support the popular `broadcast` RubyOnRails's logger;
       #     - see https://api.rubyonrails.org/classes/ActiveSupport/BroadcastLogger.html
       # rubocop:disable Layout/LineLength
       return true if defined?(::SemanticLogger::Logger) && logger.is_a?(::SemanticLogger::Logger)
@@ -92,12 +92,14 @@ module RedisQueuedLocks::Logging
       #     => [[:req, :progname]]
       #     => [[:rest], [:block, :block]]
       #     => [[:rest]]
+      #     => ((...) method signature): [[:rest, :*], [:keyrest, :**], [:block, :&]]
 
       # @type var m_obj: Method
       m_obj = logger.method(:debug)
       m_sig = m_obj.parameters
 
-      if m_sig.size == 2
+      case m_sig.size
+      when 2
         # => [[:opt, :progname], [:block, :block]]
         # => [[:req, :progname], [:block, :block]]
         # => [[:rest], [:block, :block]]
@@ -109,13 +111,20 @@ module RedisQueuedLocks::Logging
         f_prm == :req && s_prm == :block ||
         f_prm == :rest && s_prm == :block
         # rubocop:enable Layout/MultilineOperationIndentation
-      elsif m_sig.size == 1
+      when 1
         # => [[:opt, :progname]]
         # => [[:req, :progname]]
         # => [[:rest]]
         prm = m_sig[0][0]
 
         prm == :opt || prm == :req || prm == :rest
+      when 3
+        # => [[:rest, :*], [:keyrest, :**], [:block, :&]]
+        f_prm = m_sig[0][0]
+        s_prm = m_sig[1][0]
+        t_prm = m_sig[2][0]
+
+        f_prm == :rest && s_prm == :keyrest && t_prm == :block
       else
         false
       end

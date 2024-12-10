@@ -1304,7 +1304,69 @@ RSpec.describe RedisQueuedLocks do
     redis.call('FLUSHDB')
   end
 
-  specify 'logger' do
+  specify 'logger interface (+ private API checks)' do
+    aggregate_failures "valid logger's #debug interface" do
+      # <method signature with 2 parameters>
+      # f1 => [[:opt, :progname], [:block, :block]]
+      # f2 => [[:req, :progname], [:block, :block]]
+      # f3 => [[:rest], [:block, :block]]
+      f1_logger = Class.new { def debug(progname = nil, &block); end; }.new
+      f2_logger = Class.new { def debug(progname, &block); end; }.new
+      f3_logger = Class.new { def debug(*, &block); end; }.new
+
+      expect(RedisQueuedLocks::Logging.valid_interface?(f1_logger)).to eq(true) # NOTE: private API
+      expect(RedisQueuedLocks::Logging.valid_interface?(f2_logger)).to eq(true) # NOTE: private API
+      expect(RedisQueuedLocks::Logging.valid_interface?(f3_logger)).to eq(true) # NOTE: private API
+
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f1_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f2_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f3_logger } }.not_to raise_error
+
+      # <method signature with 1 parameters>
+      # f4 => [[:opt, :progname]]
+      # f5 => [[:req, :progname]]
+      # f6 => [[:rest]]
+      f4_logger = Class.new { def debug(progname = nil); end }.new
+      f5_logger = Class.new { def debug(progname); end }.new
+      f6_logger = Class.new { def debug(*); end }.new
+
+      expect(RedisQueuedLocks::Logging.valid_interface?(f4_logger)).to eq(true) # NOTE: private API
+      expect(RedisQueuedLocks::Logging.valid_interface?(f5_logger)).to eq(true) # NOTE: private API
+      expect(RedisQueuedLocks::Logging.valid_interface?(f6_logger)).to eq(true) # NOTE: private API
+
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f4_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f5_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f6_logger } }.not_to raise_error
+
+      # <method signature with 3 parameters>
+      # f7 => [[:rest, :*], [:keyrest, :**], [:block, :&]]
+      f7_logger = Class.new { def debug(...); end }.new
+      f8_logger = Class.new { def debug(*, **, &); end }.new # rubocop:disable all
+      expect(RedisQueuedLocks::Logging.valid_interface?(f7_logger)).to eq(true) # NOTE: private API
+      expect(RedisQueuedLocks::Logging.valid_interface?(f8_logger)).to eq(true) # NOTE: private API
+
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f7_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f8_logger } }.not_to raise_error
+    end
+
+    # rubocop:disable Layout/LineLength
+    aggregate_failures "invalid logger's #debug interface" do
+      logger = Class.new { def debug; end }.new
+      expect(RedisQueuedLocks::Logging.valid_interface?(logger)).to eq(false) # NOTE: private API
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = logger } }.to raise_error(Qonfig::ValidationError)
+
+      logger = Class.new { def debug(a, b, c, &f); end }.new
+      expect(RedisQueuedLocks::Logging.valid_interface?(logger)).to eq(false) # NOTE: private API
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = logger } }.to raise_error(Qonfig::ValidationError)
+
+      logger = Object.new
+      expect(RedisQueuedLocks::Logging.valid_interface?(logger)).to eq(false) # NOTE: private API
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = logger } }.to raise_error(Qonfig::ValidationError)
+    end
+    # rubocop:enable Layout/LineLength
+  end
+
+  specify 'logging' do
     test_logger = Class.new do
       attr_reader :logs
 
