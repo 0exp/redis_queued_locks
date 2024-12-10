@@ -71,12 +71,14 @@ module RedisQueuedLocks::Logging
 
       # NOTE:
       #   - convinient/conventional way to support the popular `semantic_logger` library
-      #   - see https://logger.rocketjob.io/
-      #   - see https://github.com/reidmorrison/semantic_logger
-
-      # steep:ignore:start
+      #     - see https://logger.rocketjob.io/
+      #     - see https://github.com/reidmorrison/semantic_logger
+      #   - convinient/conventional way to support the popular `broadcast` RoR's logger;
+      #     - see https://api.rubyonrails.org/classes/ActiveSupport/BroadcastLogger.html
+      # rubocop:disable Layout/LineLength
       return true if defined?(::SemanticLogger::Logger) && logger.is_a?(::SemanticLogger::Logger)
-      # steep:ignore:end
+      return true if defined?(::ActiveSupport::BroadcastLogger) && logger.is_a?(::ActiveSupport::BroadcastLogger)
+      # rubocop:enable Layout/LineLength
 
       # NOTE: should provide `#debug` method.
       return false unless logger.respond_to?(:debug)

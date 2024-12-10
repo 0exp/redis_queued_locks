@@ -2,4 +2,8 @@ module ActiveSupport
   module Notifications
     def self.instrument: (String event, Hash[untyped,untyped] payload) -> untyped
   end
+
+  class BroadcastLogger
+    def debug: (*untyped, **untyped) { (?) -> untyped } -> untyped
+  end
 end

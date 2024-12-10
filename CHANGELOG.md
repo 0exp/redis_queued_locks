@@ -1,6 +1,6 @@
 ## [Unreleased]
 ### Changed
-- Updated development dependencies (`armitage-rubocop`);
+- Updated development dependencies (`armitage-rubocop`, `rbs`, `steep`);
 - CI is splitted to "mainstream ruby version" and "previous actually maintaned ruby versions";
 - `Acquier` -> `Acquirer`, `Acquierment` -> `Acquirement` (typos):
   - [**Breaking**] Constant renaming: all constants and constant parts were renamed from `Acquier` to `Acquirer`;
@@ -17,6 +17,7 @@
   - Added `TypeCheck` CI/CD step;
 - Test coverage (via `simplecov` with `html` and `lcov` formats). `minimum_coverage` config is temporary disabled (and the CI step is not configured yet) cuz we need to refactor tests in first;
 - CI: `rspec-retry` is temporary added until the tests are fully refactored;
+- Support for `ActiveSupport::BroadcastLogger` logger instances;
 
 ## [1.12.1]
 ### Changed
