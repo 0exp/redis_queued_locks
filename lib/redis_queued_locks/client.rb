@@ -18,6 +18,7 @@ class RedisQueuedLocks::Client
     setting :detailed_acq_timeout_error, false
     setting :lock_release_batch_size, 100
     setting :key_extraction_batch_size, 500
+    setting :request_release_batch_size, 300
     setting :instrumenter, RedisQueuedLocks::Instrument::VoidNotifier
     setting :uniq_identifier, -> { RedisQueuedLocks::Resource.calc_uniq_identity }
     setting :logger, RedisQueuedLocks::Logging::VoidLogger
@@ -91,6 +92,8 @@ class RedisQueuedLocks::Client
     validate('default_queue_ttl', :integer)
     validate('detailed_acq_timeout_error', :boolean)
     validate('lock_release_batch_size', :integer)
+    validate('key_extraction_batch_size', :integer)
+    validate('request_release_batch_size', :integer)
     validate('instrumenter') { |val| RedisQueuedLocks::Instrument.valid_interface?(val) }
     validate('uniq_identifier', :proc)
     validate('logger') { |val| RedisQueuedLocks::Logging.valid_interface?(val) }
@@ -963,5 +966,110 @@ class RedisQueuedLocks::Client
       instr_sample_this
     )
   end
+
+  # @param acquirer_id [String]
+  # @option scan_size [Integer]
+  # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify]
+  # @option instrument [NilClass,Any]
+  # @option log_sampling_enabled [Boolean]
+  # @option log_sampling_percent [Integer]
+  # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
+  # @return [Hash<Symbol,Bool|Hash<Symbol,String|Float|Integer>>]
+  #   Format: { ok: true, result: { acq_id: String, rel_time: Float, rel_reqs: Integer } }
+  #
+  # @api public
+  # @since 1.13.0
+  def remove_from_queues(
+    acquirer_id,
+    scan_size: config[:request_release_batch_size], # steep:ignore
+    logger: config[:logger], # steep:ignore
+    instrumenter: config[:instrumenter], # steep:ignore
+    instrument: nil,
+    log_sampling_enabled: config[:log_sampling_enabled], # steep:ignore
+    log_sampling_percent: config[:log_sampling_percent], # steep:ignore
+    log_sampler: config[:log_sampler], # steep:ignore
+    log_sample_this: false,
+    instr_sampling_enabled: config[:instr_sampling_enabled], # steep:ignore
+    instr_sampling_percent: config[:instr_sampling_percent], # steep:ignore
+    instr_sampler: config[:instr_sampler], # steep:ignore
+    instr_sample_this: false
+  )
+    RedisQueuedLocks::Acquirer::RemoveFromQueues.remove_from_queues(
+      redis_client,
+      acquirer_id,
+      scan_size,
+      logger,
+      instrumenter,
+      instrument,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler,
+      log_sample_this,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler,
+      instr_sample_this
+    )
+  end
+
+  # @option acquirer_id [String,NilClass]
+  # @option host_id [String,NilClass]
+  # @option scan_size [Integer]
+  # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify]
+  # @option instrument [NilClass,Any]
+  # @option log_sampling_enabled [Boolean]
+  # @option log_sampling_percent [Integer]
+  # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
+  # @return [Any]
+  #
+  # @api public
+  # @since 1.13.0
+  def release_locks_of(
+    acquirer_id: nil,
+    host_id: nil,
+    scan_size: config[:lock_release_batch_size], # steep:ignore
+    logger: config[:logger], # steep:ignore
+    instrumenter: config[:instrumenter], # steep:ignore
+    instrument: nil,
+    log_sampling_enabled: config[:log_sampling_enabled], # steep:ignore
+    log_sampling_percent: config[:log_sampling_percent], # steep:ignore
+    log_sampler: config[:log_sampler], # steep:ignore
+    log_sample_this: false,
+    instr_sampling_enabled: config[:instr_sampling_enabled], # steep:ignore
+    instr_sampling_percent: config[:instr_sampling_percent], # steep:ignore
+    instr_sampler: config[:instr_sampler], # steep:ignore
+    instr_sample_this: false
+  )
+    RedisQueuedLocks::Acquirer::ReleaseLocksOf.release_locks_of(
+      acquirer_id,
+      host_id,
+      scan_size,
+      logger,
+      instrumenter,
+      instrument,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler,
+      log_sample_this,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler,
+      instr_sample_this
+    )
+  end
+
+  def release_all_of; end
 end
 # rubocop:enable Metrics/ClassLength

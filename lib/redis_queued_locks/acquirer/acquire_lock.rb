@@ -482,7 +482,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             ttl_shift = (
               (yield_time - acq_process[:acq_end_time]) / 1_000.0 -
               RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
-            ).ceil(2)
+            ).ceil(2) #: Float
 
             should_expire =
               acq_process[:result][:process] != :extendable_conflict_work_through &&
@@ -515,7 +515,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             )
             acq_process[:hold_time] = (
               (acq_process[:rel_time] - acq_process[:acq_end_time]) / 1_000.0
-            ).ceil(2)
+            ).ceil(2) #: Float
 
             if acq_process[:result][:process] == :extendable_conflict_work_through ||
                acq_process[:result][:process] == :conflict_work_through

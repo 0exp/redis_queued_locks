@@ -188,5 +188,38 @@ module RedisQueuedLocks
       ?instr_sampler: RQL::Instrument::samplerObj,
       ?instr_sample_this: bool
     ) -> RQL::Acquirer::ClearDeadRequests::clearResult
+
+    def remove_from_queues: (
+      String acquirer_id,
+      ?scan_size: Integer,
+      ?logger: RQL::loggerObj,
+      ?instrumenter: RQL::instrObj,
+      ?instrument: untyped?,
+      ?log_sampling_enabled: bool,
+      ?log_sampling_percent: Integer,
+      ?log_sampler: RQL::Logging::samplerObj,
+      ?log_sample_this: bool,
+      ?instr_sampling_enabled: bool,
+      ?instr_sampling_percent: Integer,
+      ?instr_sampler: RQL::Instrument::samplerObj,
+      ?instr_sample_this: bool
+    ) -> RQL::Acquirer::RemoveFromQueues::removeResult
+
+    def release_locks_of: (
+      acquirer_id: ?String,
+      host_id: ?String,
+      ?scan_size: Integer,
+      ?logger: RQL::loggerObj,
+      ?instrumenter: RQL::instrObj,
+      ?instrument: untyped?,
+      ?log_sampling_enabled: bool,
+      ?log_sampling_percent: Integer,
+      ?log_sampler: RQL::Logging::samplerObj,
+      ?log_sample_this: bool,
+      ?instr_sampling_enabled: bool,
+      ?instr_sampling_percent: Integer,
+      ?instr_sampler: RQL::Instrument::samplerObj,
+      ?instr_sample_this: bool
+    ) -> RQL::Acquirer::RemoveLocksOf::removeResult
   end
 end

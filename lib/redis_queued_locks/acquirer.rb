@@ -15,4 +15,6 @@ module RedisQueuedLocks::Acquirer
   require_relative 'acquirer/keys'
   require_relative 'acquirer/extend_lock_ttl'
   require_relative 'acquirer/clear_dead_requests'
+  require_relative 'acquirer/remove_from_queues'
+  require_relative 'acquirer/release_locks_of'
 end

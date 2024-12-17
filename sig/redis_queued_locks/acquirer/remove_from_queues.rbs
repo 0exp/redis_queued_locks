@@ -1,0 +1,32 @@
+use RedisClient as RC
+use RedisQueuedLocks as RQL
+
+module RedisQueuedLocks
+  module Acquirer
+    module RemoveFromQueues
+      extend RQL::Utilities
+
+      type removeResult = { ok: bool, result: { acq_id: String, rel_time: Float, rel_reqs: Integer } }
+      def self.remove_from_queues: (
+        RC::client redis,
+        String acquirer_id,
+        Integer scan_size,
+        RQL::loggerObj logger,
+        RQL::instrObj instrumenter,
+        untyped instrument,
+        bool log_sampling_enabled,
+        Integer log_sampling_percent,
+        RQL::Logging::samplerObj log_sampler,
+        bool log_sample_this,
+        bool instr_sampling_enabled,
+        Integer instr_sampling_percent,
+        RQL::Instrument::samplerObj instr_sampler,
+        bool instr_sample_this
+      ) -> removeResult
+
+      private
+
+      def self.drop_from_queues: (RC::client redis, String acquirer_id, Integer scan_size) -> Integer
+    end
+  end
+end

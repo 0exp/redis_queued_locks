@@ -94,7 +94,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
 
       time_at = Time.now.to_f
       rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
-      rel_time = ((rel_end_time - rel_start_time) / 1_000.0).ceil(2)
+      rel_time = ((rel_end_time - rel_start_time) / 1_000.0).ceil(2) #: Float
 
       instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
         instr_sampling_enabled,
@@ -137,7 +137,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
             RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
             count: batch_size
           ) do |lock_queue|
-            # TODO: reduce unnecessary iterations
+            # TODO: reduce unnecessary iterations (with indexing)
             pipeline.call('EXPIRE', lock_queue, '0')
           end
 
@@ -147,7 +147,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
             RedisQueuedLocks::Resource::LOCK_PATTERN,
             count: batch_size
           ) do |lock_key|
-            # TODO: reduce unnecessary iterations
+            # TODO: reduce unnecessary iterations (with indexing)
             pipeline.call('EXPIRE', lock_key, '0')
           end
         end

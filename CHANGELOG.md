@@ -18,6 +18,9 @@
 - Test coverage (via `simplecov` with `html` and `lcov` formats). `minimum_coverage` config is temporary disabled (and the CI step is not configured yet) cuz we need to refactor tests in first;
 - CI: `rspec-retry` is temporary added until the tests are fully refactored;
 - Support for `ActiveSupport::BroadcastLogger` logger instances;
+- New method: `remove_from_queues`;
+- New method: `release_locks_of`;
+- New method: `release_all_of`
 
 ## [1.12.1]
 ### Changed
