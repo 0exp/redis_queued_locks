@@ -6,11 +6,17 @@ module RedisQueuedLocks
     module ReleaseLocksOf
       extend RQL::Utilities
 
-      type removeResult = untyped
-      def self.release_locks_of: (
+      type releaseResult = {
+        ok: true,
+        result:
+          RQL::Acquirer::ReleaseLocksOf::OfAcquirer::releaseResult |
+          RQL::Acquirer::ReleaseLocksOf::OfHost::releaseResult |
+          RQL::Acquirer::ReleaseLocksOf::OfCombination::releaseResult
+      }
+      def self.release: (
         RC::client redis,
-        ?String acquirer_id,
-        ?String host_id,
+        String? acquirer_id,
+        String? host_id,
         Integer scan_size,
         RQL::loggerObj logger,
         RQL::instrObj instrumenter,
@@ -23,7 +29,7 @@ module RedisQueuedLocks
         Integer instr_sampling_percent,
         RQL::Instrument::samplerObj instr_sampler,
         bool instr_sample_this
-      ) -> removeResult
+      ) -> releaseResult
     end
   end
 end

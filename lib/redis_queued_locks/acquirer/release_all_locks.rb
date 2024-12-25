@@ -129,6 +129,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     # @api private
     # @since 1.0.0
     def fully_release_all_locks(redis, batch_size)
+      # TODO: reduce memory allocations in result
       result = redis.with do |rconn|
         rconn.pipelined do |pipeline|
           # Step A: release all queus and their related locks

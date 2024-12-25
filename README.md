@@ -2084,7 +2084,7 @@ Detalized event semantics and payload structure:
     ```
   - an ability to release all locks and all requests of the concrete acquirer id or host id (or both in validation-orianted combination);
 - **Minor**:
-  - Scan requests indexing;
+  - Scan requests indexing (with `Redis keyspace notifications` investigation);
   - Support for detailed `OpenTelemetry` tracing;
   - `light mode`: an ability to work without any debug and instrumentation logic and data (totally reduced debugging and instrumenting possibilities, but better performance);
   - support for `Dragonfly` database backend (https://github.com/dragonflydb/dragonfly) (https://www.dragonflydb.io/);

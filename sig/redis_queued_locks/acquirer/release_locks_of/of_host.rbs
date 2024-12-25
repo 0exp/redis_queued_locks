@@ -1,0 +1,43 @@
+# frozen_string_literal: true
+
+use RedisClient as RC
+use RedisQueuedLocks as RQL
+
+module RedisQueuedLocks
+  module Acquirer
+    module ReleaseLocksOf
+      module OfHost
+        extend RQL::Utilities
+
+        type releaseResult = {
+          rel_time: Float,
+          rel_key_cnt: Integer
+        }
+        def self.release: (
+          RC::client redis,
+          String host_id,
+          Integer scan_size,
+          RQL::loggerObj logger,
+          RQL::instrObj instrumenter,
+          untyped instrument,
+          bool log_sampling_enabled,
+          Integer log_sampling_percent,
+          RQL::Logging::samplerObj log_sampler,
+          bool log_sample_this,
+          bool instr_sampling_enabled,
+          Integer instr_sampling_percent,
+          RQL::Instrument::samplerObj instr_sampler,
+          bool instr_sample_this
+        ) -> releaseResult
+
+        private
+
+        def self.remove_locks: (
+          RC::client redis,
+          String host_id,
+          Integer scan_size
+        ) -> Integer
+      end
+    end
+  end
+end

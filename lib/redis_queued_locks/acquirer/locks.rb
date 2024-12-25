@@ -33,7 +33,7 @@ module RedisQueuedLocks::Acquirer::Locks
           RedisQueuedLocks::Resource::LOCK_PATTERN,
           count: scan_size
         ) do |lock_key|
-          # TODO: reduce unnecessary iterations
+          # TODO: reduce unnecessary iterations (with idnexing)
           lock_keys.add(lock_key)
         end
       end

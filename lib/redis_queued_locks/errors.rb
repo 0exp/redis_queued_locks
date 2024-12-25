@@ -42,6 +42,10 @@ module RedisQueuedLocks
   class ConflictLockObtainError < Error; end
 
   # @api public
+  # @since 1.13.0
+  class NoLockObtainerForReleaseArgumentError < ArgumentError; end
+
+  # @api public
   # @since 1.9.0
   class SwarmError < Error; end
 

@@ -1052,7 +1052,8 @@ class RedisQueuedLocks::Client
     instr_sampler: config[:instr_sampler], # steep:ignore
     instr_sample_this: false
   )
-    RedisQueuedLocks::Acquirer::ReleaseLocksOf.release_locks_of(
+    RedisQueuedLocks::Acquirer::ReleaseLocksOf.release(
+      redis_client,
       acquirer_id,
       host_id,
       scan_size,
@@ -1069,7 +1070,5 @@ class RedisQueuedLocks::Client
       instr_sample_this
     )
   end
-
-  def release_all_of; end
 end
 # rubocop:enable Metrics/ClassLength

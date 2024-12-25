@@ -34,7 +34,7 @@ module RedisQueuedLocks::Acquirer::Queues
           RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
           count: scan_size
         ) do |lock_queue|
-          # TODO: reduce unnecessary iterations
+          # TODO: reduce unnecessary iterations (with idnexing)
           # @type var lock_queue: String
           lock_queues.add(lock_queue)
         end

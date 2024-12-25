@@ -26,6 +26,9 @@ module RedisQueuedLocks
   class ConflictLockObtainError < Error
   end
 
+  class NoLockObtainerForReleaseArgumentError < ArgumentError
+  end
+
   class SwarmError < Error
   end
 

@@ -1,4 +1,5 @@
 module SemanticLogger
   class Logger
+    def debug: (*untyped, **untyped) { (?) -> untyped } -> untyped
   end
 end

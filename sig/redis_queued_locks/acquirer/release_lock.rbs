@@ -22,7 +22,7 @@ module RedisQueuedLocks
         RQL::instrObj instrumenter,
         RQL::loggerObj logger,
         bool log_sampling_enabled,
-        Integer log_samplingPercent,
+        Integer log_sampling_percent,
         RQL::Logging::samplerObj log_sampler,
         bool log_sample_this,
         bool instr_sampling_enabled,
