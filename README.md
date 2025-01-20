@@ -2084,6 +2084,8 @@ Detalized event semantics and payload structure:
     ```
   - an ability to release all locks and all requests of the concrete acquirer id or host id (or both in validation-orianted combination);
 - **Minor**:
+  - A special explicit documentation section that will explain and clarify which exceptions can be occured and what cases occurs them (at the moment such cases are explained inside the lock methods documentation that is not really convinient);
+  - Renaming of some exceptions (such as `RedisQueuedLocks::TimedLockTimeoutError`) to make the related problem more quickly and faster to understood;
   - Support for detailed `OpenTelemetry` tracing;
   - `light mode`: an ability to work without any debug and instrumentation logic and data (totally reduced debugging and instrumenting possibilities, but better performance);
   - support for `Dragonfly` database backend (https://github.com/dragonflydb/dragonfly) (https://www.dragonflydb.io/);
