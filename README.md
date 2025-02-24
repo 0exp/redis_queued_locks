@@ -2084,6 +2084,8 @@ Detalized event semantics and payload structure:
     ```
   - an ability to release all locks and all requests of the concrete acquirer id or host id (or both in validation-orianted combination);
 - **Minor**:
+  - Add `after timeout hook` ability for timeout errors with an ability to access the binding context (if it possibly) of the thread where it failed;
+  - Add `ignore timeout errors` ability (for debug purposes);
   - A special explicit documentation section that will explain and clarify which exceptions can be occured and what cases occurs them (at the moment such cases are explained inside the lock methods documentation that is not really convinient);
   - Renaming of some exceptions (such as `RedisQueuedLocks::TimedLockTimeoutError`) to make the related problem more quickly, faster and easier to understand;
   - Support for detailed `OpenTelemetry` tracing;
