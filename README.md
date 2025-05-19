@@ -2083,6 +2083,7 @@ Detalized event semantics and payload structure:
     rql.lock_series('lock_a', 'lock_b', 'lock_c') { puts 'locked' }
     ```
   - an ability to release all locks and all requests of the concrete acquirer id or host id (or both in validation-orianted combination);
+  - detailed lock informotion inside the error object in cases of exceptions (now we have detailed lock info in error message only);
 - **Minor**:
   - Add `after timeout hook` ability for timeout errors with an ability to access the binding context (if it possibly) of the thread where it failed;
   - Add `ignore timeout errors` ability (for debug purposes);
