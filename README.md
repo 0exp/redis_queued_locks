@@ -2084,6 +2084,7 @@ Detalized event semantics and payload structure:
     ```
   - an ability to release all locks and all requests of the concrete acquirer id or host id (or both in validation-orianted combination);
   - detailed lock informotion inside the error object in cases of exceptions (now we have detailed lock info in error message only);
+  - a convenient way to mark any `lock` invocation as "non-instrumentable" / "non-loggable" invocation (as an alternative to `VoidNotifier` usage);
 - **Minor**:
   - Add `after timeout hook` ability for timeout errors with an ability to access the binding context (if it possibly) of the thread where it failed;
   - Add `ignore timeout errors` ability (for debug purposes);
