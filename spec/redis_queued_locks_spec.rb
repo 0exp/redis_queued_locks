@@ -1179,8 +1179,8 @@ RSpec.describe RedisQueuedLocks do
     )
     # CHECK: lock state does not change (except the `rem_ttl` key of course)
     expect(lock_state2).to match({
-      'acq_id' => (lock_state1['acq_id']),
-      'hst_id' => (lock_state1['hst_id']),
+      'acq_id' => eq(lock_state1['acq_id']),
+      'hst_id' => eq(lock_state1['hst_id']),
       'ts' => eq(lock_state1['ts']),
       'ini_ttl' => eq(lock_state1['ini_ttl']),
       'lock_key' => eq('rql:lock:bekkek'),

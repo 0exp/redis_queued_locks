@@ -150,7 +150,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           transact.call(
             'HSET',
             lock_key,
-            'l_spc_ext_ts', (spc_processed_timestamp = Time.now.to_f),
+            'l_spc_ext_ts', spc_processed_timestamp = Time.now.to_f,
             'l_spc_ext_ini_ttl', ttl
           )
           inter_result = :extendable_conflict_work_through
@@ -179,7 +179,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           transact.call(
             'HSET',
             lock_key,
-            'l_spc_ts', (spc_processed_timestamp = Time.now.to_f)
+            'l_spc_ts', spc_processed_timestamp = Time.now.to_f
           )
 
           # @type var sp_conflict_status: Symbol
@@ -287,7 +287,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
                 lock_key,
                 'acq_id', acquirer_id,
                 'hst_id', host_id,
-                'ts', (timestamp = Time.now.to_f),
+                'ts', timestamp = Time.now.to_f,
                 'ini_ttl', ttl,
                 *(meta.to_a if meta != nil) # steep:ignore
               )
