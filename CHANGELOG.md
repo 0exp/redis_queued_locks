@@ -10,6 +10,7 @@
   - [**Breaking**] Exceptions: all `Acquierment` exception constant name parts were renamed to `Acquirement`;
 - [**Breaking**] `RedisQueuedLocks::Data` is not used (**temporary**) as result type of some APIs.
   The reason is that this type can not be used as a record type in `steep`/`rbs` (working on it);
+- [**Breaking**] Minimal Ruby Version - **3.3** (previously - **3.1**);
 ### Added
 - **Type Checking**:
   - library codebase is fully typed;
