@@ -21,10 +21,11 @@ GEM
       securerandom (>= 0.3)
       tzinfo (~> 2.0, >= 2.0.5)
       uri (>= 0.13.1)
-    armitage-rubocop (1.75.7.4)
+    armitage-rubocop (1.75.7.6)
       rubocop (= 1.75.7)
       rubocop-capybara (= 2.22.1)
       rubocop-factory_bot (= 2.27.1)
+      rubocop-on-rbs (= 1.7.0)
       rubocop-performance (= 1.25.0)
       rubocop-rails (= 2.32.0)
       rubocop-rake (= 0.7.1)
@@ -122,6 +123,11 @@ GEM
     rubocop-factory_bot (2.27.1)
       lint_roller (~> 1.1)
       rubocop (~> 1.72, >= 1.72.1)
+    rubocop-on-rbs (1.7.0)
+      lint_roller (~> 1.1)
+      rbs (~> 3.5)
+      rubocop (>= 1.72.1, < 2.0)
+      zlib
     rubocop-performance (1.25.0)
       lint_roller (~> 1.1)
       rubocop (>= 1.75.0, < 2.0)
@@ -177,6 +183,7 @@ GEM
       unicode-emoji (~> 4.0, >= 4.0.4)
     unicode-emoji (4.0.4)
     uri (1.0.3)
+    zlib (3.2.1)
 
 PLATFORMS
   aarch64-linux-gnu
@@ -206,4 +213,4 @@ DEPENDENCIES
   steep
 
 BUNDLED WITH
-   2.5.23
+   2.6.9

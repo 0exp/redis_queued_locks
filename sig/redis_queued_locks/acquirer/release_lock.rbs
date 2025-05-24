@@ -31,10 +31,8 @@ module RedisQueuedLocks
         bool instr_sample_this
       ) -> releaseResult
 
-      private
-
       type fullReleaseResult = { ok: bool, result: { queue: Symbol, lock: Symbol } }
-      def self.fully_release_lock: (RC::client redis, String lock_key, String lock_key_queue) -> fullReleaseResult
+      private def self.fully_release_lock: (RC::client redis, String lock_key, String lock_key_queue) -> fullReleaseResult
     end
   end
 end

@@ -1,6 +1,14 @@
 ---
 path: ".gem_rbs_collection"
 gems:
+- name: base64
+  version: '0.1'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: e2749137770bcff57a062d47b0d08922071f3d37
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
 - name: connection_pool
   version: '2.4'
   source:
@@ -21,10 +29,6 @@ gems:
   version: '0'
   source:
     type: stdlib
-- name: qonfig
-  version: 0.29.0
-  source:
-    type: rubygems
 - name: securerandom
   version: '0'
   source:

@@ -9,10 +9,8 @@ module RedisQueuedLocks
 
       def self.locks: (RC::client redis_client, scan_size: Integer, with_info: bool) -> locks
 
-      private
-
-      def self.scan_locks: (RC::client redis_client, Integer scan_size) -> lockList
-      def self.extract_locks_info: (RC::client redis_client, Set[::String] lock_keys) -> locksInfo
+      private def self.scan_locks: (RC::client redis_client, Integer scan_size) -> lockList
+      private def self.extract_locks_info: (RC::client redis_client, Set[::String] lock_keys) -> locksInfo
     end
   end
 end

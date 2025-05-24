@@ -15,7 +15,7 @@ module RedisQueuedLocks
     attr_reader swarm: RQL::Swarm
 
     def initialize: (RC::client redis_client) { (?) -> untyped } -> void
-    def swarmize!: -> RQL::Swarm::swarmizeResult
+    def swarmize!: () -> RQL::Swarm::swarmizeResult
     def deswarmize!: () -> RQL::Swarm::deswarmizeResult
     def swarm_info: (?zombie_ttl: Integer) -> RQL::Swarm::Acquirers::acquirersList
 

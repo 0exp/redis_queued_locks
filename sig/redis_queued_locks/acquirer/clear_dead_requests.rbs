@@ -22,9 +22,7 @@ module RedisQueuedLocks
         bool instr_sample_this
       ) -> clearResult
 
-      private
-
-      def self.each_lock_queue: (RC::client redis_client, Integer scan_size) { (String lock_queue) -> untyped } -> Enumerator[String]
+      private def self.each_lock_queue: (RC::client redis_client, Integer scan_size) { (String lock_queue) -> untyped } -> Enumerator[String]
     end
   end
 end

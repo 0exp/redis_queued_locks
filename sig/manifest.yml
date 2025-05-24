@@ -1,7 +1,6 @@
 dependencies:
   - timeout
   - redis-client
-  - qonfig
   - securerandom
   - logger
   - objspace

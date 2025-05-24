@@ -3,6 +3,7 @@ inherit_gem:
     - lib/rubocop.general.yml
     - lib/rubocop.rake.yml
     - lib/rubocop.rspec.yml
+    - lib/rubocop.rbs.yml
 
 AllCops:
   TargetRubyVersion: 3.3
@@ -10,9 +11,9 @@ AllCops:
   Include:
     - lib/**/*.rb
     - spec/**/*.rb
+    - sig/**/*.rbs
     - Gemfile
-    - gemfiles/ruby3.1.gemfile
-    - gemfiles/ruby3.2.gemfile
+    - gemfiles/ruby3.3.gemfile
     - Rakefile
     - redis_queued_locks.gemspec
     - bin/console

@@ -1,6 +1,7 @@
 ## [Unreleased]
 ### Changed
 - Updated development dependencies (`armitage-rubocop`, `rbs`, `steep`);
+- Bumped development Ruby version (from `3.3.6` to `3.4.3`);
 - CI is splitted to "mainstream ruby version" and "previous actually maintaned ruby versions";
 - `Acquier` -> `Acquirer`, `Acquierment` -> `Acquirement` (typos):
   - [**Breaking**] Constant renaming: all constants and constant parts were renamed from `Acquier` to `Acquirer`;
@@ -10,12 +11,14 @@
   - [**Breaking**] Exceptions: all `Acquierment` exception constant name parts were renamed to `Acquirement`;
 - [**Breaking**] `RedisQueuedLocks::Data` is not used (**temporary**) as result type of some APIs.
   The reason is that this type can not be used as a record type in `steep`/`rbs` (working on it);
-- [**Breaking**] Minimal Ruby Version - **3.3** (previously - **3.1**);
+- [**Breaking**] Minimal Ruby Version - **3.3** (previously - **3.1**):
+  - removed `3.1` and `3.2` from `CI`;
 ### Added
 - **Type Checking**:
   - library codebase is fully typed;
   - Integrated `RBS` with `Steep` that is configured on **strict mode** (see `sig` directory, `Steepfile` config, `sig/manifest.yml` and `rbs_collection.yml` for dependencies);
   - Added `TypeCheck` CI/CD step;
+  - `Rubocop`: RBS files linting;
 - Test coverage (via `simplecov` with `html` and `lcov` formats). `minimum_coverage` config is temporary disabled (and the CI step is not configured yet) cuz we need to refactor tests in first;
 - CI: `rspec-retry` is temporary added until the tests are fully refactored;
 - Support for `ActiveSupport::BroadcastLogger` logger instances;

@@ -10,7 +10,6 @@ path: .gem_rbs_collection
 gems:
   - name: timeout
   - name: redis-client
-  - name: qonfig
   - name: securerandom
   - name: logger
   - name: objspace

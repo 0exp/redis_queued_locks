@@ -10,12 +10,10 @@ module RedisQueuedLocks
         ?pool_config: Hash[untyped,untyped]
       ) -> RC::client
 
-      private
-
-      def self.sentinel_config: (Hash[Symbol,untyped] config) -> RC::SentinelConfig
-      def self.non_sentinel_config: (Hash[Symbol,untyped] config) -> RC::Config
-      def self.pooled_client: (RC::config redis_config, Hash[Symbol,untyped] pool_config) -> RedisClient::Pooled
-      def self.non_pooled_client: (RC::config redis_config) -> RedisClient
+      private def self.sentinel_config: (Hash[Symbol,untyped] config) -> RC::SentinelConfig
+      private def self.non_sentinel_config: (Hash[Symbol,untyped] config) -> RC::Config
+      private def self.pooled_client: (RC::config redis_config, Hash[Symbol,untyped] pool_config) -> RedisClient::Pooled
+      private def self.non_pooled_client: (RC::config redis_config) -> RedisClient
     end
   end
 end

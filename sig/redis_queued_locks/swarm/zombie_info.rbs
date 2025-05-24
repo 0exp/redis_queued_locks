@@ -15,12 +15,10 @@ module RedisQueuedLocks
       type zombieAcquirers = Set[String]
       def self.zombie_acquirers: (RC::client redis_client, Integer zombie_ttl, Integer lock_scan_size) -> zombieAcquirers
 
-      private
-
-      def self.extract_zombie_hosts: (RC::client rconn, Integer zombie_ttl) -> zombieHosts
-      def self.extract_zombie_locks: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieLocks
-      def self.extract_zombie_acquirers: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieAcquirers
-      def self.extract_all: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieInfo
+      private def self.extract_zombie_hosts: (RC::client rconn, Integer zombie_ttl) -> zombieHosts
+      private def self.extract_zombie_locks: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieLocks
+      private def self.extract_zombie_acquirers: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieAcquirers
+      private def self.extract_all: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieInfo
     end
   end
 end

@@ -23,10 +23,8 @@ module RedisQueuedLocks
         bool instr_sample_this
       ) -> releaseResult
 
-      private
-
       type fullRelesaeResult = { ok: bool, result: { rel_key_cnt: Integer } }
-      def self.fully_release_all_locks: (RC::client redis, Integer batch_size) -> fullRelesaeResult
+      private def self.fully_release_all_locks: (RC::client redis, Integer batch_size) -> fullRelesaeResult
     end
   end
 end

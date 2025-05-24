@@ -4,6 +4,7 @@ source 'https://rubygems.org'
 
 gemspec
 
+# NOTE: dev dependencies
 gem 'activesupport', require: false
 gem 'armitage-rubocop', require: false
 gem 'bundler', require: false
