@@ -8,6 +8,7 @@ require 'rubocop-performance'
 require 'rubocop-rspec'
 require 'rubocop-rake'
 require 'rubocop-on-rbs'
+require 'rubocop-thread_safety'
 
 RuboCop::RakeTask.new(:rubocop) do |t|
   config_path = File.expand_path(File.join('.rubocop.yml'), __dir__)
@@ -16,7 +17,8 @@ RuboCop::RakeTask.new(:rubocop) do |t|
     '--plugin', 'rubocop-rspec',
     '--plugin', 'rubocop-performance',
     '--plugin', 'rubocop-rake',
-    '--plugin', 'rubocop-on-rbs'
+    '--plugin', 'rubocop-on-rbs',
+    '--plugin', 'rubocop-thread_safety'
   ]
 end
 
