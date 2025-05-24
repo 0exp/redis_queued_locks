@@ -4,14 +4,14 @@ source 'https://rubygems.org'
 
 gemspec path: '..'
 
-gem 'activesupport', '< 8'
-gem 'armitage-rubocop', '<= 1.59.0'
+gem 'activesupport'
+gem 'armitage-rubocop'
 gem 'bundler'
 gem 'pry'
 gem 'rake'
 gem 'rbs'
 gem 'rspec'
-gem 'rspec-retry'  # NOTE: temporary decision for non-refactored tests
+gem 'rspec-retry' # NOTE: temporary decision for non-refactored tests
 gem 'simplecov'
 gem 'simplecov-lcov'
 gem 'steep'
