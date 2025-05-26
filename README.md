@@ -2091,6 +2091,7 @@ Detalized event semantics and payload structure:
     - `write` - waits - `read`;
     - `write` - waits - `write`;
 - **Minor**:
+  - `#lock`/`#lock!` - `timeout:` option: support for granular periods (it supports only `seconds` at the moment, but we need `milliseconds`);
   - Add `after timeout hook` ability for timeout errors with an ability to access the binding context (if it possibly) of the thread where it failed;
   - Add `ignore timeout errors` ability (for debug purposes);
   - A special explicit documentation section that will explain and clarify which exceptions can be occured and what cases occurs them (at the moment such cases are explained inside the lock methods documentation that is not really convinient);
