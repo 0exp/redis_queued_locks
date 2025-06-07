@@ -63,6 +63,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [Instrumentation Configuration](#instrumentation-configuration)
   - [Instrumentation Events](#instrumentation-events)
 - [Roadmap](#roadmap)
+- [Build and Develop](#build-and-develop)
 - [Contributing](#contributing)
 - [License](#license)
 - [Authors](#authors)
@@ -2121,6 +2122,30 @@ Detalized event semantics and payload structure:
   - **Research**: support for `Valkey` database backend (https://github.com/valkey-io/valkey) (https://valkey.io/);
   - **Research**: support for `Garnet` database backend (https://microsoft.github.io/) (https://github.com/microsoft/garnet);
   - add a library-level exception, when RQL-related key (required for it's logic) has incompatible type (means: some other program uses our key with their own type and logic and RQL can't work properly);
+---
+
+## Build and Develop
+
+- Tests (RSpec):
+```shell
+bundle exec rake rspec
+```
+
+- Linting (Rubocop+RBS):
+```shell
+bundle exec rake rubocop
+```
+
+- `Static` TypeChecking (Steep):
+```shell
+bundle exec rake steep:check
+```
+
+- `Runtime` TypeChecking (RBS):
+```shell
+bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' bundle exec rspec --failure-exit-code=0
+```
+
 ---
 
 ## Contributing
