@@ -26,7 +26,7 @@
 - Test coverage (via `simplecov` with `html` and `lcov` formats). `minimum_coverage` config is temporary disabled (and the CI step is not configured yet) cuz we need to refactor tests in first;
 - CI:
   - `rspec-retry` is temporary added until the tests are fully refactored;
-  - typecheck steps: `TypeCheck (Static)` (based on `steep` checks) and `TypeCheckl (Runtime)` (based on `RBS` runtime type checking/testing);
+  - typecheck steps: `TypeCheck (Static)` (based on `steep` checks) and `TypeCheck (Runtime)` (based on `RBS` runtime type checking/testing);
 - Support for `ActiveSupport::BroadcastLogger` logger instances;
 
 ## [1.12.1]
