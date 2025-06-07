@@ -10,3 +10,9 @@ path: .gem_rbs_collection
 gems:
   - name: redis-client
   - name: securerandom
+  - name: timeout
+  - name: redis-client
+  - name: securerandom
+  - name: logger
+  - name: objspace
+  - name: monitor

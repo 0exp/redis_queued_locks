@@ -9,6 +9,18 @@ gems:
     revision: 52a7ef8a9328fb2413e3b42dd8ee37deb703a940
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
+- name: logger
+  version: '0'
+  source:
+    type: stdlib
+- name: monitor
+  version: '0'
+  source:
+    type: stdlib
+- name: objspace
+  version: '0'
+  source:
+    type: stdlib
 - name: securerandom
   version: '0'
   source:
