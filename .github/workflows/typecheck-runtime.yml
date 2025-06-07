@@ -1,4 +1,4 @@
-name: TypeCheck (Runtime) [RBS]
+name: TypeCheck (Runtime) (RBS)
 on: [push]
 jobs:
   typecheck-runtime:
@@ -20,5 +20,5 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby_version }}
           bundler-cache: true
-      - name: TypeCheck (Runtime) [RBS]
+      - name: TypeCheck (Runtime) (RBS)
         run: RBS_TEST_RAISE=true RUBYOPT='-rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' bundle exec rspec --failure-exit-code=0

@@ -1,4 +1,4 @@
-name: TypeCheck (Static) [Steep]
+name: TypeCheck (Static) (Steep)
 on: [push]
 jobs:
   typecheck-static:
@@ -20,5 +20,5 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby_version }}
           bundler-cache: true
-      - name: TypeCheck (Static) [Steep]
+      - name: TypeCheck (Static) (Steep)
         run: bundle exec rbs collection install && bundle exec rake steep:check -j 10
