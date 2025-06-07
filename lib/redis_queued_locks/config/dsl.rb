@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 # @api private
-# @since ?.?.?
+# @since [1.13.0]
 module RedisQueuedLocks::Config::DSL
   # @api private
-  # @since ?.?.?
+  # @since [1.13.0]
   module ClassMethods
     # NOTE:
     #   1. Style/DefWithParentheses rubocop's cop incorrectly drops `()` from method definition
@@ -15,7 +15,7 @@ module RedisQueuedLocks::Config::DSL
     # @return [Hash<String,Block>]
     #
     # @api private
-    # @since ?.?.?
+    # @since [1.13.0]
     def config_setters()= @config_setters # rubocop:disable Style/DefWithParentheses
 
     # NOTE:
@@ -27,7 +27,7 @@ module RedisQueuedLocks::Config::DSL
     # @return [Hash<String,Block>]
     #
     # @api private
-    # @since ?.?.?
+    # @since [1.13.0]
     def config_validators()= @config_validators # rubocop:disable Style/DefWithParentheses
 
     # @param config_key [String]
@@ -35,7 +35,7 @@ module RedisQueuedLocks::Config::DSL
     # @return [Bool]
     #
     # @api private
-    # @since ?.?.?
+    # @since [1.13.0]
     def validate(config_key, &validator)
       config_validators[config_key] = validator
     end
@@ -45,7 +45,7 @@ module RedisQueuedLocks::Config::DSL
     # @return [void]
     #
     # @api private
-    # @since ?.?.?
+    # @since [1.13.0]
     def setting(config_key, config_value)
       config_setters[config_key] = proc do |config|
         config[config_key] = config_value
@@ -57,7 +57,7 @@ module RedisQueuedLocks::Config::DSL
     # @return [Hash<String,Blcok>]
     #
     # @api private
-    # @since ?.?.?
+    # @since [1.13.0]
     def config_setters
       self.class.config_setters # steep:ignore
     end
@@ -65,7 +65,7 @@ module RedisQueuedLocks::Config::DSL
     # @return [Hash<String,Blcok>]
     #
     # @api private
-    # @since ?.?.?
+    # @since [1.13.0]
     def config_validators
       self.class.config_validators # steep:ignore
     end
@@ -76,7 +76,7 @@ module RedisQueuedLocks::Config::DSL
     # @return [void]
     #
     # @api private
-    # @since ?.?.?
+    # @since [1.13.0]
     def included(child_klass)
       child_klass.instance_variable_set(
         :@config_setters,

@@ -27,7 +27,7 @@ class RedisQueuedLocks::Client
   # @return [RedisQueuedLocks::Config]
   #
   # @api public
-  # @since ?.?.?
+  # @since [1.13.0]
   attr_reader :config
 
   # @param redis_client [RedisClient]
@@ -39,6 +39,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
+  # @version 1.13.0
   def initialize(redis_client, &configuration)
     @config = RedisQueuedLocks::Config.new(&configuration)
     @uniq_identity = config['uniq_identifier'].call #: String
@@ -51,7 +52,7 @@ class RedisQueuedLocks::Client
   # @return [void]
   #
   # @api public
-  # @since ?.?.?
+  # @since [1.13.0]
   def configure(&configuration)
     config.configure(&configuration)
   end
@@ -307,7 +308,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.8.0
+  # @version 1.13.0
   # rubocop:disable Metrics/MethodLength
   def lock(
     lock_name,
@@ -383,7 +384,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.8.0
+  # @version 1.13.0
   # rubocop:disable Metrics/MethodLength
   def lock!(
     lock_name,

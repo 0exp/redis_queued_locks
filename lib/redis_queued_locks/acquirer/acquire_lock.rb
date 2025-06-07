@@ -157,7 +157,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.12.1
+    # @version 1.13.0
     def acquire_lock(
       redis,
       lock_name,

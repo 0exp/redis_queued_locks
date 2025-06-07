@@ -22,7 +22,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
   #
   # @api private
   # @since 1.7.0
-  # @version 1.9.0
+  # @version 1.13.0
   def dequeue_from_lock_queue(
     redis,
     logger,

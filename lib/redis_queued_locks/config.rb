@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 # @api private
-# @since ?.?.?
+# @since [1.13.0]
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Config
   require_relative 'config/dsl'
 
   # @api private
-  # @since ?.?.?
+  # @since [1.13.0]
   include DSL
 
   setting('retry_count', 3)
@@ -109,13 +109,13 @@ class RedisQueuedLocks::Config
   # @return [Hash<Symbol,Any>]
   #
   # @api private
-  # @since ?.?.?
+  # @since [1.13.0]
   attr_reader :config_state
 
   # @return [void]
   #
   # @api private
-  # @since ?.?.?
+  # @since [1.13.0]
   def initialize(&configuration)
     @config_state = {}
     config_setters.each_value { |setter| setter.call(@config_state) }
@@ -128,7 +128,7 @@ class RedisQueuedLocks::Config
   # @return [void]
   #
   # @api private
-  # @since ?.?.?
+  # @since [1.13.0]
   def configure(&configuration)
     yield(self) if block_given?
   end
@@ -139,7 +139,7 @@ class RedisQueuedLocks::Config
   # @raise [RedisQueuedLocks::ConfigNotFoundError]
   #
   # @api public
-  # @since ?.?.?
+  # @since [1.13.0]
   def [](config_key)
     prevent_key__non_existent(config_key)
     config_state[config_key]
@@ -153,7 +153,7 @@ class RedisQueuedLocks::Config
   # @raise [RedisQueuedLocks::ConfigValidationError]
   #
   # @api public
-  # @since ?.?.?
+  # @since [1.13.0]
   def []=(config_key, config_value)
     prevent_key__non_existent(config_key)
     prevent_key__invalid_type(config_key, config_value)
@@ -178,7 +178,7 @@ class RedisQueuedLocks::Config
   # @return [Hash<String,Any>]
   #
   # @api public
-  # @since ?.?.?
+  # @since [1.13.0]
   def slice(config_key_pattern)
     key_selector = "#{config_key_pattern}."
     key_splitter = key_selector.size
@@ -201,7 +201,7 @@ class RedisQueuedLocks::Config
   # @raise [RedisQueuedLocks::ConfigNotFoundError]
   #
   # @api private
-  # @since ?.?.?
+  # @since [1.13.0]
   def prevent_key__non_existent(config_key)
     unless config_state.key?(config_key)
       raise(
@@ -218,7 +218,7 @@ class RedisQueuedLocks::Config
   # @raise [RedisQueuedLocks::ConfigValidationError]
   #
   # @api private
-  # @sicne ?.?.?
+  # @sicne [1.13.0]
   def prevent_key__invalid_type(config_key, config_value)
     unless config_validators[config_key].call(config_value)
       raise(

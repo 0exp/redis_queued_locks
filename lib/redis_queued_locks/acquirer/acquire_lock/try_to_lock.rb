@@ -39,7 +39,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   #
   # @api private
   # @since 1.0.0
-  # @version 1.9.0
+  # @version 1.13.0
   # rubocop:disable Metrics/MethodLength
   def try_to_lock(
     redis,
