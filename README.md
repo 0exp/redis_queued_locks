@@ -2115,7 +2115,6 @@ Detalized event semantics and payload structure:
   - **automatic** deadlock detection;
   - `go`-lang implementation;
   - (_research_) simplification and speedup of the internal "redis-communuication-and-data-storing"-based algorithms;
-  - TypeChecking: (rbs) type signature testing (`RUBYOPT='-rrbs/test/setup' RBS_TEST_TARGET='RedisQueuedLocks::*' bundle exec rspec`);
   - `unlock_on:`-option in lock/lock! logic in order to support auto-unlocking on any exception rasaied under the invoked block (invoked under the lock);
   - **Research**: support for `Valkey` database backend (https://github.com/valkey-io/valkey) (https://valkey.io/);
   - **Research**: support for `Garnet` database backend (https://microsoft.github.io/) (https://github.com/microsoft/garnet);
