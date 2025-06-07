@@ -1,4 +1,4 @@
-name: TypeCheck (Static) (Steep)
+name: TypeCheck (Static) [Steep]
 on: [push]
 jobs:
   typecheck-static:

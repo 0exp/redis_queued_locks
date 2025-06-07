@@ -1,4 +1,4 @@
-name: TypeCheck (Runtime) (RBS)
+name: TypeCheck (Runtime) [RBS]
 on: [push]
 jobs:
   typecheck-runtime:
