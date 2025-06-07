@@ -2126,22 +2126,22 @@ Detalized event semantics and payload structure:
 
 ## Build and Develop
 
-- Tests (RSpec):
+- Tests (`RSpec`):
 ```shell
 bundle exec rake rspec
 ```
 
-- Linting (Rubocop+RBS):
+- Linting (`Rubocop`+`RBS`):
 ```shell
 bundle exec rake rubocop
 ```
 
-- `Static` TypeChecking (Steep):
+- `Static` TypeChecking (`Steep`):
 ```shell
 bundle exec rake steep:check
 ```
 
-- `Runtime` TypeChecking (RBS):
+- `Runtime` TypeChecking (`RBS`):
 ```shell
 bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' bundle exec rspec --failure-exit-code=0
 ```
