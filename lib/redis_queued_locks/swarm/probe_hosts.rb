@@ -45,7 +45,7 @@ class RedisQueuedLocks::Swarm::ProbeHosts < RedisQueuedLocks::Swarm::SwarmElemen
   # @api private
   # @since 1.9.0
   def enabled?
-    rql_client.config[:swarm][:probe_hosts][:enabled_for_swarm]
+    rql_client.config['swarm.probe_hosts.enabled_for_swarm']
   end
 
   # @return [Thread]
@@ -55,15 +55,15 @@ class RedisQueuedLocks::Swarm::ProbeHosts < RedisQueuedLocks::Swarm::SwarmElemen
   def spawn_main_loop!
     Thread.new do
       redis_client = RedisQueuedLocks::Swarm::RedisClientBuilder.build(
-        pooled: rql_client.config[:swarm][:probe_hosts][:redis_config][:pooled],
-        sentinel: rql_client.config[:swarm][:probe_hosts][:redis_config][:sentinel],
-        config: rql_client.config[:swarm][:probe_hosts][:redis_config][:config],
-        pool_config: rql_client.config[:swarm][:probe_hosts][:redis_config][:pool_config]
+        pooled: rql_client.config['swarm.probe_hosts.redis_config.pooled'],
+        sentinel: rql_client.config['swarm.probe_hosts.redis_config.sentinel'],
+        config: rql_client.config['swarm.probe_hosts.redis_config.config'],
+        pool_config: rql_client.config['swarm.probe_hosts.redis_config.pool_config']
       )
 
       loop do
         RedisQueuedLocks::Swarm::ProbeHosts.probe_hosts(redis_client, rql_client.uniq_identity)
-        sleep(rql_client.config[:swarm][:probe_hosts][:probe_period])
+        sleep(rql_client.config['swarm.probe_hosts.probe_period'])
       end
     end
   end

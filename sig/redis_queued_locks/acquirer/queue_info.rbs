@@ -3,7 +3,10 @@ use RedisClient as RC
 module RedisQueuedLocks
   module Acquirer
     module QueueInfo
-      type queueInfo = { 'lock_queue' => String, 'queue' => Array[{ 'acq_id' => String, 'score' => Integer|Float }] }
+      type queueInfo = {
+        'lock_queue' => String,
+        'queue' => Array[{ 'acq_id' => String, 'score' => Integer|Float }]
+      }
       def self.queue_info: (RC::client redis_client, String lock_name) -> queueInfo?
     end
   end

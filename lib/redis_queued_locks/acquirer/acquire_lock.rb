@@ -72,15 +72,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     # @option detailed_acq_timeout_error [Boolean]
     #   - Add additional data to the acquirement timeout error such as the current lock queue state
     #   and the required lock state;
-    #   - See `config[:detailed_acq_timeout_error]` for details;
+    #   - See `config['detailed_acq_timeout_error']` for details;
     # @option logger [::Logger,#debug]
-    #   - Logger object used from the configuration layer (see config[:logger]);
+    #   - Logger object used from the configuration layer (see config['logger']);
     #   - See `RedisQueuedLocks::Logging::VoidLogger` for example;
     #   - Supports `SemanticLogger::Logger` (see "semantic_logger" gem)
     # @option log_lock_try [Boolean]
     #   - should be logged the each try of lock acquiring (a lot of logs can be generated depending
     #     on your retry configurations);
-    #   - see `config[:log_lock_try]`;
+    #   - see `config['log_lock_try']`;
     # @option instrument [NilClass,Any]
     #   - Custom instrumentation data wich will be passed to the instrumenter's payload
     #     with :instrument key;
@@ -88,12 +88,14 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   - The conflict strategy mode for cases when the process that obtained the lock
     #     want to acquire this lock again;
     #   - By default uses `:wait_for_lock` strategy;
-    #   - pre-confured in `config[:default_conflict_strategy]`;
+    #   - pre-confured in `config['default_conflict_strategy']`;
     #   - Supports:
     #     - `:work_through`;
     #     - `:extendable_work_through`;
     #     - `:wait_for_lock`;
     #     - `:dead_locking`;
+    # @option read_write_mode [Symbol]
+    #   - ?
     # @option access_strategy [Symbol]
     #   - The way in which the lock will be obtained;
     #   - By default it uses `:queued` strategy;
@@ -103,19 +105,19 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #     - `:random` (RANDOM): obtain a lock without checking the positions in the queue
     #       (but with checking the limist, retries, timeouts and so on). if lock is
     #       free to obtain - it will be obtained;
-    #   - pre-configured in `config[:default_access_strategy]`;
+    #   - pre-configured in `config['default_access_strategy']`;
     # @option log_sampling_enabled [Boolean]
     #   - enables <log sampling>: only the configured percent of RQL cases will be logged;
     #   - disabled by default;
-    #   - works in tandem with <config.log_sampling_percent and <log.sampler>;
+    #   - works in tandem with <config['log_sampling_percent'] and <config['log_sampler']>;
     # @option log_sampling_percent [Integer]
     #   - the percent of cases that should be logged;
-    #   - take an effect when <config.log_sampling_enalbed> is true;
-    #   - works in tandem with <config.log_sampling_enabled> and <config.log_sampler> configs;
+    #   - take an effect when <config['log_sampling_enalbed']> is true;
+    #   - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
     # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     #   - percent-based log sampler that decides should be RQL case logged or not;
-    #   - works in tandem with <config.log_sampling_enabled> and
-    #     <config.log_sampling_percent> configs;
+    #   - works in tandem with <config['log_sampling_enabled']> and
+    #     <config['log_sampling_percent']> configs;
     #   - based on the ultra simple percent-based (weight-based) algorithm that uses
     #     SecureRandom.rand method so the algorithm error is ~(0%..13%);
     #   - you can provide your own log sampler with bettter algorithm that should realize
@@ -128,15 +130,16 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   - enables <instrumentaion sampling>: only the configured percent
     #     of RQL cases will be instrumented;
     #   - disabled by default;
-    #   - works in tandem with <config.instr_sampling_percent and <log.instr_sampler>;
+    #   - works in tandem with <config['instr_sampling_percent']> and <config['instr_sampler']>;
     # @option instr_sampling_percent [Integer]
     #   - the percent of cases that should be instrumented;
-    #   - take an effect when <config.instr_sampling_enalbed> is true;
-    #   - works in tandem with <config.instr_sampling_enabled> and <config.instr_sampler> configs;
+    #   - take an effect when <config['instr_sampling_enalbed']> is true;
+    #   - works in tandem with <config['instr_sampling_enabled']>
+    #     and <config['instr_sampler']> configs;
     # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
     #   - percent-based log sampler that decides should be RQL case instrumented or not;
-    #   - works in tandem with <config.instr_sampling_enabled> and
-    #     <config.instr_sampling_percent> configs;
+    #   - works in tandem with <config['instr_sampling_enabled']> and
+    #     <config['instr_sampling_percent']> configs;
     #   - based on the ultra simple percent-based (weight-based) algorithm that uses
     #     SecureRandom.rand method so the algorithm error is ~(0%..13%);
     #   - you can provide your own log sampler with bettter algorithm that should realize
@@ -179,6 +182,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       logger:,
       log_lock_try:,
       conflict_strategy:,
+      read_write_mode:,
       access_strategy:,
       log_sampling_enabled:,
       log_sampling_percent:,
@@ -240,6 +244,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       lock_ttl = ttl
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
+
+      read_lock_key_queue = RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
+      write_lock_key_queue = RedisQueuedLocks::Resource.prepare_write_lock_queue(lock_name)
+
       acquirer_position = RedisQueuedLocks::Resource.calc_initial_acquirer_position
 
       log_sampled = RedisQueuedLocks::Logging.should_log?(
@@ -273,7 +281,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           redis,
           logger,
           lock_key,
+          read_write_mode,
           lock_key_queue,
+          read_lock_key_queue,
+          write_lock_key_queue,
           queue_ttl,
           acquirer_id,
           host_id,
@@ -326,7 +337,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             logger,
             log_lock_try,
             lock_key,
+            read_write_mode,
             lock_key_queue,
+            read_lock_key_queue,
+            write_lock_key_queue,
             acquirer_id,
             host_id,
             acquirer_position,

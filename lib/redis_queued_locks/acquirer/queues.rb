@@ -67,11 +67,11 @@ module RedisQueuedLocks::Acquirer::Queues
               zrange_cmd_res.map { |val| { 'acq_id' => val[0], 'score' => val[1] } }
             else
               # Step 2.Y: lock queue did not exist during the pipeline invocation
-              [] #: Array[Hash[String,String|Float]]
+              [] #: Array[Hash[String,Float]]
             end
           end
 
-          # @type var queue_info: Array[Hash[String,String|Float]]
+          # @type var queue_info: Array[Hash[String,Float]]
 
           # Step 3: push the lock queue info to the result store
           seeded_queues << {

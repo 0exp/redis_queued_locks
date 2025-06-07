@@ -23,7 +23,7 @@ module RedisQueuedLocks
         type elementStatus = {
           enabled: bool,
           ractor: { running: bool, state: String },
-          main_loop: { running: bool, status: String }
+          main_loop: { running: bool, state: String }
         }
         def status: () -> elementStatus
 

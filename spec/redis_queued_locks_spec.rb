@@ -70,9 +70,9 @@ RSpec.describe RedisQueuedLocks do
 
     specify 'supervisor keeps the swarm elements up and running' do
       client = RedisQueuedLocks::Client.new(redis) do |conf|
-        conf.swarm.auto_swarm = true
-        conf.swarm.supervisor.liveness_probing_period = 6
-        conf.swarm.probe_hosts.probe_period = 2
+        conf['swarm.auto_swarm'] = true
+        conf['swarm.supervisor.liveness_probing_period'] = 6
+        conf['swarm.probe_hosts.probe_period'] = 2
       end
 
       # kill swarm elements. supervisor should up them soon.
@@ -135,9 +135,9 @@ RSpec.describe RedisQueuedLocks do
     specify 'swarm_status / swarm_info' do
       aggregate_failures 'non-auto-swarmed => swarm is not initialized' do
         client = RedisQueuedLocks::Client.new(redis) do |conf|
-          conf.swarm.auto_swarm = false
-          conf.swarm.probe_hosts.enabled_for_swarm = false
-          conf.swarm.flush_zombies.enabled_for_swarm = false
+          conf['swarm.auto_swarm'] = false
+          conf['swarm.probe_hosts.enabled_for_swarm'] = false
+          conf['swarm.flush_zombies.enabled_for_swarm'] = false
         end
 
         expect(client.swarm_info).to match({})
@@ -210,10 +210,10 @@ RSpec.describe RedisQueuedLocks do
 
       aggregate_failures 'swarmed => swarm info => probes and zombie status' do
         client = RedisQueuedLocks::Client.new(redis) do |config|
-          config.swarm.auto_swarm = true
-          config.swarm.probe_hosts.probe_period = 3
-          config.swarm.probe_hosts.enabled_for_swarm = true
-          config.swarm.flush_zombies.enabled_for_swarm = true
+          config['swarm.auto_swarm'] = true
+          config['swarm.probe_hosts.probe_period'] = 3
+          config['swarm.probe_hosts.enabled_for_swarm'] = true
+          config['swarm.flush_zombies.enabled_for_swarm'] = true
         end
 
         expect(client.swarm_status).to match({
@@ -274,8 +274,8 @@ RSpec.describe RedisQueuedLocks do
 
     specify 'manual host probing (with statuses)' do
       client = RedisQueuedLocks::Client.new(redis) do |conf|
-        conf.swarm.auto_swarm = false
-        conf.swarm.flush_zombies.zombie_ttl = 4_000
+        conf['swarm.auto_swarm'] = false
+        conf['swarm.flush_zombies.zombie_ttl'] = 4_000
       end
 
       # No probes at start
@@ -328,11 +328,11 @@ RSpec.describe RedisQueuedLocks do
 
     specify 'manual zombie flushing (with statuses)' do
       client = RedisQueuedLocks::Client.new(redis) do |conf|
-        conf.swarm.auto_swarm = false
+        conf['swarm.auto_swarm'] = false
         # NOTE: we will manually probe hosts and flush zombies
-        conf.swarm.probe_hosts.enabled_for_swarm = false
-        conf.swarm.flush_zombies.enabled_for_swarm = false
-        conf.swarm.flush_zombies.zombie_ttl = 4_000
+        conf['swarm.probe_hosts.enabled_for_swarm'] = false
+        conf['swarm.flush_zombies.enabled_for_swarm'] = false
+        conf['swarm.flush_zombies.zombie_ttl'] = 4_000
       end
 
       # create a zombie lock
@@ -385,11 +385,11 @@ RSpec.describe RedisQueuedLocks do
 
     specify '(auto-swarming!): zombie locks (with hosts and acquirers)' do
       main_client = RedisQueuedLocks::Client.new(redis) do |conf|
-        conf.swarm.auto_swarm = true
-        conf.swarm.probe_hosts.enabled_for_swarm = true
-        conf.swarm.flush_zombies.enabled_for_swarm = false
-        conf.swarm.flush_zombies.zombie_ttl = 6_000
-        conf.swarm.flush_zombies.zombie_flush_period = 5
+        conf['swarm.auto_swarm'] = true
+        conf['swarm.probe_hosts.enabled_for_swarm'] = true
+        conf['swarm.flush_zombies.enabled_for_swarm'] = false
+        conf['swarm.flush_zombies.zombie_ttl'] = 6_000
+        conf['swarm.flush_zombies.zombie_flush_period'] = 5
       end
 
       aggregate_failures 'no zombies at start' do
@@ -416,9 +416,9 @@ RSpec.describe RedisQueuedLocks do
 
       outer_thread1 = Thread.new do
         client = RedisQueuedLocks::Client.new(redis) do |conf|
-          conf.swarm.auto_swarm = true
-          conf.swarm.probe_hosts.enabled_for_swarm = true
-          conf.swarm.flush_zombies.enabled_for_swarm = false
+          conf['swarm.auto_swarm'] = true
+          conf['swarm.probe_hosts.enabled_for_swarm'] = true
+          conf['swarm.flush_zombies.enabled_for_swarm'] = false
         end
 
         outer_acquirer1 = client.current_acquirer_id
@@ -430,9 +430,9 @@ RSpec.describe RedisQueuedLocks do
 
       outer_thread2 = Thread.new do
         client = RedisQueuedLocks::Client.new(redis) do |conf|
-          conf.swarm.auto_swarm = true
-          conf.swarm.probe_hosts.enabled_for_swarm = true
-          conf.swarm.flush_zombies.enabled_for_swarm = false
+          conf['swarm.auto_swarm'] = true
+          conf['swarm.probe_hosts.enabled_for_swarm'] = true
+          conf['swarm.flush_zombies.enabled_for_swarm'] = false
         end
 
         outer_acquirer2 = client.current_acquirer_id
@@ -502,7 +502,7 @@ RSpec.describe RedisQueuedLocks do
 
       # KILL ZOMBIES by the SWARM: enable zombie flusher
       main_client.configure do |config|
-        config.swarm.flush_zombies.enabled_for_swarm = true # enable zombie flusher
+        config['swarm.flush_zombies.enabled_for_swarm'] = true # enable zombie flusher
       end
       sleep(2 + 5) # wait for supervisor probe period (up zombie flusher) + zombie flush period
       sleep(1) # wait for zombie killing
@@ -519,7 +519,7 @@ RSpec.describe RedisQueuedLocks do
 
   specify ':random access strategy' do
     client = RedisQueuedLocks::Client.new(redis) do |conf|
-      conf.default_access_strategy = :random
+      conf['default_access_strategy'] = :random
     end
 
     client.lock('random.access.strategy', ttl: 2_000, meta: { 'trd' => 0 })
@@ -545,7 +545,7 @@ RSpec.describe RedisQueuedLocks do
 
   specify ':random access strategy (manually defined)' do
     client = RedisQueuedLocks::Client.new(redis) do |conf|
-      conf.default_access_strategy = :queued
+      conf['default_access_strategy'] = :queued
     end
 
     client.lock(
@@ -588,7 +588,7 @@ RSpec.describe RedisQueuedLocks do
 
   specify ':queued access strategy' do
     client = RedisQueuedLocks::Client.new(redis) do |conf|
-      conf.default_access_strategy = :queued
+      conf['default_access_strategy'] = :queued
     end
 
     client.lock(
@@ -684,8 +684,8 @@ RSpec.describe RedisQueuedLocks do
 
     # NOTE: enabled sampling
     client = RedisQueuedLocks::Client.new(redis) do |conf|
-      conf.instr_sampling_enabled = true
-      conf.instr_sampling_percent = 10
+      conf['instr_sampling_enabled'] = true
+      conf['instr_sampling_percent'] = 10
     end
 
     100.times do
@@ -702,7 +702,7 @@ RSpec.describe RedisQueuedLocks do
 
     # NOTE: disabled sampling
     client = RedisQueuedLocks::Client.new(redis) do |conf|
-      conf.instr_sampling_enabled = false
+      conf['instr_sampling_enabled'] = false
     end
 
     sampled_notifications = Array.new(100) do
@@ -716,7 +716,7 @@ RSpec.describe RedisQueuedLocks do
 
     # NOTE: sampling ignorance
     client = RedisQueuedLocks::Client.new(redis) do |conf|
-      conf.instr_sampling_enabled = true
+      conf['instr_sampling_enabled'] = true
     end
 
     sampled_notifications = Array.new(100) do
@@ -748,9 +748,9 @@ RSpec.describe RedisQueuedLocks do
 
     # NOTE: enabled sampling
     client = RedisQueuedLocks::Client.new(redis) do |conf|
-      conf.log_lock_try = true
-      conf.log_sampling_enabled = true
-      conf.log_sampling_percent = 10
+      conf['log_lock_try'] = true
+      conf['log_sampling_enabled'] = true
+      conf['log_sampling_percent'] = 10
     end
 
     100.times do
@@ -767,9 +767,9 @@ RSpec.describe RedisQueuedLocks do
 
     # NOTE: disabled sampling
     client = RedisQueuedLocks::Client.new(redis) do |conf|
-      conf.log_lock_try = true
-      conf.log_sampling_enabled = false
-      conf.log_sampling_percent = 15
+      conf['log_lock_try'] = true
+      conf['log_sampling_enabled'] = false
+      conf['log_sampling_percent'] = 15
     end
 
     sampled_logs = Array.new(100) do
@@ -783,9 +783,9 @@ RSpec.describe RedisQueuedLocks do
 
     # NOTE: ignored sampling
     client = RedisQueuedLocks::Client.new(redis) do |conf|
-      conf.log_lock_try = true
-      conf.log_sampling_enabled = true
-      conf.log_sampling_percent = 15
+      conf['log_lock_try'] = true
+      conf['log_sampling_enabled'] = true
+      conf['log_sampling_percent'] = 15
     end
 
     sampled_logs = Array.new(100) do
@@ -800,9 +800,9 @@ RSpec.describe RedisQueuedLocks do
 
   specify 'reentrant locks - :extendable_work_trhough' do
     client = RedisQueuedLocks::Client.new(redis) do |config|
-      config.default_conflict_strategy = :extendable_work_through
-      config.log_lock_try = true
-      config.logger = Logger.new(STDOUT)
+      config['default_conflict_strategy'] = :extendable_work_through
+      config['log_lock_try'] = true
+      config['logger'] = Logger.new(STDOUT)
     end
     # Current Lock TTL: 5000
     result1 = client.lock('pek', ttl: 5000)
@@ -978,9 +978,9 @@ RSpec.describe RedisQueuedLocks do
 
   specify 'reentrant locks - :work_through' do
     client = RedisQueuedLocks::Client.new(redis) do |config|
-      config.default_conflict_strategy = :work_through
-      config.log_lock_try = true
-      config.logger = Logger.new(STDOUT)
+      config['default_conflict_strategy'] = :work_through
+      config['log_lock_try'] = true
+      config['logger'] = Logger.new(STDOUT)
     end
 
     # Current Lock TTL: 5000
@@ -1131,9 +1131,9 @@ RSpec.describe RedisQueuedLocks do
 
   specify 'reentrant locks - :dead_locking' do
     client = RedisQueuedLocks::Client.new(redis) do |config|
-      config.default_conflict_strategy = :dead_locking
-      config.log_lock_try = true
-      config.logger = Logger.new(STDOUT)
+      config['default_conflict_strategy'] = :dead_locking
+      config['log_lock_try'] = true
+      config['logger'] = Logger.new(STDOUT)
     end
 
     result1 = client.lock('bekkek', ttl: 10_000)
@@ -1304,6 +1304,7 @@ RSpec.describe RedisQueuedLocks do
     redis.call('FLUSHDB')
   end
 
+  # rubocop:disable Layout/LineLength
   specify 'logger interface (+ private API checks)' do
     aggregate_failures "valid logger's #debug interface" do
       # <method signature with 2 parameters>
@@ -1318,9 +1319,9 @@ RSpec.describe RedisQueuedLocks do
       expect(RedisQueuedLocks::Logging.valid_interface?(f2_logger)).to eq(true) # NOTE: private API
       expect(RedisQueuedLocks::Logging.valid_interface?(f3_logger)).to eq(true) # NOTE: private API
 
-      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f1_logger } }.not_to raise_error
-      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f2_logger } }.not_to raise_error
-      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f3_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c['logger'] = f1_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c['logger'] = f2_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c['logger'] = f3_logger } }.not_to raise_error
 
       # <method signature with 1 parameters>
       # f4 => [[:opt, :progname]]
@@ -1334,9 +1335,9 @@ RSpec.describe RedisQueuedLocks do
       expect(RedisQueuedLocks::Logging.valid_interface?(f5_logger)).to eq(true) # NOTE: private API
       expect(RedisQueuedLocks::Logging.valid_interface?(f6_logger)).to eq(true) # NOTE: private API
 
-      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f4_logger } }.not_to raise_error
-      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f5_logger } }.not_to raise_error
-      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f6_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c['logger'] = f4_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c['logger'] = f5_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c['logger'] = f6_logger } }.not_to raise_error
 
       # <method signature with 3 parameters>
       # f7 => [[:rest, :*], [:keyrest, :**], [:block, :&]]
@@ -1345,26 +1346,25 @@ RSpec.describe RedisQueuedLocks do
       expect(RedisQueuedLocks::Logging.valid_interface?(f7_logger)).to eq(true) # NOTE: private API
       expect(RedisQueuedLocks::Logging.valid_interface?(f8_logger)).to eq(true) # NOTE: private API
 
-      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f7_logger } }.not_to raise_error
-      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = f8_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c['logger'] = f7_logger } }.not_to raise_error
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c['logger'] = f8_logger } }.not_to raise_error
     end
 
-    # rubocop:disable Layout/LineLength
     aggregate_failures "invalid logger's #debug interface" do
       logger = Class.new { def debug; end }.new
       expect(RedisQueuedLocks::Logging.valid_interface?(logger)).to eq(false) # NOTE: private API
-      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = logger } }.to raise_error(Qonfig::ValidationError)
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c['logger'] = logger } }.to raise_error(RedisQueuedLocks::ConfigValidationError)
 
       logger = Class.new { def debug(a, b, c, &f); end }.new
       expect(RedisQueuedLocks::Logging.valid_interface?(logger)).to eq(false) # NOTE: private API
-      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = logger } }.to raise_error(Qonfig::ValidationError)
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c['logger'] = logger } }.to raise_error(RedisQueuedLocks::ConfigValidationError)
 
       logger = Object.new
       expect(RedisQueuedLocks::Logging.valid_interface?(logger)).to eq(false) # NOTE: private API
-      expect { RedisQueuedLocks::Client.new(redis) { |c| c.logger = logger } }.to raise_error(Qonfig::ValidationError)
+      expect { RedisQueuedLocks::Client.new(redis) { |c| c['logger'] = logger } }.to raise_error(RedisQueuedLocks::ConfigValidationError)
     end
-    # rubocop:enable Layout/LineLength
   end
+  # rubocop:enable Layout/LineLength
 
   specify 'logging' do
     test_logger = Class.new do
@@ -1384,10 +1384,10 @@ RSpec.describe RedisQueuedLocks do
 
     # NOTE: with log_lock_try test
     client = RedisQueuedLocks::Client.new(redis) do |conf|
-      conf.logger = test_logger
-      conf.log_lock_try = true
-      conf.default_queue_ttl = queue_ttl
-      conf.default_access_strategy = acs_strat
+      conf['logger'] = test_logger
+      conf['log_lock_try'] = true
+      conf['default_queue_ttl'] = queue_ttl
+      conf['default_access_strategy'] = acs_strat
     end
 
     client.lock('pek.kek.cheburek') { 1 + 1 }
@@ -1485,10 +1485,10 @@ RSpec.describe RedisQueuedLocks do
 
     # NOTE: without log_lock_try test
     client = RedisQueuedLocks::Client.new(redis) do |conf|
-      conf.logger = test_logger
-      conf.log_lock_try = false
-      conf.default_queue_ttl = queue_ttl
-      conf.default_access_strategy = acs_strat
+      conf['logger'] = test_logger
+      conf['log_lock_try'] = false
+      conf['default_queue_ttl'] = queue_ttl
+      conf['default_access_strategy'] = acs_strat
     end
 
     client.lock('pek.kek.cheburek') { 1 + 1 }
@@ -1688,7 +1688,7 @@ RSpec.describe RedisQueuedLocks do
     end.new
 
     client = RedisQueuedLocks::Client.new(redis) do |conf|
-      conf.instrumenter = test_notifier
+      conf['instrumenter'] = test_notifier
     end
 
     expect(test_notifier.notifications).to be_empty
@@ -1704,7 +1704,7 @@ RSpec.describe RedisQueuedLocks do
     redis = RedisClient.config.new_pool(timeout: 5, size: 50)
     client = RedisQueuedLocks::Client.new(redis) do |config|
       # NOTE: false by default
-      # config.detailed_acq_timeout_error = false
+      # config['detailed_acq_timeout_error'] = false
     end
 
     client.lock('some-long-lock', ttl: 30_000)
@@ -1902,16 +1902,16 @@ RSpec.describe RedisQueuedLocks do
     end.new
 
     client = RedisQueuedLocks::Client.new(redis) do |config|
-      config.retry_count = 3
-      config.instrumenter = test_notifier
+      config['retry_count'] = 3
+      config['instrumenter'] = test_notifier
     end
 
     redis_for_info = RedisClient.config(db: 1).new_pool(timeout: 5, size: 50)
     redis_for_info.call('FLUSHDB')
 
     client_for_info = RedisQueuedLocks::Client.new(redis) do |config|
-      config.retry_count = 3
-      config.instrumenter = test_notifier
+      config['retry_count'] = 3
+      config['instrumenter'] = test_notifier
     end
 
     inf_threads1 = Array.new(4) do |kek|

@@ -3,18 +3,19 @@ use RedisClient as RC
 
 module RedisQueuedLocks
   class Client
-    include ::Qonfig::Configurable
-    include ::Qonfig::_ConfigInterface
-
+    @config: RQL::Config
     @redis_client: RC::client
     @uniq_identity: String
     @swarm: RQL::Swarm
 
+    attr_reader config: RQL::Config
     attr_reader redis_client: RC::client
     attr_accessor uniq_identity: String
     attr_reader swarm: RQL::Swarm
 
-    def initialize: (RC::client redis_client) { (?) -> untyped } -> void
+    def initialize: (RC::client redis_client) ?{ (RQL::Config) -> void } -> void
+    def configure: () ?{ (RQL::Config) -> void } -> void
+
     def swarmize!: () -> RQL::Swarm::swarmizeResult
     def deswarmize!: () -> RQL::Swarm::deswarmizeResult
     def swarm_info: (?zombie_ttl: Integer) -> RQL::Swarm::Acquirers::acquirersList
@@ -43,6 +44,7 @@ module RedisQueuedLocks
       ?raise_errors: bool,
       ?fail_fast: bool,
       ?conflict_strategy: Symbol,
+      ?read_write_mode: Symbol,
       ?access_strategy: Symbol,
       ?identity: String,
       ?meta: Hash[String|Symbol,untyped]?,
@@ -59,7 +61,7 @@ module RedisQueuedLocks
       ?instr_sampling_percent: Integer,
       ?instr_sampler: RQL::Instrument::samplerObj,
       ?instr_sample_this: bool
-    ) { (?) -> untyped } -> RQL::Acquirer::AcquireLock::acquireResult
+    ) ?{ (?) -> untyped } -> RQL::Acquirer::AcquireLock::acquireResult
 
     def lock!: (
       String lock_name,
@@ -67,11 +69,12 @@ module RedisQueuedLocks
       ?queue_ttl: Integer,
       ?timeout: Integer?,
       ?timed: bool,
-      ?retry_count: Integer,
+      ?retry_count: Integer?,
       ?retry_delay: Integer,
       ?retry_jitter: Integer,
       ?fail_fast: bool,
       ?conflict_strategy: Symbol,
+      ?read_write_mode: Symbol,
       ?access_strategy: Symbol,
       ?identity: String,
       ?instrumenter: RQL::instrObj,
@@ -88,7 +91,7 @@ module RedisQueuedLocks
       ?instr_sampling_percent: Integer,
       ?instr_sampler: RQL::Instrument::samplerObj,
       ?instr_sample_this: bool,
-    ) { (?) -> untyped } -> RQL::Acquirer::AcquireLock::acquireResult
+    ) ?{ (?) -> untyped } -> RQL::Acquirer::AcquireLock::acquireResult
 
     def unlock: (
       String lock_name,
@@ -170,7 +173,7 @@ module RedisQueuedLocks
               | (?scan_size: Integer, ?with_info: true) -> RQL::Acquirer::Queues::queuesInfo
               | (?scan_size: Integer, ?with_info: false) -> RQL::Acquirer::Queues::queueList
 
-    def queues_info: (?scan_size: Integer) -> RQL::Acquirer::QueueInfo::queueInfo
+    def queues_info: (?scan_size: Integer) -> RQL::Acquirer::Queues::queues
     def keys: (?scan_size: Integer) -> RQL::Acquirer::Keys::keyList
 
     def clear_dead_requests: (

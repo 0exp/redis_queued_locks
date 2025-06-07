@@ -4,7 +4,7 @@ module RedisQueuedLocks
   module Acquirer
     module Queues
       type queueList = Set[String]
-      type queuesInfo = Set[{ queue: String, requests: Array[Hash[String,String|Float]] }]
+      type queuesInfo = Set[{ queue: String, requests: Array[Hash[String,Float]] }]
       type queues = queueList | queuesInfo
 
       def self.queues: (RC::client redis_client, scan_size: Integer, with_info: bool) -> queues

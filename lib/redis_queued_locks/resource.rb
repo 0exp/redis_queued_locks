@@ -24,6 +24,18 @@ module RedisQueuedLocks::Resource
   # @return [String]
   #
   # @api private
+  # @since ?.?.?
+  READ_LOCK_QUEUE_PATTERN = 'rql:lock_queue:*:read'
+
+  # @return [String]
+  #
+  # @api private
+  # @since ?.?.?
+  WRITE_LOCK_QUEUE_PATTERN = 'rql:lock_queue:*:write'
+
+  # @return [String]
+  #
+  # @api private
   # @since 1.9.0
   SWARM_KEY = 'rql:swarm:hsts'
 
@@ -91,6 +103,24 @@ module RedisQueuedLocks::Resource
     # @since 1.0.0
     def prepare_lock_queue(lock_name)
       "rql:lock_queue:#{lock_name}"
+    end
+
+    # @param lock_name [String]
+    # @return [String]
+    #
+    # @api private
+    # @api ?.?.?
+    def prepare_read_lock_queue(lock_name)
+      "rql:lock_queue:#{lock_name}:read"
+    end
+
+    # @param lock_name [String]
+    # @return [String]
+    #
+    # @api private
+    # @api ?.?.?
+    def prepare_write_lock_queue(lock_name)
+      "rql:lock_queue:#{lock_name}:write"
     end
 
     # @return [Float] Redis's <Set> score that is calculated from the time (epoch) as a float.

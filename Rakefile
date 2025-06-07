@@ -2,6 +2,7 @@
 
 require 'bundler/gem_tasks'
 require 'rspec/core/rake_task'
+require "steep/rake_task"
 require 'rubocop'
 require 'rubocop/rake_task'
 require 'rubocop-performance'
@@ -23,5 +24,6 @@ RuboCop::RakeTask.new(:rubocop) do |t|
 end
 
 RSpec::Core::RakeTask.new(:rspec)
+Steep::RakeTask.new(:steep)
 
 task default: :rspec

@@ -9,9 +9,7 @@ module RedisQueuedLocks
     type samplerObj = Object & _Sampler
 
     def self.should_log?: (bool log_sampling_enabled, bool log_sample_this, Integer log_sampling_percent, samplerObj log_sampler) -> bool
-    def self.valid_sampler?: (samplerObj sampler) -> bool
-    def self.valid_interface?: (Logger logger) -> bool
-                             | (SemanticLogger::Logger logger) -> bool
-                             | (RQL::loggerObj logger) -> bool
+    def self.valid_sampler?: (untyped sampler) -> bool
+    def self.valid_interface?: (untyped logger) -> bool
   end
 end

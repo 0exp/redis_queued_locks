@@ -152,29 +152,29 @@ redis_client = RedisClient.config.new_pool # NOTE: provide your own RedisClient 
 clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # (default: 3) (supports nil)
   # - nil means "infinite retries" and you are only limited by the "try_to_lock_timeout" config;
-  config.retry_count = 3
+  config['retry_count'] = 3
 
   # (milliseconds) (default: 200)
-  config.retry_delay = 200
+  config['retry_delay'] = 200
 
   # (milliseconds) (default: 25)
-  config.retry_jitter = 25
+  config['retry_jitter'] = 25
 
   # (seconds) (supports nil)
   # - nil means "no timeout" and you are only limited by "retry_count" config;
-  config.try_to_lock_timeout = 10
+  config['try_to_lock_timeout'] = 10
 
   # (milliseconds) (default: 5_000)
   # - lock's time to live
-  config.default_lock_ttl = 5_000
+  config['default_lock_ttl'] = 5_000
 
   # (seconds) (default: 15)
   # - lock request timeout. after this timeout your lock request in queue will be requeued with new position (at the end of the queue);
-  config.default_queue_ttl = 15
+  config['default_queue_ttl'] = 15
 
   # (boolean) (default: false)
   # - should be all blocks of code are timed by default;
-  config.is_timed_by_default = false
+  config['is_timed_by_default'] = false
 
   # (boolean) (default: false)
   # - When the lock acquirement try reached the acquirement time limit (:timeout option) the
@@ -197,7 +197,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #     and moved from the lock queue after the error moment and before the error message build;
   # - You should consider the async nature of this error message and should use received data
   #   from error message correspondingly;
-  config.detailed_acq_timeout_error = false
+  config['detailed_acq_timeout_error'] = false
 
   # (symbol) (default: :queued)
   # - Defines the way in which the lock should be obitained;
@@ -208,7 +208,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - `:queued` (FIFO): the classic queued behavior (default), your lock will be obitaned if you are first in queue and the required lock is free;
   #   - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist,
   #     retries, timeouts and so on). if lock is free to obtain - it will be obtained;
-  config.default_access_strategy = :queued
+  config['default_access_strategy'] = :queued
 
   # (symbol) (default: :wait_for_lock)
   # - Global default conflict strategy mode;
@@ -222,23 +222,23 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
   #   - `:dead_locking` - fail with deadlock exception;
   # - See "Dead locks and Reentrant Locks" documentation section in REDME.md for details;
-  config.default_conflict_strategy = :wait_for_lock
+  config['default_conflict_strategy'] = :wait_for_lock
 
   # (default: 100)
   # - how many items will be released at a time in #clear_locks and in #clear_dead_requests (uses SCAN);
   # - affects the performance of your Redis and Ruby Application (configure thoughtfully);
-  config.lock_release_batch_size = 100
+  config['lock_release_batch_size'] = 100
 
   # (default: 500)
   # - how many items should be extracted from redis during the #locks, #queues, #keys
   #   #locks_info, and #queues_info operations (uses SCAN);
   # - affects the performance of your Redis and Ruby Application (configure thoughtfully;)
-  config.key_extraction_batch_size = 500
+  config['key_extraction_batch_size'] = 500
 
   # (default: 1 day)
   # - the default period of time (in milliseconds) after which a lock request is considered dead;
   # - used for `#clear_dead_requests` as default vaule of `:dead_ttl` option;
-  config.dead_request_ttl = (1 * 24 * 60 * 60 * 1000) # one day in milliseconds
+  config['dead_request_ttl'] = (1 * 24 * 60 * 60 * 1000) # one day in milliseconds
 
   # (default: RedisQueuedLocks::Instrument::VoidNotifier)
   # - instrumentation layer;
@@ -246,7 +246,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - event: <string> requried;
   #   - payload: <hash> requried;
   # - disabled by default via `VoidNotifier`;
-  config.instrumenter = RedisQueuedLocks::Instrument::ActiveSupport
+  config['instrumenter'] = RedisQueuedLocks::Instrument::ActiveSupport
 
   # (default: -> { RedisQueuedLocks::Resource.calc_uniq_identity })
   # - uniqude idenfitier that is uniq per process/pod;
@@ -255,7 +255,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - it is calculated once per `RedisQueudLocks::Client` instance;
   # - expects the proc object;
   # - `SecureRandom.hex(8)` by default;
-  config.uniq_identifier = -> { RedisQueuedLocks::Resource.calc_uniq_identity }
+  config['uniq_identifier'] = -> { RedisQueuedLocks::Resource.calc_uniq_identity }
 
   # (default: RedisQueuedLocks::Logging::VoidLogger)
   # - the logger object;
@@ -272,7 +272,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
   #   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat");
   # - by default uses VoidLogger that does nothing;
-  config.logger = RedisQueuedLocks::Logging::VoidLogger
+  config['logger'] = RedisQueuedLocks::Logging::VoidLogger
 
   # (default: false)
   # - adds additional debug logs;
@@ -291,49 +291,49 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "<current_lock_data>");
   #   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
   #   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-  config.log_lock_try = false
+  config['log_lock_try'] = false
 
   # (default: false)
   # - enables <log sampling>: only the configured percent of RQL cases will be logged;
   # - disabled by default;
-  # - works in tandem with <config.log_sampling_percent> and <log.sampler> configs;
-  config.log_sampling_enabled = false
+  # - works in tandem with <config['log_sampling_percent']> and <config['log_sampler']> configs;
+  config['log_sampling_enabled'] = false
 
   # (default: 15)
   # - the percent of cases that should be logged;
-  # - take an effect when <config.log_sampling_enalbed> is true;
-  # - works in tandem with <config.log_sampling_enabled> and <config.log_sampler> configs;
-  config.log_sampling_percent = 15
+  # - take an effect when <config['log_sampling_enalbed']> is true;
+  # - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
+  config['log_sampling_percent'] = 15
 
   # (default: RedisQueuedLocks::Logging::Sampler)
   # - percent-based log sampler that decides should be RQL case logged or not;
-  # - works in tandem with <config.log_sampling_enabled> and <config.log_sampling_percent> configs;
+  # - works in tandem with <config['log_sampling_enabled']> and <config['log_sampling_percent']> configs;
   # - based on the ultra simple percent-based (weight-based) algorithm that uses SecureRandom.rand
   #   method so the algorithm error is ~(0%..13%);
   # - you can provide your own log sampler with bettter algorithm that should realize
   #   `sampling_happened?(percent) => boolean` interface (see `RedisQueuedLocks::Logging::Sampler` for example);
-  config.log_sampler = RedisQueuedLocks::Logging::Sampler
+  config['log_sampler'] = RedisQueuedLocks::Logging::Sampler
 
   # (default: false)
   # - enables <instrumentaion sampling>: only the configured percent of RQL cases will be instrumented;
   # - disabled by default;
-  # - works in tandem with <config.instr_sampling_percent and <log.instr_sampler>;
-  config.instr_sampling_enabled = false
+  # - works in tandem with <config['instr_sampling_percent'] and <config['instr_sampler']>;
+  config['nstr_sampling_enabled'] = false
 
   # (default: 15)
   # - the percent of cases that should be instrumented;
-  # - take an effect when <config.instr_sampling_enalbed> is true;
-  # - works in tandem with <config.instr_sampling_enabled> and <config.instr_sampler> configs;
-  config.instr_sampling_percent = 15
+  # - take an effect when <config['instr_sampling_enalbed']> is true;
+  # - works in tandem with <config['instr_sampling_enabled']> and <config['instr_sampler']> configs;
+  config['instr_sampling_percent'] = 15
 
   # (default: RedisQueuedLocks::Instrument::Sampler)
   # - percent-based log sampler that decides should be RQL case instrumented or not;
-  # - works in tandem with <config.instr_sampling_enabled> and <config.instr_sampling_percent> configs;
+  # - works in tandem with <config['instr_sampling_enabled']> and <config['instr_sampling_percent']> configs;
   # - based on the ultra simple percent-based (weight-based) algorithm that uses SecureRandom.rand
   #   method so the algorithm error is ~(0%..13%);
   # - you can provide your own log sampler with bettter algorithm that should realize
   #   `sampling_happened?(percent) => boolean` interface (see `RedisQueuedLocks::Instrument::Sampler` for example);
-  config.instr_sampler = RedisQueuedLocks::Instrument::Sampler
+  config['instr_sampler'] = RedisQueuedLocks::Instrument::Sampler
 end
 ```
 
@@ -380,31 +380,31 @@ end
 ```ruby
 def lock(
   lock_name,
-  ttl: config[:default_lock_ttl],
-  queue_ttl: config[:default_queue_ttl],
-  timeout: config[:try_to_lock_timeout],
-  timed: config[:is_timed_by_default],
-  retry_count: config[:retry_count],
-  retry_delay: config[:retry_delay],
-  retry_jitter: config[:retry_jitter],
+  ttl: config['default_lock_ttl'],
+  queue_ttl: config['default_queue_ttl'],
+  timeout: config['try_to_lock_timeout'],
+  timed: config['is_timed_by_default'],
+  retry_count: config['retry_count'],
+  retry_delay: config['retry_delay'],
+  retry_jitter: config['retry_jitter'],
   raise_errors: false,
   fail_fast: false,
-  conflict_strategy: config[:default_conflict_strategy],
-  access_strategy: config[:default_access_strategy],
-  identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config[:uniq_identifier] proc;
+  conflict_strategy: config['default_conflict_strategy'],
+  access_strategy: config['default_access_strategy'],
+  identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config['uniq_identifier'] proc;
   meta: nil,
-  detailed_acq_timeout_error: config[:detailed_acq_timeout_error],
+  detailed_acq_timeout_error: config['detailed_acq_timeout_error'],
   instrument: nil,
-  instrumenter: config[:instrumenter],
-  logger: config[:logger],
-  log_lock_try: config[:log_lock_try],
-  log_sampling_enabled: config[:log_sampling_enabled],
-  log_sampling_percent: config[:log_sampling_percent],
-  log_sampler: config[:log_sampler],
+  instrumenter: config['instrumenter'],
+  logger: config['logger'],
+  log_lock_try: config['log_lock_try'],
+  log_sampling_enabled: config['log_sampling_enabled'],
+  log_sampling_percent: config['log_sampling_percent'],
+  log_sampler: config['log_sampler'],
   log_sample_this: false,
-  instr_sampling_enabled: config[:instr_sampling_enabled],
-  instr_sampling_percent: config[:instr_sampling_percent],
-  instr_sampler: config[:instr_sampler],
+  instr_sampling_enabled: config['instr_sampling_enabled'],
+  instr_sampling_percent: config['instr_sampling_percent'],
+  instr_sampler: config['instr_sampler'],
   instr_sample_this: false,
   &block
 )
@@ -414,30 +414,30 @@ def lock(
   - Lock name to be obtained.
 - `ttl` - (optional) - [Integer]
   - Lock's time to live (in milliseconds);
-  - pre-configured in `config[:default_lock_ttl]`;
+  - pre-configured in `config['default_lock_ttl']`;
 - `queue_ttl` - (optional) `[Integer]`
   - Lifetime of the acuier's lock request. In seconds.
-  - pre-configured in `config[:default_queue_ttl]`;
+  - pre-configured in `config['default_queue_ttl']`;
 - `timeout` - (optional) `[Integer,NilClass]`
   - Time period a client should try to acquire the lock (in seconds). Nil means "without timeout".
-  - pre-configured in `config[:try_to_lock_timeout]`;
+  - pre-configured in `config['try_to_lock_timeout']`;
 - `timed` - (optiona) `[Boolean]`
   - Limit the invocation time period of the passed block of code by the lock's TTL.
-  - pre-configured in `config[:is_timed_by_default]`;
+  - pre-configured in `config['is_timed_by_default']`;
   - `false` by default;
 - `retry_count` - (optional) `[Integer,NilClass]`
   - How many times we should try to acquire a lock. Nil means "infinite retries".
-  - pre-configured in `config[:retry_count]`;
+  - pre-configured in `config['retry_count']`;
 - `retry_delay` - (optional) `[Integer]`
   - A time-interval between the each retry (in milliseconds).
-  - pre-configured in `config[:retry_delay]`;
+  - pre-configured in `config['retry_delay']`;
 - `retry_jitter` - (optional) `[Integer]`
   - Time-shift range for retry-delay (in milliseconds);
-  - pre-configured in `config[:retry_jitter]`;
+  - pre-configured in `config['retry_jitter']`;
 - `instrumenter` - (optional) `[#notify]`
   - See RedisQueuedLocks::Instrument::ActiveSupport for example;
   - See [Instrumentation](#instrumentation) section of docs;
-  - pre-configured in `config[:isntrumenter]` with void notifier (`RedisQueuedLocks::Instrumenter::VoidNotifier`);
+  - pre-configured in `config['isntrumenter']` with void notifier (`RedisQueuedLocks::Instrumenter::VoidNotifier`);
 - `instrument` - (optional) `[NilClass,Any]`
   - Custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
   - `nil` by default (means "no custom instrumentation data");
@@ -457,13 +457,13 @@ def lock(
     - `:queued` (FIFO): (default) the classic queued behavior, your lock will be obitaned if you are first in queue and the required lock is free;
     - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist, retries, timeouts and so on).
       if lock is free to obtain - it will be obtained;
-  - pre-configured in `config[:default_access_strategy]`;
+  - pre-configured in `config['default_access_strategy']`;
   - See [Lock Access Strategies](#lock-access-strategies) documentation section for details;
 - `conflict_strategy` - (optional) - `[Symbol]`
   - The conflict strategy mode for cases when the process that obtained the lock
     want to acquire this lock again;
   - By default uses `:wait_for_lock` strategy;
-  - pre-confured in `config[:default_conflict_strategy]`;
+  - pre-confured in `config['default_conflict_strategy']`;
   - Strategies:
     - `:work_through` - continue working under the lock **without** lock's TTL extension;
     - `:extendable_work_through` - continue working under the lock **with** lock's TTL extension;
@@ -476,7 +476,7 @@ def lock(
     pods or/and nodes of your application;
   - It is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`
     ivar (accessed via `uniq_dentity` accessor method);
-  - Identity calculator is pre-configured in `config[:uniq_identifier]`;
+  - Identity calculator is pre-configured in `config['uniq_identifier']`;
 - `meta` - (optional) `[NilClass,Hash<String|Symbol,Any>]`
   - A custom metadata wich will be passed to the lock data in addition to the existing data;
   - Custom metadata can not contain reserved lock data keys (such as `lock_key`, `acq_id`, `ts`, `ini_ttl`, `rem_ttl`);
@@ -499,24 +499,24 @@ def lock(
       and moved from the lock queue after the error moment and before the error message build;
   - You should consider the async nature of this error message and should use received data
     from error message correspondingly;
-  - pre-configred in `config[:detailed_acq_timeout_error]`;
+  - pre-configred in `config['detailed_acq_timeout_error']`;
 - `logger` - (optional) `[::Logger,#debug]`
   - Logger object used for loggin internal mutation oeprations and opertioan results / process progress;
-  - pre-configured in `config[:logger]` with void logger `RedisQueuedLocks::Logging::VoidLogger`;
+  - pre-configured in `config['logger']` with void logger `RedisQueuedLocks::Logging::VoidLogger`;
 - `log_lock_try` - (optional) `[Boolean]`
   - should be logged the each try of lock acquiring (a lot of logs can be generated depending on your retry configurations);
-  - pre-configured in `config[:log_lock_try]`;
+  - pre-configured in `config['log_lock_try']`;
   - `false` by default;
 - `log_sampling_enabled` - (optional) `[Boolean]`
   - enables **log sampling**: only the configured percent of RQL cases will be logged;
   - disabled by default;
   - works in tandem with `log_sampling_percent` and `log_sampler` options;
-  - pre-configured in `config[:log_sampling_enabled]`;
+  - pre-configured in `config['log_sampling_enabled']`;
 - `log_sampling_percent` - (optional) `[Integer]`
   - the percent of cases that should be logged;
   - take an effect when `log_sampling_enalbed` is true;
   - works in tandem with `log_sampling_enabled` and `log_sampler` options;
-  - pre-configured in `config[:log_sampling_percent]`;
+  - pre-configured in `config['log_sampling_percent']`;
 - `log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
   - percent-based log sampler that decides should be RQL case logged or not;
   - works in tandem with `log_sampling_enabled` and `log_sampling_percent` options;
@@ -524,7 +524,7 @@ def lock(
     method so the algorithm error is ~(0%..13%);
   - you can provide your own log sampler with bettter algorithm that should realize
     `sampling_happened?(percent) => boolean` interface (see `RedisQueuedLocks::Logging::Sampler` for example);
-  - pre-configured in `config[:log_sampler]`;
+  - pre-configured in `config['log_sampler']`;
 - `log_sample_this` - (optional) `[Boolean]`
   - marks the method that everything should be logged despite the enabled log sampling;
   - makes sense when log sampling is enabled;
@@ -533,12 +533,12 @@ def lock(
   - enables **instrumentaion sampling**: only the configured percent of RQL cases will be instrumented;
   - disabled by default;
   - works in tandem with `instr_sampling_percent` and `instr_sampler` options;
-  - pre-configured in `config[:instr_sampling_enabled]`;
+  - pre-configured in `config['instr_sampling_enabled']`;
 - `instr_sampling_percent` - (optional) `[Integer]`
   - the percent of cases that should be instrumented;
   - take an effect when `instr_sampling_enalbed` is true;
   - works in tandem with `instr_sampling_enabled` and `instr_sampler` options;
-  - pre-configured in `config[:instr_sampling_percent]`;
+  - pre-configured in `config['instr_sampling_percent']`;
 - `instr_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]`
   - percent-based log sampler that decides should be RQL case instrumented or not;
   - works in tandem with `instr_sampling_enabled` and `instr_sampling_percent` options;
@@ -546,7 +546,7 @@ def lock(
     method so the algorithm error is ~(0%..13%);
   - you can provide your own log sampler with bettter algorithm that should realize
     `sampling_happened?(percent) => boolean` interface (see `RedisQueuedLocks::Instrument::Sampler` for example);
-  - pre-configured in `config[:instr_sampler]`;
+  - pre-configured in `config['instr_sampler']`;
 - `instr_sample_this` - (optional) `[Boolean]`
   - marks the method that everything should be instrumneted despite the enabled instrumentation sampling;
   - makes sense when instrumentation sampling is enabled;
@@ -793,30 +793,30 @@ rql.lock('my_lock', retry_delay: 3000, ttl: 3000, access_strategy: :random)
 ```ruby
 def lock!(
   lock_name,
-  ttl: config[:default_lock_ttl],
-  queue_ttl: config[:default_queue_ttl],
-  timeout: config[:try_to_lock_timeout],
-  timed: config[:is_timed_by_default],
-  retry_count: config[:retry_count],
-  retry_delay: config[:retry_delay],
-  retry_jitter: config[:retry_jitter],
+  ttl: config['default_lock_ttl'],
+  queue_ttl: config['default_queue_ttl'],
+  timeout: config['try_to_lock_timeout'],
+  timed: config['is_timed_by_default'],
+  retry_count: config['retry_count'],
+  retry_delay: config['retry_delay'],
+  retry_jitter: config['retry_jitter'],
   fail_fast: false,
   identity: uniq_identity,
   meta: nil,
-  detailed_acq_timeout_error: config[:detailed_acq_timeout_error]
-  logger: config[:logger],
-  log_lock_try: config[:log_lock_try],
+  detailed_acq_timeout_error: config['detailed_acq_timeout_error']
+  logger: config['logger'],
+  log_lock_try: config['log_lock_try'],
   instrument: nil,
-  instrumenter: config[:instrumenter],
-  access_strategy: config[:default_access_strategy],
-  conflict_strategy: config[:default_conflict_strategy],
-  log_sampling_enabled: config[:log_sampling_enabled],
-  log_sampling_percent: config[:log_sampling_percent],
-  log_sampler: config[:log_sampler],
+  instrumenter: config['instrumenter'],
+  access_strategy: config['default_access_strategy'],
+  conflict_strategy: config['default_conflict_strategy'],
+  log_sampling_enabled: config['log_sampling_enabled'],
+  log_sampling_percent: config['log_sampling_percent'],
+  log_sampler: config['log_sampler'],
   log_sample_this: false,
-  instr_sampling_enabled: config[:instr_sampling_enabled],
-  instr_sampling_percent: config[:instr_sampling_percent],
-  instr_sampler: config[:instr_sampler],
+  instr_sampling_enabled: config['instr_sampling_enabled'],
+  instr_sampling_percent: config['instr_sampling_percent'],
+  instr_sampler: config['instr_sampler'],
   instr_sample_this: false,
   &block
 )
@@ -885,7 +885,7 @@ rql.lock_info("your_lock_name")
 
 ```ruby
 # <for reentrant locks>
-# (see `conflict_strategy:` kwarg attribute of #lock/#lock! methods and `config.default_conflict_strategy` config)
+# (see `conflict_strategy:` kwarg attribute of #lock/#lock! methods and `config['default_conflict_strategy']` config)
 
 rql.lock("your_lock_name", ttl: 5_000)
 rql.lock("your_lock_name", ttl: 3_000)
@@ -987,35 +987,35 @@ rql.queued?("your_lock_name") # => true/false
   - `lock_name` - (required) `[String]` - the lock name that should be released.
   - `:logger` - (optional) `[::Logger,#debug]`
     - custom logger object;
-    - pre-configured in `config[:logger]`;
+    - pre-configured in `config['logger']`;
   - `:instrumenter` - (optional) `[#notify]`
     - custom instrumenter object;
-    - pre-configured in `config[:instrumetner]`;
+    - pre-configured in `config['instrumetner']`;
   - `:instrument` - (optional) `[NilClass,Any]`;
     - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
     - `nil` by default (no additional data);
   - `:log_sampling_enabled` - (optional) `[Boolean]`
     - enables **log sampling**;
-    - pre-configured in `config[:log_sampling_enabled]`;
+    - pre-configured in `config['log_sampling_enabled']`;
   - `:log_sampling_percent` - (optional) `[Integer]`
     - **log sampling**:the percent of cases that should be logged;
-    - pre-configured in `config[:log_sampling_percent]`;
+    - pre-configured in `config['log_sampling_percent']`;
   - `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
     - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
-    - pre-configured in `config[:log_sampler]`;
+    - pre-configured in `config['log_sampler']`;
   - `log_sample_this` - (optional) `[Boolean]`
     - marks the method that everything should be logged despite the enabled log sampling;
     - makes sense when log sampling is enabled;
     - `false` by default;
   - `:instr_sampling_enabled` - (optional) `[Boolean]`
     - enables **instrumentaion sampling**;
-    - pre-configured in `config[:instr_sampling_enabled]`;
+    - pre-configured in `config['instr_sampling_enabled']`;
   - `instr_sampling_percent` - (optional) `[Integer]`
     - the percent of cases that should be instrumented;
-    - pre-configured in `config[:instr_sampling_percent]`;
+    - pre-configured in `config['instr_sampling_percent']`;
   - `instr_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]`
     - percent-based log sampler that decides should be RQL case instrumented or not;
-    - pre-configured in `config[:instr_sampler]`;
+    - pre-configured in `config['instr_sampler']`;
   - `instr_sample_this` - (optional) `[Boolean]`
     - marks the method that everything should be instrumneted despite the enabled instrumentation sampling;
     - makes sense when instrumentation sampling is enabled;
@@ -1062,37 +1062,37 @@ rql.unlock("your_lock_name")
 - accepts:
   - `:batch_size` - (optional) `[Integer]`
     - the size of batch of locks and lock queus that should be cleared under the one pipelined redis command at once;
-    - pre-configured in `config[:lock_release_batch_size]`;
+    - pre-configured in `config['lock_release_batch_size']`;
   - `:logger` - (optional) `[::Logger,#debug]`
     - custom logger object;
-    - pre-configured value in `config[:logger]`;
+    - pre-configured value in `config['logger']`;
   - `:instrumenter` - (optional) `[#notify]`
     - custom instrumenter object;
-    - pre-configured value in `config[:isntrumenter]`;
+    - pre-configured value in `config['isntrumenter']`;
   - `:instrument` - (optional) `[NilClass,Any]`
     - custom instrumentation data wich will be passed to the instrumenter's payload with `:instrument` key;
   - `:log_sampling_enabled` - (optional) `[Boolean]`
     - enables **log sampling**;
-    - pre-configured in `config[:log_sampling_enabled]`;
+    - pre-configured in `config['log_sampling_enabled']`;
   - `:log_sampling_percent` - (optional) `[Integer]`
     - **log sampling**:the percent of cases that should be logged;
-    - pre-configured in `config[:log_sampling_percent]`;
+    - pre-configured in `config['log_sampling_percent']`;
   - `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
     - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
-    - pre-configured in `config[:log_sampler]`;
+    - pre-configured in `config['log_sampler']`;
   - `log_sample_this` - (optional) `[Boolean]`
     - marks the method that everything should be logged despite the enabled log sampling;
     - makes sense when log sampling is enabled;
     - `false` by default;
   - `:instr_sampling_enabled` - (optional) `[Boolean]`
     - enables **instrumentaion sampling**;
-    - pre-configured in `config[:instr_sampling_enabled]`;
+    - pre-configured in `config['instr_sampling_enabled']`;
   - `instr_sampling_percent` - (optional) `[Integer]`
     - the percent of cases that should be instrumented;
-    - pre-configured in `config[:instr_sampling_percent]`;
+    - pre-configured in `config['instr_sampling_percent']`;
   - `instr_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]`
     - percent-based log sampler that decides should be RQL case instrumented or not;
-    - pre-configured in `config[:instr_sampler]`;
+    - pre-configured in `config['instr_sampler']`;
   - `instr_sample_this` - (optional) `[Boolean]`
     - marks the method that everything should be instrumneted despite the enabled instrumentation sampling;
     - makes sense when instrumentation sampling is enabled;
@@ -1131,35 +1131,35 @@ rql.clear_locks
     - how many milliseconds should be added to the lock's TTL;
   - `:instrumenter` - (optional) `[#notify]`
     - custom instrumenter object;
-    - pre-configured in `config[:instrumetner]`;
+    - pre-configured in `config['instrumetner']`;
   - `:instrument` - (optional) `[NilClass,Any]`;
     - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
     - `nil` by default (no additional data);
   - `:logger` - (optional) `[::Logger,#debug]`
     - custom logger object;
-    - pre-configured in `config[:logger]`;
+    - pre-configured in `config['logger']`;
   - `:log_sampling_enabled` - (optional) `[Boolean]`
     - enables **log sampling**;
-    - pre-configured in `config[:log_sampling_enabled]`;
+    - pre-configured in `config['log_sampling_enabled']`;
   - `:log_sampling_percent` - (optional) `[Integer]`
     - **log sampling**:the percent of cases that should be logged;
-    - pre-configured in `config[:log_sampling_percent]`;
+    - pre-configured in `config['log_sampling_percent']`;
   - `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
     - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
-    - pre-configured in `config[:log_sampler]`;
+    - pre-configured in `config['log_sampler']`;
   - `log_sample_this` - (optional) `[Boolean]`
     - marks the method that everything should be logged despite the enabled log sampling;
     - makes sense when log sampling is enabled;
     - `false` by default;
   - `:instr_sampling_enabled` - (optional) `[Boolean]`
     - enables **instrumentaion sampling**;
-    - pre-configured in `config[:instr_sampling_enabled]`;
+    - pre-configured in `config['instr_sampling_enabled']`;
   - `instr_sampling_percent` - (optional) `[Integer]`
     - the percent of cases that should be instrumented;
-    - pre-configured in `config[:instr_sampling_percent]`;
+    - pre-configured in `config['instr_sampling_percent']`;
   - `instr_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]`
     - percent-based log sampler that decides should be RQL case instrumented or not;
-    - pre-configured in `config[:instr_sampler]`;
+    - pre-configured in `config['instr_sampler']`;
   - `instr_sample_this` - (optional) `[Boolean]`
     - marks the method that everything should be instrumneted despite the enabled instrumentation sampling;
     - makes sense when instrumentation sampling is enabled;
@@ -1199,7 +1199,7 @@ rql.extend_lock_ttl("my_lock", 5_000) # NOTE: add 5_000 milliseconds
 - get list of obtained locks;
 - uses redis `SCAN` under the hood;
 - accepts:
-  - `:scan_size` - `Integer` - (`config[:key_extraction_batch_size]` by default);
+  - `:scan_size` - `Integer` - (`config['key_extraction_batch_size']` by default);
   - `:with_info` - `Boolean` - `false` by default (for details see [#locks_info](#locks_info---get-list-of-locks-with-their-info));
 - returns:
   - `Set<String>` (for `with_info: false`);
@@ -1232,7 +1232,7 @@ rql.locks # or rql.locks(scan_size: 123)
 - get list of lock request queues;
 - uses redis `SCAN` under the hood;
 - accepts
-  - `:scan_size` - `Integer` - (`config[:key_extraction_batch_size]` by default);
+  - `:scan_size` - `Integer` - (`config['key_extraction_batch_size']` by default);
   - `:with_info` - `Boolean` - `false` by default (for details see [#queues_info](#queues_info---get-list-of-queues-with-their-info));
 - returns:
   - `Set<String>` (for `with_info: false`);
@@ -1265,7 +1265,7 @@ rql.queues # or rql.queues(scan_size: 123)
 - get list of taken locks and queues;
 - uses redis `SCAN` under the hood;
 - accepts:
-  `:scan_size` - `Integer` - (`config[:key_extraction_batch_size]` by default);
+  `:scan_size` - `Integer` - (`config['key_extraction_batch_size']` by default);
 - returns: `Set<String>`
 
 ```ruby
@@ -1298,7 +1298,7 @@ rql.keys # or rql.keys(scan_size: 123)
 
 - get list of locks with their info;
 - uses redis `SCAN` under the hod;
-- accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
+- accepts `scan_size:`/`Integer` option (`config['key_extraction_batch_size']` by default);
 - returns `Set<Hash<Symbol,Any>>` (see [#lock_info](#lock_info) and examples below for details).
   - contained data: `{ lock: String, status: Symbol, info: Hash<String,Any> }`;
   - `:lock` - `String` - lock key in Redis;
@@ -1336,7 +1336,7 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
 
 - get list of queues with their info;
 - uses redis `SCAN` under the hod;
-- accepts `scan_size:`/`Integer` option (`config[:key_extraction_batch_size]` by default);
+- accepts `scan_size:`/`Integer` option (`config['key_extraction_batch_size']` by default);
 - returns `Set<Hash<Symbol,Any>>` (see [#queue_info](#queue_info) and examples below for details).
   - contained data: `{ queue: String, requests: Array<Hash<String,Any>> }`
   - `:queue` - `String` - lock key queue in Redis;
@@ -1371,7 +1371,7 @@ For this case your lock reuquest will be cleared only when any process will try
 to acquire this lock again (cuz lock acquirement triggers the removement of expired requests).
 
 In order to help with these dead requests you may periodically call `#clear_dead_requests`
-with corresponding `:dead_ttl` option, that is pre-configured by default via `config[:dead_request_ttl]`.
+with corresponding `:dead_ttl` option, that is pre-configured by default via `config['dead_request_ttl']`.
 
 `:dead_ttl` option is required because of it is no any **fast** and **resource-free** way to understand which request
 is dead now and is it really dead cuz each request queue can host their requests with
@@ -1380,41 +1380,41 @@ a custom queue ttl for each request differently.
 Accepts:
 - `:dead_ttl` - (optional) `[Integer]`
   - lock request ttl after which a lock request is considered dead;
-  - has a preconfigured value in `config[:dead_request_ttl]` (1 day by default);
+  - has a preconfigured value in `config['dead_request_ttl']` (1 day by default);
 - `:sacn_size` - (optional) `[Integer]`
   - the batch of scanned keys for Redis'es SCAN command;
-  - has a preconfigured valie in `config[:lock_release_batch_size]`;
+  - has a preconfigured valie in `config['lock_release_batch_size']`;
 - `:logger` - (optional) `[::Logger,#debug]`
   - custom logger object;
-  - pre-configured in `config[:logger]`;
+  - pre-configured in `config['logger']`;
 - `:instrumenter` - (optional) `[#notify]`
   - custom instrumenter object;
-  - pre-configured in `config[:isntrumenter]`;
+  - pre-configured in `config['isntrumenter']`;
 - `:instrument` - (optional) `[NilClass,Any]`
   - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
   - `nil` by default (no additional data);
 - `:log_sampling_enabled` - (optional) `[Boolean]`
   - enables **log sampling**;
-  - pre-configured in `config[:log_sampling_enabled]`;
+  - pre-configured in `config['log_sampling_enabled']`;
 - `:log_sampling_percent` - (optional) `[Integer]`
   - **log sampling**:the percent of cases that should be logged;
-  - pre-configured in `config[:log_sampling_percent]`;
+  - pre-configured in `config['log_sampling_percent']`;
 - `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
   - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
-  - pre-configured in `config[:log_sampler]`;
+  - pre-configured in `config['log_sampler']`;
 - `log_sample_this` - (optional) `[Boolean]`
   - marks the method that everything should be logged despite the enabled log sampling;
   - makes sense when log sampling is enabled;
   - `false` by default;
 - `:instr_sampling_enabled` - (optional) `[Boolean]`
   - enables **instrumentaion sampling**;
-  - pre-configured in `config[:instr_sampling_enabled]`;
+  - pre-configured in `config['instr_sampling_enabled']`;
 - `instr_sampling_percent` - (optional) `[Integer]`
   - the percent of cases that should be instrumented;
-  - pre-configured in `config[:instr_sampling_percent]`;
+  - pre-configured in `config['instr_sampling_percent']`;
 - `instr_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]`
   - percent-based log sampler that decides should be RQL case instrumented or not;
-  - pre-configured in `config[:instr_sampler]`;
+  - pre-configured in `config['instr_sampler']`;
 - `instr_sample_this` - (optional) `[Boolean]`
   - marks the method that everything should be instrumneted despite the enabled instrumentation sampling;
   - makes sense when instrumentation sampling is enabled;
@@ -1464,7 +1464,7 @@ Accepts:
 - `identity:` - (optional) `[String,Any]`;
   - this value is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`;
   - this value can be accessed from `RedisQueuedLock::Client#uniq_identity`;
-  - [Configuration](#configuration) documentation: see `config[:uniq_identifier]`;
+  - [Configuration](#configuration) documentation: see `config['uniq_identifier']`;
   - [#lock](#lock---obtain-a-lock) method documentation: see `uniq_identifier`;
 
 ```ruby
@@ -1505,7 +1505,7 @@ Accepts:
 - `identity:` - (optional) `[String]`;
   - this value is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`;
   - this value can be accessed from `RedisQueuedLock::Client#uniq_identity`;
-  - [Configuration](#configuration) documentation: see `config[:uniq_identifier]`;
+  - [Configuration](#configuration) documentation: see `config['uniq_identifier']`;
   - [#lock](#lock---obtain-a-lock) method documentation: see `uniq_identifier`;
 
 ```ruby
@@ -1537,7 +1537,7 @@ Accepts:
 - `identity` - (optional) `[String]`;
   - this value is calculated once during `RedisQueuedLock::Client` instantiation and stored in `@uniq_identity`;
   - this value can be accessed from `RedisQueuedLock::Client#uniq_identity`;
-  - [Configuration](#configuration) documentation: see `config[:uniq_identifier]`;
+  - [Configuration](#configuration) documentation: see `config['uniq_identifier']`;
   - [#lock](#lock---obtain-a-lock) method documentation: see `uniq_identifier`;
 
 ```ruby
@@ -1592,31 +1592,31 @@ rql.possible_host_ids
 
   clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
     # NOTE: auto-swarm your RQL client after initalization (run swarm elements and their supervisor)
-    config.swarm.auto_swarm = false
+    config['swarm.auto_swarm'] = false
 
     # supervisor configs
-    config.swarm.supervisor.liveness_probing_period = 2 # NOTE: in seconds
+    config['swarm.supervisor.liveness_probing_period'] = 2 # NOTE: in seconds
 
     # (probe_hosts) host probing configuration
-    config.swarm.probe_hosts.enabled_for_swarm = true # NOTE: run host-probing from or not
-    config.swarm.probe_hosts.probe_period = 2 # NOTE: (in seconds) the period of time when the probing process is triggered
+    config['swarm.probe_hosts.enabled_for_swarm'] = true # NOTE: run host-probing from or not
+    config['swarm.probe_hosts.probe_period'] = 2 # NOTE: (in seconds) the period of time when the probing process is triggered
     # (probe_hosts) individual redis config
-    config.swarm.probe_hosts.redis_config.sentinel = false # NOTE: individual redis config
-    config.swarm.probe_hosts.redis_config.pooled = false # NOTE: individual redis config
-    config.swarm.probe_hosts.redis_config.config = {} # NOTE: individual redis config
-    config.swarm.probe_hosts.redis_config.pool_config = {} # NOTE: individual redis config
+    config['swarm.probe_hosts.redis_config.sentinel'] = false # NOTE: individual redis config
+    config['swarm.probe_hosts.redis_config.pooled'] = false # NOTE: individual redis config
+    config['swarm.probe_hosts.redis_config.config'] = {} # NOTE: individual redis config
+    config['swarm.probe_hosts.redis_config.pool_config'] = {} # NOTE: individual redis config
 
     # (flush_zombies) zombie flushing configuration
-    config.swarm.flush_zombies.enabled_for_swarm = true # NOTE: run zombie flushing or not
-    config.swarm.flush_zombies.zombie_flush_period = 10 # NOTE: (in seconds) period of time when the zombie flusher is triggered
-    config.swarm.flush_zombies.zombie_ttl = 15_000 # NOTE: (in milliseconds) when the lock/host/acquirer is considered a zombie
-    config.swarm.flush_zombies.zombie_lock_scan_size = 500 # NOTE: scan sizec during zombie flushing
-    config.swarm.flush_zombies.zombie_queue_scan_size = 500 # NOTE: scan sizec during zombie flushing
+    config['swarm.flush_zombies.enabled_for_swarm'] = true # NOTE: run zombie flushing or not
+    config['swarm.flush_zombies.zombie_flush_period'] = 10 # NOTE: (in seconds) period of time when the zombie flusher is triggered
+    config['swarm.flush_zombies.zombie_ttl'] = 15_000 # NOTE: (in milliseconds) when the lock/host/acquirer is considered a zombie
+    config['swarm.flush_zombies.zombie_lock_scan_size'] = 500 # NOTE: scan sizec during zombie flushing
+    config['swarm.flush_zombies.zombie_queue_scan_size'] = 500 # NOTE: scan sizec during zombie flushing
     # (flush_zombies) individual redis config
-    config.swarm.flush_zombies.redis_config.sentinel = false # NOTE: individual redis config
-    config.swarm.flush_zombies.redis_config.pooled = false # NOTE: individual redis config
-    config.swarm.flush_zombies.redis_config.config = {} # NOTE: individual redis config
-    config.swarm.flush_zombies.redis_config.pool_config = {} # NOTE: individual redis config
+    config['swarm.flush_zombies.redis_config.sentinel'] = false # NOTE: individual redis config
+    config['swarm.flush_zombies.redis_config.pooled'] = false # NOTE: individual redis config
+    config['swarm.flush_zombies.redis_config.config'] = {} # NOTE: individual redis config
+    config['swarm.flush_zombies.redis_config.pool_config'] = {} # NOTE: individual redis config
   end
   ```
 </details>
@@ -1761,7 +1761,7 @@ rql.possible_host_ids
     - `:queued` (FIFO): the classic queued behavior (default), your lock will be obitaned if you are first in queue and the required lock is free;
     - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist, retries, timeouts and so on). if lock is free to obtain - it will be obtained;
   - for current implementation detalis check:
-    - [Configuration](#configuration) documentation: see `config.default_access_strategy` config docs;
+    - [Configuration](#configuration) documentation: see `config['default_access_strategy']` config docs;
     - [#lock](#lock---obtain-a-lock) method documentation: see `access_strategy` attribute docs;
 
 ---
@@ -1779,7 +1779,7 @@ rql.possible_host_ids
     "is your lock are obtained or not" is made as you work with **reentrant locks** (your process continues to use the lock without/with
     lock's TTL extension accordingly);
   - for current implementation details check:
-    - [Configuration](#configuration) documentation: see `config.default_conflict_strategy` config docs;
+    - [Configuration](#configuration) documentation: see `config['default_conflict_strategy']` config docs;
     - [#lock](#lock---obtain-a-lock) method documentation: see `conflict_strategy` attribute docs and the method result data;
 
 ---
@@ -1831,8 +1831,8 @@ rql.possible_host_ids
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 **NOTICE**: logging can be sampled via:
-- `config.log_samplign_enabled = true` (**false** by default);
-- `config.log_sampler = RedisQueuedLocks::Logging::Sampler` (used by default);
+- `config['log_samplign_enabled'] = true` (**false** by default);
+- `config['log_sampler'] = RedisQueuedLocks::Logging::Sampler` (used by default);
 - see **RedisQueuedLocks::Logging::Sampler** implementation in source code for customization details;
 
 ```ruby
@@ -1851,7 +1851,7 @@ rql.possible_host_ids
 #   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
 #   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat");
 # - by default uses VoidLogger that does nothing;
-config.logger = RedisQueuedLocks::Logging::VoidLogger
+config['logger'] = RedisQueuedLocks::Logging::VoidLogger
 
 # (default: false)
 # - adds additional debug logs;
@@ -1870,28 +1870,28 @@ config.logger = RedisQueuedLocks::Logging::VoidLogger
 #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "<current_lock_data>");
 #   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
 #   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-config.log_lock_try = false
+config['log_lock_try'] = false
 
 # (default: false)
 # - enables <log sampling>: only the configured percent of RQL cases will be logged;
 # - disabled by default;
-# - works in tandem with <config.log_sampling_percent> and <log.sampler> configs;
-config.log_sampling_enabled = false
+# - works in tandem with <config['log_sampling_percent']> and <config['log_sampler']> configs;
+config['log_sampling_enabled'] = false
 
 # (default: 15)
 # - the percent of cases that should be logged;
-# - take an effect when <config.log_sampling_enalbed> is true;
-# - works in tandem with <config.log_sampling_enabled> and <config.log_sampler> configs;
-config.log_sampling_percent = 15
+# - take an effect when <config['log_sampling_enalbed']> is true;
+# - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
+config['log_sampling_percent'] = 15
 
 # (default: RedisQueuedLocks::Logging::Sampler)
 # - percent-based log sampler that decides should be RQL case logged or not;
-# - works in tandem with <config.log_sampling_enabled> and <config.log_sampling_percent> configs;
+# - works in tandem with <config['log_sampling_enabled']> and <config['log_sampling_percent']> configs;
 # - based on the ultra simple percent-based (weight-based) algorithm that uses SecureRandom.rand
 #   method so the algorithm error is ~(0%..13%);
 # - you can provide your own log sampler with bettter algorithm that should realize
 #   `sampling_happened?(percent) => boolean` interface (see `RedisQueuedLocks::Logging::Sampler` for example);
-config.log_sampler = RedisQueuedLocks::Logging::Sampler
+config['log_sampler'] = RedisQueuedLocks::Logging::Sampler
 ```
 
 ---
@@ -1903,7 +1903,7 @@ config.log_sampler = RedisQueuedLocks::Logging::Sampler
 - [Instrumentation Events](#instrumentation-events)
 - [Instrumentation Configuration](#instrumentation-configuration)
 
-An instrumentation layer is incapsulated in `instrumenter` object stored in [config](#configuration) (`RedisQueuedLocks::Client#config[:instrumenter]`).
+An instrumentation layer is incapsulated in `instrumenter` object stored in [config](#configuration) (`RedisQueuedLocks::Client#config['instrumenter']`).
 
 Instrumentation can be sampled. See [Instrumentation Configuration](#instrumentation-configuration) section for details.
 
@@ -1927,8 +1927,8 @@ By default `RedisQueuedLocks::Client` is configured with the void notifier (whic
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 **NOTICE**: instrumentation can be sampled via:
-- `config.instr_sampling_enabled = true` (**false** by default);
-- `config.instr_sampler = RedisQueuedLocks::Instrument::Sampler` (used by default);
+- `config['instr_sampling_enabled'] = true` (**false** by default);
+- `config['instr_sampler'] = RedisQueuedLocks::Instrument::Sampler` (used by default);
 - see **RedisQueuedLocks::Instrument::Sampler** implementation in source code for customization details;
 
 ```ruby
@@ -1938,28 +1938,28 @@ By default `RedisQueuedLocks::Client` is configured with the void notifier (whic
 #   - event: <string> requried;
 #   - payload: <hash> requried;
 # - disabled by default via `VoidNotifier`;
-config.instrumenter = RedisQueuedLocks::Instrument::ActiveSupport
+config['instrumenter'] = RedisQueuedLocks::Instrument::ActiveSupport
 
 # (default: false)
 # - enables <instrumentaion sampling>: only the configured percent of RQL cases will be instrumented;
 # - disabled by default;
-# - works in tandem with <config.instr_sampling_percent and <log.instr_sampler>;
-config.instr_sampling_enabled = false
+# - works in tandem with <config['instr_sampling_percent']> and <config['instr_sampler']>;
+config['instr_sampling_enabled'] = false
 
 # (default: 15)
 # - the percent of cases that should be instrumented;
-# - take an effect when <config.instr_sampling_enalbed> is true;
-# - works in tandem with <config.instr_sampling_enabled> and <config.instr_sampler> configs;
-config.instr_sampling_percent = 15
+# - take an effect when <config['instr_sampling_enalbed']> is true;
+# - works in tandem with <config['instr_sampling_enabled']> and <config['instr_sampler']> configs;
+config['instr_sampling_percent'] = 15
 
 # (default: RedisQueuedLocks::Instrument::Sampler)
 # - percent-based log sampler that decides should be RQL case instrumented or not;
-# - works in tandem with <config.instr_sampling_enabled> and <config.instr_sampling_percent> configs;
+# - works in tandem with <config['instr_sampling_enabled']> and <config['instr_sampling_percent']> configs;
 # - based on the ultra simple percent-based (weight-based) algorithm that uses SecureRandom.rand
 #   method so the algorithm error is ~(0%..13%);
 # - you can provide your own log sampler with bettter algorithm that should realize
 #   `sampling_happened?(percent) => boolean` interface (see `RedisQueuedLocks::Instrument::Sampler` for example);
-config.instr_sampler = RedisQueuedLocks::Instrument::Sampler
+config['instr_sampler'] = RedisQueuedLocks::Instrument::Sampler
 ```
 
 ---
@@ -2083,13 +2083,14 @@ Detalized event semantics and payload structure:
     rql.lock_series('lock_a', 'lock_b', 'lock_c') { puts 'locked' }
     ```
   - an ability to release all locks and all requests of the concrete acquirer id or host id (or both in validation-orianted combination);
-  - detailed lock informotion inside the error object in cases of exceptions (now we have detailed lock info in error message only);
-  - a convenient way to mark any `lock` invocation as "non-instrumentable" / "non-loggable" invocation (as an alternative to `VoidNotifier` usage);
+  - detailed lock informotion inside the error object in cases of exceptions (at the moment we have this info inside the error message only that hard to analyze in work);
+  - a convenient way to mark any `lock` invocation as "non-instrumentable" / "non-loggable" (as an alternative to `VoidNotifier` and to `VoidLogger`);
   - `Read`/`Write` semantics: you can mark your locks as `read` or `write` lock in order to simulate `read`/`write` lock behavior:
     - `read` - watis - `write`;
     - `read` - not waits - `read`;
     - `write` - waits - `read`;
     - `write` - waits - `write`;
+    - **write** mode is a default behavior for all RQL locks;
 - **Minor**:
   - `#lock`/`#lock!` - `timeout:` option: support for granular periods (it supports only `seconds` at the moment, but we need `milliseconds`);
   - Add `after timeout hook` ability for timeout errors with an ability to access the binding context (if it possibly) of the thread where it failed;
@@ -2114,12 +2115,12 @@ Detalized event semantics and payload structure:
   - **automatic** deadlock detection;
   - `go`-lang implementation;
   - (_research_) simplification and speedup of the internal "redis-communuication-and-data-storing"-based algorithms;
-  - TypeChecking: (rbs) type signature testing (`RUBYOPT='-rrbs/test/setup' bundle exec rspec`);
+  - TypeChecking: (rbs) type signature testing (`RUBYOPT='-rrbs/test/setup' RBS_TEST_TARGET='RedisQueuedLocks::*' bundle exec rspec`);
   - TypeChecking: (steep) 100%-typed calls (`steep stats` in CI);
   - `unlock_on:`-option in lock/lock! logic in order to support auto-unlocking on any exception rasaied under the invoked block (invoked under the lock);
   - **Research**: support for `Valkey` database backend (https://github.com/valkey-io/valkey) (https://valkey.io/);
   - **Research**: support for `Garnet` database backend (https://microsoft.github.io/) (https://github.com/microsoft/garnet);
-
+  - add a library-level exception, when RQL-related key (required for it's logic) has incompatible type (means: some other program uses our key with their own type and logic and RQL can't work properly);
 ---
 
 ## Contributing

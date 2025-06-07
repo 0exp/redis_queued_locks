@@ -62,7 +62,7 @@ class RedisQueuedLocks::Swarm
   def swarm_status
     sync.synchronize do
       {
-        auto_swarm: rql_client.config[:swarm][:auto_swarm],
+        auto_swarm: rql_client.config['swarm.auto_swarm'],
         supervisor: supervisor.status,
         probe_hosts: probe_hosts_element.status,
         flush_zombies: flush_zombies_element.status
@@ -76,7 +76,7 @@ class RedisQueuedLocks::Swarm
   #
   # @api public
   # @since 1.9.0
-  def swarm_info(zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl])
+  def swarm_info(zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'])
     RedisQueuedLocks::Swarm::Acquirers.acquirers(
       rql_client.redis_client,
       zombie_ttl
@@ -102,9 +102,9 @@ class RedisQueuedLocks::Swarm
   # @api public
   # @since 1.9.0
   def flush_zombies(
-    zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
-    lock_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size],
-    queue_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_queue_scan_size]
+    zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'],
+    lock_scan_size: rql_client.config['swarm.flush_zombies.zombie_lock_scan_size'],
+    queue_scan_size: rql_client.config['swarm.flush_zombies.zombie_queue_scan_size']
   )
     RedisQueuedLocks::Swarm::FlushZombies.flush_zombies(
       rql_client.redis_client,
@@ -121,8 +121,8 @@ class RedisQueuedLocks::Swarm
   # @api public
   # @since 1.9.0
   def zombie_locks(
-    zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
-    lock_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size]
+    zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'],
+    lock_scan_size: rql_client.config['swarm.flush_zombies.zombie_lock_scan_size']
   )
     RedisQueuedLocks::Swarm::ZombieInfo.zombie_locks(
       rql_client.redis_client,
@@ -138,8 +138,8 @@ class RedisQueuedLocks::Swarm
   # @api ppublic
   # @since 1.9.0
   def zombie_acquirers(
-    zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
-    lock_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size]
+    zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'],
+    lock_scan_size: rql_client.config['swarm.flush_zombies.zombie_lock_scan_size']
   )
     RedisQueuedLocks::Swarm::ZombieInfo.zombie_acquirers(
       rql_client.redis_client,
@@ -153,7 +153,7 @@ class RedisQueuedLocks::Swarm
   #
   # @api public
   # @since 1.9.0
-  def zombie_hosts(zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl])
+  def zombie_hosts(zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'])
     RedisQueuedLocks::Swarm::ZombieInfo.zombie_hosts(rql_client.redis_client, zombie_ttl)
   end
 
@@ -164,8 +164,8 @@ class RedisQueuedLocks::Swarm
   # @api public
   # @since 1.9.0
   def zombies_info(
-    zombie_ttl: rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
-    lock_scan_size: rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size]
+    zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'],
+    lock_scan_size: rql_client.config['swarm.flush_zombies.zombie_lock_scan_size']
   )
     RedisQueuedLocks::Swarm::ZombieInfo.zombies_info(
       rql_client.redis_client,

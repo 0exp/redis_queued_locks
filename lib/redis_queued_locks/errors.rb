@@ -48,4 +48,16 @@ module RedisQueuedLocks
   # @api public
   # @since 1.9.0
   class SwarmArgumentError < ArgumentError; end
+
+  # @api public
+  # @since ?.?.?
+  class ConfigError < Error; end
+
+  # @api public
+  # @since ?.?.?
+  class ConfigNotFoundError < ConfigError; end
+
+  # @api pub;ic
+  # @since ?.?.?
+  class ConfigValidationError < ConfigError; end
 end

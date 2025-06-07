@@ -97,7 +97,7 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
   # @api private
   # @since 1.9.0
   def enabled?
-    rql_client.config[:swarm][:flush_zombies][:enabled_for_swarm]
+    rql_client.config['swarm.flush_zombies.enabled_for_swarm']
   end
 
   # @return [void]
@@ -106,11 +106,11 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
   # @since 1.9.0
   def swarm!
     @swarm_element = Ractor.new(
-      rql_client.config.slice_value('swarm.flush_zombies.redis_config'),
-      rql_client.config[:swarm][:flush_zombies][:zombie_ttl],
-      rql_client.config[:swarm][:flush_zombies][:zombie_lock_scan_size],
-      rql_client.config[:swarm][:flush_zombies][:zombie_queue_scan_size],
-      rql_client.config[:swarm][:flush_zombies][:zombie_flush_period]
+      rql_client.config.slice('swarm.flush_zombies.redis_config'),
+      rql_client.config['swarm.flush_zombies.zombie_ttl'],
+      rql_client.config['swarm.flush_zombies.zombie_lock_scan_size'],
+      rql_client.config['swarm.flush_zombies.zombie_queue_scan_size'],
+      rql_client.config['swarm.flush_zombies.zombie_flush_period']
     ) do |rc, z_ttl, z_lss, z_qss, z_fl_prd|
       RedisQueuedLocks::Swarm::FlushZombies.swarm_loop do
         Thread.new do

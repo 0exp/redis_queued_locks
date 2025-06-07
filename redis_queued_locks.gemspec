@@ -48,5 +48,4 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   spec.add_dependency 'redis-client', '~> 0.20'
-  spec.add_dependency 'qonfig', '~> 0.28'
 end

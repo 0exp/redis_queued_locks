@@ -1,0 +1,24 @@
+name: TypeCheck (Runtime) [RBS]
+on: [push]
+jobs:
+  typecheck-runtime:
+    name: 'TypeCheck (Runtime/RBS) (os: ${{ matrix.os }}) (ruby@${{ matrix.ruby_version }})'
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby_version: ['3.4']
+        os: [ubuntu-latest]
+    env:
+      BUNDLE_RETRY: 3
+      BUNDLE_JOBS: 4
+      BUNDLE_FORCE_RUBY_PLATFORM: 1
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supercharge/redis-github-action@1.7.0
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby_version }}
+          bundler-cache: true
+      - name: TypeCheck (Runtime) [RBS]
+        run: RBS_TEST_RAISE=true RUBYOPT='-rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' bundle exec rspec --failure-exit-code=0

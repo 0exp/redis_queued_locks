@@ -13,14 +13,18 @@
   The reason is that this type can not be used as a record type in `steep`/`rbs` (working on it);
 - [**Breaking**] Minimal Ruby Version - **3.3** (previously - **3.1**):
   - removed `3.1` and `3.2` from `CI`;
+- [**Breaking**] Config layer was fully reworked in order to improve performance:
+  - Config API has changed from "method invocation" to "hash key/value access/assignment" with a validation layer and config-data-access wrapping;
 ### Added
 - **Type Checking**:
   - library codebase is fully typed;
-  - Integrated `RBS` with `Steep` that is configured on **strict mode** (see `sig` directory, `Steepfile` config, `sig/manifest.yml` and `rbs_collection.yml` for dependencies);
-  - Added `TypeCheck` CI/CD step;
-  - `Rubocop`: RBS files linting;
+  - integrated `RBS` with `Steep` that is configured on **strict mode** (see `sig` directory, `Steepfile` config, `sig/manifest.yml` and `rbs_collection.yml` for dependencies);
+  - CI integration;
+  - Integrated RBS linting to `Rubocop`;
 - Test coverage (via `simplecov` with `html` and `lcov` formats). `minimum_coverage` config is temporary disabled (and the CI step is not configured yet) cuz we need to refactor tests in first;
-- CI: `rspec-retry` is temporary added until the tests are fully refactored;
+- CI:
+  - `rspec-retry` is temporary added until the tests are fully refactored;
+  - typecheck steps: `TypeCheck (Static)` (based on `steep` checks) and `TypeCheckl (Runtime)` (based on `RBS` runtime type checking/testing);
 - Support for `ActiveSupport::BroadcastLogger` logger instances;
 
 ## [1.12.1]

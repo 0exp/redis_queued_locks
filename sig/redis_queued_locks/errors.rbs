@@ -31,4 +31,13 @@ module RedisQueuedLocks
 
   class SwarmArgumentError < ArgumentError
   end
+
+  class ConfigError < Error
+  end
+
+  class ConfigNotFoundError < ConfigError
+  end
+
+  class ConfigValidationError < ConfigError
+  end
 end

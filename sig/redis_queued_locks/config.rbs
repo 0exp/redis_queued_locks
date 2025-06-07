@@ -1,0 +1,23 @@
+module RedisQueuedLocks
+  class Config
+    include RedisQueuedLocks::Config::DSL
+    include RedisQueuedLocks::Config::DSL::InstanceMethods
+    extend RedisQueuedLocks::Config::DSL::ClassMethods
+
+    type configState = Hash[String,untyped]
+
+    @config_state: configState
+    attr_reader config_state: configState
+
+    def initialize: () ?{ (RedisQueuedLocks::Config) -> void } -> void
+    def configure: () ?{ (RedisQueuedLocks::Config) -> void } -> void
+    def []: (String config_key) -> untyped
+    def []=: (String config_key, untyped config_value) -> void
+    def slice: (String config_key_pattern) -> configState
+
+    private
+
+    def prevent_key__non_existent: (String config_key) -> void
+    def prevent_key__invalid_type: (String config_key, untyped config_value) -> void
+  end
+end

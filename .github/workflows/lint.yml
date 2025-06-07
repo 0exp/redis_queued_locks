@@ -1,0 +1,21 @@
+name: Lint (Rubocop/RBS)
+on: [push]
+jobs:
+  lint:
+    name: 'Lint (os: ${{ matrix.os }}) (ruby@${{ matrix.ruby_version }})'
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby_version: ['3.4']
+        os: [ubuntu-latest]
+    env:
+      BUNDLE_FORCE_RUBY_PLATFORM: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supercharge/redis-github-action@1.7.0
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby_version }}
+          bundler-cache: true
+      - name: (Linter) Rubocop+RBS
+        run: bundle exec rake rubocop

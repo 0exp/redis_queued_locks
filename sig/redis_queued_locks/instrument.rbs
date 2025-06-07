@@ -9,7 +9,7 @@ module RedisQueuedLocks
     type samplerObj = Object & _Sampler
 
     def self.should_instrument?: (bool instr_sampling_enabled, bool instr_sample_this, Integer instr_sampling_percent, samplerObj instr_sampler) -> bool
-    def self.valid_sampler?: (samplerObj sampler) -> bool
-    def self.valid_interface?: (RQL::instrObj instrumenter) -> bool
+    def self.valid_sampler?: (untyped sampler) -> bool
+    def self.valid_interface?: (untyped instrumenter) -> bool
   end
 end

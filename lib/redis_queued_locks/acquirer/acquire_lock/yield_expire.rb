@@ -79,19 +79,27 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
         end
         # steep:ignore:end
 
-        yield_with_timeout(timeout, lock_key, ttl, acquirer_id, host_id, meta, &block)
+        yield_with_timeout(
+          timeout,
+          lock_key,
+          ttl,
+          acquirer_id,
+          host_id,
+          meta,
+          &block # steep:ignore
+        )
       else
         yield
       end
     end
   ensure
-    if should_expire
+    if should_expire # TODO: comment all cases/examples when should_expire is true
       LogVisitor.expire_lock(
         logger, log_sampled, lock_key,
         queue_ttl, acquirer_id, host_id, access_strategy
       )
       redis.call('EXPIRE', lock_key, '0')
-    elsif should_decrease
+    elsif should_decrease # TODO: comment all cases/examples when should_expire is true
       finish_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)
       # @type var initial_time: Integer
       spent_time = (finish_time - initial_time)

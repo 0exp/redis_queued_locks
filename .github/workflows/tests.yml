@@ -1,8 +1,8 @@
-name: Build (Linter + TypeCheck + RSpec)
+name: Tests (RSpec)
 on: [push]
 jobs:
   test-previous:
-    name: '(OS: ${{ matrix.os }}) Ruby ${{ matrix.ruby_version }}'
+    name: '(os: ${{ matrix.os }}) (ruby@${{ matrix.ruby_version }})'
     strategy:
       fail-fast: false
       matrix:
@@ -24,7 +24,7 @@ jobs:
       - name: (Test) RSpec
         run: bundle exec rake rspec
   test-mainstream:
-    name: '(OS: ${{ matrix.os }}) Ruby ${{ matrix.ruby_version }}'
+    name: 'Tests (os: ${{ matrix.os }}) (ruby@${{ matrix.ruby_version }})'
     strategy:
       fail-fast: false
       matrix:
@@ -42,10 +42,5 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby_version }}
           bundler-cache: true
-      - name: (Linter) Rubocop
-        run: bundle exec rake rubocop
-      - name: (TypeCheck) Steep
-        run: bundle exec rbs collection install && bundle exec steep check --jobs 10
-        continue-on-error: true
-      - name: (Test) RSpec
+      - name: Tests (RSpec)
         run: bundle exec rake rspec

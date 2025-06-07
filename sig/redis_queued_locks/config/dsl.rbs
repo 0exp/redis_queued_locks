@@ -1,0 +1,26 @@
+module RedisQueuedLocks
+  class Config
+    module DSL
+      type configSetters = Hash[String,Proc]
+      type configValidators = Hash[String,Proc]
+
+      module ClassMethods
+        @config_setters: configSetters
+        @config_validators: configValidators
+
+        def config_setters: () -> configSetters
+        def config_validators: () -> configValidators
+
+        def validate: (String config_key) { (String) -> bool } -> void
+        def setting: (String config_key, untyped config_value) -> void
+      end
+
+      module InstanceMethods
+        def config_setters: () -> configSetters
+        def config_validators: () -> configValidators
+      end
+
+      def self.included: (Class child_klass) -> void
+    end
+  end
+end

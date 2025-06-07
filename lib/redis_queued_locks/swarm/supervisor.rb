@@ -44,7 +44,7 @@ class RedisQueuedLocks::Swarm::Supervisor
     @visor = Thread.new do
       loop do
         yield rescue nil # TODO: (CHECK): may be we need to process exceptions here
-        sleep(rql_client.config[:swarm][:supervisor][:liveness_probing_period])
+        sleep(rql_client.config['swarm.supervisor.liveness_probing_period'])
       end
     end
     # NOTE: need to give a timespot to initialize a visor thread;

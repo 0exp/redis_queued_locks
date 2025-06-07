@@ -21,20 +21,20 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     # @param isntrumenter [#notify]
     #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
     # @param logger [::Logger,#debug]
-    #   - Logger object used from `configuration` layer (see config[:logger]);
+    #   - Logger object used from `configuration` layer (see config['logger']);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
     # @param log_sampling_enabled [Boolean]
     #   - enables <log sampling>: only the configured percent of RQL cases will be logged;
     #   - disabled by default;
-    #   - works in tandem with <config.log_sampling_percent and <log.sampler>;
+    #   - works in tandem with <config['log_sampling_percent']> and <config['log_sampler']>;
     # @param log_sampling_percent [Integer]
     #   - the percent of cases that should be logged;
-    #   - take an effect when <config.log_sampling_enalbed> is true;
-    #   - works in tandem with <config.log_sampling_enabled> and <config.log_sampler> configs;
+    #   - take an effect when <config['log_sampling_enalbed']> is true;
+    #   - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
     # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     #   - percent-based log sampler that decides should be RQL case logged or not;
-    #   - works in tandem with <config.log_sampling_enabled> and
-    #     <config.log_sampling_percent> configs;
+    #   - works in tandem with <config['log_sampling_enabled']> and
+    #     <config['log_sampling_percent']> configs;
     #   - based on the ultra simple percent-based (weight-based) algorithm that uses
     #     SecureRandom.rand method so the algorithm error is ~(0%..13%);
     #   - you can provide your own log sampler with bettter algorithm that should realize
@@ -47,15 +47,16 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     #   - enables <instrumentaion sampling>: only the configured percent
     #     of RQL cases will be instrumented;
     #   - disabled by default;
-    #   - works in tandem with <config.instr_sampling_percent and <log.instr_sampler>;
+    #   - works in tandem with <config['instr_sampling_percent']> and <config['instr_sampler']>;
     # @param instr_sampling_percent [Integer]
     #   - the percent of cases that should be instrumented;
-    #   - take an effect when <config.instr_sampling_enalbed> is true;
-    #   - works in tandem with <config.instr_sampling_enabled> and <config.instr_sampler> configs;
+    #   - take an effect when <config['instr_sampling_enalbed']> is true;
+    #   - works in tandem with <config['instr_sampling_enabled']>
+    #     and <config['instr_sampler']> configs;
     # @param instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
     #   - percent-based log sampler that decides should be RQL case instrumented or not;
-    #   - works in tandem with <config.instr_sampling_enabled> and
-    #     <config.instr_sampling_percent> configs;
+    #   - works in tandem with <config['instr_sampling_enabled']> and
+    #     <config['instr_sampling_percent']> configs;
     #   - based on the ultra simple percent-based (weight-based) algorithm that uses
     #     SecureRandom.rand method so the algorithm error is ~(0%..13%);
     #   - you can provide your own log sampler with bettter algorithm that should realize

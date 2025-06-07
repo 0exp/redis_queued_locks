@@ -35,6 +35,7 @@ module RedisQueuedLocks
         log_lock_try: bool,
         instrument: untyped?,
         conflict_strategy: Symbol,
+        read_write_mode: Symbol,
         access_strategy: Symbol,
         log_sampling_enabled: bool,
         log_sampling_percent: Integer,
@@ -44,7 +45,7 @@ module RedisQueuedLocks
         instr_sampling_percent: Integer,
         instr_sampler: RQL::Instrument::samplerObj,
         instr_sample_this: bool
-      ) { (?) -> untyped } -> acquireResult
+      ) ?{ (?) -> untyped } -> acquireResult
     end
   end
 end

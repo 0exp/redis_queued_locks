@@ -3,6 +3,8 @@ module RedisQueuedLocks
     KEY_PATTERN: String
     LOCK_PATTERN: String
     LOCK_QUEUE_PATTERN: String
+    READ_LOCK_QUEUE_PATTERN: String
+    WRITE_LOCK_QUEUE_PATTERN: String
     SWARM_KEY: String
     REDIS_TIMESHIFT_ERROR: Integer
 
@@ -24,6 +26,8 @@ module RedisQueuedLocks
 
     def self.prepare_lock_key: (String lock_name) -> String
     def self.prepare_lock_queue: (String lock_name) -> String
+    def self.prepare_read_lock_queue: (String lock_name) -> String
+    def self.prepare_write_lock_queue: (String lock_name) -> String
     def self.calc_initial_acquirer_position: () -> Float
     def self.acquirer_dead_score: (Integer|Float queue_ttl) -> Float
     def self.calc_zombie_score: (Float zombie_ttl) -> Float

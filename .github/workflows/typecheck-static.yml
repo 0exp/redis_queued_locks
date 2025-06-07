@@ -1,0 +1,24 @@
+name: TypeCheck (Static) [Steep]
+on: [push]
+jobs:
+  typecheck-static:
+    name: 'TypeCheck (Static/Steep) (os: ${{ matrix.os }}) (ruby@${{ matrix.ruby_version }})'
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby_version: ['3.4']
+        os: [ubuntu-latest]
+    env:
+      BUNDLE_RETRY: 3
+      BUNDLE_JOBS: 4
+      BUNDLE_FORCE_RUBY_PLATFORM: 1
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supercharge/redis-github-action@1.7.0
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby_version }}
+          bundler-cache: true
+      - name: TypeCheck (Static) [Steep]
+        run: bundle exec rbs collection install && bundle exec rake steep:check -j 10

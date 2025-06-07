@@ -20,7 +20,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param logger [::Logger,#debug]
   # @param log_lock_try [Boolean]
   # @param lock_key [String]
+  # @param read_write_mode [Symbol]
   # @param lock_key_queue [String]
+  # @param read_lock_key_queue [String]
+  # @param write_lock_key_queue [String]
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param acquirer_position [Numeric]
@@ -43,7 +46,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     logger,
     log_lock_try,
     lock_key,
+    read_write_mode,
     lock_key_queue,
+    read_lock_key_queue,
+    write_lock_key_queue,
     acquirer_id,
     host_id,
     acquirer_position,
@@ -209,6 +215,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           inter_result = :fail_fast_no_try
         else
           # Step 1: add an acquirer to the lock acquirement queue
+          # NOTE:
+          #   'NX' means "Only add new elements. Don't update already existing elements."
+          #   that works as:
+          #     1. (enqueue) <<if you are already in the queue - do nothing and wait your time>>
+          #     2. (requeue) or <<add to the right pre-calculated position if you are
+          #       not in the queue now>>;
           rconn.call('ZADD', lock_key_queue, 'NX', acquirer_position, acquirer_id)
 
           LogVisitor.acq_added_to_queue(

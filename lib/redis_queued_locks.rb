@@ -2,7 +2,6 @@
 
 require 'timeout'
 require 'redis-client'
-require 'qonfig'
 require 'securerandom'
 require 'logger'
 require 'objspace'
@@ -21,6 +20,7 @@ module RedisQueuedLocks
   require_relative 'redis_queued_locks/instrument'
   require_relative 'redis_queued_locks/swarm'
   require_relative 'redis_queued_locks/client'
+  require_relative 'redis_queued_locks/config'
 
   # @since 1.0.0
   extend RedisQueuedLocks::Debugger::Interface

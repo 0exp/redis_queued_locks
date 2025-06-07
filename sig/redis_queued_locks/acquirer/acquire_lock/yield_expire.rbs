@@ -23,7 +23,7 @@ module RedisQueuedLocks
           bool instr_sampled,
           bool should_expire,
           bool should_decrease
-        ) { (?) -> untyped } -> untyped?
+        ) ?{ (?) -> untyped } -> untyped?
 
         private
 
