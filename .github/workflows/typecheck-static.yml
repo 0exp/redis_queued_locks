@@ -8,11 +8,11 @@ jobs:
       matrix:
         ruby_version: ['3.4']
         os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     env:
       BUNDLE_RETRY: 3
       BUNDLE_JOBS: 4
       BUNDLE_FORCE_RUBY_PLATFORM: 1
-    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: supercharge/redis-github-action@1.7.0

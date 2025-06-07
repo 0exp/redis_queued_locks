@@ -8,6 +8,7 @@ jobs:
       matrix:
         ruby_version: ['3.4']
         os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     env:
       BUNDLE_FORCE_RUBY_PLATFORM: 1
     steps:
