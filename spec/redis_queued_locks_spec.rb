@@ -5,7 +5,16 @@
 #   - this code is not ideal and final,
 #     it is written only for behavior testing and funcionality checking;
 RSpec.describe RedisQueuedLocks do
-  let(:redis) { RedisClient.config(db: 0).new_pool(timeout: 5, size: 50) }
+  let(:redis) do
+    RedisClient.config(db: 0).new_pool(
+      # NOTE:
+      #   - long connect_/read_/write_ timeouts is used for problems inside the github runners
+      #     in RBS tests where all our code is "totally slow"
+      #     (and each spec can fail on 1.0-seconds-timeout with Socket's timeout error);
+      #   - long <timeout:> is used for some test-cases;
+      timeout: 5, size: 50, connect_timeout: 5, read_timeout: 5, write_timeout: 5
+    )
+  end
 
   before do
     redis.call('FLUSHDB')
@@ -1701,7 +1710,14 @@ RSpec.describe RedisQueuedLocks do
   end
 
   specify 'detailed lock acquirement timeout error' do
-    redis = RedisClient.config.new_pool(timeout: 5, size: 50)
+    redis = RedisClient.config.new_pool(
+      # NOTE:
+      #   - long connect_/read_/write_ timeouts is used for problems inside the github runners
+      #     in RBS tests where all our code is "totally slow"
+      #     (and each spec can fail on 1.0-seconds-timeout with Socket's timeout error);
+      #   - long <timeout:> is used for some test-cases;
+      timeout: 5, size: 50, connect_timeout: 5, read_timeout: 5, write_timeout: 5
+    )
     client = RedisQueuedLocks::Client.new(redis) do |config|
       # NOTE: false by default
       # config['detailed_acq_timeout_error'] = false
@@ -1771,7 +1787,14 @@ RSpec.describe RedisQueuedLocks do
   end
 
   specify 'timed lock' do
-    redis = RedisClient.config.new_pool(timeout: 5, size: 50)
+    redis = RedisClient.config.new_pool(
+      # NOTE:
+      #   - long connect_/read_/write_ timeouts is used for problems inside the github runners
+      #     in RBS tests where all our code is "totally slow"
+      #     (and each spec can fail on 1.0-seconds-timeout with Socket's timeout error);
+      #   - long <timeout:> is used for some test-cases;
+      timeout: 5, size: 50, connect_timeout: 5, read_timeout: 5, write_timeout: 5
+    )
     client = RedisQueuedLocks::Client.new(redis)
 
     expect do
@@ -1906,7 +1929,14 @@ RSpec.describe RedisQueuedLocks do
       config['instrumenter'] = test_notifier
     end
 
-    redis_for_info = RedisClient.config(db: 1).new_pool(timeout: 5, size: 50)
+    redis_for_info = RedisClient.config(db: 1).new_pool(
+      # NOTE:
+      #   - long connect_/read_/write_ timeouts is used for problems inside the github runners
+      #     in RBS tests where all our code is "totally slow"
+      #     (and each spec can fail on 1.0-seconds-timeout with Socket's timeout error);
+      #   - long <timeout:> is used for some test-cases;
+      timeout: 5, size: 50, connect_timeout: 5, read_timeout: 5, write_timeout: 5
+    )
     redis_for_info.call('FLUSHDB')
 
     client_for_info = RedisQueuedLocks::Client.new(redis) do |config|
