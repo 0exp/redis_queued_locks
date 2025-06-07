@@ -9,7 +9,6 @@ target :lib do
   library 'timeout'
   library 'securerandom'
   library 'logger'
-  library 'objspace'
   library 'monitor'
 
   configure_code_diagnostics(Steep::Diagnostic::Ruby.strict)

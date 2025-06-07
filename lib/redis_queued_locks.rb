@@ -4,7 +4,6 @@ require 'timeout'
 require 'redis-client'
 require 'securerandom'
 require 'logger'
-require 'objspace'
 
 # @api public
 # @since 1.0.0

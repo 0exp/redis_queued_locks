@@ -14,5 +14,4 @@ gems:
   - name: redis-client
   - name: securerandom
   - name: logger
-  - name: objspace
   - name: monitor

@@ -3,5 +3,4 @@ dependencies:
   - redis-client
   - securerandom
   - logger
-  - objspace
   - monitor
