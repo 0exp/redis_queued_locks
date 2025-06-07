@@ -1,4 +1,6 @@
 ## [Unreleased]
+
+## [1.13.0] - 2025-06-07
 ### Changed
 - Updated development dependencies (`armitage-rubocop`, `rbs`, `steep`);
 - Bumped development Ruby version (from `3.3.6` to `3.4.3`);
