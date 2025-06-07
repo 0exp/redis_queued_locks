@@ -8,9 +8,5 @@ sources:
 path: .gem_rbs_collection
 
 gems:
-  - name: timeout
   - name: redis-client
   - name: securerandom
-  - name: logger
-  - name: objspace
-  - name: monitor

@@ -1,34 +1,14 @@
 ---
 path: ".gem_rbs_collection"
 gems:
-- name: base64
-  version: '0.1'
-  source:
-    type: git
-    name: ruby/gem_rbs_collection
-    revision: e2749137770bcff57a062d47b0d08922071f3d37
-    remote: https://github.com/ruby/gem_rbs_collection.git
-    repo_dir: gems
 - name: connection_pool
   version: '2.4'
   source:
     type: git
     name: ruby/gem_rbs_collection
-    revision: 0a6ea105a0afc7eaee4494585a7775f47eea6145
+    revision: 52a7ef8a9328fb2413e3b42dd8ee37deb703a940
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
-- name: logger
-  version: '0'
-  source:
-    type: stdlib
-- name: monitor
-  version: '0'
-  source:
-    type: stdlib
-- name: objspace
-  version: '0'
-  source:
-    type: stdlib
 - name: securerandom
   version: '0'
   source:

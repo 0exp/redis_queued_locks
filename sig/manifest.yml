@@ -1,7 +1,3 @@
 dependencies:
-  - timeout
   - redis-client
   - securerandom
-  - logger
-  - objspace
-  - monitor
