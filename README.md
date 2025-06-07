@@ -1,4 +1,4 @@
-# RedisQueuedLocks &middot; [![Gem Version](https://badge.fury.io/rb/redis_queued_locks.svg)](https://badge.fury.io/rb/redis_queued_locks)
+# RedisQueuedLocks &middot; ![Gem Version](https://img.shields.io/gem/v/redis_queued_locks)
 
 [![Tests (RSpec)](https://github.com/0exp/redis_queued_locks/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/0exp/redis_queued_locks/actions) [![Lint (Rubocop)](https://github.com/0exp/redis_queued_locks/actions/workflows/lint.yml/badge.svg?branch=master)](https://github.com/0exp/redis_queued_locks/actions) [![TypeCheck (Runtime/RBS)](https://github.com/0exp/redis_queued_locks/actions/workflows/typecheck-runtime.yml/badge.svg?branch=master)](https://github.com/0exp/redis_queued_locks/actions) [![TypeCheck (Static/Steep)](https://github.com/0exp/redis_queued_locks/actions/workflows/typecheck-static.yml/badge.svg?branch=master)](https://github.com/0exp/redis_queued_locks/actions)
 
