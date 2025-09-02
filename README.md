@@ -2095,6 +2095,9 @@ Detalized event semantics and payload structure:
     - `write` - waits - `write`;
     - **write** mode is a default behavior for all RQL locks;
 - **Minor**:
+  - `#release_locks_of`: release locks of the concrete "lock host" (the lock host is a combination of `process_id/thread_id/ractor_id/identity` string identifier of the potential lock acquirer);
+  - try to return the `fiber object id` to the lock host identifier (we cant use fiber object id cuz `ObjectSpace` has no access to the fiber object space after the any ractor object initialization)
+  - named RQL's threads (`Thread#name`) and RQL's ractors (`Ractor#name`) in order to have an ability to find and work with RQL's threads and ractors outside of RQL logic (stop threads before process forking, for example);
   - `#lock`/`#lock!` - `timeout:` option: support for granular periods (it supports only `seconds` at the moment, but we need `milliseconds`);
   - Add `after timeout hook` ability for timeout errors with an ability to access the binding context (if it possibly) of the thread where it failed;
   - Add `ignore timeout errors` ability (for debug purposes);
