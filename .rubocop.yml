@@ -13,7 +13,6 @@ AllCops:
     - spec/**/*.rb
     - sig/**/*.rbs
     - Gemfile
-    - gemfiles/ruby3.3.gemfile
     - Rakefile
     - redis_queued_locks.gemspec
     - bin/console

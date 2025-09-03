@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+## [Unreleased]
+### Changed
+- bumped ruby development version to 3.4.5;
+- bumped development dependencies;
+
 ## [1.13.0] - 2025-06-07
 ### Changed
 - Updated development dependencies (`armitage-rubocop`, `rbs`, `steep`);
