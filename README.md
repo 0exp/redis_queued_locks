@@ -2,7 +2,7 @@
 
 [![Tests (RSpec)](https://github.com/0exp/redis_queued_locks/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/0exp/redis_queued_locks/actions) [![Lint (Rubocop)](https://github.com/0exp/redis_queued_locks/actions/workflows/lint.yml/badge.svg?branch=master)](https://github.com/0exp/redis_queued_locks/actions) [![TypeCheck (Runtime/RBS)](https://github.com/0exp/redis_queued_locks/actions/workflows/typecheck-runtime.yml/badge.svg?branch=master)](https://github.com/0exp/redis_queued_locks/actions) [![TypeCheck (Static/Steep)](https://github.com/0exp/redis_queued_locks/actions/workflows/typecheck-static.yml/badge.svg?branch=master)](https://github.com/0exp/redis_queued_locks/actions)
 
-<a href="https://redis.io/docs/manual/patterns/distributed-locks/">Distributed locks</a> with "prioritized lock acquisition queue" capabilities based on the Redis Database.
+<a href="https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/">Distributed locks</a> with "prioritized lock acquisition queue" capabilities based on the Redis Database.
 
 Each lock request is put into the request queue (each lock is hosted by its own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) (with requeue capabilities) which guarantees the request queue will never be stacked.
 
