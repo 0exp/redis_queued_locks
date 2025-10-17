@@ -2288,10 +2288,10 @@ Detalized event semantics and payload structure:
 ##### `"redis_queued_locks.release_locks_of"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
 - an event signalizes about the released locks of the cocnrete host and acquirer;
-- raised from `#clear_locks_of` and`#clear_current_locks` (and `#release_locks_of`/`#release_current_locks` respectively)
+- raised from `#clear_locks_of` and `#clear_current_locks` (`#release_locks_of` and `#release_current_locks` respectively);
 - payload:
   - `:rel_time` - `float`/`milliseconds` - time spent on "release locks of" operation;
-  - `:at` - `float`/`epoch` - the time when the opertaion has ended;
+  - `:at` - `float`/`epoch` - the time when the opertaion has ended; 
   - `:rel_key_cnt` - `integer` - released locks count;
   - `:tch_queue_cnt` - `:integer` - the number of queues from which the cocnrete host/acquirer was removed;
 
@@ -2356,7 +2356,7 @@ Detalized event semantics and payload structure:
   - `unlock_on:`-option in lock/lock! logic in order to support auto-unlocking on any exception rasaied under the invoked block (invoked under the lock);
   - **Research**: support for `Valkey` database backend (https://github.com/valkey-io/valkey) (https://valkey.io/);
   - **Research**: support for `Garnet` database backend (https://microsoft.github.io/) (https://github.com/microsoft/garnet);
-  - add a library-level exception, when RQL-related key (required for it's logic) has incompatible type (means: some other program uses our key with their own type and logic and RQL can't work properly);
+  - add a library-level exception, when RQL-related key in Redis (required for it's logic) has incompatible type (means: some other program uses our key with their own type and logic and RQL can't work properly);
 ---
 
 ## Build and Develop
