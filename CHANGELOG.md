@@ -1,4 +1,6 @@
 ## [Unreleased]
+
+## [1.14.0] - 2025-10-17
 ### Added
 - `#clear_locks_of`/`#release_locks_of`
 - `#clear_current_locks`/`#release_current_locks`
