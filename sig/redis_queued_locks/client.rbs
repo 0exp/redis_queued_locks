@@ -121,6 +121,8 @@ module RedisQueuedLocks
       ?ractor_id: Integer|String,
       ?identity: String
     ) -> String
+    alias ccurrent_acq_id current_acquirer_id
+    alias acq_id current_acquirer_id
 
     def current_host_id: (
       ?process_id: Integer|String,
@@ -128,6 +130,8 @@ module RedisQueuedLocks
       ?ractor_id: Integer|String,
       ?identity: String
     ) -> String
+    alias current_hst_id current_host_id
+    alias hst_id current_host_id
 
     def possible_host_ids: (?String identity) -> Array[String]
 

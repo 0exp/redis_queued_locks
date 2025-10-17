@@ -578,6 +578,8 @@ class RedisQueuedLocks::Client
       identity
     )
   end
+  alias_method :current_acq_id, :current_acquirer_id
+  alias_method :acq_id, :current_acquirer_id
 
   # Retrun the current host identifier.
   #
@@ -609,6 +611,8 @@ class RedisQueuedLocks::Client
       identity
     )
   end
+  alias_method :current_hst_id, :current_host_id
+  alias_method :hst_id, :current_host_id
 
   # Return the list of possible host identifiers that can be reached from the current ractor.
   #
@@ -740,10 +744,10 @@ class RedisQueuedLocks::Client
   end
   alias_method :release_locks, :clear_locks
 
-  # Release all queues and locks that belong to the given host and its associated acquirer.
+  # Release all locks of the passed acquirer/host and remove this acquirer/host from all queues;
   #
   # This is a cleanup helper intended for operational and debugging scenarios (for example: your
-  # current pumas request thread is killed by Rack::Timeout and you need to cleanup all zombie RQL
+  # current puma request thread is killed by Rack::Timeout and you need to cleanup all zombie RQL
   # locks and lock reuqests obtained during the request processing).
   #
   # Identifiers can be extracted via:
@@ -768,7 +772,7 @@ class RedisQueuedLocks::Client
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
   # @option instr_sample_this [Boolean]
   # @return [Hash<Symbol,Boolean|Hash<Symbol,Numeric>>]
-  #   Example: { ok: true, result: { rel_key_cnt: 100, rel_time: 0.01 } }
+  #   Example: { ok: true, result: { rel_key_cnt: 100, tch_queue_cnt: 2, rel_time: 0.01 } }
   #
   # @example Release locks of the current process:
   #   client.clear_locks_of(
@@ -831,7 +835,7 @@ class RedisQueuedLocks::Client
   end
   alias_method :release_locks_of, :clear_locks_of
 
-  # Release all queues and locks of the current host and current acquirer.
+  # Release all locks of the current acquirer/host and remove the current acquirer/host from all queues;
   #
   # @option batch_size [Integer]
   # @option logger [::Logger,#debug]
@@ -846,7 +850,7 @@ class RedisQueuedLocks::Client
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
   # @option instr_sample_this [Boolean]
   # @return [Hash<Symbol,Boolean|Hash<Symbol,Numeric>>]
-  #   Example: { ok: true, result: { rel_key_cnt: 100, rel_time: 0.01 } }
+  #   Example: { ok: true, result: { rel_key_cnt: 100, tch_queue_cnt: 2, rel_time: 0.01 } }
   #
   # @see #clear_locks_of
   #

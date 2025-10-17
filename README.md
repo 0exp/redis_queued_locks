@@ -1136,9 +1136,192 @@ rql.clear_locks
 
 #### #clear_locks_of
 
+<sup>\[[back to top](#usage)\]</sup>
+
+- release all locks of the passed acquirer/host and remove this acquirer/host from all queues (locks will be released first)
+- this is a cleanup helper intended for operational and debugging scenarios (for example: your
+  current puma request thread is killed by Rack::Timeout and you need to cleanup all zombie RQL
+  locks and lock reuqests obtained during the request processing);
+- acquirer/host dentifiers can be extracted via:
+  - `#current_host_id`
+  - `#current_acquirer_id`
+  - `#possible_host_ids`
+  - from lock data (extracted via `#lock_info`, `#locks_info`, `#queue_info`, `#queues_info`);
+- produces `"redis_queued_locks.release_locks_of"` instrumentation event;
+- accepts:
+  - `:host_id` - (required) `[String]`
+    - host indentifier whose locks we want to release and which we want to remove from all locks queues;
+  - `:acquirer_id` - (required) `[String]`
+    - acquirer indentifier whose locks we want to release and which we want to remove from all locks queues;
+  - `:lock_scan_size` - (optional) `[Integer]`
+    - how many items will be released at a time (uses `SCAN `for batch extraction and `DEL` for batch deletion);
+    - pre-configuerd value in `config['clear_locks_of__lock_scan_size']`;
+  - `:queue_scan_size` - (optional) `[Integer]`
+    - how many queues will be SCAN'ned at a time (uses `SCAN)`;
+    - pre-configuerd value in `config['clear_locks_of__queue_scan_size']`;
+  - `:logger` - (optional) `[::Logger,#debug]`
+    - custom logger object;
+    - pre-configured value in `config['logger']`;
+  - `:instrumenter` - (optional) `[#notify]`
+    - custom instrumenter object;
+    - pre-configured value in `config['isntrumenter']`;
+  - `:instrument` - (optional) `[NilClass,Any]`
+    - custom instrumentation data wich will be passed to the instrumenter's payload with `:instrument` key;
+  - `:log_sampling_enabled` - (optional) `[Boolean]`
+    - enables **log sampling**;
+    - pre-configured in `config['log_sampling_enabled']`;
+  - `:log_sampling_percent` - (optional) `[Integer]`
+    - **log sampling**:the percent of cases that should be logged;
+    - pre-configured in `config['log_sampling_percent']`;
+  - `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
+    - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
+    - pre-configured in `config['log_sampler']`;
+  - `log_sample_this` - (optional) `[Boolean]`
+    - marks the method that everything should be logged despite the enabled log sampling;
+    - makes sense when log sampling is enabled;
+    - `false` by default;
+  - `:instr_sampling_enabled` - (optional) `[Boolean]`
+    - enables **instrumentaion sampling**;
+    - pre-configured in `config['instr_sampling_enabled']`;
+  - `instr_sampling_percent` - (optional) `[Integer]`
+    - the percent of cases that should be instrumented;
+    - pre-configured in `config['instr_sampling_percent']`;
+  - `instr_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]`
+    - percent-based log sampler that decides should be RQL case instrumented or not;
+    - pre-configured in `config['instr_sampler']`;
+  - `instr_sample_this` - (optional) `[Boolean]`
+    - marks the method that everything should be instrumneted despite the enabled instrumentation sampling;
+    - makes sense when instrumentation sampling is enabled;
+    - `false` by default;
+- returns:
+  - `[Hash<Symbol,Numeric>]` - Format: `{ ok: true, result: Hash<Symbol,Numeric> }`;
+  - result data:
+    - `:rel_time` - `Numeric` - time spent;
+    - `:rel_key_cnt` - `Integer` - the count of released locks;
+    - `:tch_queue_cnt` - `Integer` - the count of touched (modified) queues (the number of queues from which the acquirer/host was removed);
+
+```ruby
+rql.clear_locks_of(
+  host_id: "rql:hst:41478/4320/4360/848818f09d8c3420",
+  acquirer_id: "rql:acq:41478/4320/4340/4360/848818f09d8c3420"
+)
+# -- or (alias) --
+rql.release_locks_of(
+  host_id: "rql:hst:41478/4320/4360/848818f09d8c3420",
+  acquirer_id: "rql:acq:41478/4320/4340/4360/848818f09d8c3420"
+)
+
+# -> result
+{
+  ok: true,
+  result: {
+    rel_key_cnt: 123,
+    tch_queue_cnt: 2,
+    rel_time: 0.1
+  }
+}
+```
+
+```ruby
+# clear locks and queues of the current acquirer:
+rql.clear_locks_of(
+  host_id: rql.current_host_id,
+  acquirer_id: rql.current_acquirer_id
+)
+
+# equivalent:
+rql.clear_current_locks
+
+# -> result
+{
+  ok: true,
+  result: {
+    rel_key_cnt: 43,
+    tch_queue_cnt: 3,
+    rel_time: 0.2
+  }
+}
+```
+
 ---
 
 #### #clear_current_locks
+
+<sup>\[[back to top](#usage)\]</sup>
+
+- release all locks of the current acquirer/host and remove the current acquirer/host from all queues (locks will be released first);
+- this is a cleanup helper intended for operational and debugging scenarios (for example: your
+  current puma request thread is killed by Rack::Timeout and you need to cleanup all zombie RQL
+  locks and lock reuqests obtained during the request processing);
+- representes an equivalent invocation:
+  ```ruby
+  rql.clear_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acquirer_id)
+  ```
+- produces `"redis_queued_locks.release_locks_of"` instrumentation event;
+  - `:lock_scan_size` - (optional) `[Integer]`
+    - how many items will be released at a time (uses `SCAN `for batch extraction and `DEL` for batch deletion);
+    - pre-configuerd value in `config['clear_locks_of__lock_scan_size']`;
+  - `:queue_scan_size` - (optional) `[Integer]`
+    - how many queues will be SCAN'ned at a time (uses `SCAN)`;
+    - pre-configuerd value in `config['clear_locks_of__queue_scan_size']`;
+  - `:logger` - (optional) `[::Logger,#debug]`
+    - custom logger object;
+    - pre-configured value in `config['logger']`;
+  - `:instrumenter` - (optional) `[#notify]`
+    - custom instrumenter object;
+    - pre-configured value in `config['isntrumenter']`;
+  - `:instrument` - (optional) `[NilClass,Any]`
+    - custom instrumentation data wich will be passed to the instrumenter's payload with `:instrument` key;
+  - `:log_sampling_enabled` - (optional) `[Boolean]`
+    - enables **log sampling**;
+    - pre-configured in `config['log_sampling_enabled']`;
+  - `:log_sampling_percent` - (optional) `[Integer]`
+    - **log sampling**:the percent of cases that should be logged;
+    - pre-configured in `config['log_sampling_percent']`;
+  - `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
+    - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
+    - pre-configured in `config['log_sampler']`;
+  - `log_sample_this` - (optional) `[Boolean]`
+    - marks the method that everything should be logged despite the enabled log sampling;
+    - makes sense when log sampling is enabled;
+    - `false` by default;
+  - `:instr_sampling_enabled` - (optional) `[Boolean]`
+    - enables **instrumentaion sampling**;
+    - pre-configured in `config['instr_sampling_enabled']`;
+  - `instr_sampling_percent` - (optional) `[Integer]`
+    - the percent of cases that should be instrumented;
+    - pre-configured in `config['instr_sampling_percent']`;
+  - `instr_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]`
+    - percent-based log sampler that decides should be RQL case instrumented or not;
+    - pre-configured in `config['instr_sampler']`;
+  - `instr_sample_this` - (optional) `[Boolean]`
+    - marks the method that everything should be instrumneted despite the enabled instrumentation sampling;
+    - makes sense when instrumentation sampling is enabled;
+    - `false` by default;
+- returns:
+  - `[Hash<Symbol,Numeric>]` - Format: `{ ok: true, result: Hash<Symbol,Numeric> }`;
+  - result data:
+    - `:rel_time` - `Numeric` - time spent;
+    - `:rel_key_cnt` - `Integer` - the count of released locks;
+    - `:tch_queue_cnt` - `Integer` - the count of touched (modified) queues (the number of queues from which the acquirer/host was removed);
+
+```ruby
+rql.clear_current_locks
+# -- or (alias) --
+rql.release_current_locks
+# equivalent:
+rql.release_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acquirer_id)
+
+# -> result
+{
+  ok: true,
+  result: {
+    rel_key_cnt: 43,
+    tch_queue_cnt: 3,
+    rel_time: 0.2
+  }
+}
+```
 
 ---
 
@@ -1342,7 +1525,7 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
    :status=>:alive,
    :info=>{
     "acq_id"=>"rql:acq:41478/4320/4340/4360/848818f09d8c3420",
-    "hst_id"=>"rql:hst:41478/4320/4360/848818f09d8c3420"
+    "hst_id"=>"rql:hst:41478/4320/4360/848818f09d8c3420",
     "ts"=>1711607112.670343,
     "ini_ttl"=>15000,
     "rem_ttl"=>13998}},
@@ -1467,6 +1650,7 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 
 <sup>\[[back to top](#usage)\]</sup>
 
+- (aliases: `#current_acq_id`, `#acq_id`);
 - get the current acquirer identifier in RQL notation that you can use for debugging purposes during the lock analyzation;
 - acquirer identifier format:
   ```ruby
@@ -1504,6 +1688,7 @@ rql.current_acquirer_id
 
 <sup>\[[back to top](#usage)\]</sup>
 
+- (aliases: `#current_hst_id`, `#hst_id`);
 - get a current host identifier in RQL notation that you can use for debugging purposes during the lock analyzis;
 - the host is a ruby worker (a combination of process/thread/ractor/identity) that is alive and can obtain locks;
 - the host is limited to `process`/`thread`/`ractor` (without `fiber`) combination cuz we have no abilities to extract

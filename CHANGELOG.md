@@ -2,6 +2,8 @@
 ### Added
 - `#clear_locks_of`/`#release_locks_of`
 - `#clear_current_locks`/`#release_current_locks`
+- aliases for `RedisQueuedLocks::Client#current_acquirer_id`: `current_acq_id`, `acq_id`;
+- aliases for `RedisQueuedLocks::Client#current_host_id`: `current_hst_id`, `hst_id`;
 ### Changed
 - bumped ruby development version to 3.4.5;
 - bumped development dependencies;
