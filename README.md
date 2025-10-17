@@ -2122,17 +2122,16 @@ config['log_sampler'] = RedisQueuedLocks::Logging::Sampler
 
 An instrumentation layer is incapsulated in `instrumenter` object stored in [config](#configuration) (`RedisQueuedLocks::Client#config['instrumenter']`).
 
-Instrumentation can be sampled. See [Instrumentation Configuration](#instrumentation-configuration) section for details.
+Instrumentation can be **sampled**. See [Instrumentation Configuration](#instrumentation-configuration) section for details.
 
 Instrumenter object should provide `notify(event, payload)` method with the following signarue:
 
 - `event` - `string`;
 - `payload` - `hash<Symbol,Any>`;
 
-`redis_queued_locks` provides two instrumenters:
+**RQL** provides two instrumenters:
 
-- `RedisQueuedLocks::Instrument::ActiveSupport` - **ActiveSupport::Notifications** instrumenter
-  that instrument events via **ActiveSupport::Notifications** API;
+- `RedisQueuedLocks::Instrument::ActiveSupport` - **ActiveSupport::Notifications** instrumenter that instrument events via **ActiveSupport::Notifications** API;
 - `RedisQueuedLocks::Instrument::VoidNotifier` - instrumenter that does nothing;
 
 By default `RedisQueuedLocks::Client` is configured with the void notifier (which means "instrumentation is disabled").
