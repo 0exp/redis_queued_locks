@@ -56,6 +56,7 @@ GEM
     fileutils (1.7.3)
     i18n (1.14.7)
       concurrent-ruby (~> 1.0)
+    io-console (0.8.1)
     json (2.13.2)
     language_server-protocol (3.17.0.5)
     lint_roller (1.1.0)
@@ -74,6 +75,9 @@ GEM
     pry (0.15.2)
       coderay (~> 1.1)
       method_source (~> 1.0)
+    pry-doc (1.6.0)
+      pry (~> 0.11)
+      yard (~> 0.9.11)
     racc (1.8.1)
     rack (3.2.1)
     rainbow (3.1.1)
@@ -86,6 +90,8 @@ GEM
     redis-client (0.25.2)
       connection_pool
     regexp_parser (2.11.2)
+    reline (0.6.2)
+      io-console (~> 0.5)
     rspec (3.13.1)
       rspec-core (~> 3.13.0)
       rspec-expectations (~> 3.13.0)
@@ -184,6 +190,7 @@ GEM
       unicode-emoji (~> 4.0, >= 4.0.4)
     unicode-emoji (4.0.4)
     uri (1.0.3)
+    yard (0.9.37)
     zlib (3.2.1)
 
 PLATFORMS
@@ -204,9 +211,11 @@ DEPENDENCIES
   armitage-rubocop
   bundler
   pry
+  pry-doc
   rake
   rbs
   redis_queued_locks!
+  reline
   rspec
   rspec-retry
   simplecov

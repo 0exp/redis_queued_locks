@@ -6,6 +6,7 @@ module RedisQueuedLocks::Acquirer
   require_relative 'acquirer/acquire_lock'
   require_relative 'acquirer/release_lock'
   require_relative 'acquirer/release_all_locks'
+  require_relative 'acquirer/release_locks_of'
   require_relative 'acquirer/is_locked'
   require_relative 'acquirer/is_queued'
   require_relative 'acquirer/lock_info'

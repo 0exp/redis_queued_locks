@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.0.0
+# @version 1.14.0
 module RedisQueuedLocks::Utilities
   require_relative 'utilities/lock'
 
@@ -42,6 +43,14 @@ module RedisQueuedLocks::Utilities
   # @since 1.0.0
   def run_non_critical(&block)
     yield rescue nil
+  end
+
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.14.0
+  def clock_gettime
+    ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
   end
 
   # Possible statuses (at the moment of Ruby@3.4):

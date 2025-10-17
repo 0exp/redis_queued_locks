@@ -1,0 +1,46 @@
+use RedisQueuedLocks as RQL
+use RedisClient as RC
+
+module RedisQueuedLocks
+  module Acquirer
+    module ReleaseLocksOf
+      extend RQL::Utilities
+
+      type releaseResult = {
+        ok: bool,
+        result: {
+          rel_key_cnt: Integer,
+          tch_queue_cnt: Integer,
+          rel_time: Integer|Float
+        }
+      }
+      def self.release_locks_of: (
+        String host_id,
+        String acquirer_id,
+        RC::client redis,
+        Integer lock_scan_size,
+        Integer queue_scan_size,
+        RQL::loggerObj logger,
+        RQL::instrObj instrumenter,
+        untyped instrument,
+        bool log_sampling_enabled,
+        Integer log_sampling_percent,
+        RQL::Logging::samplerObj log_sampler,
+        bool log_sample_this,
+        bool instr_sampling_enabled,
+        Integer instr_sampling_percent,
+        RQL::Instrument::samplerObj instr_sampler,
+        bool instr_sample_this
+      ) -> releaseResult
+
+      type fullyReleaseAllLocksResult = { ok: bool, result: { rel_key_cnt: Integer, tch_queue_cnt: Integer } }
+      private def self.fully_release_locks_of: (
+        String refused_host_id,
+        String refused_acquirer_id,
+        RC::client redis,
+        Integer locks_scan_size,
+        Integer queue_scan_size
+      ) -> fullyReleaseAllLocksResult
+    end
+  end
+end

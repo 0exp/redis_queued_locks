@@ -28,7 +28,9 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [locked?](#locked)
   - [queued?](#queued)
   - [unlock](#unlock---release-a-lock)
-  - [clear_locks](#clear_locks---release-all-locks-and-lock-queues)
+  - [clear_locks](#clear_locks---release-all-locks-and-lock-queues) (aka `release_locks`)
+  - [clear_locks_of](#clear_locks_of) (aka `release_locks_of`)
+  - [clear_current_locks](#clear_current_locks) (aka `release_current_locks`)
   - [extend_lock_ttl](#extend_lock_ttl)
   - [locks](#locks---get-list-of-obtained-locks)
   - [queues](#queues---get-list-of-lock-request-queues)
@@ -231,6 +233,17 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - how many items will be released at a time in #clear_locks and in #clear_dead_requests (uses SCAN);
   # - affects the performance of your Redis and Ruby Application (configure thoughtfully);
   config['lock_release_batch_size'] = 100
+
+  # (default: 300)
+  # - how many items will be released at a time in #clear_locks_of and in #clear_current_locks methods (uses SCAN for batch extraction and DEL for batch deletion);
+  # - affects the ruby's memory (cuz this batch will be stored in Set object in first, and then will be splatted to the DEL redis method invocation) (configure thoughtfully);
+  # - affects the performance of your Redis (configure thoughtfully);
+  config['clear_locks_of__lock_scan_size'] = 300
+
+  # (default: 300)
+  # - how many queues will be SCAN'ned at a time in #clear_locks_of and in #clear_current_locks methods (uses SCAN);
+  # - affects the performance of your Redis (configure thoughtfully);
+  config['clear_locks_of__queue_scan_size'] = 300
 
   # (default: 500)
   # - how many items should be extracted from redis during the #locks, #queues, #keys
@@ -1121,6 +1134,14 @@ rql.clear_locks
 
 ---
 
+#### #clear_locks_of
+
+---
+
+#### #clear_current_locks
+
+---
+
 #### #extend_lock_ttl
 
 <sup>\[[back to top](#usage)\]</sup>
@@ -1980,6 +2001,7 @@ List of instrumentation events
 - `redis_queued_locks.reentrant_lock_hold_completes`;
 - `redis_queued_locks.explicit_lock_release`;
 - `redis_queued_locks.explicit_all_locks_release`;
+- `redis_queued_locks.release_locks_of`;
 
 Detalized event semantics and payload structure:
 
@@ -2063,6 +2085,15 @@ Detalized event semantics and payload structure:
     - `:at` - `float`/`epoch` - the time when the operation has ended;
     - `:rel_keys` - `integer` - released redis keys count (`released queue keys` + `released lock keys`);
 
+- `"redis_queued_locks.release_locks_of"`
+  - an event signalizes about the released locks of the cocnrete host and acquirer;
+  - raised from `#clear_locks_of` and`#clear_current_locks` (and `#release_locks_of`/`#release_current_locks` respectively)
+  - payload:
+    - `:rel_time` - `float`/`milliseconds` - time spent on "release locks of" operation;
+    - `:at` - `float`/`epoch` - the time when the opertaion has ended;
+    - `:rel_key_cnt` - `integer` - released locks count;
+    - `:tch_queue_cnt` - `:integer` - the number of queues from which the cocnrete host/acquirer was removed;
+
 ---
 
 ## Roadmap
@@ -2095,7 +2126,7 @@ Detalized event semantics and payload structure:
     - `write` - waits - `write`;
     - **write** mode is a default behavior for all RQL locks;
 - **Minor**:
-  - `#release_locks_of`: release locks of the concrete "lock host" (the lock host is a combination of `process_id/thread_id/ractor_id/identity` string identifier of the potential lock acquirer);
+  - add `hst_id` to all methods that works with queues info;
   - try to return the `fiber object id` to the lock host identifier (we cant use fiber object id cuz `ObjectSpace` has no access to the fiber object space after the any ractor object initialization)
   - named RQL's threads (`Thread#name`) and RQL's ractors (`Ractor#name`) in order to have an ability to find and work with RQL's threads and ractors outside of RQL logic (stop threads before process forking, for example);
   - `#lock`/`#lock!` - `timeout:` option: support for granular periods (it supports only `seconds` at the moment, but we need `milliseconds`);

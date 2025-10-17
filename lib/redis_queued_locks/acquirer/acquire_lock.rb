@@ -17,6 +17,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock
   require_relative 'acquire_lock/try_to_lock'
   require_relative 'acquire_lock/dequeue_from_lock_queue'
 
+  # @since 1.14.0
+  extend RedisQueuedLocks::Utilities
   # @since 1.0.0
   extend TryToLock
   # @since 1.0.0
@@ -157,7 +159,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.13.0
+    # @version 1.14.0
     def acquire_lock(
       redis,
       lock_name,
@@ -309,7 +311,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         detailed_acq_timeout_error,
         on_timeout: acq_dequeue
       ) do
-        acq_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
+        acq_start_time = clock_gettime
 
         # Step 2.1: cyclically try to obtain the lock
         while acq_process[:should_try]
@@ -358,7 +360,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           # @type var ok: bool
           # @type var result: Symbol|Hash[Symbol,untyped]
 
-          acq_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
+          acq_end_time = clock_gettime
           acq_time = ((acq_end_time - acq_start_time) / 1_000.0).ceil(2)
 
           # Step X: save the intermediate results to the result observer
@@ -491,7 +493,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         # Step 3.a: acquired successfully => run logic or return the result of acquirement
         if block_given?
           begin
-            yield_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
+            yield_time = clock_gettime
 
             ttl_shift = (
               (yield_time - acq_process[:acq_end_time]) / 1_000.0 -
@@ -524,9 +526,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
               &block
             )
           ensure
-            acq_process[:rel_time] = ::Process.clock_gettime(
-              ::Process::CLOCK_MONOTONIC, :microsecond
-            )
+            acq_process[:rel_time] = clock_gettime
             acq_process[:hold_time] = (
               (acq_process[:rel_time] - acq_process[:acq_end_time]) / 1_000.0
             ).ceil(2)

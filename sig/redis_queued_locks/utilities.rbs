@@ -7,5 +7,6 @@ module RedisQueuedLocks
     def self?.ractor_status: (Ractor ractor) -> String
     def self?.ractor_alive?: (Ractor ractor) -> bool
     def self?.thread_state: (Thread thread) -> String
+    def self?.clock_gettime: () -> Integer
   end
 end

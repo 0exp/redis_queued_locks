@@ -71,7 +71,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     #
     # @api private
     # @since 1.0.0
-    # @version 1.6.0
+    # @version 1.14.0
     def release_all_locks(
       redis,
       batch_size,
@@ -87,14 +87,14 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
       instr_sampler,
       instr_sample_this
     )
-      rel_start_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
+      rel_start_time = clock_gettime
       fully_release_all_locks(redis, batch_size) => { ok:, result: } # steep:ignore
 
       # @type var ok: bool
       # @type var result: Hash[Symbol,Integer]
 
       time_at = Time.now.to_f
-      rel_end_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :microsecond)
+      rel_end_time = clock_gettime
       rel_time = ((rel_end_time - rel_start_time) / 1_000.0).ceil(2)
 
       instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(

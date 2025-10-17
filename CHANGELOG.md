@@ -1,9 +1,11 @@
 ## [Unreleased]
-
-## [Unreleased]
+### Added
+- `#clear_locks_of`/`#release_locks_of`
+- `#clear_current_locks`/`#release_current_locks`
 ### Changed
 - bumped ruby development version to 3.4.5;
 - bumped development dependencies;
+- (**internal**): `Process.clock_gettime` explicit invocations is moved to the `RedisQueuedLocks::Utils`;
 
 ## [1.13.0] - 2025-06-07
 ### Changed

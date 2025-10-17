@@ -51,18 +51,17 @@ RSpec.describe RedisQueuedLocks do
       expect(client.possible_host_ids).to contain_exactly(*expected_hosts)
 
       # add new possible hosts and make sure that these hosts are showing via possible_host_ids
+      # rubocop:disable Layout/LineLength
       new_thread1 = Thread.new { loop { sleep(0.5) } }
       new_thread2 = Thread.new { loop { sleep(0.5) } }
-      # rubocop:disable Layout/LineLength
       new_thread1_host_id =
         "rql:hst:#{current_process_id}/#{new_thread1.object_id}/#{current_ractor_id}/#{uniq_identity}"
       new_thread2_host_id =
         "rql:hst:#{current_process_id}/#{new_thread2.object_id}/#{current_ractor_id}/#{uniq_identity}"
-      # rubocop:enable Layout/LineLength
-
       expected_hosts << new_thread1_host_id
       expected_hosts << new_thread2_host_id
       expect(client.possible_host_ids).to contain_exactly(*expected_hosts)
+      # rubocop:enable Layout/LineLength
 
       # drop new created hosts and make sure that these hosts are not showing via possible_host_ids
       new_thread1.tap(&:kill).tap(&:join)
@@ -1909,6 +1908,290 @@ RSpec.describe RedisQueuedLocks do
 
     thread_a.join
     thread_b.join
+  end
+
+  specify 'release locks of the concrete acquirer and host' do
+    test_notifier = Class.new do
+      attr_reader :notifications
+      attr_reader :redis_storage_client
+      attr_reader :last_in_memory_rlo_event
+
+      def initialize(redis_storage_client)
+        @redis_storage_client = redis_storage_client
+        @last_in_memory_rlo_event = nil
+      end
+
+      def notify(event, payload = {})
+        if event == 'redis_queued_locks.release_locks_of'
+          @last_in_memory_rlo_event = payload
+        end
+
+        redis_storage_client.call('LPUSH', 'rlo_notifs', JSON.dump({
+          event:,
+          payload:
+        }))
+      end
+
+      def events
+        # NOTE:
+        #   - don't worry about the ideal ways of data extraction
+        #   - see the line #3 of this file
+        redis_storage_client.call('LRANGE', 'rlo_notifs', 0, 100).map { |event| JSON.parse(event) }
+      end
+
+      def release_locks_of__events
+        events.select { |event| event['event'] == 'redis_queued_locks.release_locks_of' }
+      end
+    end.new(redis)
+
+    client = RedisQueuedLocks::Client.new(redis) do |config|
+      config['instrumenter'] = test_notifier
+      config['clear_locks_of__lock_scan_size'] = 150 # NOTE: new configs
+      config['clear_locks_of__queue_scan_size'] = 250 # NOTE: new configs
+    end
+
+    redis.call('FLUSHDB')
+
+    fork do
+      in_fork__redis = RedisClient.config(db: 0).new_pool(
+        # NOTE:
+        #   - long connect_/read_/write_ timeouts is used for problems inside the github runners
+        #     in RBS tests where all our code is "totally slow"
+        #     (and each spec can fail on 1.0-seconds-timeout with Socket's timeout error);
+        #   - long <timeout:> is used for some test-cases;
+        timeout: 5, size: 50, connect_timeout: 5, read_timeout: 5, write_timeout: 5
+      )
+      in_fork__test_notifier = Class.new do
+        attr_reader :notifications
+        attr_reader :redis_storage_client
+
+        def initialize(redis_storage_client)
+          @redis_storage_client = redis_storage_client
+        end
+
+        def notify(event, payload = {})
+          redis_storage_client.call('LPUSH', 'rlo_notifs', JSON.stringify({
+            event:,
+            payload:
+          }))
+        end
+      end.new(in_fork__redis)
+
+      in_fork__client = RedisQueuedLocks::Client.new(in_fork__redis) do |config|
+        config['instrumenter'] = in_fork__test_notifier
+      end
+
+      # create some long living lock
+      in_fork__client.lock('super-mega-long-lock-1', ttl: 500_000)
+
+      # produce zombie acq in lock queue
+      Thread.new do
+        in_fork__redis.call(
+          'HSET',
+          'in-fork--host-info',
+          'side_thread__acq_id', in_fork__client.current_acquirer_id,
+          'side_thread__hst_id', in_fork__client.current_host_id
+        )
+        in_fork__client.lock(
+          'super-mega-long-lock-1',
+          ttl: 500_000, retry_count: nil, timeout: nil
+        )
+      end
+
+      sleep(1)
+
+      in_fork__redis.call(
+        'HSET',
+        'in-fork--host-info',
+        'main_thread__acq_id', in_fork__client.current_acquirer_id,
+        'main_thread__hst_id', in_fork__client.current_host_id
+      )
+    end
+
+    sleep(3)
+
+    client.lock('super-mega-long-lock-2', ttl: 500_000)
+
+    # NOTE: we should have 2 locks for now
+    aggregate_failures 'current state: locks, queues' do
+      expect(client.locks).to contain_exactly(
+        'rql:lock:super-mega-long-lock-1', # from another process
+        'rql:lock:super-mega-long-lock-2' # from the current process
+      )
+
+      # no empty queues, just one queue with just one acquirer inside
+      expect(client.queues).to contain_exactly(
+        'rql:lock_queue:super-mega-long-lock-1'
+      )
+    end
+
+    # rubocop:disable all
+    in_fork_client_info = redis.call('HMGET', 'in-fork--host-info',
+      'side_thread__acq_id', 'side_thread__hst_id',
+      'main_thread__acq_id', 'main_thread__hst_id'
+    )
+    # rubocop:enable all
+
+    # rubocop:disable Layout/LineLength
+    in_fork__side_thread__acq_id = in_fork_client_info[0] # <--- without any keys, just only has a position in queue
+    in_fork__side_thread__hst_id = in_fork_client_info[1] # <--- without any keys, just only has a position in queue
+
+    in_fork__main_thread__acq_id = in_fork_client_info[2] # <--- holds super-mega-long-lock-1
+    in_fork__main_thread__hst_id = in_fork_client_info[3] # <--- holds super-mega-long-lock-1
+    # rubocop:enable Layout/LineLength
+
+    aggregate_failures 'in_fork__side_thread: remove from the queue' do
+      expect(client.queues).to contain_exactly(
+        'rql:lock_queue:super-mega-long-lock-1'
+      )
+
+      expect(test_notifier.release_locks_of__events.size).to eq(0)
+
+      # NOTE:
+      #   - drop "waiting hst/acq" => our queue should be empty after that;
+      #   - no any lock will be dropped cuz side thread does not acquire any lock;
+      result = client.release_locks_of(
+        host_id: in_fork__side_thread__hst_id,
+        acquirer_id: in_fork__side_thread__acq_id
+      )
+
+      expect(test_notifier.release_locks_of__events.size).to eq(1)
+
+      expect(result).to match({
+        ok: true,
+        result: match({
+          rel_key_cnt: 0, # <-- no any key is cleared for side__thread
+          tch_queue_cnt: 1, # <-- side_thread-acquirer is removed from the queue
+          rel_time: be_a(Numeric)
+        })
+      })
+
+      expect(client.queues).to be_empty # <-- side_thread-aqcuirer is removed from the queue
+    end
+
+    aggregate_failures 'in_fork__main_thread: remove all locks' do
+      expect(client.locks).to contain_exactly(
+        'rql:lock:super-mega-long-lock-1', # in_form__main_thread
+        'rql:lock:super-mega-long-lock-2' # current_process
+      )
+
+      expect(test_notifier.release_locks_of__events.size).to eq(1)
+
+      result = client.release_locks_of(
+        host_id: in_fork__main_thread__hst_id,
+        acquirer_id: in_fork__main_thread__acq_id
+      )
+
+      expect(test_notifier.release_locks_of__events.size).to eq(2)
+
+      # rubocop:disable Layout/LineLength
+      expect(result).to match({
+        ok: true,
+        result: match({
+          rel_key_cnt: 1, # <-- removed locks from in_fork__main_thread
+          tch_queue_cnt: 0, # <-- no any queue is "touched" cuz main_thread "is not inside the any queue"
+          rel_time: be_a(Numeric)
+        })
+      })
+      # rubocop:enable Layout/LineLength
+
+      # NOTE: 'rql:lock:super-mega-long-lock-1' from in_fork__main_thread is removed
+      expect(client.locks).to contain_exactly(
+        'rql:lock:super-mega-long-lock-2' # current_process
+      )
+    end
+
+    aggregate_failures 'current process: remove current locks' do
+      expect(client.locks).to contain_exactly(
+        'rql:lock:super-mega-long-lock-2' # current_process holds this lock
+      )
+
+      expect(test_notifier.release_locks_of__events.size).to eq(2)
+
+      result = client.release_locks_of(
+        host_id: client.current_host_id,
+        acquirer_id: client.current_acquirer_id
+      )
+
+      expect(test_notifier.release_locks_of__events.size).to eq(3)
+
+      # rubocop:disable Layout/LineLength
+      expect(result).to match({
+        ok: true,
+        result: match({
+          rel_key_cnt: 1, # <-- removed locks from current process
+          tch_queue_cnt: 0, # <-- no any queue is "touched" cuz current process "is not inside the any queue"
+          rel_time: be_a(Numeric)
+        })
+      })
+      # rubocop:enable Layout/LineLength
+      #
+      expect(client.locks).to be_empty
+    end
+
+    aggregate_failures 'clear_current_locks: remove locks hosted by the current process' do
+      client.lock('super-mega-long-lock-3', ttl: 500_000)
+
+      fork do
+        in_fork__redis = RedisClient.config(db: 0).new_pool(
+          # NOTE:
+          #   - long connect_/read_/write_ timeouts is used for problems inside the github runners
+          #     in RBS tests where all our code is "totally slow"
+          #     (and each spec can fail on 1.0-seconds-timeout with Socket's timeout error);
+          #   - long <timeout:> is used for some test-cases;
+          timeout: 5, size: 50, connect_timeout: 5, read_timeout: 5, write_timeout: 5
+        )
+        in_fork__client = RedisQueuedLocks::Client.new(in_fork__redis)
+
+        # create some long living lock
+        in_fork__client.lock('super-mega-long-lock-4', ttl: 500_000)
+        sleep(1)
+      end
+
+      sleep(2)
+
+      expect(test_notifier.release_locks_of__events.size).to eq(3)
+
+      expect(client.locks).to contain_exactly(
+        'rql:lock:super-mega-long-lock-3', # from current process
+        'rql:lock:super-mega-long-lock-4' # from forked process
+      )
+
+      result = client.release_current_locks
+      expect(test_notifier.release_locks_of__events.size).to eq(4)
+      # rubocop:disable Layout/LineLength
+      expect(result).to match({
+        ok: true,
+        result: match({
+          rel_key_cnt: 1, # <-- removed locks from current process
+          tch_queue_cnt: 0, # <-- no any queue is "touched" cuz current process "is not inside the any queue"
+          rel_time: be_a(Numeric)
+        })
+      })
+      # rubocop:enable Layout/LineLength
+
+      expect(client.locks).to contain_exactly(
+        'rql:lock:super-mega-long-lock-4' # <-- from forked process
+      )
+    end
+
+    aggregate_failures 'instrumentation event structure' do
+      # NOTE: four events
+      expect(test_notifier.release_locks_of__events.size).to eq(4)
+      # NOTE: check any of them for the correct structure
+      expect(test_notifier.release_locks_of__events.sample['payload']).to match({
+        'at' => be_a(Float),
+        'rel_time' => be_a(Numeric),
+        'rel_key_cnt' => be_a(Integer),
+        'tch_queue_cnt' => be_a(Integer)
+      })
+      expect(test_notifier.last_in_memory_rlo_event).to match({
+        at: be_a(Float),
+        rel_time: be_a(Numeric),
+        rel_key_cnt: be_a(Integer),
+        tch_queue_cnt: be_a(Integer)
+      })
+    end
   end
 
   specify 'all in + notifications' do

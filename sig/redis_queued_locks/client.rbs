@@ -163,6 +163,42 @@ module RedisQueuedLocks
     ) -> RQL::Acquirer::ReleaseAllLocks::releaseResult
     alias release_locks clear_locks
 
+    def clear_locks_of: (
+      host_id: String,
+      acquirer_id: String,
+      ?lock_scan_size: Integer,
+      ?queue_scan_size: Integer,
+      ?logger: RQL::loggerObj,
+      ?instrumenter: RQL::instrObj,
+      ?instrument: untyped?,
+      ?log_sampling_enabled: bool,
+      ?log_sampling_percent: Integer,
+      ?log_sampler: RQL::Logging::samplerObj,
+      ?log_sample_this: bool,
+      ?instr_sampling_enabled: bool,
+      ?instr_sampling_percent: Integer,
+      ?instr_sampler: RQL::Instrument::samplerObj,
+      ?instr_sample_this: bool
+    ) -> RQL::Acquirer::ReleaseLocksOf::releaseResult
+    alias release_locks_of clear_locks_of
+
+    def clear_current_locks: (
+      ?lock_scan_size: Integer,
+      ?queue_scan_size: Integer,
+      ?logger: RQL::loggerObj,
+      ?instrumenter: RQL::instrObj,
+      ?instrument: untyped?,
+      ?log_sampling_enabled: bool,
+      ?log_sampling_percent: Integer,
+      ?log_sampler: RQL::Logging::samplerObj,
+      ?log_sample_this: bool,
+      ?instr_sampling_enabled: bool,
+      ?instr_sampling_percent: Integer,
+      ?instr_sampler: RQL::Instrument::samplerObj,
+      ?instr_sample_this: bool
+    ) -> RQL::Acquirer::ReleaseLocksOf::releaseResult
+    alias release_current_locks clear_current_locks
+
     def locks: (?scan_size: Integer, ?with_info: bool) -> RQL::Acquirer::Locks::locks
              | (?scan_size: Integer, ?with_info: true) -> RQL::Acquirer::Locks::locksInfo
              | (?scan_size: Integer, ?with_info: false) -> RQL::Acquirer::Locks::lockList
