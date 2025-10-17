@@ -2,9 +2,9 @@
 
 [![Tests (RSpec)](https://github.com/0exp/redis_queued_locks/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/0exp/redis_queued_locks/actions) [![Lint (Rubocop)](https://github.com/0exp/redis_queued_locks/actions/workflows/lint.yml/badge.svg?branch=master)](https://github.com/0exp/redis_queued_locks/actions) [![TypeCheck (Runtime/RBS)](https://github.com/0exp/redis_queued_locks/actions/workflows/typecheck-runtime.yml/badge.svg?branch=master)](https://github.com/0exp/redis_queued_locks/actions) [![TypeCheck (Static/Steep)](https://github.com/0exp/redis_queued_locks/actions/workflows/typecheck-static.yml/badge.svg?branch=master)](https://github.com/0exp/redis_queued_locks/actions)
 
-<a href="https://redis.io/docs/manual/patterns/distributed-locks/">Distributed locks</a> with "prioritized lock acquisition queue" capabilities based on the Redis Database.
+<a href="https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/">Distributed locks</a> with "prioritized lock acquisition queue" capabilities based on the Redis Database.
 
-Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) (with requeue capabilities) which guarantees the request queue will never be stacked.
+Each lock request is put into the request queue (each lock is hosted by its own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) (with requeue capabilities) which guarantees the request queue will never be stacked.
 
 In addition to the classic `queued` (FIFO) strategy RQL supports `random` (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
 
@@ -162,7 +162,7 @@ rq_lock_client.lock("some-lock") { puts "Hello, lock!" }
 ```ruby
 redis_client = RedisClient.config.new_pool # NOTE: provide your own RedisClient instance
 
-clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
+client = RedisQueuedLocks::Client.new(redis_client) do |config|
   # (default: 3) (supports nil)
   # - nil means "infinite retries" and you are only limited by the "try_to_lock_timeout" config;
   config['retry_count'] = 3
@@ -234,7 +234,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - `:extendable_work_through` - continue working under the lock <with> lock's TTL extension;
   #   - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
   #   - `:dead_locking` - fail with deadlock exception;
-  # - See "Dead locks and Reentrant Locks" documentation section in REDME.md for details;
+  # - See "Dead locks and Reentrant Locks" documentation section in README.md for details;
   config['default_conflict_strategy'] = :wait_for_lock
 
   # (default: 100)
@@ -256,7 +256,7 @@ clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
   # (default: 500)
   # - how many items should be extracted from redis during the #locks, #queues, #keys
   #   #locks_info, and #queues_info operations (uses SCAN);
-  # - affects the performance of your Redis and Ruby Application (configure thoughtfully;)
+  # - affects the performance of your Redis and Ruby Application (configure thoughtfully);
   config['key_extraction_batch_size'] = 500
 
   # (default: 1 day)
@@ -757,7 +757,7 @@ rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
 ```
 
 - obtain a lock in `:random` way (with `:random` strategy): in `:random` strategy
-  any acquirer from the lcok queue can obtain the lock regardless of the position in the lock queue;
+  any acquirer from the lock queue can obtain the lock regardless of the position in the lock queue;
 
 ```ruby
 # Current Process (process#1)
