@@ -835,7 +835,8 @@ class RedisQueuedLocks::Client
   end
   alias_method :release_locks_of, :clear_locks_of
 
-  # Release all locks of the current acquirer/host and remove the current acquirer/host from all queues;
+  # Release all locks of the current acquirer/host and
+  # remove the current acquirer/host from all queues;
   #
   # @option batch_size [Integer]
   # @option logger [::Logger,#debug]
