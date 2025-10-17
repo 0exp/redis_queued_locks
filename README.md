@@ -64,6 +64,14 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 - [Instrumentation](#instrumentation)
   - [Instrumentation Configuration](#instrumentation-configuration)
   - [Instrumentation Events](#instrumentation-events)
+    - ["redis_queued_locks.lock_obtained"](#redis_queued_lockslock_hold_and_release)
+    - ["redis_queued_locks.extendable_reentrant_lock_obtained"](#redis_queued_locksextendable_reentrant_lock_obtained)
+    - ["redis_queued_locks.reentrant_lock_obtained"](#redis_queued_locksreentrant_lock_obtained)
+    - ["redis_queued_locks.lock_hold_and_release"](#redis_queued_lockslock_hold_and_release)
+    - ["redis_queued_locks.reentrant_lock_hold_completes"](#redis_queued_locksreentrant_lock_hold_completes)
+    - ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release)
+    - ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
+    - ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of)
 - [Roadmap](#roadmap)
 - [Build and Develop](#build-and-develop)
 - [Contributing](#contributing)
@@ -2179,113 +2187,113 @@ config['instr_sampler'] = RedisQueuedLocks::Instrument::Sampler
 
 List of instrumentation events
 
-- ["redis_queued_locks.lock_obtained"](#redis_queued_lockslock_hold_and_release);
-- ["redis_queued_locks.extendable_reentrant_lock_obtained"](#redis_queued_locksextendable_reentrant_lock_obtained);
-- ["redis_queued_locks.reentrant_lock_obtained"](#redis_queued_locksreentrant_lock_obtained);
-- ["redis_queued_locks.lock_hold_and_release"](#redis_queued_lockslock_hold_and_release);
-- ["redis_queued_locks.reentrant_lock_hold_completes"](#redis_queued_locksreentrant_lock_hold_completes);
-- ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release);
-- ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release);
-- ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of);
+- ["redis_queued_locks.lock_obtained"](#redis_queued_lockslock_hold_and_release)
+- ["redis_queued_locks.extendable_reentrant_lock_obtained"](#redis_queued_locksextendable_reentrant_lock_obtained)
+- ["redis_queued_locks.reentrant_lock_obtained"](#redis_queued_locksreentrant_lock_obtained)
+- ["redis_queued_locks.lock_hold_and_release"](#redis_queued_lockslock_hold_and_release)
+- ["redis_queued_locks.reentrant_lock_hold_completes"](#redis_queued_locksreentrant_lock_hold_completes)
+- ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release)
+- ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
+- ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of)
 
 Detalized event semantics and payload structure:
 
 ##### `"redis_queued_locks.lock_obtained"`
-<sup>\[[back to the list](#instrumentation-events)\]</sup>
-  - a moment when the lock was obtained;
-  - raised from `#lock`/`#lock!`;
-  - payload:
-    - `:ttl` - `integer`/`milliseconds` - lock ttl;
-    - `:acq_id` - `string` - lock acquirer identifier;
-    - `:hst_id` - `string` - lock's host identifier;
-    - `:lock_key` - `string` - lock name;
-    - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend;
-    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- a moment when the lock was obtained;
+- raised from `#lock`/`#lock!`;
+- payload:
+  - `:ttl` - `integer`/`milliseconds` - lock ttl;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:lock_key` - `string` - lock name;
+  - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend;
+  - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
 ##### `"redis_queued_locks.extendable_reentrant_lock_obtained"`
-<sup>\[[back to the list](#instrumentation-events)\]</sup>
-  - an event signalizes about the "extendable reentrant lock" obtaining is happened;
-  - raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
-  - payload:
-    - `:lock_key` - `string` - lock name;
-    - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
-    - `:acq_id` - `string` - lock acquirer identifier;
-    - `:hst_id` - `string` - lock's host identifier;
-    - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as extendable reentrant lock;
-    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the "extendable reentrant lock" obtaining is happened;
+- raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
+- payload:
+  - `:lock_key` - `string` - lock name;
+  - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as extendable reentrant lock;
+  - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
 ##### `"redis_queued_locks.reentrant_lock_obtained"`
-<sup>\[[back to the list](#instrumentation-events)\]</sup>
-  - an event signalizes about the "reentrant lock" obtaining is happened (without TTL extension);
-  - raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
-  - payload:
-    - `:lock_key` - `string` - lock name;
-    - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
-    - `:acq_id` - `string` - lock acquirer identifier;
-    - `:hst_id` - `string` - lock's host identifier;
-    - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
-    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the "reentrant lock" obtaining is happened (without TTL extension);
+- raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
+- payload:
+  - `:lock_key` - `string` - lock name;
+  - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
+  - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
 ##### `"redis_queued_locks.lock_hold_and_release"`
-<sup>\[[back to the list](#instrumentation-events)\]</sup>
-  - an event signalizes about the "hold+and+release" process is finished;
-  - raised from `#lock`/`#lock!` when invoked with a block of code;
-  - payload:
-    - `:hold_time` - `float`/`milliseconds` - lock hold time;
-    - `:ttl` - `integer`/`milliseconds` - lock ttl;
-    - `:acq_id` - `string` - lock acquirer identifier;
-    - `:hst_id` - `string` - lock's host identifier;
-    - `:lock_key` - `string` - lock name;
-    - `:ts` - `numeric`/`epoch` - the time when lock was obtained;
-    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the "hold+and+release" process is finished;
+- raised from `#lock`/`#lock!` when invoked with a block of code;
+- payload:
+  - `:hold_time` - `float`/`milliseconds` - lock hold time;
+  - `:ttl` - `integer`/`milliseconds` - lock ttl;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:lock_key` - `string` - lock name;
+  - `:ts` - `numeric`/`epoch` - the time when lock was obtained;
+  - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
 ##### `"redis_queued_locks.reentrant_lock_hold_completes"`
-<sup>\[[back to the list](#instrumentation-events)\]</sup>
-  - an event signalizes about the "reentrant lock hold" is complete (both extendable and non-extendable);
-  - lock re-entering can happen many times and this event happens for each of them separately;
-  - raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
-  - payload:
-    - `:hold_time` - `float`/`milliseconds` - lock hold time;
-    - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
-    - `:acq_id` - `string` - lock acquirer identifier;
-    - `:hst_id` - `string` - lock's host identifier;
-    - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
-    - `:lock_key` - `string` - lock name;
-    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the "reentrant lock hold" is complete (both extendable and non-extendable);
+- lock re-entering can happen many times and this event happens for each of them separately;
+- raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
+- payload:
+  - `:hold_time` - `float`/`milliseconds` - lock hold time;
+  - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
+  - `:lock_key` - `string` - lock name;
+  - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
 ##### `"redis_queued_locks.explicit_lock_release"`
-<sup>\[[back to the list](#instrumentation-events)\]</sup>
-  - an event signalizes about the explicit lock release (invoked via `RedisQueuedLock#unlock`);
-  - raised from `#unlock`;
-  - payload:
-    - `:at` - `float`/`epoch` - the time when the lock was released;
-    - `:rel_time` - `float`/`milliseconds` - time spent on lock releasing;
-    - `:lock_key` - `string` - released lock (lock name);
-    - `:lock_key_queue` - `string` - released lock queue (lock queue name);
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the explicit lock release (invoked via `RedisQueuedLock#unlock`);
+- raised from `#unlock`;
+- payload:
+  - `:at` - `float`/`epoch` - the time when the lock was released;
+  - `:rel_time` - `float`/`milliseconds` - time spent on lock releasing;
+  - `:lock_key` - `string` - released lock (lock name);
+  - `:lock_key_queue` - `string` - released lock queue (lock queue name);
 
 ##### `"redis_queued_locks.explicit_all_locks_release"`
-<sup>\[[back to the list](#instrumentation-events)\]</sup>
-  - an event signalizes about the explicit all locks release (invoked via `RedisQueuedLock#clear_locks`);
-  - raised from `#clear_locks`;
-  - payload:
-    - `:rel_time` - `float`/`milliseconds` - time spent on "realese all locks" operation;
-    - `:at` - `float`/`epoch` - the time when the operation has ended;
-    - `:rel_keys` - `integer` - released redis keys count (`released queue keys` + `released lock keys`);
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the explicit all locks release (invoked via `RedisQueuedLock#clear_locks`);
+- raised from `#clear_locks`;
+- payload:
+  - `:rel_time` - `float`/`milliseconds` - time spent on "realese all locks" operation;
+  - `:at` - `float`/`epoch` - the time when the operation has ended;
+  - `:rel_keys` - `integer` - released redis keys count (`released queue keys` + `released lock keys`);
 
 ##### `"redis_queued_locks.release_locks_of"`
-<sup>\[[back to the list](#instrumentation-events)\]</sup>
-  - an event signalizes about the released locks of the cocnrete host and acquirer;
-  - raised from `#clear_locks_of` and`#clear_current_locks` (and `#release_locks_of`/`#release_current_locks` respectively)
-  - payload:
-    - `:rel_time` - `float`/`milliseconds` - time spent on "release locks of" operation;
-    - `:at` - `float`/`epoch` - the time when the opertaion has ended;
-    - `:rel_key_cnt` - `integer` - released locks count;
-    - `:tch_queue_cnt` - `:integer` - the number of queues from which the cocnrete host/acquirer was removed;
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the released locks of the cocnrete host and acquirer;
+- raised from `#clear_locks_of` and`#clear_current_locks` (and `#release_locks_of`/`#release_current_locks` respectively)
+- payload:
+  - `:rel_time` - `float`/`milliseconds` - time spent on "release locks of" operation;
+  - `:at` - `float`/`epoch` - the time when the opertaion has ended;
+  - `:rel_key_cnt` - `integer` - released locks count;
+  - `:tch_queue_cnt` - `:integer` - the number of queues from which the cocnrete host/acquirer was removed;
 
 ---
 
