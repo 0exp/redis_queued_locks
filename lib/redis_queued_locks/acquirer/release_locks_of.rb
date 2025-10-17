@@ -1,28 +1,34 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 1.0.0
-module RedisQueuedLocks::Acquirer::ReleaseLock
-  # @since 1.0.0
+# @since 1.14.0
+module RedisQueuedLocks::Acquirer::ReleaseLocksOf
+  # @since 1.14.0
   extend RedisQueuedLocks::Utilities
 
   class << self
-    # Release the concrete lock:
-    # - 1. clear lock queue: al; related processes released
-    #      from the lock aquierment and should retry;
-    # - 2. delete the lock: drop lock key from Redis;
-    # It is safe because the lock obtain logic is transactional and
-    # watches the original lock for changes.
+    # Release all queues and locks that belong to the given host and its associated acquirer.
     #
+    # @param refused_host_id [String]
+    #   A host whose locks and queues should be released.
+    # @param refused_acquirer_id [String]
+    #   An acquirer (of the passed host) whose locks and queues should be released.
     # @param redis [RedisClient]
     #   Redis connection client.
-    # @param lock_name [String]
-    #   The lock name that should be released.
-    # @param isntrumenter [#notify]
-    #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
+    # @param lock_scan_size [Integer]
+    #   The number of lock keys that should be released in a time.
+    #   Affects the RubyVM memmory (cuz each found lock will be temporary stored in memory for
+    #   subsequent removal from redis in one query at a time).
+    # @param queue_scan_size [Integer]
+    #   The number of lock queues that should be scanned removing an acquirer from them (at a time).
     # @param logger [::Logger,#debug]
     #   - Logger object used from `configuration` layer (see config['logger']);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
+    # @param isntrumenter [#notify]
+    #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
+    # @param instrument [NilClass,Any]
+    #    - Custom instrumentation data wich will be passed to the instrumenter's payload
+    #      with :instrument key;
     # @param log_sampling_enabled [Boolean]
     #   - enables <log sampling>: only the configured percent of RQL cases will be logged;
     #   - disabled by default;
@@ -66,18 +72,21 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     #   - marks the method that everything should be instrumneted
     #     despite the enabled instrumentation sampling;
     #   - makes sense when instrumentation sampling is enabled;
-    # @return [Hash<Symbol,Boolean<Hash<Symbol,Numeric|String|Symbol>>]
-    #   Format: { ok: true/false, result: Hash<Symbol,Numeric|String|Symbol> }
+    # @return [Hash<Symbol,Any>]
+    #   Format: { ok: true, result: Hash<Symbol,Numeric> }
     #
     # @api private
-    # @since 1.0.0
-    # @version 1.14.0
+    # @since 1.14.0
     # rubocop:disable Metrics/MethodLength
-    def release_lock(
+    def release_locks_of(
+      refused_host_id,
+      refused_acquirer_id,
       redis,
-      lock_name,
-      instrumenter,
+      lock_scan_size,
+      queue_scan_size,
       logger,
+      instrumenter,
+      instrument,
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,
@@ -86,15 +95,21 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
       instr_sampling_percent,
       instr_sampler,
       instr_sample_this
-    )
-      lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
-      lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
-
+    ) # TODO: move from SCAN to indexes :thinking:
       rel_start_time = clock_gettime
-      fully_release_lock(redis, lock_key, lock_key_queue) => { ok:, result: } # steep:ignore
+
+      # steep:ignore:start
+      fully_release_locks_of(
+        refused_host_id,
+        refused_acquirer_id,
+        redis,
+        lock_scan_size,
+        queue_scan_size
+      ) => { ok:, result: }
+      # steep:ignore:end
 
       # @type var ok: bool
-      # @type var result: Hash[Symbol,Symbol]
+      # @type var result: Hash[Symbol,Integer]
 
       time_at = Time.now.to_f
       rel_end_time = clock_gettime
@@ -108,22 +123,20 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
       )
 
       run_non_critical do
-        instrumenter.notify('redis_queued_locks.explicit_lock_release', {
-          lock_key: lock_key,
-          lock_key_queue: lock_key_queue,
+        instrumenter.notify('redis_queued_locks.release_locks_of', {
+          at: time_at,
           rel_time: rel_time,
-          at: time_at
+          rel_key_cnt: result[:rel_key_cnt],
+          tch_queue_cnt: result[:tch_queue_cnt]
         })
       end if instr_sampled
 
       {
         ok: true,
         result: {
-          rel_time: rel_time,
-          rel_key: lock_key,
-          rel_queue: lock_key_queue,
-          queue_res: result[:queue],
-          lock_res: result[:lock]
+          rel_key_cnt: result[:rel_key_cnt],
+          tch_queue_cnt: result[:tch_queue_cnt],
+          rel_time: rel_time
         }
       }
     end
@@ -131,38 +144,68 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
 
     private
 
-    # Realease the lock: clear the lock queue and expire the lock.
-    #
+    # @param refused_host_id [String]
+    # @param refused_acquirer_id [String]
     # @param redis [RedisClient]
-    # @param lock_key [String]
-    # @param lock_key_queue [String]
-    # @return [Hash<Symbol,Boolean|Hash<Symbol,Symbol>>]
-    #   Format: {
-    #     ok: true/false,
-    #     result: {
-    #       queue: :released/:nothing_to_release,
-    #       lock: :released/:nothing_to_release
-    #     }
-    #   }
+    # @param lock_scan_size [Integer]
+    # @param queue_scan_size [Integer]
+    # @return [Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
+    #   - Example: { ok: true, result: { rel_key_cnt: 12345, tch_queue_cnt: 321 } }
     #
     # @api private
-    # @since 1.0.0
-    def fully_release_lock(redis, lock_key, lock_key_queue)
-      # @type var result: [Integer,Integer]
-      result = redis.with do |rconn|
-        rconn.multi do |transact|
-          transact.call('ZREMRANGEBYSCORE', lock_key_queue, '-inf', '+inf')
-          transact.call('EXPIRE', lock_key, '0')
+    # @since 1.14.0
+    # rubocop:disable Metrics/MethodLength
+    def fully_release_locks_of(
+      refused_host_id,
+      refused_acquirer_id,
+      redis,
+      lock_scan_size,
+      queue_scan_size
+    )
+      # TODO: some indexing approach isntead of <scan>
+      rel_key_cnt = 0
+      tch_queue_cnt = 0
+
+      redis.with do |rconn|
+        # Step A: drop locks of the passed host/acquirer
+        refused_locks = Set.new #: Set[String]
+        rconn.scan(
+          'MATCH',
+          RedisQueuedLocks::Resource::LOCK_PATTERN,
+          count: lock_scan_size
+        ) do |lock_key|
+          acquirer_id, host_id = rconn.call('HMGET', lock_key, 'acq_id', 'hst_id')
+          if refused_host_id == host_id && refused_acquirer_id == acquirer_id
+            refused_locks << lock_key
+          end
+
+          if refused_locks.size >= lock_scan_size
+            # NOTE: steep can not recognize the `*`-splat operator on Set objects
+            rconn.call('DEL', *refused_locks) # steep:ignore
+            rel_key_cnt += refused_locks.size
+            refused_locks.clear
+          end
+        end
+
+        if refused_locks.any?
+          # NOTE: steep can not recognize the `*`-splat operator on Set objects
+          rconn.call('DEL', *refused_locks) # steep:ignore
+          rel_key_cnt += refused_locks.size
+        end
+
+        # Step B: drop passed host/acquirer from lock queues
+        rconn.scan(
+          'MATCH',
+          RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
+          count: queue_scan_size
+        ) do |lock_queue|
+          res = rconn.call('ZREM', lock_queue, refused_acquirer_id)
+          tch_queue_cnt += 1 if res != 0
         end
       end
 
-      {
-        ok: true,
-        result: {
-          queue: (result[0] != 0) ? :released : :nothing_to_release,
-          lock: (result[1] != 0) ? :released : :nothing_to_release
-        }
-      }
+      { ok: true, result: { rel_key_cnt:, tch_queue_cnt: } }
     end
   end
+  # rubocop:enable Metrics/MethodLength
 end

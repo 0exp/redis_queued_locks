@@ -2,6 +2,7 @@
 
 # @api public
 # @since 1.0.0
+# @version 1.14.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @return [RedisClient]
@@ -27,7 +28,7 @@ class RedisQueuedLocks::Client
   # @return [RedisQueuedLocks::Config]
   #
   # @api public
-  # @since [1.13.0]
+  # @since 1.13.0
   attr_reader :config
 
   # @param redis_client [RedisClient]
@@ -52,7 +53,7 @@ class RedisQueuedLocks::Client
   # @return [void]
   #
   # @api public
-  # @since [1.13.0]
+  # @since 1.13.0
   def configure(&configuration)
     config.configure(&configuration)
   end
@@ -577,6 +578,8 @@ class RedisQueuedLocks::Client
       identity
     )
   end
+  alias_method :current_acq_id, :current_acquirer_id
+  alias_method :acq_id, :current_acquirer_id
 
   # Retrun the current host identifier.
   #
@@ -608,6 +611,8 @@ class RedisQueuedLocks::Client
       identity
     )
   end
+  alias_method :current_hst_id, :current_host_id
+  alias_method :hst_id, :current_host_id
 
   # Return the list of possible host identifiers that can be reached from the current ractor.
   #
@@ -738,6 +743,154 @@ class RedisQueuedLocks::Client
     )
   end
   alias_method :release_locks, :clear_locks
+
+  # Release all locks of the passed acquirer/host and remove this acquirer/host from all queues;
+  #
+  # This is a cleanup helper intended for operational and debugging scenarios (for example: your
+  # current puma request thread is killed by Rack::Timeout and you need to cleanup all zombie RQL
+  # locks and lock reuqests obtained during the request processing).
+  #
+  # Identifiers can be extracted via:
+  #   - `#current_host_id`
+  #   - `#current_acquirer_id`
+  #   - `#possible_host_ids`
+  #   - lock data (extracted from Redis via #lock_info, #locks_info, #queue_info, #queues_info)
+  #
+  # @option host_id [String] Host identifier whose locks/queues should be released.
+  # @option acquirer_id [String] Acquirer identifier, associated with the `host_id`.
+  # @option lock_scan_size [Integer]
+  # @option queue_scan_size [Integer]
+  # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify] See `config['instrumenter']` docs for details.
+  # @option instrument [NilClass,Any]
+  # @option log_sampling_enabled [Boolean]
+  # @option log_sampling_percent [Integer]
+  # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
+  # @return [Hash<Symbol,Boolean|Hash<Symbol,Numeric>>]
+  #   Example: { ok: true, result: { rel_key_cnt: 100, tch_queue_cnt: 2, rel_time: 0.01 } }
+  #
+  # @example Release locks of the current process:
+  #   client.clear_locks_of(
+  #     host_id: client.current_host_id,
+  #     acquirer_id: client.current_acquirer_id
+  #   )
+  #
+  # @example Release locks of a different host/acquirer:
+  #   client.clear_locks_of(
+  #     host_id: "rql:hst:62681/2016/2032/b30ec5e4bea10512",
+  #     acquirer_id: "ral:acq:62681/2016/2024/2032/b30ec5e4bea10512"
+  #   )
+  #
+  # @see #clear_current_locks
+  # @see #current_host_id
+  # @see #current_acquirer_id
+  # @see #possible_host_ids
+  # @see #lock_info
+  # @see #locks_info
+  # @see #queue_info
+  # @see #queues_info
+  #
+  # @api public
+  # @since 1.14.0
+  def clear_locks_of(
+    host_id:,
+    acquirer_id:,
+    lock_scan_size: config['clear_locks_of__lock_scan_size'], # steep:ignore
+    queue_scan_size: config['clear_locks_of__queue_scan_size'], # steep:ingore
+    logger: config['logger'], # steep:ignore
+    instrumenter: config['instrumenter'], # steep:ignore
+    instrument: nil,
+    log_sampling_enabled: config['log_sampling_enabled'], # steep:ignore
+    log_sampling_percent: config['log_sampling_percent'], # steep:ignore
+    log_sampler: config['log_sampler'], # steep:ignore
+    log_sample_this: false,
+    instr_sampling_enabled: config['instr_sampling_enabled'], # steep:ignore
+    instr_sampling_percent: config['instr_sampling_percent'], # steep:ignore
+    instr_sampler: config['instr_sampler'], # steep:ignore
+    instr_sample_this: false
+  )
+    RedisQueuedLocks::Acquirer::ReleaseLocksOf.release_locks_of(
+      host_id,
+      acquirer_id,
+      redis_client,
+      lock_scan_size,
+      queue_scan_size,
+      logger,
+      instrumenter,
+      instrument,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler,
+      log_sample_this,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler,
+      instr_sample_this
+    )
+  end
+  alias_method :release_locks_of, :clear_locks_of
+
+  # Release all locks of the current acquirer/host and
+  # remove the current acquirer/host from all queues;
+  #
+  # @option batch_size [Integer]
+  # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify] See `config['instrumenter']` docs for details.
+  # @option instrument [NilClass,Any]
+  # @option log_sampling_enabled [Boolean]
+  # @option log_sampling_percent [Integer]
+  # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
+  # @return [Hash<Symbol,Boolean|Hash<Symbol,Numeric>>]
+  #   Example: { ok: true, result: { rel_key_cnt: 100, tch_queue_cnt: 2, rel_time: 0.01 } }
+  #
+  # @see #clear_locks_of
+  #
+  # @api public
+  # @since 1.14.0
+  def clear_current_locks(
+    lock_scan_size: config['clear_locks_of__lock_scan_size'], # steep:ignore
+    queue_scan_size: config['clear_locks_of__queue_scan_size'], # steep:ingore
+    logger: config['logger'], # steep:ignore
+    instrumenter: config['instrumenter'], # steep:ignore
+    instrument: nil,
+    log_sampling_enabled: config['log_sampling_enabled'], # steep:ignore
+    log_sampling_percent: config['log_sampling_percent'], # steep:ignore
+    log_sampler: config['log_sampler'], # steep:ignore
+    log_sample_this: false,
+    instr_sampling_enabled: config['instr_sampling_enabled'], # steep:ignore
+    instr_sampling_percent: config['instr_sampling_percent'], # steep:ignore
+    instr_sampler: config['instr_sampler'], # steep:ignore
+    instr_sample_this: false
+  )
+    clear_locks_of(
+      host_id: current_host_id,
+      acquirer_id: current_acquirer_id,
+      lock_scan_size:,
+      queue_scan_size:,
+      logger:,
+      instrumenter:,
+      instrument:,
+      log_sampling_enabled:,
+      log_sampling_percent:,
+      log_sampler:,
+      log_sample_this:,
+      instr_sampling_enabled:,
+      instr_sampling_percent:,
+      instr_sampler:,
+      instr_sample_this:
+    )
+  end
+  alias_method :release_current_locks, :clear_current_locks
 
   # @option scan_size [Integer]
   #   The batch of scanned keys for Redis'es SCAN command.

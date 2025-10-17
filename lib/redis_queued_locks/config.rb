@@ -1,13 +1,14 @@
 # frozen_string_literal: true
 
 # @api private
-# @since [1.13.0]
+# @since 1.13.0
+# @version 1.14.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Config
   require_relative 'config/dsl'
 
   # @api private
-  # @since [1.13.0]
+  # @since 1.13.0
   include DSL
 
   setting('retry_count', 3)
@@ -18,6 +19,8 @@ class RedisQueuedLocks::Config
   setting('default_queue_ttl', 15) # NOTE: in seconds)
   setting('detailed_acq_timeout_error', false)
   setting('lock_release_batch_size', 100)
+  setting('clear_locks_of__lock_scan_size', 300)
+  setting('clear_locks_of__queue_scan_size', 300)
   setting('key_extraction_batch_size', 500)
   setting('instrumenter', RedisQueuedLocks::Instrument::VoidNotifier)
   setting('uniq_identifier', -> { RedisQueuedLocks::Resource.calc_uniq_identity })
@@ -79,6 +82,8 @@ class RedisQueuedLocks::Config
   validate('default_queue_ttl') { |val| val.is_a?(Integer) }
   validate('detailed_acq_timeout_error') { |val| val == true || val == false }
   validate('lock_release_batch_size') { |val| val.is_a?(Integer) }
+  validate('clear_locks_of__lock_scan_size') { |val| val.is_a?(Integer) }
+  validate('clear_locks_of__queue_scan_size') { |val| val.is_a?(Integer) }
   validate('instrumenter') { |val| RedisQueuedLocks::Instrument.valid_interface?(val) }
   validate('uniq_identifier') { |val| val.is_a?(Proc) }
   validate('logger') { |val| RedisQueuedLocks::Logging.valid_interface?(val) }
@@ -109,13 +114,13 @@ class RedisQueuedLocks::Config
   # @return [Hash<Symbol,Any>]
   #
   # @api private
-  # @since [1.13.0]
+  # @since 1.13.0
   attr_reader :config_state
 
   # @return [void]
   #
   # @api private
-  # @since [1.13.0]
+  # @since 1.13.0
   def initialize(&configuration)
     @config_state = {}
     config_setters.each_value { |setter| setter.call(@config_state) }
@@ -128,7 +133,7 @@ class RedisQueuedLocks::Config
   # @return [void]
   #
   # @api private
-  # @since [1.13.0]
+  # @since 1.13.0
   def configure(&configuration)
     yield(self) if block_given?
   end
@@ -139,7 +144,7 @@ class RedisQueuedLocks::Config
   # @raise [RedisQueuedLocks::ConfigNotFoundError]
   #
   # @api public
-  # @since [1.13.0]
+  # @since 1.13.0
   def [](config_key)
     prevent_key__non_existent(config_key)
     config_state[config_key]
@@ -153,7 +158,7 @@ class RedisQueuedLocks::Config
   # @raise [RedisQueuedLocks::ConfigValidationError]
   #
   # @api public
-  # @since [1.13.0]
+  # @since 1.13.0
   def []=(config_key, config_value)
     prevent_key__non_existent(config_key)
     prevent_key__invalid_type(config_key, config_value)
@@ -178,7 +183,7 @@ class RedisQueuedLocks::Config
   # @return [Hash<String,Any>]
   #
   # @api public
-  # @since [1.13.0]
+  # @since 1.13.0
   def slice(config_key_pattern)
     key_selector = "#{config_key_pattern}."
     key_splitter = key_selector.size
@@ -201,7 +206,7 @@ class RedisQueuedLocks::Config
   # @raise [RedisQueuedLocks::ConfigNotFoundError]
   #
   # @api private
-  # @since [1.13.0]
+  # @since 1.13.0
   def prevent_key__non_existent(config_key)
     unless config_state.key?(config_key)
       raise(
@@ -218,7 +223,7 @@ class RedisQueuedLocks::Config
   # @raise [RedisQueuedLocks::ConfigValidationError]
   #
   # @api private
-  # @sicne [1.13.0]
+  # @since 1.13.0
   def prevent_key__invalid_type(config_key, config_value)
     unless config_validators[config_key].call(config_value)
       raise(

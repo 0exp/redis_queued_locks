@@ -27,8 +27,10 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [queue_info](#queue_info)
   - [locked?](#locked)
   - [queued?](#queued)
-  - [unlock](#unlock---release-a-lock)
-  - [clear_locks](#clear_locks---release-all-locks-and-lock-queues)
+  - [unlock](#unlock---release-a-lock) (aka `release_lock`)
+  - [clear_locks](#clear_locks---release-all-locks-and-lock-queues) (aka `release_locks`)
+  - [clear_locks_of](#clear_locks_of) (aka `release_locks_of`)
+  - [clear_current_locks](#clear_current_locks) (aka `release_current_locks`)
   - [extend_lock_ttl](#extend_lock_ttl)
   - [locks](#locks---get-list-of-obtained-locks)
   - [queues](#queues---get-list-of-lock-request-queues)
@@ -62,6 +64,14 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 - [Instrumentation](#instrumentation)
   - [Instrumentation Configuration](#instrumentation-configuration)
   - [Instrumentation Events](#instrumentation-events)
+    - ["redis_queued_locks.lock_obtained"](#redis_queued_lockslock_hold_and_release)
+    - ["redis_queued_locks.extendable_reentrant_lock_obtained"](#redis_queued_locksextendable_reentrant_lock_obtained)
+    - ["redis_queued_locks.reentrant_lock_obtained"](#redis_queued_locksreentrant_lock_obtained)
+    - ["redis_queued_locks.lock_hold_and_release"](#redis_queued_lockslock_hold_and_release)
+    - ["redis_queued_locks.reentrant_lock_hold_completes"](#redis_queued_locksreentrant_lock_hold_completes)
+    - ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release)
+    - ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
+    - ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of)
 - [Roadmap](#roadmap)
 - [Build and Develop](#build-and-develop)
 - [Contributing](#contributing)
@@ -231,6 +241,17 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - how many items will be released at a time in #clear_locks and in #clear_dead_requests (uses SCAN);
   # - affects the performance of your Redis and Ruby Application (configure thoughtfully);
   config['lock_release_batch_size'] = 100
+
+  # (default: 300)
+  # - how many items will be released at a time in #clear_locks_of and in #clear_current_locks methods (uses SCAN for batch extraction and DEL for batch deletion);
+  # - affects the ruby's memory (cuz this batch will be stored in Set object in first, and then will be splatted to the DEL redis method invocation) (configure thoughtfully);
+  # - affects the performance of your Redis (configure thoughtfully);
+  config['clear_locks_of__lock_scan_size'] = 300
+
+  # (default: 300)
+  # - how many queues will be SCAN'ned at a time in #clear_locks_of and in #clear_current_locks methods (uses SCAN);
+  # - affects the performance of your Redis (configure thoughtfully);
+  config['clear_locks_of__queue_scan_size'] = 300
 
   # (default: 500)
   # - how many items should be extracted from redis during the #locks, #queues, #keys
@@ -1121,6 +1142,197 @@ rql.clear_locks
 
 ---
 
+#### #clear_locks_of
+
+<sup>\[[back to top](#usage)\]</sup>
+
+- release all locks of the passed acquirer/host and remove this acquirer/host from all queues (locks will be released first)
+- this is a cleanup helper intended for operational and debugging scenarios (for example: your
+  current puma request thread is killed by Rack::Timeout and you need to cleanup all zombie RQL
+  locks and lock reuqests obtained during the request processing);
+- acquirer/host dentifiers can be extracted via:
+  - `#current_host_id`
+  - `#current_acquirer_id`
+  - `#possible_host_ids`
+  - from lock data (extracted via `#lock_info`, `#locks_info`, `#queue_info`, `#queues_info`);
+- produces `"redis_queued_locks.release_locks_of"` instrumentation event;
+- accepts:
+  - `:host_id` - (required) `[String]`
+    - host indentifier whose locks we want to release and which we want to remove from all locks queues;
+  - `:acquirer_id` - (required) `[String]`
+    - acquirer indentifier whose locks we want to release and which we want to remove from all locks queues;
+  - `:lock_scan_size` - (optional) `[Integer]`
+    - how many items will be released at a time (uses `SCAN `for batch extraction and `DEL` for batch deletion);
+    - pre-configuerd value in `config['clear_locks_of__lock_scan_size']`;
+  - `:queue_scan_size` - (optional) `[Integer]`
+    - how many queues will be SCAN'ned at a time (uses `SCAN)`;
+    - pre-configuerd value in `config['clear_locks_of__queue_scan_size']`;
+  - `:logger` - (optional) `[::Logger,#debug]`
+    - custom logger object;
+    - pre-configured value in `config['logger']`;
+  - `:instrumenter` - (optional) `[#notify]`
+    - custom instrumenter object;
+    - pre-configured value in `config['isntrumenter']`;
+  - `:instrument` - (optional) `[NilClass,Any]`
+    - custom instrumentation data wich will be passed to the instrumenter's payload with `:instrument` key;
+  - `:log_sampling_enabled` - (optional) `[Boolean]`
+    - enables **log sampling**;
+    - pre-configured in `config['log_sampling_enabled']`;
+  - `:log_sampling_percent` - (optional) `[Integer]`
+    - **log sampling**:the percent of cases that should be logged;
+    - pre-configured in `config['log_sampling_percent']`;
+  - `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
+    - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
+    - pre-configured in `config['log_sampler']`;
+  - `log_sample_this` - (optional) `[Boolean]`
+    - marks the method that everything should be logged despite the enabled log sampling;
+    - makes sense when log sampling is enabled;
+    - `false` by default;
+  - `:instr_sampling_enabled` - (optional) `[Boolean]`
+    - enables **instrumentaion sampling**;
+    - pre-configured in `config['instr_sampling_enabled']`;
+  - `instr_sampling_percent` - (optional) `[Integer]`
+    - the percent of cases that should be instrumented;
+    - pre-configured in `config['instr_sampling_percent']`;
+  - `instr_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]`
+    - percent-based log sampler that decides should be RQL case instrumented or not;
+    - pre-configured in `config['instr_sampler']`;
+  - `instr_sample_this` - (optional) `[Boolean]`
+    - marks the method that everything should be instrumneted despite the enabled instrumentation sampling;
+    - makes sense when instrumentation sampling is enabled;
+    - `false` by default;
+- returns:
+  - `[Hash<Symbol,Numeric>]` - Format: `{ ok: true, result: Hash<Symbol,Numeric> }`;
+  - result data:
+    - `:rel_time` - `Numeric` - time spent;
+    - `:rel_key_cnt` - `Integer` - the count of released locks;
+    - `:tch_queue_cnt` - `Integer` - the count of touched (modified) queues (the number of queues from which the acquirer/host was removed);
+
+```ruby
+rql.clear_locks_of(
+  host_id: "rql:hst:41478/4320/4360/848818f09d8c3420",
+  acquirer_id: "rql:acq:41478/4320/4340/4360/848818f09d8c3420"
+)
+# -- or (alias) --
+rql.release_locks_of(
+  host_id: "rql:hst:41478/4320/4360/848818f09d8c3420",
+  acquirer_id: "rql:acq:41478/4320/4340/4360/848818f09d8c3420"
+)
+
+# -> result
+{
+  ok: true,
+  result: {
+    rel_key_cnt: 123,
+    tch_queue_cnt: 2,
+    rel_time: 0.1
+  }
+}
+```
+
+```ruby
+# clear locks and queues of the current acquirer:
+rql.clear_locks_of(
+  host_id: rql.current_host_id,
+  acquirer_id: rql.current_acquirer_id
+)
+
+# equivalent:
+rql.clear_current_locks
+
+# -> result
+{
+  ok: true,
+  result: {
+    rel_key_cnt: 43,
+    tch_queue_cnt: 3,
+    rel_time: 0.2
+  }
+}
+```
+
+---
+
+#### #clear_current_locks
+
+<sup>\[[back to top](#usage)\]</sup>
+
+- release all locks of the current acquirer/host and remove the current acquirer/host from all queues (locks will be released first);
+- this is a cleanup helper intended for operational and debugging scenarios (for example: your
+  current puma request thread is killed by Rack::Timeout and you need to cleanup all zombie RQL
+  locks and lock reuqests obtained during the request processing);
+- representes an equivalent invocation:
+  ```ruby
+  rql.clear_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acquirer_id)
+  ```
+- produces `"redis_queued_locks.release_locks_of"` instrumentation event;
+  - `:lock_scan_size` - (optional) `[Integer]`
+    - how many items will be released at a time (uses `SCAN `for batch extraction and `DEL` for batch deletion);
+    - pre-configuerd value in `config['clear_locks_of__lock_scan_size']`;
+  - `:queue_scan_size` - (optional) `[Integer]`
+    - how many queues will be SCAN'ned at a time (uses `SCAN)`;
+    - pre-configuerd value in `config['clear_locks_of__queue_scan_size']`;
+  - `:logger` - (optional) `[::Logger,#debug]`
+    - custom logger object;
+    - pre-configured value in `config['logger']`;
+  - `:instrumenter` - (optional) `[#notify]`
+    - custom instrumenter object;
+    - pre-configured value in `config['isntrumenter']`;
+  - `:instrument` - (optional) `[NilClass,Any]`
+    - custom instrumentation data wich will be passed to the instrumenter's payload with `:instrument` key;
+  - `:log_sampling_enabled` - (optional) `[Boolean]`
+    - enables **log sampling**;
+    - pre-configured in `config['log_sampling_enabled']`;
+  - `:log_sampling_percent` - (optional) `[Integer]`
+    - **log sampling**:the percent of cases that should be logged;
+    - pre-configured in `config['log_sampling_percent']`;
+  - `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
+    - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
+    - pre-configured in `config['log_sampler']`;
+  - `log_sample_this` - (optional) `[Boolean]`
+    - marks the method that everything should be logged despite the enabled log sampling;
+    - makes sense when log sampling is enabled;
+    - `false` by default;
+  - `:instr_sampling_enabled` - (optional) `[Boolean]`
+    - enables **instrumentaion sampling**;
+    - pre-configured in `config['instr_sampling_enabled']`;
+  - `instr_sampling_percent` - (optional) `[Integer]`
+    - the percent of cases that should be instrumented;
+    - pre-configured in `config['instr_sampling_percent']`;
+  - `instr_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]`
+    - percent-based log sampler that decides should be RQL case instrumented or not;
+    - pre-configured in `config['instr_sampler']`;
+  - `instr_sample_this` - (optional) `[Boolean]`
+    - marks the method that everything should be instrumneted despite the enabled instrumentation sampling;
+    - makes sense when instrumentation sampling is enabled;
+    - `false` by default;
+- returns:
+  - `[Hash<Symbol,Numeric>]` - Format: `{ ok: true, result: Hash<Symbol,Numeric> }`;
+  - result data:
+    - `:rel_time` - `Numeric` - time spent;
+    - `:rel_key_cnt` - `Integer` - the count of released locks;
+    - `:tch_queue_cnt` - `Integer` - the count of touched (modified) queues (the number of queues from which the acquirer/host was removed);
+
+```ruby
+rql.clear_current_locks
+# -- or (alias) --
+rql.release_current_locks
+# equivalent:
+rql.release_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acquirer_id)
+
+# -> result
+{
+  ok: true,
+  result: {
+    rel_key_cnt: 43,
+    tch_queue_cnt: 3,
+    rel_time: 0.2
+  }
+}
+```
+
+---
+
 #### #extend_lock_ttl
 
 <sup>\[[back to top](#usage)\]</sup>
@@ -1321,7 +1533,7 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
    :status=>:alive,
    :info=>{
     "acq_id"=>"rql:acq:41478/4320/4340/4360/848818f09d8c3420",
-    "hst_id"=>"rql:hst:41478/4320/4360/848818f09d8c3420"
+    "hst_id"=>"rql:hst:41478/4320/4360/848818f09d8c3420",
     "ts"=>1711607112.670343,
     "ini_ttl"=>15000,
     "rem_ttl"=>13998}},
@@ -1446,6 +1658,7 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 
 <sup>\[[back to top](#usage)\]</sup>
 
+- (aliases: `#current_acq_id`, `#acq_id`);
 - get the current acquirer identifier in RQL notation that you can use for debugging purposes during the lock analyzation;
 - acquirer identifier format:
   ```ruby
@@ -1483,6 +1696,7 @@ rql.current_acquirer_id
 
 <sup>\[[back to top](#usage)\]</sup>
 
+- (aliases: `#current_hst_id`, `#hst_id`);
 - get a current host identifier in RQL notation that you can use for debugging purposes during the lock analyzis;
 - the host is a ruby worker (a combination of process/thread/ractor/identity) that is alive and can obtain locks;
 - the host is limited to `process`/`thread`/`ractor` (without `fiber`) combination cuz we have no abilities to extract
@@ -1908,17 +2122,16 @@ config['log_sampler'] = RedisQueuedLocks::Logging::Sampler
 
 An instrumentation layer is incapsulated in `instrumenter` object stored in [config](#configuration) (`RedisQueuedLocks::Client#config['instrumenter']`).
 
-Instrumentation can be sampled. See [Instrumentation Configuration](#instrumentation-configuration) section for details.
+Instrumentation can be **sampled**. See [Instrumentation Configuration](#instrumentation-configuration) section for details.
 
 Instrumenter object should provide `notify(event, payload)` method with the following signarue:
 
 - `event` - `string`;
 - `payload` - `hash<Symbol,Any>`;
 
-`redis_queued_locks` provides two instrumenters:
+**RQL** provides two instrumenters:
 
-- `RedisQueuedLocks::Instrument::ActiveSupport` - **ActiveSupport::Notifications** instrumenter
-  that instrument events via **ActiveSupport::Notifications** API;
+- `RedisQueuedLocks::Instrument::ActiveSupport` - **ActiveSupport::Notifications** instrumenter that instrument events via **ActiveSupport::Notifications** API;
 - `RedisQueuedLocks::Instrument::VoidNotifier` - instrumenter that does nothing;
 
 By default `RedisQueuedLocks::Client` is configured with the void notifier (which means "instrumentation is disabled").
@@ -1973,95 +2186,113 @@ config['instr_sampler'] = RedisQueuedLocks::Instrument::Sampler
 
 List of instrumentation events
 
-- `redis_queued_locks.lock_obtained`;
-- `redis_queued_locks.extendable_reentrant_lock_obtained`;
-- `redis_queued_locks.reentrant_lock_obtained`;
-- `redis_queued_locks.lock_hold_and_release`;
-- `redis_queued_locks.reentrant_lock_hold_completes`;
-- `redis_queued_locks.explicit_lock_release`;
-- `redis_queued_locks.explicit_all_locks_release`;
+- ["redis_queued_locks.lock_obtained"](#redis_queued_lockslock_hold_and_release)
+- ["redis_queued_locks.extendable_reentrant_lock_obtained"](#redis_queued_locksextendable_reentrant_lock_obtained)
+- ["redis_queued_locks.reentrant_lock_obtained"](#redis_queued_locksreentrant_lock_obtained)
+- ["redis_queued_locks.lock_hold_and_release"](#redis_queued_lockslock_hold_and_release)
+- ["redis_queued_locks.reentrant_lock_hold_completes"](#redis_queued_locksreentrant_lock_hold_completes)
+- ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release)
+- ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
+- ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of)
 
 Detalized event semantics and payload structure:
 
-- `"redis_queued_locks.lock_obtained"`
-  - a moment when the lock was obtained;
-  - raised from `#lock`/`#lock!`;
-  - payload:
-    - `:ttl` - `integer`/`milliseconds` - lock ttl;
-    - `:acq_id` - `string` - lock acquirer identifier;
-    - `:hst_id` - `string` - lock's host identifier;
-    - `:lock_key` - `string` - lock name;
-    - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend;
-    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+##### `"redis_queued_locks.lock_obtained"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- a moment when the lock was obtained;
+- raised from `#lock`/`#lock!`;
+- payload:
+  - `:ttl` - `integer`/`milliseconds` - lock ttl;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:lock_key` - `string` - lock name;
+  - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend;
+  - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
-- `"redis_queued_locks.extendable_reentrant_lock_obtained"`
-  - an event signalizes about the "extendable reentrant lock" obtaining is happened;
-  - raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
-  - payload:
-    - `:lock_key` - `string` - lock name;
-    - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
-    - `:acq_id` - `string` - lock acquirer identifier;
-    - `:hst_id` - `string` - lock's host identifier;
-    - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as extendable reentrant lock;
-    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+##### `"redis_queued_locks.extendable_reentrant_lock_obtained"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the "extendable reentrant lock" obtaining is happened;
+- raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
+- payload:
+  - `:lock_key` - `string` - lock name;
+  - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as extendable reentrant lock;
+  - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
-- `"redis_queued_locks.reentrant_lock_obtained"`
-  - an event signalizes about the "reentrant lock" obtaining is happened (without TTL extension);
-  - raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
-  - payload:
-    - `:lock_key` - `string` - lock name;
-    - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
-    - `:acq_id` - `string` - lock acquirer identifier;
-    - `:hst_id` - `string` - lock's host identifier;
-    - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
-    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+##### `"redis_queued_locks.reentrant_lock_obtained"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the "reentrant lock" obtaining is happened (without TTL extension);
+- raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
+- payload:
+  - `:lock_key` - `string` - lock name;
+  - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
+  - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
-- `"redis_queued_locks.lock_hold_and_release"`
-  - an event signalizes about the "hold+and+release" process is finished;
-  - raised from `#lock`/`#lock!` when invoked with a block of code;
-  - payload:
-    - `:hold_time` - `float`/`milliseconds` - lock hold time;
-    - `:ttl` - `integer`/`milliseconds` - lock ttl;
-    - `:acq_id` - `string` - lock acquirer identifier;
-    - `:hst_id` - `string` - lock's host identifier;
-    - `:lock_key` - `string` - lock name;
-    - `:ts` - `numeric`/`epoch` - the time when lock was obtained;
-    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+##### `"redis_queued_locks.lock_hold_and_release"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the "hold+and+release" process is finished;
+- raised from `#lock`/`#lock!` when invoked with a block of code;
+- payload:
+  - `:hold_time` - `float`/`milliseconds` - lock hold time;
+  - `:ttl` - `integer`/`milliseconds` - lock ttl;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:lock_key` - `string` - lock name;
+  - `:ts` - `numeric`/`epoch` - the time when lock was obtained;
+  - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
-- `"redis_queued_locks.reentrant_lock_hold_completes"`
-  - an event signalizes about the "reentrant lock hold" is complete (both extendable and non-extendable);
-  - lock re-entering can happen many times and this event happens for each of them separately;
-  - raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
-  - payload:
-    - `:hold_time` - `float`/`milliseconds` - lock hold time;
-    - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
-    - `:acq_id` - `string` - lock acquirer identifier;
-    - `:hst_id` - `string` - lock's host identifier;
-    - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
-    - `:lock_key` - `string` - lock name;
-    - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
-    - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+##### `"redis_queued_locks.reentrant_lock_hold_completes"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the "reentrant lock hold" is complete (both extendable and non-extendable);
+- lock re-entering can happen many times and this event happens for each of them separately;
+- raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
+- payload:
+  - `:hold_time` - `float`/`milliseconds` - lock hold time;
+  - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
+  - `:lock_key` - `string` - lock name;
+  - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
-- `"redis_queued_locks.explicit_lock_release"`
-  - an event signalizes about the explicit lock release (invoked via `RedisQueuedLock#unlock`);
-  - raised from `#unlock`;
-  - payload:
-    - `:at` - `float`/`epoch` - the time when the lock was released;
-    - `:rel_time` - `float`/`milliseconds` - time spent on lock releasing;
-    - `:lock_key` - `string` - released lock (lock name);
-    - `:lock_key_queue` - `string` - released lock queue (lock queue name);
+##### `"redis_queued_locks.explicit_lock_release"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the explicit lock release (invoked via `RedisQueuedLock#unlock`);
+- raised from `#unlock`;
+- payload:
+  - `:at` - `float`/`epoch` - the time when the lock was released;
+  - `:rel_time` - `float`/`milliseconds` - time spent on lock releasing;
+  - `:lock_key` - `string` - released lock (lock name);
+  - `:lock_key_queue` - `string` - released lock queue (lock queue name);
 
-- `"redis_queued_locks.explicit_all_locks_release"`
-  - an event signalizes about the explicit all locks release (invoked via `RedisQueuedLock#clear_locks`);
-  - raised from `#clear_locks`;
-  - payload:
-    - `:rel_time` - `float`/`milliseconds` - time spent on "realese all locks" operation;
-    - `:at` - `float`/`epoch` - the time when the operation has ended;
-    - `:rel_keys` - `integer` - released redis keys count (`released queue keys` + `released lock keys`);
+##### `"redis_queued_locks.explicit_all_locks_release"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the explicit all locks release (invoked via `RedisQueuedLock#clear_locks`);
+- raised from `#clear_locks`;
+- payload:
+  - `:rel_time` - `float`/`milliseconds` - time spent on "realese all locks" operation;
+  - `:at` - `float`/`epoch` - the time when the operation has ended;
+  - `:rel_keys` - `integer` - released redis keys count (`released queue keys` + `released lock keys`);
+
+##### `"redis_queued_locks.release_locks_of"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the released locks of the cocnrete host and acquirer;
+- raised from `#clear_locks_of` and `#clear_current_locks` (`#release_locks_of` and `#release_current_locks` respectively);
+- payload:
+  - `:rel_time` - `float`/`milliseconds` - time spent on "release locks of" operation;
+  - `:at` - `float`/`epoch` - the time when the opertaion has ended; 
+  - `:rel_key_cnt` - `integer` - released locks count;
+  - `:tch_queue_cnt` - `:integer` - the number of queues from which the cocnrete host/acquirer was removed;
 
 ---
 
@@ -2095,7 +2326,7 @@ Detalized event semantics and payload structure:
     - `write` - waits - `write`;
     - **write** mode is a default behavior for all RQL locks;
 - **Minor**:
-  - `#release_locks_of`: release locks of the concrete "lock host" (the lock host is a combination of `process_id/thread_id/ractor_id/identity` string identifier of the potential lock acquirer);
+  - add `hst_id` to all methods that works with queues info;
   - try to return the `fiber object id` to the lock host identifier (we cant use fiber object id cuz `ObjectSpace` has no access to the fiber object space after the any ractor object initialization)
   - named RQL's threads (`Thread#name`) and RQL's ractors (`Ractor#name`) in order to have an ability to find and work with RQL's threads and ractors outside of RQL logic (stop threads before process forking, for example);
   - `#lock`/`#lock!` - `timeout:` option: support for granular periods (it supports only `seconds` at the moment, but we need `milliseconds`);
@@ -2124,7 +2355,7 @@ Detalized event semantics and payload structure:
   - `unlock_on:`-option in lock/lock! logic in order to support auto-unlocking on any exception rasaied under the invoked block (invoked under the lock);
   - **Research**: support for `Valkey` database backend (https://github.com/valkey-io/valkey) (https://valkey.io/);
   - **Research**: support for `Garnet` database backend (https://microsoft.github.io/) (https://github.com/microsoft/garnet);
-  - add a library-level exception, when RQL-related key (required for it's logic) has incompatible type (means: some other program uses our key with their own type and logic and RQL can't work properly);
+  - add a library-level exception, when RQL-related key in Redis (required for it's logic) has incompatible type (means: some other program uses our key with their own type and logic and RQL can't work properly);
 ---
 
 ## Build and Develop

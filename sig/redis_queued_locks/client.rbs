@@ -121,6 +121,8 @@ module RedisQueuedLocks
       ?ractor_id: Integer|String,
       ?identity: String
     ) -> String
+    alias ccurrent_acq_id current_acquirer_id
+    alias acq_id current_acquirer_id
 
     def current_host_id: (
       ?process_id: Integer|String,
@@ -128,6 +130,8 @@ module RedisQueuedLocks
       ?ractor_id: Integer|String,
       ?identity: String
     ) -> String
+    alias current_hst_id current_host_id
+    alias hst_id current_host_id
 
     def possible_host_ids: (?String identity) -> Array[String]
 
@@ -162,6 +166,42 @@ module RedisQueuedLocks
       ?instr_sample_this: bool
     ) -> RQL::Acquirer::ReleaseAllLocks::releaseResult
     alias release_locks clear_locks
+
+    def clear_locks_of: (
+      host_id: String,
+      acquirer_id: String,
+      ?lock_scan_size: Integer,
+      ?queue_scan_size: Integer,
+      ?logger: RQL::loggerObj,
+      ?instrumenter: RQL::instrObj,
+      ?instrument: untyped?,
+      ?log_sampling_enabled: bool,
+      ?log_sampling_percent: Integer,
+      ?log_sampler: RQL::Logging::samplerObj,
+      ?log_sample_this: bool,
+      ?instr_sampling_enabled: bool,
+      ?instr_sampling_percent: Integer,
+      ?instr_sampler: RQL::Instrument::samplerObj,
+      ?instr_sample_this: bool
+    ) -> RQL::Acquirer::ReleaseLocksOf::releaseResult
+    alias release_locks_of clear_locks_of
+
+    def clear_current_locks: (
+      ?lock_scan_size: Integer,
+      ?queue_scan_size: Integer,
+      ?logger: RQL::loggerObj,
+      ?instrumenter: RQL::instrObj,
+      ?instrument: untyped?,
+      ?log_sampling_enabled: bool,
+      ?log_sampling_percent: Integer,
+      ?log_sampler: RQL::Logging::samplerObj,
+      ?log_sample_this: bool,
+      ?instr_sampling_enabled: bool,
+      ?instr_sampling_percent: Integer,
+      ?instr_sampler: RQL::Instrument::samplerObj,
+      ?instr_sample_this: bool
+    ) -> RQL::Acquirer::ReleaseLocksOf::releaseResult
+    alias release_current_locks clear_current_locks
 
     def locks: (?scan_size: Integer, ?with_info: bool) -> RQL::Acquirer::Locks::locks
              | (?scan_size: Integer, ?with_info: true) -> RQL::Acquirer::Locks::locksInfo

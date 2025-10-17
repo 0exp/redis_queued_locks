@@ -4,6 +4,7 @@ use RedisClient as RC
 module RedisQueuedLocks
   module Acquirer
     module AcquireLock
+      extend RQL::Utilities
       extend RQL::Acquirer::AcquireLock::TryToLock
       extend RQL::Acquirer::AcquireLock::DelayExecution
       extend RQL::Acquirer::AcquireLock::YieldExpire
