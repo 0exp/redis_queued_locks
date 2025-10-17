@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [1.15.0] - 2025-10-17
+### Changed
+- `"redis_queud_locks.release_locks_of"` instrumentation event payload now includes `hst_id` and `acq_id`;
+
 ## [1.14.0] - 2025-10-17
 ### Added
 - `#clear_locks_of`/`#release_locks_of`
@@ -271,17 +275,17 @@
 
 ## [0.0.31] - 2024-03-25
 ### Changed
-- `:metadata` renamed to `:instrument` in order to reflect it's domain area;
+- `:metadata` renamed to `:instrument` in order to reflect its domain area;
 - `:metadata` is renamed to `:meta` and reserved for future updates;
 
 ## [0.0.30] - 2024-03-23
 ### Fixed
 - Re-enqueue problem: fixed a problem when the expired lock requests were infinitly re-added to the lock queue
   and immediately removed from the lock queue rather than being re-positioned. It happens when the lock request
-  ttl reached the queue ttl, and the new request now had the dead score forever (fix: it's score now will be correctly
+  ttl reached the queue ttl, and the new request now had the dead score forever (fix: its score now will be correctly
   recalculated from the current time at the dead score time moment);
 ### Added
-- Logging: more detailed logs to the `RedisQueuedLocks::Acquier::AcquierLock` logic and it's sub-modules:
+- Logging: more detailed logs to the `RedisQueuedLocks::Acquier::AcquierLock` logic and its sub-modules:
   - added new logs;
   - added `queue_ttl` to each log;
 

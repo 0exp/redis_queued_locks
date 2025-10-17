@@ -73,10 +73,18 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     #     despite the enabled instrumentation sampling;
     #   - makes sense when instrumentation sampling is enabled;
     # @return [Hash<Symbol,Any>]
-    #   Format: { ok: true, result: Hash<Symbol,Numeric> }
+    #   Format: {
+    #     ok: true,
+    #     result: {
+    #       rel_key_cnt: Integer,
+    #       tch_queue_cnt: Integer,
+    #       rel_time: Numeric
+    #     }
+    #   }
     #
     # @api private
     # @since 1.14.0
+    # @version 1.15.0
     # rubocop:disable Metrics/MethodLength
     def release_locks_of(
       refused_host_id,
@@ -125,6 +133,8 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
       run_non_critical do
         instrumenter.notify('redis_queued_locks.release_locks_of', {
           at: time_at,
+          hst_id: refused_host_id,
+          acq_id: refused_acquirer_id,
           rel_time: rel_time,
           rel_key_cnt: result[:rel_key_cnt],
           tch_queue_cnt: result[:tch_queue_cnt]

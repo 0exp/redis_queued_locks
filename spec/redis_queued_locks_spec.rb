@@ -2181,12 +2181,16 @@ RSpec.describe RedisQueuedLocks do
       # NOTE: check any of them for the correct structure
       expect(test_notifier.release_locks_of__events.sample['payload']).to match({
         'at' => be_a(Float),
+        'hst_id' => be_a(String),
+        'acq_id' => be_a(String),
         'rel_time' => be_a(Numeric),
         'rel_key_cnt' => be_a(Integer),
         'tch_queue_cnt' => be_a(Integer)
       })
       expect(test_notifier.last_in_memory_rlo_event).to match({
         at: be_a(Float),
+        hst_id: client.hst_id, # (String) last lock is released from the current thread
+        acq_id: client.acq_id, # (String) last lock is released from the current thread
         rel_time: be_a(Numeric),
         rel_key_cnt: be_a(Integer),
         tch_queue_cnt: be_a(Integer)

@@ -158,7 +158,7 @@ class RedisQueuedLocks::Swarm
   end
 
   # @option zombie_ttl [Integer]
-  # @option lock_sacn_size [Integer]
+  # @option lock_scan_size [Integer]
   # @return [Hash<Symbol,Set<String>>]
   #
   # @api public

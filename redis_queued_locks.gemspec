@@ -18,7 +18,7 @@ Gem::Specification.new do |spec|
     "|> Distributed locks with \"prioritized lock acquisition queue\" capabilities " \
     "based on the Redis Database.\n" \
     "|> Each lock request is put into the request queue " \
-    "(each lock is hosted by it's own queue separately from other queues) and processed " \
+    "(each lock is hosted by its own queue separately from other queues) and processed " \
     "in order of their priority (FIFO).\n" \
     "|> Each lock request lives some period of time (RTTL) " \
     "(with requeue capabilities) which guarantees the request queue will never be stacked.\n" \

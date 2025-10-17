@@ -104,7 +104,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
-> Each lock request is put into the request queue (each lock is hosted by it's own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
+> Each lock request is put into the request queue (each lock is hosted by its own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
 
 > In addition to the classic "queued" (FIFO) strategy RQL supports "random" (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
 
@@ -577,8 +577,8 @@ def lock(
   - `false` by default;
 - `block` - (optional) `[Block]`
   - A block of code that should be executed after the successfully acquired lock.
-  - If block is **passed** the obtained lock will be released after the block execution or it's ttl (what will happen first);
-  - If block is **not passed** the obtained lock will be released after it's ttl;
+  - If block is **passed** the obtained lock will be released after the block execution or its ttl (what will happen first);
+  - If block is **not passed** the obtained lock will be released after its ttl;
   - If you want the block to have a TTL too and this TTL to be the same as TTL of the lock
     use `timed: true` option (`rql.lock("my_lock", timed: true, ttl: 5_000) { ... }`)
 
@@ -722,7 +722,7 @@ rql.lock_info("my_lock")
 
 - (`:queue_ttl`) setting a short limit of time to the lock request queue position (if a process fails to acquire
   the lock within this period of time (and before timeout/retry_count limits occurs of course) -
-  it's lock request will be moved to the end of queue):
+  its lock request will be moved to the end of queue):
 
 ```ruby
 rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
@@ -1596,7 +1596,7 @@ Accepts:
 - `:dead_ttl` - (optional) `[Integer]`
   - lock request ttl after which a lock request is considered dead;
   - has a preconfigured value in `config['dead_request_ttl']` (1 day by default);
-- `:sacn_size` - (optional) `[Integer]`
+- `:scan_size` - (optional) `[Integer]`
   - the batch of scanned keys for Redis'es SCAN command;
   - has a preconfigured valie in `config['lock_release_batch_size']`;
 - `:logger` - (optional) `[::Logger,#debug]`
@@ -2286,13 +2286,15 @@ Detalized event semantics and payload structure:
 
 ##### `"redis_queued_locks.release_locks_of"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
-- an event signalizes about the released locks of the cocnrete host and acquirer;
+- an event signalizes about the released locks (and removement from lock queues) of the concrete host and acquirer;
 - raised from `#clear_locks_of` and `#clear_current_locks` (`#release_locks_of` and `#release_current_locks` respectively);
 - payload:
   - `:rel_time` - `float`/`milliseconds` - time spent on "release locks of" operation;
   - `:at` - `float`/`epoch` - the time when the opertaion has ended; 
+  - `:acq_id` - `string` - refused acquirer identifier;
+  - `:hst_id` - `string` - refused host identifier;
   - `:rel_key_cnt` - `integer` - released locks count;
-  - `:tch_queue_cnt` - `:integer` - the number of queues from which the cocnrete host/acquirer was removed;
+  - `:tch_queue_cnt` - `:integer` - the number of queues from which the concrete host/acquirer was removed;
 
 ---
 
@@ -2355,7 +2357,7 @@ Detalized event semantics and payload structure:
   - `unlock_on:`-option in lock/lock! logic in order to support auto-unlocking on any exception rasaied under the invoked block (invoked under the lock);
   - **Research**: support for `Valkey` database backend (https://github.com/valkey-io/valkey) (https://valkey.io/);
   - **Research**: support for `Garnet` database backend (https://microsoft.github.io/) (https://github.com/microsoft/garnet);
-  - add a library-level exception, when RQL-related key in Redis (required for it's logic) has incompatible type (means: some other program uses our key with their own type and logic and RQL can't work properly);
+  - add a library-level exception, when RQL-related key in Redis (required for its logic) has incompatible type (means: some other program uses our key with their own type and logic and RQL can't work properly);
 ---
 
 ## Build and Develop
