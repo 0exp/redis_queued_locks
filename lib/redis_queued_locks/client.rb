@@ -2,7 +2,7 @@
 
 # @api public
 # @since 1.0.0
-# @version 1.14.0
+# @version 1.16.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @return [RedisClient]
@@ -865,11 +865,12 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.16.0
+  # rubocop:disable Layout/LineLength
   def clear_locks_of_host(
     host_id,
     lock_scan_size: config['clear_locks_of__lock_scan_size'], # steep:ignore
     queue_scan_size: config['clear_locks_of__queue_scan_size'], # steep:ingore
-    queue_cleanup_cursor_count: config['clear_locks_of__queue_cleanup_cursor_count'], # steep:ingore
+    queue_cleanup_cursor_count: config['clear_locks_of_host__queue_cleanup_cursor_count'], # steep:ingore
     logger: config['logger'], # steep:ignore
     instrumenter: config['instrumenter'], # steep:ignore
     instrument: nil,
@@ -902,6 +903,7 @@ class RedisQueuedLocks::Client
     )
   end
   alias_method :release_locks_of_host, :clear_locks_of_host
+  # rubocop:enable Layout/LineLength
 
   # @option acquirer_id [String]
   # @option lock_scan_size [Integer]

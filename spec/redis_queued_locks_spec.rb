@@ -2061,6 +2061,7 @@ RSpec.describe RedisQueuedLocks do
         ok: true,
         result: match({
           rel_key_cnt: 0, # <-- no any key is cleared for side__thread
+          rel_req_cnt: 1, # <-- one lock request is removed (request from side_thread-acquirer)
           tch_queue_cnt: 1, # <-- side_thread-acquirer is removed from the queue
           rel_time: be_a(Numeric)
         })
@@ -2089,6 +2090,7 @@ RSpec.describe RedisQueuedLocks do
         ok: true,
         result: match({
           rel_key_cnt: 1, # <-- removed locks from in_fork__main_thread
+          rel_req_cnt: 0, # <-- no any requests are dropped from lock queues
           tch_queue_cnt: 0, # <-- no any queue is "touched" cuz main_thread "is not inside the any queue"
           rel_time: be_a(Numeric)
         })
@@ -2120,6 +2122,7 @@ RSpec.describe RedisQueuedLocks do
         ok: true,
         result: match({
           rel_key_cnt: 1, # <-- removed locks from current process
+          rel_req_cnt: 0, # <-- no any requests are dropped from lock queues
           tch_queue_cnt: 0, # <-- no any queue is "touched" cuz current process "is not inside the any queue"
           rel_time: be_a(Numeric)
         })
@@ -2164,6 +2167,7 @@ RSpec.describe RedisQueuedLocks do
         ok: true,
         result: match({
           rel_key_cnt: 1, # <-- removed locks from current process
+          rel_req_cnt: 0, # <-- no any requests are dropped from lock queues
           tch_queue_cnt: 0, # <-- no any queue is "touched" cuz current process "is not inside the any queue"
           rel_time: be_a(Numeric)
         })
@@ -2185,6 +2189,7 @@ RSpec.describe RedisQueuedLocks do
         'acq_id' => be_a(String),
         'rel_time' => be_a(Numeric),
         'rel_key_cnt' => be_a(Integer),
+        'rel_req_cnt' => be_a(Integer),
         'tch_queue_cnt' => be_a(Integer)
       })
       expect(test_notifier.last_in_memory_rlo_event).to match({
@@ -2193,6 +2198,7 @@ RSpec.describe RedisQueuedLocks do
         acq_id: client.acq_id, # (String) last lock is released from the current thread
         rel_time: be_a(Numeric),
         rel_key_cnt: be_a(Integer),
+        rel_req_cnt: be_a(Integer),
         tch_queue_cnt: be_a(Integer)
       })
     end

@@ -253,6 +253,10 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - affects the performance of your Redis (configure thoughtfully);
   config['clear_locks_of__queue_scan_size'] = 300
 
+  # (default: 100)
+  # - ?
+  config['clear_locks_of_host__queue_cleanup_cursor_count'] = 100
+
   # (default: 500)
   # - how many items should be extracted from redis during the #locks, #queues, #keys
   #   #locks_info, and #queues_info operations (uses SCAN);
