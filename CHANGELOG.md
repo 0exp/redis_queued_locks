@@ -6,6 +6,11 @@
 - `#clear_locks_of_host` (alias: `#release_locks_of_host`) - remove locks of the concrete host;
 - Instrumentation events:
   - added `:rel_req_cnt` (the count of removed lock-requests from lock queues) to `"redis_queued_locks.release_locks_of"` instrumentation event payload;
+- Added new methods to `RedisQueuedLocks::Resource`:
+  - `.acquirer_host` - extract host identifier from acquirer identifier;
+  - `.acquirer_pattern_from_host` - extract acquirer search pattern from any host identifier needed for `ZSCAN` command;
+  - `.extract_identity` - extract **identity** part from acquirer identifier (or from host indetifier) needed for `ZSCAN` command;
+  - `.eztract_non_identified_part` - extract the substring from acquirer identifier (or from host identifier) excluding the **identity** part need for `ZSCAN` command;
 ### Changed
 - the process-ractor-thread-fiber order of the acquirer identifier and the host identifier has changed:
   - the order is consider the object scope priority: 
