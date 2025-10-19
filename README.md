@@ -2300,7 +2300,7 @@ Detalized event semantics and payload structure:
   - `:acq_id` - `string` - refused acquirer identifier;
   - `:hst_id` - `string` - refused host identifier;
   - `:rel_key_cnt` - `integer` - released locks count;
-  - `:rel_req_cnt` - `integer` - количество удаленных запросов на лок (сумма удалений из всех очередей);
+  - `:rel_req_cnt` - `integer` - the count of removed lock requests from all related lock-queues;
   - `:tch_queue_cnt` - `:integer` - the number of queues from which the concrete host/acquirer was removed;
 
 #### `"redis_queued_locks.release_locks_of_host"`
