@@ -11,18 +11,23 @@ module RedisQueuedLocks
     def self.calc_uniq_identity: () -> String
     def self.acquirer_identifier: (
       Integer|String process_id,
+      Integer|String ractor_id,
       Integer|String thread_id,
       Integer|String fiber_id,
-      Integer|String ractor_id,
       String identity
     ) -> String
 
     def self.host_identifier: (
       Integer|String process_id,
-      Integer|String thread_id,
       Integer|string ractor_id,
+      Integer|String thread_id,
       String identity
     ) -> String
+
+    def self.acquirer_host: (String acq_id) -> String
+    def self.acquirer_pattern_from_host: (String host_id) -> String
+    def self.extract_identity: (String host_or_acquirer_id) -> String
+    def self.extract_non_identified_part: (String host_or_acquirer_id) -> String
 
     def self.prepare_lock_key: (String lock_name) -> String
     def self.prepare_lock_queue: (String lock_name) -> String

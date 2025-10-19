@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.0.0
+# @version 1.16.0
 module RedisQueuedLocks::Resource
   # @return [String]
   #
@@ -67,8 +68,9 @@ module RedisQueuedLocks::Resource
     #
     # @api private
     # @since 1.0.0
-    def acquirer_identifier(process_id, thread_id, fiber_id, ractor_id, identity)
-      "rql:acq:#{process_id}/#{thread_id}/#{fiber_id}/#{ractor_id}/#{identity}"
+    # @version 1.16.0
+    def acquirer_identifier(process_id, ractor_id, thread_id, fiber_id, identity)
+      "rql:acq:#{process_id}/#{ractor_id}/#{thread_id}/#{fiber_id}/#{identity}"
     end
 
     # @param process_id [Integer,String]
@@ -79,12 +81,82 @@ module RedisQueuedLocks::Resource
     #
     # @api private
     # @since 1.9.0
-    def host_identifier(process_id, thread_id, ractor_id, identity)
+    # @version 1.16.0
+    def host_identifier(process_id, ractor_id, thread_id, identity)
       # NOTE:
       #   - fiber's object_id is not used cuz we can't analyze fiber objects via ObjectSpace
       #     after the any new Ractor object is created in the current process
       #     (ObjectSpace no longer sees objects of Thread and Fiber classes after that);
-      "rql:hst:#{process_id}/#{thread_id}/#{ractor_id}/#{identity}"
+      "rql:hst:#{process_id}/#{ractor_id}/#{thread_id}/#{identity}"
+    end
+
+    # Сформировать host_id, который был под конкретным acuirer'ом (из acq_id).
+    #
+    # @param acq_id [String]
+    # @return [String]
+    #
+    # @api private
+    # @since 1.16.0
+    def acquirer_host(acq_id)
+      # Step №1. extract an identity string
+      last_delimeter_position = acq_id.rindex('/') #: Integer
+      identity_part = acq_id[(last_delimeter_position + 1)...] #: String
+
+      # TODO: rewrite with String#scan
+      process_id_ending_position = acq_id.index('/') #: Integer
+      ractor_id_ending_position = acq_id.index('/', process_id_ending_position + 1) #: Integer
+      thread_id_ending_position = acq_id.index('/', ractor_id_ending_position + 1) #: Integer
+
+      # Step №2. extract host identifier part ("process_id/ractor_id/thread_id")
+      #   - (9) is "rql:acq:" part of the acquirer identifier string
+      #   - (-1) is "string part without `/` symbol at the end of the string"
+      host_identifier_parts = acq_id[9...(thread_id_ending_position - 1)] #: String
+
+      # Step №3. build host identifier from extracted parts
+      "rql:hst:#{host_identifier_parts}/#{identity_part}"
+    end
+
+    # Получаем MATCH-паттерн для Redis-команд для всех acquirer'ов, сооветтвующих
+    # кокнретному host_id.
+    #
+    # @param host_id [String]
+    # @return [String]
+    #
+    # @api private
+    # @since 1.16.0
+    def acquirer_pattern_from_host(host_id)
+      host_identity = extract_identity(host_id)
+      non_identified_part = extract_non_identified_part(host_id)
+
+      "rql:acq:#{non_identified_part}/*/#{host_identity}"
+    end
+
+    # Вытащить identity-стрингу из имени acquirer'а или host'а.
+    #
+    # @param host_or_acquirer_id [String]
+    # @return [String]
+    #
+    # @api private
+    # @since 1.16.0
+    def extract_identity(host_or_acquirer_id)
+      last_delimeter_position = host_or_acquirer_id.rindex('/') #: Integer
+      host_or_acquirer_id[(last_delimeter_position + 1)...] #: String
+    end
+
+    # Вытащить из acquirer'а или host'а всю часть идентификатора без identity-части.
+    # Нужно для скана acquirer'ов по очередям, когда мы дропаем аквиреров из очередей
+    # только по host_id (не зная и не используя acquirer_id).
+    # 9 - это значит пропустить "rql:acq:" и "rql:hst:" с начала строки.
+    #
+    #
+    # @param host_or_acquirer_id [String]
+    # @return [String]
+    #
+    # @api private
+    # @since 1.16.0
+    def extract_non_identified_part(host_or_acquirer_id)
+      last_delimeter_position = host_or_acquirer_id.rindex('/') #: Integer
+      host_or_acquirer_id[9...(last_delimeter_position - 1)] #: String
     end
 
     # @param lock_name [String]
@@ -209,6 +281,7 @@ module RedisQueuedLocks::Resource
     #
     # @api private
     # @since 1.9.0
+    # @version 1.16.0
     def possible_host_identifiers(identity)
       # NOTE №1: we can not use ObjectSpace.each_object for Thread and Fiber cuz after the any
       #   ractor creation the ObjectSpace stops seeing ::Thread and ::Fiber objects: each_object
@@ -219,10 +292,10 @@ module RedisQueuedLocks::Resource
 
       # @type var current_process_id: Integer
       current_process_id = get_process_id
-      # @type var current_threads: Array[Thread]
-      current_threads = ::Thread.list
       # @type var current_ractor_id: Integer
       current_ractor_id = get_ractor_id
+      # @type var current_threads: Array[Thread]
+      current_threads = ::Thread.list
 
       # NOTE: steep can't resolve a type of dynamic `[]` literal mutated via inline tap;
       # steep:ignore:start
@@ -231,8 +304,8 @@ module RedisQueuedLocks::Resource
         current_threads.each do |thread|
           acquirers << host_identifier(
             current_process_id,
-            thread.object_id,
             current_ractor_id,
+            thread.object_id,
             identity
           )
         end

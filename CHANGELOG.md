@@ -1,5 +1,20 @@
 ## [Unreleased]
 
+## [1.16.0] - 2025-10-19
+### Added
+- `#claer_locks_of_acquirer` (alias: `#release_locks_of_acquirer`) - remove locks of the concrete acquirer and drop this acquirer form all lock queues;
+- `#clear_locks_of_host` (alias: `#release_locks_of_host`) - remove locks of the concrete host;
+- Instrumentation events:
+  - added `:rel_req_cnt` (the count of removed lock-requests from lock queues) payload data to `"redis_queued_locks.release_locks_of"` instrumentation event;
+### Changed
+- the process-ractor-thread-fiber order of the acquirer identifier and the host identifier has changed:
+  - the order is consider the object scope priority: 
+    - before: **process_id** -> **thread_id** -> **fiber_id** -> **ractor_id** -> **identity**
+    - after: **process_id** -> **ractor_id** -> **thread_id** -> **fiber_id** -> **identity**
+  - current patterns of acquire_identifier and host_identifier:
+    - **acquirer**: `"rql:acq:#{process_id}/#{ractor_id}/#{thread_id}/#{fiber_id}/#{identity}"`
+    - **host**: `"rql:hst:#{process_id}/#{ractor_id}/#{thread_id}/#{identity}"`
+
 ## [1.15.0] - 2025-10-17
 ### Changed
 - `"redis_queud_locks.release_locks_of"` instrumentation event payload now includes `hst_id` and `acq_id`;

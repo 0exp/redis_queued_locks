@@ -2,6 +2,8 @@
 
 # @api private
 # @since 1.14.0
+# @version 1.16.0
+# rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::ReleaseLocksOf
   # @since 1.14.0
   extend RedisQueuedLocks::Utilities
@@ -77,6 +79,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     #     ok: true,
     #     result: {
     #       rel_key_cnt: Integer,
+    #       rel_req_cnt: Integer,
     #       tch_queue_cnt: Integer,
     #       rel_time: Numeric
     #     }
@@ -84,7 +87,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     #
     # @api private
     # @since 1.14.0
-    # @version 1.15.0
+    # @version 1.16.0
     # rubocop:disable Metrics/MethodLength
     def release_locks_of(
       refused_host_id,
@@ -137,6 +140,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
           acq_id: refused_acquirer_id,
           rel_time: rel_time,
           rel_key_cnt: result[:rel_key_cnt],
+          rel_req_cnt: result[:rel_req_cnt],
           tch_queue_cnt: result[:tch_queue_cnt]
         })
       end if instr_sampled
@@ -145,6 +149,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
         ok: true,
         result: {
           rel_key_cnt: result[:rel_key_cnt],
+          rel_req_cnt: result[:rel_req_cnt],
           tch_queue_cnt: result[:tch_queue_cnt],
           rel_time: rel_time
         }
@@ -160,10 +165,11 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     # @param lock_scan_size [Integer]
     # @param queue_scan_size [Integer]
     # @return [Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
-    #   - Example: { ok: true, result: { rel_key_cnt: 12345, tch_queue_cnt: 321 } }
+    #   Example: { ok: true, result: { rel_key_cnt: 12345, tch_queue_cnt: 321, rel_req_cnt: 123 } }
     #
     # @api private
     # @since 1.14.0
+    # @version 1.16.0
     # rubocop:disable Metrics/MethodLength
     def fully_release_locks_of(
       refused_host_id,
@@ -174,6 +180,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     )
       # TODO: some indexing approach isntead of <scan>
       rel_key_cnt = 0
+      rel_req_cnt = 0
       tch_queue_cnt = 0
 
       redis.with do |rconn|
@@ -210,12 +217,14 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
           count: queue_scan_size
         ) do |lock_queue|
           res = rconn.call('ZREM', lock_queue, refused_acquirer_id)
+          rel_req_cnt += res
           tch_queue_cnt += 1 if res != 0
         end
       end
 
-      { ok: true, result: { rel_key_cnt:, tch_queue_cnt: } }
+      { ok: true, result: { rel_key_cnt:, tch_queue_cnt:, rel_req_cnt: } }
     end
   end
   # rubocop:enable Metrics/MethodLength
 end
+# rubocop:enable Metrics/ModuleLength

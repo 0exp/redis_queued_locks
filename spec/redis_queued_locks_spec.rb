@@ -41,12 +41,12 @@ RSpec.describe RedisQueuedLocks do
 
       # verify current host
       expect(client.current_host_id).to eq(
-        "rql:hst:#{current_process_id}/#{current_thread_id}/#{current_ractor_id}/#{uniq_identity}"
+        "rql:hst:#{current_process_id}/#{current_ractor_id}/#{current_thread_id}/#{uniq_identity}"
       )
 
       # collect possible hosts
       expected_hosts = current_thread_list.map do |thread|
-        "rql:hst:#{current_process_id}/#{thread.object_id}/#{current_ractor_id}/#{uniq_identity}"
+        "rql:hst:#{current_process_id}/#{current_ractor_id}/#{thread.object_id}/#{uniq_identity}"
       end
       expect(client.possible_host_ids).to contain_exactly(*expected_hosts)
 
@@ -55,9 +55,9 @@ RSpec.describe RedisQueuedLocks do
       new_thread1 = Thread.new { loop { sleep(0.5) } }
       new_thread2 = Thread.new { loop { sleep(0.5) } }
       new_thread1_host_id =
-        "rql:hst:#{current_process_id}/#{new_thread1.object_id}/#{current_ractor_id}/#{uniq_identity}"
+        "rql:hst:#{current_process_id}/#{current_ractor_id}/#{new_thread1.object_id}/#{uniq_identity}"
       new_thread2_host_id =
-        "rql:hst:#{current_process_id}/#{new_thread2.object_id}/#{current_ractor_id}/#{uniq_identity}"
+        "rql:hst:#{current_process_id}/#{current_ractor_id}/#{new_thread2.object_id}/#{uniq_identity}"
       expected_hosts << new_thread1_host_id
       expected_hosts << new_thread2_host_id
       expect(client.possible_host_ids).to contain_exactly(*expected_hosts)
@@ -68,7 +68,7 @@ RSpec.describe RedisQueuedLocks do
       new_thread2.tap(&:kill).tap(&:join)
       new_current_thread_list = Thread.list
       expected_hosts = new_current_thread_list.map do |thread|
-        "rql:hst:#{current_process_id}/#{thread.object_id}/#{current_ractor_id}/#{uniq_identity}"
+        "rql:hst:#{current_process_id}/#{current_ractor_id}/#{thread.object_id}/#{uniq_identity}"
       end
       last_possible_host_ids = client.possible_host_ids
       expect(last_possible_host_ids).to contain_exactly(*expected_hosts)
