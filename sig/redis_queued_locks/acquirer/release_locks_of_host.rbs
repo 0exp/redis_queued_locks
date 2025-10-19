@@ -15,7 +15,6 @@ module RedisQueuedLocks
           rel_time: Integer|Float
         }
       }
-
       def self.release_locks_of_host: (
         String host_id,
         RC::client redis,
