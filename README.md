@@ -31,6 +31,8 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [clear_locks](#clear_locks---release-all-locks-and-lock-queues) (aka `release_locks`)
   - [clear_locks_of](#clear_locks_of) (aka `release_locks_of`)
   - [clear_current_locks](#clear_current_locks) (aka `release_current_locks`)
+  - [clear_locks_of_acquirer](#clear_locks_of_acquirer) (aka `release_locks_of_acquirer`)
+  - [clear_locks_of_host](#clear_locks_of) (aka `release_locks_of_host`)
   - [extend_lock_ttl](#extend_lock_ttl)
   - [locks](#locks---get-list-of-obtained-locks)
   - [queues](#queues---get-list-of-lock-request-queues)
@@ -72,6 +74,8 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
     - ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release)
     - ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
     - ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of)
+    - ["redis_queued_locks.release_locks_of_acquirer"](#redis_queued_locksrelease_locks_of_acquirer)
+    - ["redis_queued_locks.release_locks_of_host"](#redis_queued_locksrelease_locks_of_host)
 - [Roadmap](#roadmap)
 - [Build and Develop](#build-and-develop)
 - [Contributing](#contributing)
@@ -1337,6 +1341,19 @@ rql.release_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acqu
 
 ---
 
+#### clear_locks_of_acquirer
+
+<sup>\[[back to top](#usage)\]</sup>
+
+---
+
+
+#### clear_locks_of_host
+
+<sup>\[[back to top](#usage)\]</sup>
+
+---
+
 #### #extend_lock_ttl
 
 <sup>\[[back to top](#usage)\]</sup>
@@ -2198,8 +2215,8 @@ List of instrumentation events
 - ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release)
 - ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
 - ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of)
-- ["redis_queued_locks.release_locks_of_host"](#redis_queued_locksrelease_locks_of_host)
 - ["redis_queued_locks.release_locks_of_acquirer"](#redis_queued_locksrelease_locks_of_acquirer)
+- ["redis_queued_locks.release_locks_of_host"](#redis_queued_locksrelease_locks_of_host)
 
 Detalized event semantics and payload structure:
 
@@ -2303,18 +2320,6 @@ Detalized event semantics and payload structure:
   - `:rel_req_cnt` - `integer` - the count of removed lock requests from all related lock-queues;
   - `:tch_queue_cnt` - `:integer` - the number of queues from which the concrete host/acquirer was removed;
 
-#### `"redis_queued_locks.release_locks_of_host"`
-- <sup>\[[back to the list](#instrumentation-events)\]</sup>
-- an event signalizes about the released locks (and removement of all lock requests from lock queues) of the concrete host;
-- raised from `#clear_locks_of_host` (and `#release_locks_of_host` respectively);
-- payload:
-  - `:rel_time` - `float`/`milliseconds` - time spent on "release locks of" operation;
-  - `:at` - `float`/`epoch` - the time when the opertaion has ended; 
-  - `:hst_id` - `string` - refused host identifier;
-  - `:rel_key_cnt` - `integer` - released locks count;
-  - `:rel_req_cnt` - `integer` - the count of removed lock requests from all related lock-queues;
-  - `:tch_queue_cnt` - `:integer` - the number of queues from which the concrete host was removed;
-
 #### `"redis_queued_locks.release_locks_of_acquirer"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
 - an event signalizes about the released locks (and removement of all lock requests from lock queues) of the concrete acquirer;
@@ -2326,6 +2331,18 @@ Detalized event semantics and payload structure:
   - `:rel_key_cnt` - `integer` - released locks count;
   - `:rel_req_cnt` - `integer` - the count of removed lock requests from all related lock-queues;
   - `:tch_queue_cnt` - `:integer` - the number of queues from which the concrete acquirer was removed;
+
+#### `"redis_queued_locks.release_locks_of_host"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the released locks (and removement of all lock requests from lock queues) of the concrete host;
+- raised from `#clear_locks_of_host` (and `#release_locks_of_host` respectively);
+- payload:
+  - `:rel_time` - `float`/`milliseconds` - time spent on "release locks of" operation;
+  - `:at` - `float`/`epoch` - the time when the opertaion has ended; 
+  - `:hst_id` - `string` - refused host identifier;
+  - `:rel_key_cnt` - `integer` - released locks count;
+  - `:rel_req_cnt` - `integer` - the count of removed lock requests from all related lock-queues;
+  - `:tch_queue_cnt` - `:integer` - the number of queues from which the concrete host was removed;
 
 ---
 
