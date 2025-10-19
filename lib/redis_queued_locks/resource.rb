@@ -97,6 +97,34 @@ module RedisQueuedLocks::Resource
     end
 
     # @param lock_name [String]
+    # @param acquirer_id [String]
+    # @return [String]
+    #
+    # @api private
+    # @since ?.?.?
+    def prepare_read_lock_key(lock_name, acquirer_id)
+      "rql:lock:#{lock_name}:read:#{acquirer_id}"
+    end
+
+    # @param lock_name [String]
+    # @return [String]
+    #
+    # @api private
+    # @since ?.?.?
+    def prepare_read_lock_acq_list_key(lock_name)
+      "rql:lock:#{lock_name}:read"
+    end
+
+    # @param lock_name [String]
+    # @return [String]
+    #
+    # @api private
+    # @since ?.?.?
+    def prepare_write_lock_key(lock_name)
+      "rql:lock:#{lock_name}"
+    end
+
+    # @param lock_name [String]
     # @return [String]
     #
     # @api private

@@ -20,10 +20,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param logger [::Logger,#debug]
   # @param log_lock_try [Boolean]
   # @param lock_key [String]
+  # @param read_lock_key [String]
+  # @param write_lock_key [String]
   # @param read_write_mode [Symbol]
   # @param lock_key_queue [String]
   # @param read_lock_key_queue [String]
   # @param write_lock_key_queue [String]
+  # @param read_lock_acq_list_key [String]
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param acquirer_position [Numeric]
@@ -46,10 +49,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     logger,
     log_lock_try,
     lock_key,
+    read_lock_key,
+    write_lock_key,
     read_write_mode,
     lock_key_queue,
     read_lock_key_queue,
     write_lock_key_queue,
+    read_lock_acq_list_key,
     acquirer_id,
     host_id,
     acquirer_position,
@@ -81,6 +87,14 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         logger, log_sampled, log_lock_try, lock_key,
         queue_ttl, acquirer_id, host_id, access_strategy
       )
+
+      # [ReadWrite Mode] Step 1. "Transaction Time"
+      #   - we need to watch "write lock";
+      #   - we don't need to watch "read lock";
+
+      # NOTE:
+      #   - SP means "Same Process";
+      #   - "SP-Conflict" is "Same-Process Conflicting Acquirerment";
 
       # Step 0:
       #   watch the lock key changes (and discard acquirement if lock is already
@@ -211,13 +225,125 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         #   - in other sp-conflict cases we are in <wait_for_lock> (non-conflict) status and should
         #     continue to work in classic way (next lines of code):
         elsif fail_fast && current_lock_obtainer != nil # Fast-Step X0: fail-fast check
+          # NOTE: in this part of code current_lock_obtainer != acquirer_id
           # Fast-Step X1: lock is already obtained. fail fast leads to "no try".
           inter_result = :fail_fast_no_try
         else
-          # Step 1: add an acquirer to the lock acquirement queue
+          if read_write_mode == :read
+            rconn.multi do |tconn|
+              tconn.call('ZADD', read_lock_key_queue, 'NX', acquirer_position, acquirer_id)
+
+              tconn.call('ZREMRANGEBYSCORE', read_lock_key_queue, '-inf', RedisQueuedLocks::Resource.acquirer_dead_score(queue_ttl))
+              tconn.call('ZREMRANGEBYSCORE', write_lock_key_queue, '-inf', RedisQueuedLocks::Resource.acquirer_dead_score(queue_ttl))
+            end
+
+            # @type var waiting_read_acquirer: String|nil
+            # @type var waiting_read_acquirer_position: Float|nil
+            waiting_read_acquirer, waiting_read_acquirer_position = Array(rconn.call('ZRANGE', read_lock_key_queue, '0', '0', 'WITHSCORES')).first
+            # @type var waiting_write_acquirer: String|nil
+            # @type var waiting_write_acquirer_position: Float|nil
+            waiting_write_acquirer, waiting_write_acquirer_position = Array(rconn.call('ZRANGE', write_lock_key_queue, '0', '0', 'WITHSCORES')).first
+
+            if waiting_read_acquirer == nil # мы просрочили нахождение себя в очирди - ливаем и перевстаем в очередь
+              :dead_score_reached # re-enqueue
+            elsif access_strategy == :queued || access_strategy == :random # NOTE: not suitable for read at all. will be dropped
+              # TODO: write/read conflict priority. if write and read with equal position - who is first? read or write?
+              #   - for now we want "read" first
+              if waiting_write_acquirer != nil && acquirer_position > waiting_write_acquirer_position # если есть write-заниматор И у него позиция в очереди раньше, чем у нас - то ливаем
+                :acquirer_is_not_first_in_queue # read acquirer is later that write (or eaqual to write and WRITE has highest priority)
+              elsif waiting_write_acquirer == nil # никто не сидит в очереди на запись - БЕРЕМ ЛОК
+                # here we are!
+                write_lock_locked_by_acquirer = rconn.call('HGET', write_lock_key, 'acq_id')
+
+                if write_lock_locked_by_acquirer
+                  # врайт-лок еще активен. ретраимся
+                  :write_lock_is_still_locked
+                else
+                 # NOTE: required lock is free and ready to be acquired! acquire!
+
+                  # дропаем себя из read lock queue
+                  transact.call('ZREM', read_lock_key_queue, acquirer_id)
+
+                  # берем ридлок
+                  transact.call(
+                    'HSET',
+                    read_lock_key,
+                    'acq_id', acquirer_id,
+                    'hst_id', host_id,
+                    'ts', timestamp = Time.now.to_f,
+                    'ini_ttl', ttl,
+                    *(meta.to_a if meta != nil) # steep:ignore
+                  )
+
+                  # ставим экспирейшн локу, чтобы не было "infinite locks"
+                  transact.call('PEXPIRE', read_lock_key, ttl) # NOTE: in milliseconds
+
+                  # записываем свой экспирейшн в read_lock_acq_list_key (это индекс по локам)
+                  transact.call('ZADD', read_lock_acq_list_key, 'NX', Time.now.to_f + ttl, acquirer_id)
+                end
+
+                # смотрим, взяит ли сейчас врайт-лок;
+                #   -> если да - РеТрАиМсЯ
+                #   -> если нет - БЕРЕМ ЛОК
+              elsif waiting_write_acquirer != nil && acquirer_position <= waiting_write_acquirer_position # наша очередь раньше врайтера - БЕРЕМ ЛОК!!!
+                # смотрим, взяит ли сейчас врайт-лок;
+                #   -> если да - РеТрАиМсЯ
+                #   -> если нет - БЕРЕМ ЛОК
+              end
+            end
+
+          elsif read_write_mode = :write
+            rconn.multi do |tconn|
+              tconn.call('ZADD', write_lock_key_queue, 'NX', acquirer_position, acquirer_id)
+
+              tconn.call('ZREMRANGEBYSCORE', read_lock_key_queue, '-inf', RedisQueuedLocks::Resource.acquirer_dead_score(queue_ttl))
+              tconn.call('ZREMRANGEBYSCORE', write_lock_key_queue, '-inf', RedisQueuedLocks::Resource.acquirer_dead_score(queue_ttl))
+            end
+
+            # @type var waiting_read_acquirer: String|nil
+            # @type var waiting_read_acquirer_position: Float|nil
+            waiting_read_acquirer, waiting_read_acquirer_position = Array(rconn.call('ZRANGE', read_lock_key_queue, '0', '0', 'WITHSCORES')).first
+            # @type var waiting_write_acquirer: String|nil
+            # @type var waiting_write_acquirer_position: Float|nil
+            waiting_write_acquirer, waiting_write_acquirer_position = Array(rconn.call('ZRANGE', write_lock_key_queue, '0', '0', 'WITHSCORES')).first
+
+            if waiting_write_acquirer == nil # мы уже просрочили свой queue timeout => ре-энкьюшимся
+              :dead_score_reached # re-enqueue
+            elsif access_strategy == :queued || access_strategy == :random
+              if waiting_read_acquirer == nil && waiting_write_acquirer == acquirer_id # нет ждущих в рид-очереди И сейчас наша очередь на врайт
+                if лок_на_рид_еще_активен
+                  ######
+                  # LOCK на рид проверяем так:
+                  # 1. берем read-коллекцию локеров, где значения - это acquirer_id => position с EXPIRATION'ном лока
+                  #   rconn.call('ZREMRANGEBYSCORE', "")
+                  # 2. смотрим есть ли там записи начиная с текущего времени
+                  # 3. если ничего нет - работаем.
+                  # 4. если что-то есть - не работаем
+
+                  #########
+
+                  # ливаем
+                else
+                  # БЭРЕМ ЛОК
+                  # ->> после взятия лока надо проверить, нет ли активного лока на рид И откатиться, если есть
+                end
+              elsif waiting_read_acquirer != nil && acquirer_position < waiting_read_acquirer_position && waiting_write_acquirer == acquirer_id
+                # -> если есть ожидающий ридер, но его очередь в риде позже нашей позиции на врайт И мы первые в очереди на врайт
+
+                if лок_на_рид_еще_активен
+                  # ЛИВАЕМ
+                else
+                  # БЕРЕМ ЛОК
+                  # ->> после взятия лока надо проверить, нет ли активного лока на рид И откатиться, если есть
+                end
+              else
+            end
+          end
+
+          # Step 1: add an acquirer to the lock acquirement queue (to the HSET)
           # NOTE:
-          #   'NX' means "Only add new elements. Don't update already existing elements."
-          #   that works as:
+          #   'NX' means "Only add new elements AND if we already in hset - do nothing".
+          #   The meaning for queueing:
           #     1. (enqueue) <<if you are already in the queue - do nothing and wait your time>>
           #     2. (requeue) or <<add to the right pre-calculated position if you are
           #       not in the queue now>>;

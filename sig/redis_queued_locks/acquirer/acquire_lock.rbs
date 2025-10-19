@@ -35,7 +35,7 @@ module RedisQueuedLocks
         log_lock_try: bool,
         instrument: untyped?,
         conflict_strategy: Symbol,
-        read_write_mode: Symbol,
+        read_write_mode: RQL::Client::readWriteMode,
         access_strategy: Symbol,
         log_sampling_enabled: bool,
         log_sampling_percent: Integer,

@@ -8,6 +8,8 @@ module RedisQueuedLocks
     @uniq_identity: String
     @swarm: RQL::Swarm
 
+    type readWriteMode = :read | :write
+
     attr_reader config: RQL::Config
     attr_reader redis_client: RC::client
     attr_accessor uniq_identity: String
@@ -44,7 +46,7 @@ module RedisQueuedLocks
       ?raise_errors: bool,
       ?fail_fast: bool,
       ?conflict_strategy: Symbol,
-      ?read_write_mode: Symbol,
+      ?read_write_mode: readWriteMode,
       ?access_strategy: Symbol,
       ?identity: String,
       ?meta: Hash[String|Symbol,untyped]?,
@@ -74,7 +76,7 @@ module RedisQueuedLocks
       ?retry_jitter: Integer,
       ?fail_fast: bool,
       ?conflict_strategy: Symbol,
-      ?read_write_mode: Symbol,
+      ?read_write_mode: readWriteMode,
       ?access_strategy: Symbol,
       ?identity: String,
       ?instrumenter: RQL::instrObj,

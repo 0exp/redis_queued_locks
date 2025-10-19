@@ -2113,7 +2113,7 @@ Detalized event semantics and payload structure:
   - `RedisQueuedLocks::Acquirer::Try.try_to_lock` - detailed successful result analization;
   - Support for LIFO strategy;
   - better specs with 100% test coverage (total specs rework);
-  - statistics with UI;
+  - statistics with UI (`RedisQueuedLocks::Stats`);
   - JSON log formatter;
   - **automatic** deadlock detection;
   - `go`-lang implementation;

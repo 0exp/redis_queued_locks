@@ -21,12 +21,15 @@ module RedisQueuedLocks
       Integer|String process_id,
       Integer|String thread_id,
       Integer|string ractor_id,
-      String identity
+      String identitys
     ) -> String
 
     def self.prepare_lock_key: (String lock_name) -> String
     def self.prepare_lock_queue: (String lock_name) -> String
+    def self.prepare_read_lock_key: (String lock_name, String acquirer_id) -> String
     def self.prepare_read_lock_queue: (String lock_name) -> String
+    def self.prepare_read_lock_acq_list_key: (String lock_name) -> String
+    def self.prepare_write_lock_key: (String lock_name) -> String
     def self.prepare_write_lock_queue: (String lock_name) -> String
     def self.calc_initial_acquirer_position: () -> Float
     def self.acquirer_dead_score: (Integer|Float queue_ttl) -> Float

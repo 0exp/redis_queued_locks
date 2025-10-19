@@ -8,10 +8,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
   # @param redis [RedisClient]
   # @param logger [::Logger,#debug]
   # @param lock_key [String]
+  # @param read_lock_key [String]
+  # @param write_lock_key [String]
   # @param read_write_mode [Symbol]
   # @param lock_key_queue [String]
   # @param read_lock_key_queue [String]
   # @param write_lock_key_queue [String]
+  # @param read_lock_acq_list_key [String]
   # @param queue_ttl [Integer]
   # @param acquirer_id [String]
   # @param host_id [String]
@@ -27,10 +30,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
     redis,
     logger,
     lock_key,
+    read_lock_key,
+    write_lock_key,
     read_write_mode,
     lock_key_queue,
     read_lock_key_queue,
     write_lock_key_queue,
+    read_lock_acq_list_key,
     queue_ttl,
     acquirer_id,
     host_id,

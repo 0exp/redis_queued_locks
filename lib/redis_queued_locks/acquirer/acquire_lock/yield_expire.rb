@@ -93,6 +93,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
       end
     end
   ensure
+    # у нас два кейса - либо мы экспайрим лок после отработки, либо мы декризим лок ТТЛ
     if should_expire # TODO: comment all cases/examples when should_expire is true
       LogVisitor.expire_lock(
         logger, log_sampled, lock_key,
@@ -114,6 +115,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
         # NOTE:# NOTE: EVAL signature -> <lua script>, (number of keys), *(keys), *(arguments)
         redis.call('EVAL', DECREASE_LOCK_PTTL, 1, lock_key, decreased_ttl)
         # TODO: upload scripts to the redis
+      else
+        # TODO: raise undefined behaviour for lock expiration
+        # не понятно, если мы и не дикризим и не экспайрим - то это бред, мы сюда не должны попасть.
+        # попадем - значит БАГ.
       end
     end
   end

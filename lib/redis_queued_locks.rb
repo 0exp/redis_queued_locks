@@ -20,6 +20,7 @@ module RedisQueuedLocks
   require_relative 'redis_queued_locks/swarm'
   require_relative 'redis_queued_locks/client'
   require_relative 'redis_queued_locks/config'
+  require_relative 'redis_queued_locks/stats'
 
   # @since 1.0.0
   extend RedisQueuedLocks::Debugger::Interface

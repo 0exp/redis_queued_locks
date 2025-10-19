@@ -1,0 +1,7 @@
+use RedisQueuedLocks as RQL
+use RedisClient as RC
+
+module RedisQueuedLocks
+  module Stats
+  end
+end

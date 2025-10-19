@@ -245,7 +245,11 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
 
+      read_lock_key = RedisQueuedLocks::Resource.prepare_read_lock_key(lock_name, acquirer_id)
       read_lock_key_queue = RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
+      read_lock_acq_list_key = RedisQueuedLocks::Resource.prepare_read_lock_acq_list_key(lock_name)
+
+      write_lock_key = RedisQueuedLocks::Resource.prepare_write_lock_key(lock_name)
       write_lock_key_queue = RedisQueuedLocks::Resource.prepare_write_lock_queue(lock_name)
 
       acquirer_position = RedisQueuedLocks::Resource.calc_initial_acquirer_position
@@ -281,10 +285,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           redis,
           logger,
           lock_key,
+          read_lock_key,
+          write_lock_key,
           read_write_mode,
           lock_key_queue,
           read_lock_key_queue,
           write_lock_key_queue,
+          read_lock_acq_list_key,
           queue_ttl,
           acquirer_id,
           host_id,
@@ -304,6 +311,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         redis,
         timeout,
         lock_key,
+        read_lock_key,
+        write_lock_key,
+        read_write_mode,
         lock_name,
         raise_errors,
         detailed_acq_timeout_error,
@@ -337,10 +347,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             logger,
             log_lock_try,
             lock_key,
+            read_lock_key,
+            write_lock_key,
             read_write_mode,
             lock_key_queue,
             read_lock_key_queue,
             write_lock_key_queue,
+            read_lock_acq_list_key,
             acquirer_id,
             host_id,
             acquirer_position,
