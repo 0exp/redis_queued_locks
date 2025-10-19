@@ -5,7 +5,7 @@
 - `#claer_locks_of_acquirer` (alias: `#release_locks_of_acquirer`) - remove locks of the concrete acquirer and drop this acquirer form all lock queues;
 - `#clear_locks_of_host` (alias: `#release_locks_of_host`) - remove locks of the concrete host;
 - Instrumentation events:
-  - added `:rel_req_cnt` (the count of removed lock-requests from lock queues) payload data to `"redis_queued_locks.release_locks_of"` instrumentation event;
+  - added `:rel_req_cnt` (the count of removed lock-requests from lock queues) to `"redis_queued_locks.release_locks_of"` instrumentation event payload;
 ### Changed
 - the process-ractor-thread-fiber order of the acquirer identifier and the host identifier has changed:
   - the order is consider the object scope priority: 
