@@ -2349,7 +2349,6 @@ Detalized event semantics and payload structure:
     ```ruby
     rql.lock_series('lock_a', 'lock_b', 'lock_c') { puts 'locked' }
     ```
-  - an ability to release all locks and all requests of the concrete acquirer id or host id (or both in validation-orianted combination);
   - detailed lock informotion inside the error object in cases of exceptions (at the moment we have this info inside the error message only that hard to analyze in work);
   - a convenient way to mark any `lock` invocation as "non-instrumentable" / "non-loggable" (as an alternative to `VoidNotifier` and to `VoidLogger`);
   - `Read`/`Write` semantics: you can mark your locks as `read` or `write` lock in order to simulate `read`/`write` lock behavior:
