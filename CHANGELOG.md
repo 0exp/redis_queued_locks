@@ -10,7 +10,7 @@
   - `.acquirer_host` - extract host identifier from acquirer identifier;
   - `.acquirer_pattern_from_host` - extract acquirer search pattern from any host identifier needed for `ZSCAN` command;
   - `.extract_identity` - extract **identity** part from acquirer identifier (or from host indetifier) needed for `ZSCAN` command;
-  - `.eztract_non_identified_part` - extract the substring from acquirer identifier (or from host identifier) excluding the **identity** part need for `ZSCAN` command;
+  - `.extract_non_identified_part` - extract the substring from acquirer identifier (or from host identifier) excluding the **identity** part need for `ZSCAN` command;
 ### Changed
 - the process-ractor-thread-fiber order of the acquirer identifier and the host identifier has changed:
   - the order is consider the object scope priority: 
