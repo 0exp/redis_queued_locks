@@ -31,6 +31,8 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [clear_locks](#clear_locks---release-all-locks-and-lock-queues) (aka `release_locks`)
   - [clear_locks_of](#clear_locks_of) (aka `release_locks_of`)
   - [clear_current_locks](#clear_current_locks) (aka `release_current_locks`)
+  - [clear_locks_of_acquirer](#clear_locks_of_acquirer) (aka `release_locks_of_acquirer`)
+  - [clear_locks_of_host](#clear_locks_of) (aka `release_locks_of_host`)
   - [extend_lock_ttl](#extend_lock_ttl)
   - [locks](#locks---get-list-of-obtained-locks)
   - [queues](#queues---get-list-of-lock-request-queues)
@@ -72,6 +74,8 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
     - ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release)
     - ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
     - ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of)
+    - ["redis_queued_locks.release_locks_of_acquirer"](#redis_queued_locksrelease_locks_of_acquirer)
+    - ["redis_queued_locks.release_locks_of_host"](#redis_queued_locksrelease_locks_of_host)
 - [Roadmap](#roadmap)
 - [Build and Develop](#build-and-develop)
 - [Contributing](#contributing)
@@ -252,6 +256,10 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - how many queues will be SCAN'ned at a time in #clear_locks_of and in #clear_current_locks methods (uses SCAN);
   # - affects the performance of your Redis (configure thoughtfully);
   config['clear_locks_of__queue_scan_size'] = 300
+
+  # (default: 100)
+  # - ?
+  config['clear_locks_of_host__queue_cleanup_cursor_count'] = 100
 
   # (default: 500)
   # - how many items should be extracted from redis during the #locks, #queues, #keys
@@ -1333,6 +1341,19 @@ rql.release_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acqu
 
 ---
 
+#### clear_locks_of_acquirer
+
+<sup>\[[back to top](#usage)\]</sup>
+
+---
+
+
+#### clear_locks_of_host
+
+<sup>\[[back to top](#usage)\]</sup>
+
+---
+
 #### #extend_lock_ttl
 
 <sup>\[[back to top](#usage)\]</sup>
@@ -2194,6 +2215,8 @@ List of instrumentation events
 - ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release)
 - ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
 - ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of)
+- ["redis_queued_locks.release_locks_of_acquirer"](#redis_queued_locksrelease_locks_of_acquirer)
+- ["redis_queued_locks.release_locks_of_host"](#redis_queued_locksrelease_locks_of_host)
 
 Detalized event semantics and payload structure:
 
@@ -2286,7 +2309,7 @@ Detalized event semantics and payload structure:
 
 ##### `"redis_queued_locks.release_locks_of"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
-- an event signalizes about the released locks (and removement from lock queues) of the concrete host and acquirer;
+- an event signalizes about the released locks (and removement of all lock requests from lock queues) of the concrete host and acquirer;
 - raised from `#clear_locks_of` and `#clear_current_locks` (`#release_locks_of` and `#release_current_locks` respectively);
 - payload:
   - `:rel_time` - `float`/`milliseconds` - time spent on "release locks of" operation;
@@ -2294,7 +2317,32 @@ Detalized event semantics and payload structure:
   - `:acq_id` - `string` - refused acquirer identifier;
   - `:hst_id` - `string` - refused host identifier;
   - `:rel_key_cnt` - `integer` - released locks count;
+  - `:rel_req_cnt` - `integer` - the count of removed lock requests from all related lock-queues;
   - `:tch_queue_cnt` - `:integer` - the number of queues from which the concrete host/acquirer was removed;
+
+#### `"redis_queued_locks.release_locks_of_acquirer"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the released locks (and removement of all lock requests from lock queues) of the concrete acquirer;
+- raised from `#clear_locks_of_acquirer` (and `#release_locks_of_acquirer` respectively);
+- payload:
+  - `:rel_time` - `float`/`milliseconds` - time spent on "release locks of" operation;
+  - `:at` - `float`/`epoch` - the time when the opertaion has ended; 
+  - `:acq_id` - `string` - refused acquirer identifier;
+  - `:rel_key_cnt` - `integer` - released locks count;
+  - `:rel_req_cnt` - `integer` - the count of removed lock requests from all related lock-queues;
+  - `:tch_queue_cnt` - `:integer` - the number of queues from which the concrete acquirer was removed;
+
+#### `"redis_queued_locks.release_locks_of_host"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the released locks (and removement of all lock requests from lock queues) of the concrete host;
+- raised from `#clear_locks_of_host` (and `#release_locks_of_host` respectively);
+- payload:
+  - `:rel_time` - `float`/`milliseconds` - time spent on "release locks of" operation;
+  - `:at` - `float`/`epoch` - the time when the opertaion has ended; 
+  - `:hst_id` - `string` - refused host identifier;
+  - `:rel_key_cnt` - `integer` - released locks count;
+  - `:rel_req_cnt` - `integer` - the count of removed lock requests from all related lock-queues;
+  - `:tch_queue_cnt` - `:integer` - the number of queues from which the concrete host was removed;
 
 ---
 
@@ -2318,7 +2366,6 @@ Detalized event semantics and payload structure:
     ```ruby
     rql.lock_series('lock_a', 'lock_b', 'lock_c') { puts 'locked' }
     ```
-  - an ability to release all locks and all requests of the concrete acquirer id or host id (or both in validation-orianted combination);
   - detailed lock informotion inside the error object in cases of exceptions (at the moment we have this info inside the error message only that hard to analyze in work);
   - a convenient way to mark any `lock` invocation as "non-instrumentable" / "non-loggable" (as an alternative to `VoidNotifier` and to `VoidLogger`);
   - `Read`/`Write` semantics: you can mark your locks as `read` or `write` lock in order to simulate `read`/`write` lock behavior:

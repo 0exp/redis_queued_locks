@@ -41,12 +41,12 @@ RSpec.describe RedisQueuedLocks do
 
       # verify current host
       expect(client.current_host_id).to eq(
-        "rql:hst:#{current_process_id}/#{current_thread_id}/#{current_ractor_id}/#{uniq_identity}"
+        "rql:hst:#{current_process_id}/#{current_ractor_id}/#{current_thread_id}/#{uniq_identity}"
       )
 
       # collect possible hosts
       expected_hosts = current_thread_list.map do |thread|
-        "rql:hst:#{current_process_id}/#{thread.object_id}/#{current_ractor_id}/#{uniq_identity}"
+        "rql:hst:#{current_process_id}/#{current_ractor_id}/#{thread.object_id}/#{uniq_identity}"
       end
       expect(client.possible_host_ids).to contain_exactly(*expected_hosts)
 
@@ -55,9 +55,9 @@ RSpec.describe RedisQueuedLocks do
       new_thread1 = Thread.new { loop { sleep(0.5) } }
       new_thread2 = Thread.new { loop { sleep(0.5) } }
       new_thread1_host_id =
-        "rql:hst:#{current_process_id}/#{new_thread1.object_id}/#{current_ractor_id}/#{uniq_identity}"
+        "rql:hst:#{current_process_id}/#{current_ractor_id}/#{new_thread1.object_id}/#{uniq_identity}"
       new_thread2_host_id =
-        "rql:hst:#{current_process_id}/#{new_thread2.object_id}/#{current_ractor_id}/#{uniq_identity}"
+        "rql:hst:#{current_process_id}/#{current_ractor_id}/#{new_thread2.object_id}/#{uniq_identity}"
       expected_hosts << new_thread1_host_id
       expected_hosts << new_thread2_host_id
       expect(client.possible_host_ids).to contain_exactly(*expected_hosts)
@@ -68,7 +68,7 @@ RSpec.describe RedisQueuedLocks do
       new_thread2.tap(&:kill).tap(&:join)
       new_current_thread_list = Thread.list
       expected_hosts = new_current_thread_list.map do |thread|
-        "rql:hst:#{current_process_id}/#{thread.object_id}/#{current_ractor_id}/#{uniq_identity}"
+        "rql:hst:#{current_process_id}/#{current_ractor_id}/#{thread.object_id}/#{uniq_identity}"
       end
       last_possible_host_ids = client.possible_host_ids
       expect(last_possible_host_ids).to contain_exactly(*expected_hosts)
@@ -2061,6 +2061,7 @@ RSpec.describe RedisQueuedLocks do
         ok: true,
         result: match({
           rel_key_cnt: 0, # <-- no any key is cleared for side__thread
+          rel_req_cnt: 1, # <-- one lock request is removed (request from side_thread-acquirer)
           tch_queue_cnt: 1, # <-- side_thread-acquirer is removed from the queue
           rel_time: be_a(Numeric)
         })
@@ -2089,6 +2090,7 @@ RSpec.describe RedisQueuedLocks do
         ok: true,
         result: match({
           rel_key_cnt: 1, # <-- removed locks from in_fork__main_thread
+          rel_req_cnt: 0, # <-- no any requests are dropped from lock queues
           tch_queue_cnt: 0, # <-- no any queue is "touched" cuz main_thread "is not inside the any queue"
           rel_time: be_a(Numeric)
         })
@@ -2120,6 +2122,7 @@ RSpec.describe RedisQueuedLocks do
         ok: true,
         result: match({
           rel_key_cnt: 1, # <-- removed locks from current process
+          rel_req_cnt: 0, # <-- no any requests are dropped from lock queues
           tch_queue_cnt: 0, # <-- no any queue is "touched" cuz current process "is not inside the any queue"
           rel_time: be_a(Numeric)
         })
@@ -2164,6 +2167,7 @@ RSpec.describe RedisQueuedLocks do
         ok: true,
         result: match({
           rel_key_cnt: 1, # <-- removed locks from current process
+          rel_req_cnt: 0, # <-- no any requests are dropped from lock queues
           tch_queue_cnt: 0, # <-- no any queue is "touched" cuz current process "is not inside the any queue"
           rel_time: be_a(Numeric)
         })
@@ -2185,6 +2189,7 @@ RSpec.describe RedisQueuedLocks do
         'acq_id' => be_a(String),
         'rel_time' => be_a(Numeric),
         'rel_key_cnt' => be_a(Integer),
+        'rel_req_cnt' => be_a(Integer),
         'tch_queue_cnt' => be_a(Integer)
       })
       expect(test_notifier.last_in_memory_rlo_event).to match({
@@ -2193,6 +2198,7 @@ RSpec.describe RedisQueuedLocks do
         acq_id: client.acq_id, # (String) last lock is released from the current thread
         rel_time: be_a(Numeric),
         rel_key_cnt: be_a(Integer),
+        rel_req_cnt: be_a(Integer),
         tch_queue_cnt: be_a(Integer)
       })
     end

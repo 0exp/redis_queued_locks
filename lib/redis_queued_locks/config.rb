@@ -21,6 +21,7 @@ class RedisQueuedLocks::Config
   setting('lock_release_batch_size', 100)
   setting('clear_locks_of__lock_scan_size', 300)
   setting('clear_locks_of__queue_scan_size', 300)
+  setting('clear_locks_of_host__queue_cleanup_cursor_count', 300)
   setting('key_extraction_batch_size', 500)
   setting('instrumenter', RedisQueuedLocks::Instrument::VoidNotifier)
   setting('uniq_identifier', -> { RedisQueuedLocks::Resource.calc_uniq_identity })
@@ -84,6 +85,7 @@ class RedisQueuedLocks::Config
   validate('lock_release_batch_size') { |val| val.is_a?(Integer) }
   validate('clear_locks_of__lock_scan_size') { |val| val.is_a?(Integer) }
   validate('clear_locks_of__queue_scan_size') { |val| val.is_a?(Integer) }
+  validate('clear_locks_of_host__queue_cleanup_cursor_count') { |val| val.is_a?(Integer) }
   validate('instrumenter') { |val| RedisQueuedLocks::Instrument.valid_interface?(val) }
   validate('uniq_identifier') { |val| val.is_a?(Proc) }
   validate('logger') { |val| RedisQueuedLocks::Logging.valid_interface?(val) }

@@ -2,7 +2,7 @@
 
 # @api public
 # @since 1.0.0
-# @version 1.14.0
+# @version 1.16.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @return [RedisClient]
@@ -548,9 +548,9 @@ class RedisQueuedLocks::Client
   # Retrun the current acquirer identifier.
   #
   # @option process_id [Integer,Any] Process identifier.
+  # @option ractor_id [Integer,Any] Ractor identifier.
   # @option thread_id [Integer,Any] Thread identifier.
   # @option fiber_id [Integer,Any] Fiber identifier.
-  # @option ractor_id [Integer,Any] Ractor identifier.
   # @option identity [String] Unique per-process string. See `config['uniq_identifier']`.
   # @return [String]
   #
@@ -563,18 +563,19 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.8.0
+  # @version 1.16.0
   def current_acquirer_id(
     process_id: RedisQueuedLocks::Resource.get_process_id,
+    ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
     thread_id: RedisQueuedLocks::Resource.get_thread_id,
     fiber_id: RedisQueuedLocks::Resource.get_fiber_id,
-    ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
     identity: uniq_identity
   )
     RedisQueuedLocks::Resource.acquirer_identifier(
       process_id,
+      ractor_id,
       thread_id,
       fiber_id,
-      ractor_id,
       identity
     )
   end
@@ -598,16 +599,17 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
+  # @version 1.16.0
   def current_host_id(
     process_id: RedisQueuedLocks::Resource.get_process_id,
-    thread_id: RedisQueuedLocks::Resource.get_thread_id,
     ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
+    thread_id: RedisQueuedLocks::Resource.get_thread_id,
     identity: uniq_identity
   )
     RedisQueuedLocks::Resource.host_identifier(
       process_id,
-      thread_id,
       ractor_id,
+      thread_id,
       identity
     )
   end
@@ -772,7 +774,16 @@ class RedisQueuedLocks::Client
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
   # @option instr_sample_this [Boolean]
   # @return [Hash<Symbol,Boolean|Hash<Symbol,Numeric>>]
-  #   Example: { ok: true, result: { rel_key_cnt: 100, tch_queue_cnt: 2, rel_time: 0.01 } }
+  #   Example:
+  #     {
+  #       ok: true,
+  #       result: {
+  #         rel_key_cnt: 100,
+  #         rel_req_cnt: 123,
+  #         tch_queue_cnt: 2,
+  #         rel_time: 0.01
+  #       }
+  #     }
   #
   # @example Release locks of the current process:
   #   client.clear_locks_of(
@@ -834,6 +845,119 @@ class RedisQueuedLocks::Client
     )
   end
   alias_method :release_locks_of, :clear_locks_of
+
+  # @option host_id [String]
+  # @option lock_scan_size [Integer]
+  # @option queue_scan_size [Integer]
+  # @option queue_cleanup_cursor_count [Integer]
+  # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify] See `config['instrumenter']` docs for details.
+  # @option instrument [NilClass,Any]
+  # @option log_sampling_enabled [Boolean]
+  # @option log_sampling_percent [Integer]
+  # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
+  # @return [Hash<Symbol,Boolean|Hash<Symbol,Numeric>>]
+  #
+  # @api public
+  # @since 1.16.0
+  # rubocop:disable Layout/LineLength
+  def clear_locks_of_host(
+    host_id,
+    lock_scan_size: config['clear_locks_of__lock_scan_size'], # steep:ignore
+    queue_scan_size: config['clear_locks_of__queue_scan_size'], # steep:ingore
+    queue_cleanup_cursor_count: config['clear_locks_of_host__queue_cleanup_cursor_count'], # steep:ingore
+    logger: config['logger'], # steep:ignore
+    instrumenter: config['instrumenter'], # steep:ignore
+    instrument: nil,
+    log_sampling_enabled: config['log_sampling_enabled'], # steep:ignore
+    log_sampling_percent: config['log_sampling_percent'], # steep:ignore
+    log_sampler: config['log_sampler'], # steep:ignore
+    log_sample_this: false,
+    instr_sampling_enabled: config['instr_sampling_enabled'], # steep:ignore
+    instr_sampling_percent: config['instr_sampling_percent'], # steep:ignore
+    instr_sampler: config['instr_sampler'], # steep:ignore
+    instr_sample_this: false
+  )
+    RedisQueuedLocks::Acquirer::ReleaseLocksOfHost.release_locks_of_host(
+      host_id,
+      redis_client,
+      lock_scan_size,
+      queue_scan_size,
+      queue_cleanup_cursor_count,
+      logger,
+      instrumenter,
+      instrument,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler,
+      log_sample_this,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler,
+      instr_sample_this
+    )
+  end
+  alias_method :release_locks_of_host, :clear_locks_of_host
+  # rubocop:enable Layout/LineLength
+
+  # @option acquirer_id [String]
+  # @option lock_scan_size [Integer]
+  # @option queue_scan_size [Integer]
+  # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify] See `config['instrumenter']` docs for details.
+  # @option instrument [NilClass,Any]
+  # @option log_sampling_enabled [Boolean]
+  # @option log_sampling_percent [Integer]
+  # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
+  # @return [Hash<Symbol,Boolean|Hash<Symbol,Numeric>>]
+  #
+  # @api public
+  # @since 1.16.0
+  def clear_locks_of_acquirer(
+    acquirer_id,
+    lock_scan_size: config['clear_locks_of__lock_scan_size'], # steep:ignore
+    queue_scan_size: config['clear_locks_of__queue_scan_size'], # steep:ingore
+    logger: config['logger'], # steep:ignore
+    instrumenter: config['instrumenter'], # steep:ignore
+    instrument: nil,
+    log_sampling_enabled: config['log_sampling_enabled'], # steep:ignore
+    log_sampling_percent: config['log_sampling_percent'], # steep:ignore
+    log_sampler: config['log_sampler'], # steep:ignore
+    log_sample_this: false,
+    instr_sampling_enabled: config['instr_sampling_enabled'], # steep:ignore
+    instr_sampling_percent: config['instr_sampling_percent'], # steep:ignore
+    instr_sampler: config['instr_sampler'], # steep:ignore
+    instr_sample_this: false
+  )
+    RedisQueuedLocks::Acquirer::ReleaseLocksOfAcquirer.release_locks_of_acquirer(
+      acquirer_id,
+      redis_client,
+      lock_scan_size,
+      queue_scan_size,
+      logger,
+      instrumenter,
+      instrument,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler,
+      log_sample_this,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler,
+      instr_sample_this
+    )
+  end
+  alias_method :release_locks_of_acquirer, :clear_locks_of_acquirer
 
   # Release all locks of the current acquirer/host and
   # remove the current acquirer/host from all queues;

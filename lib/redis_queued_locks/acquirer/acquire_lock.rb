@@ -159,7 +159,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.14.0
+    # @version 1.16.0
     def acquire_lock(
       redis,
       lock_name,
@@ -232,15 +232,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       # Step 1: prepare lock requirements (generate lock name, calc lock ttl, etc).
       acquirer_id = RedisQueuedLocks::Resource.acquirer_identifier(
         process_id,
+        ractor_id,
         thread_id,
         fiber_id,
-        ractor_id,
         identity
       )
       host_id = RedisQueuedLocks::Resource.host_identifier(
         process_id,
-        thread_id,
         ractor_id,
+        thread_id,
         identity
       )
       lock_ttl = ttl
