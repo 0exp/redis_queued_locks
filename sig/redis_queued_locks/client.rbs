@@ -190,6 +190,7 @@ module RedisQueuedLocks
       String host_id,
       ?lock_scan_size: Integer,
       ?queue_scan_size: Integer,
+      ?queue_cleanup_cursor_count: Integer,
       ?logger: RQL::loggerObj,
       ?instrumenter: RQL::instrObj,
       ?instrument: untyped?,

@@ -939,7 +939,7 @@ class RedisQueuedLocks::Client
     instr_sampler: config['instr_sampler'], # steep:ignore
     instr_sample_this: false
   )
-    RedisQueuedLocks::Acquirer::ReleaseLocksOfHost.release_locks_of_host(
+    RedisQueuedLocks::Acquirer::ReleaseLocksOfAcquirer.release_locks_of_acquirer(
       acquirer_id,
       redis_client,
       lock_scan_size,
