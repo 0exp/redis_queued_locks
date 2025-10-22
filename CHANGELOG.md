@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+## [1.15.1] - 2025-10-22
+### Fixed
+- **Config Layer**:
+  - some config keys has no correspondig validator so during config instantation
+    custom configuraiton of these keys leads to **NoMethodError**. Missing validators were added and
+    a correspondig test added too.
+
 ## [1.15.0] - 2025-10-17
 ### Changed
 - `"redis_queud_locks.release_locks_of"` instrumentation event payload now includes `hst_id` and `acq_id`;

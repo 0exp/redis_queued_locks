@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.13.0
-# @version 1.14.0
+# @version 1.15.1
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Config
   require_relative 'config/dsl'
@@ -78,12 +78,13 @@ class RedisQueuedLocks::Config
   validate('retry_delay') { |val| val.is_a?(Integer) && val >= 0 }
   validate('retry_jitter') { |val| val.is_a?(Integer) && val >= 0 }
   validate('try_to_lock_timeout') { |val| val == nil || (val.is_a?(Integer) && val >= 0) }
-  validate('default_lock_tt') { |val| val.is_a?(Integer) }
+  validate('default_lock_ttl') { |val| val.is_a?(Integer) }
   validate('default_queue_ttl') { |val| val.is_a?(Integer) }
   validate('detailed_acq_timeout_error') { |val| val == true || val == false }
   validate('lock_release_batch_size') { |val| val.is_a?(Integer) }
   validate('clear_locks_of__lock_scan_size') { |val| val.is_a?(Integer) }
   validate('clear_locks_of__queue_scan_size') { |val| val.is_a?(Integer) }
+  validate('key_extraction_batch_size') { |val| val.is_a?(Integer) }
   validate('instrumenter') { |val| RedisQueuedLocks::Instrument.valid_interface?(val) }
   validate('uniq_identifier') { |val| val.is_a?(Proc) }
   validate('logger') { |val| RedisQueuedLocks::Logging.valid_interface?(val) }

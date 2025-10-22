@@ -2371,4 +2371,53 @@ RSpec.describe RedisQueuedLocks do
 
     redis.call('FLUSHDB')
   end
+
+  specify 'config works well (touch configs - should be no errors)' do
+    expect do
+      RedisQueuedLocks::Client.new(redis) do |config|
+        config['retry_count'] = 3
+        config['retry_delay'] = 200
+        config['retry_jitter'] = 25
+        config['try_to_lock_timeout'] = 10
+        config['default_lock_ttl'] = 5_000
+        config['default_queue_ttl'] = 15
+        config['detailed_acq_timeout_error'] = false
+        config['lock_release_batch_size'] = 100
+        config['clear_locks_of__lock_scan_size'] = 300
+        config['clear_locks_of__queue_scan_size'] = 300
+        config['key_extraction_batch_size'] = 500
+        config['instrumenter'] = RedisQueuedLocks::Instrument::VoidNotifier
+        config['uniq_identifier'] = -> { RedisQueuedLocks::Resource.calc_uniq_identity }
+        config['logger'] = RedisQueuedLocks::Logging::VoidLogger
+        config['log_lock_try'] = false
+        config['dead_request_ttl'] = 1 * 24 * 60 * 60 * 1000
+        config['is_timed_by_default'] = false
+        config['default_conflict_strategy'] = :wait_for_lock
+        config['default_access_strategy'] = :queued
+        config['log_sampling_enabled'] = false
+        config['log_sampling_percent'] = 15
+        config['log_sampler'] = RedisQueuedLocks::Logging::Sampler
+        config['instr_sampling_enabled'] = false
+        config['instr_sampling_percent'] = 15
+        config['instr_sampler'] = RedisQueuedLocks::Instrument::Sampler
+        config['swarm.auto_swarm'] = false
+        config['swarm.supervisor.liveness_probing_period'] = 2
+        config['swarm.probe_hosts.enabled_for_swarm'] = true
+        config['swarm.probe_hosts.probe_period'] = 2
+        config['swarm.probe_hosts.redis_config.sentinel'] = false
+        config['swarm.probe_hosts.redis_config.pooled'] = false
+        config['swarm.probe_hosts.redis_config.config'] = {}
+        config['swarm.probe_hosts.redis_config.pool_config'] = {}
+        config['swarm.flush_zombies.enabled_for_swarm'] = true
+        config['swarm.flush_zombies.zombie_ttl'] = 15_000
+        config['swarm.flush_zombies.zombie_lock_scan_size'] = 500
+        config['swarm.flush_zombies.zombie_queue_scan_size'] = 500
+        config['swarm.flush_zombies.zombie_flush_period'] = 10
+        config['swarm.flush_zombies.redis_config.sentinel'] = false
+        config['swarm.flush_zombies.redis_config.pooled'] = false
+        config['swarm.flush_zombies.redis_config.config'] = {}
+        config['swarm.flush_zombies.redis_config.pool_config'] = {}
+      end
+    end.not_to raise_error
+  end
 end
