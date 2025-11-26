@@ -75,10 +75,8 @@ module RedisQueuedLocks::Logging
       #     - see https://github.com/reidmorrison/semantic_logger
       #   - convinient/conventional way to support the popular `broadcast` RubyOnRails's logger;
       #     - see https://api.rubyonrails.org/classes/ActiveSupport/BroadcastLogger.html
-      # rubocop:disable Layout/LineLength
       return true if defined?(::SemanticLogger::Logger) && logger.is_a?(::SemanticLogger::Logger)
       return true if defined?(::ActiveSupport::BroadcastLogger) && logger.is_a?(::ActiveSupport::BroadcastLogger)
-      # rubocop:enable Layout/LineLength
 
       # NOTE: should provide `#debug` method.
       return false unless logger.respond_to?(:debug)
