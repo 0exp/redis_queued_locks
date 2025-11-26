@@ -1347,7 +1347,6 @@ rql.release_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acqu
 
 ---
 
-
 #### clear_locks_of_host
 
 <sup>\[[back to top](#usage)\]</sup>
