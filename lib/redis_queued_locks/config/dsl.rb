@@ -16,7 +16,7 @@ module RedisQueuedLocks::Config::DSL
     #
     # @api private
     # @since 1.13.0
-    def config_setters()= @config_setters # rubocop:disable Style/DefWithParentheses
+    def config_setters()= @config_setters
 
     # NOTE:
     #   1. Style/DefWithParentheses rubocop's cop incorrectly drops `()` from method definition
@@ -28,7 +28,7 @@ module RedisQueuedLocks::Config::DSL
     #
     # @api private
     # @since 1.13.0
-    def config_validators()= @config_validators # rubocop:disable Style/DefWithParentheses
+    def config_validators()= @config_validators
 
     # @param config_key [String]
     # @param validator [Block]
@@ -53,6 +53,8 @@ module RedisQueuedLocks::Config::DSL
     end
   end
 
+  # @api private
+  # @since 1.13.0
   module InstanceMethods
     # @return [Hash<String,Blcok>]
     #
