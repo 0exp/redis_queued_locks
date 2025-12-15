@@ -2328,6 +2328,7 @@ Detalized event semantics and payload structure:
     - `write` - waits - `write`;
     - **write** mode is a default behavior for all RQL locks;
 - **Minor**:
+  - think about "thread priority" configuration :thinking:;
   - add `hst_id` to all methods that works with queues info;
   - try to return the `fiber object id` to the lock host identifier (we cant use fiber object id cuz `ObjectSpace` has no access to the fiber object space after the any ractor object initialization)
   - named RQL's threads (`Thread#name`) and RQL's ractors (`Ractor#name`) in order to have an ability to find and work with RQL's threads and ractors outside of RQL logic (stop threads before process forking, for example);
