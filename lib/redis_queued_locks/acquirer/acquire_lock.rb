@@ -151,8 +151,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   - marks the method that everything should be instrumneted
     #     despite the enabled instrumentation sampling;
     #   - makes sense when instrumentation sampling is enabled;
-    # @param [Block]
-    #   A block of code that should be executed after the successfully acquired lock.
+    # @yield A block of code that should be executed after the successfully acquired lock.
+    # @yieldreturn [Any]
     # @return [Hash<Symbol,Any>,yield]
     #  - Format: { ok: true/false, result: Any }
     #  - If block is given the result of block's yeld will be returned.

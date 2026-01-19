@@ -152,7 +152,7 @@ module RedisQueuedLocks::Resource
     # @param acquirer_position [Float]
     #   A time (epoch, seconds.milliseconds) that represents
     #   the acquirer position in lock request queue.
-    # @parma queue_ttl [Integer]
+    # @param queue_ttl [Integer]
     #   In second.
     # @return [Boolean]
     #   Is the lock request time limit has reached or not.

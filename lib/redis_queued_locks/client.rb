@@ -301,8 +301,8 @@ class RedisQueuedLocks::Client
   #   - marks the method that everything should be instrumneted
   #     despite the enabled instrumentation sampling;
   #   - makes sense when instrumentation sampling is enabled;
-  # @param block [Block]
-  #   A block of code that should be executed after the successfully acquired lock.
+  # @yield A block of code that should be executed after the successfully acquired lock.
+  #   @yieldreturn [Any]
   # @return [Hash<Symbol,Any>,yield]
   #   - Format: { ok: true/false, result: Symbol/Hash }.
   #   - If block is given the result of block's yeld will be returned.

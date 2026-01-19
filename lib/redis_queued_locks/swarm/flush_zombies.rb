@@ -5,7 +5,7 @@
 class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElement::Isolated
   class << self
     # @param redis_client [RedisClient]
-    # @parma zombie_ttl [Integer]
+    # @param zombie_ttl [Integer]
     # @param lock_scan_size [Integer]
     # @param queue_scan_size [Integer]
     # @return [Hash<Symbol,Boolean|Set<String>]] Format:

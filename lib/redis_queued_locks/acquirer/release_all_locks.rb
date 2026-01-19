@@ -18,7 +18,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     # @param logger [::Logger,#debug]
     #   - Logger object used from `configuration` layer (see config['logger']);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
-    # @param isntrumenter [#notify]
+    # @param instrumenter [#notify]
     #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
     # @param instrument [NilClass,Any]
     #    - Custom instrumentation data wich will be passed to the instrumenter's payload

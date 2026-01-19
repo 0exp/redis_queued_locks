@@ -42,7 +42,7 @@ module RedisQueuedLocks::Acquirer::Queues
     end
 
     # @param redis_client [RedisClient]
-    # @param lock_queus [Set<String>]
+    # @param lock_queues [Set<String>]
     # @return [Set<Hash<Symbol,Any>>]
     #
     # @api private

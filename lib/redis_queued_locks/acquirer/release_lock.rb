@@ -18,7 +18,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     #   Redis connection client.
     # @param lock_name [String]
     #   The lock name that should be released.
-    # @param isntrumenter [#notify]
+    # @param instrumenter [#notify]
     #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
     # @param logger [::Logger,#debug]
     #   - Logger object used from `configuration` layer (see config['logger']);

@@ -2358,6 +2358,8 @@ Detalized event semantics and payload structure:
   - **Research**: support for `Valkey` database backend (https://github.com/valkey-io/valkey) (https://valkey.io/);
   - **Research**: support for `Garnet` database backend (https://microsoft.github.io/) (https://github.com/microsoft/garnet);
   - add a library-level exception, when RQL-related key in Redis (required for its logic) has incompatible type (means: some other program uses our key with their own type and logic and RQL can't work properly);
+  - yardoc docs with CI check (full doc coverage check);
+
 ---
 
 ## Build and Develop

@@ -12,7 +12,8 @@ class RedisQueuedLocks::Utilities::Lock
     @lock = ::Monitor.new
   end
 
-  # @param block [Block]
+  # @yield
+  # @yieldreturn [Any]
   # @return [Any]
   #
   # @api private

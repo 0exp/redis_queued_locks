@@ -2,11 +2,13 @@ module RedisQueuedLocks
   module Utilities
     RACTOR_LIVENESS_PATTERN: Regexp
     RACTOR_STATUS_PATTERN: Regexp
+    RUBY_OVER_4: bool
 
     def self?.run_non_critical: () { (?) -> untyped } -> untyped?
     def self?.ractor_status: (Ractor ractor) -> String
     def self?.ractor_alive?: (Ractor ractor) -> bool
     def self?.thread_state: (Thread thread) -> String
     def self?.clock_gettime: () -> Integer
+    def self?.ruby_over_4?: () -> bool
   end
 end

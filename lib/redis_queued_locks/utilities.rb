@@ -36,7 +36,14 @@ module RedisQueuedLocks::Utilities
   # @since 1.9.0
   RACTOR_STATUS_PATTERN = /\A.*?\s(?<status>\w+)>\z/i
 
-  # @param block [Block]
+  # @return [Boolean]
+  #
+  # @api public
+  # @since ?.?.?
+  RUBY_OVER_4 = Gem::Version.new(RUBY_VERSION) >= Gem::Version.new("4.0.0")
+
+  # @yield
+  # @yieldreturn [Any]
   # @return [Any]
   #
   # @api private
@@ -86,7 +93,7 @@ module RedisQueuedLocks::Utilities
   #   - "failed" (thread is terminated with an exception);
   # See Thread#status official documentation.
   #
-  # @param [Thread]
+  # @param thread [Thread]
   # @return [String]
   #
   # @api private
@@ -96,5 +103,13 @@ module RedisQueuedLocks::Utilities
     return 'dead' if status == false
     return 'failed' if status == nil
     status #: String
+  end
+
+  # @return [Boolean]
+  #
+  # @api public
+  # @since 1.16.0
+  def ruby_over_4?
+    RUBY_OVER_4
   end
 end

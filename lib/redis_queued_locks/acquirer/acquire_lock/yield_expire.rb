@@ -32,7 +32,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @param should_decrease [Boolean]
   #   - Should decrease the lock TTL after the lock invocation;
   #   - It is suitable for extendable reentrant locks;
-  # @param block [Block] Custom logic that should be invoked under the obtained lock.
+  # @yield Custom logic that should be invoked under the obtained lock.
+  # @yieldreturn [Any]
   # @return [Any,NilClass] nil is returned when no block parametr is provided.
   #
   # @api private
@@ -122,7 +123,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   private
 
   # @param timeout [Float]
-  # @parma lock_key [String]
+  # @param lock_key [String]
   # @param lock_ttl [Integer,NilClass]
   # @param acquirer_id [String]
   # @param host_id [String]

@@ -5,7 +5,8 @@
 module RedisQueuedLocks::Logging::VoidLogger
   class << self
     # @param progname [Any]
-    # @parma block [Block]
+    # @yield
+    # @yieldreturn [Any]
     # @return [void]
     #
     # @api public
@@ -13,7 +14,8 @@ module RedisQueuedLocks::Logging::VoidLogger
     def warn(progname = nil, &block); end
 
     # @param progname [Any]
-    # @parma block [Block]
+    # @yield
+    # @yieldreturn [Any]
     # @return [void]
     #
     # @api public
@@ -21,7 +23,8 @@ module RedisQueuedLocks::Logging::VoidLogger
     def unknown(progname = nil, &block); end
 
     # @param progname [Any]
-    # @parma block [Block]
+    # @yield
+    # @yieldreturn [Any]
     # @return [void]
     #
     # @api public
@@ -29,7 +32,8 @@ module RedisQueuedLocks::Logging::VoidLogger
     def log(progname = nil, &block); end
 
     # @param progname [Any]
-    # @parma block [Block]
+    # @yield
+    # @yieldreturn [Any]
     # @return [void]
     #
     # @api public
@@ -37,7 +41,8 @@ module RedisQueuedLocks::Logging::VoidLogger
     def info(progname = nil, &block); end
 
     # @param progname [Any]
-    # @parma block [Block]
+    # @yield
+    # @yieldreturn [Any]
     # @return [void]
     #
     # @api public
@@ -45,7 +50,8 @@ module RedisQueuedLocks::Logging::VoidLogger
     def error(progname = nil, &block); end
 
     # @param progname [Any]
-    # @parma block [Block]
+    # @yield
+    # @yieldreturn [Any]
     # @return [void]
     #
     # @api public
@@ -53,7 +59,8 @@ module RedisQueuedLocks::Logging::VoidLogger
     def fatal(progname = nil, &block); end
 
     # @param progname [Any]
-    # @parma block [Block]
+    # @yield
+    # @yieldreturn [Any]
     # @return [void]
     #
     # @api public
@@ -63,7 +70,8 @@ module RedisQueuedLocks::Logging::VoidLogger
     # @param severity [Any]
     # @param message [Any]
     # @param progname [Any]
-    # @param block [Block]
+    # @yield
+    # @yieldreturn [Any]
     # @return [void]
     #
     # @api public
@@ -71,7 +79,7 @@ module RedisQueuedLocks::Logging::VoidLogger
     def add(severity = nil, message = nil, progname = nil, &block); end
 
     # @param message [Any]
-    # @retorun [void]
+    # @return [void]
     #
     # @api public
     # @since 1.0.0
