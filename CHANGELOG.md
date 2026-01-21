@@ -1,4 +1,9 @@
 ## [Unreleased]
+### Changed
+- YARDOC documentation updates in order to prearet to the 100% yardoc-coverage;
+- updated dev deps;
+### Fixed
+- fixed some yardoc documentation typos;
 
 ## [1.15.1] - 2025-10-22
 ### Fixed
