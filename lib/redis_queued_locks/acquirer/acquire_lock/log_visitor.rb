@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 1.16.0
+# @since 1.7.0
+# @version 1.16.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
   # rubocop:disable Metrics/ClassLength

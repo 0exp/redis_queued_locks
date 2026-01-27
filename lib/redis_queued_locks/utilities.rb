@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.14.0
+# @version 1.16.0
 module RedisQueuedLocks::Utilities
   require_relative 'utilities/lock'
 

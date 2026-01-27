@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 # @api private
-# @since 1.16.0
+# @since 1.7.0
+# @version 1.16.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::InstrVisitor
   class << self
@@ -95,6 +96,27 @@ module RedisQueuedLocks::Acquirer::AcquireLock::InstrVisitor
       return unless instr_sampled
       instrumenter.notify('redis_queued_locks.lock_obtained', {
         lock_key:, ttl:, acq_id:, hst_id:, ts:, acq_time:, instrument:
+      }) rescue nil
+    end
+
+    # NOTE: Lock Series PoC
+    # @api private
+    # @since 1.16.0
+    # @version 1.16.1
+    def lock_series_obtained(
+      instrumenter,
+      instr_sampled,
+      lock_keys,
+      ttl,
+      acq_id,
+      hst_id,
+      ts,
+      acq_time,
+      instrument
+    )
+      return unless instr_sampled
+      instrumenter.notify('redis_queued_locks.lock_series_obtained', {
+        lock_keys:, ttl:, acq_id:, hst_id:, ts:, acq_time:, instrument:
       }) rescue nil
     end
 
