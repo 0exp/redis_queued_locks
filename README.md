@@ -897,8 +897,8 @@ detailed_result # =>
 
 ```ruby
 # NEW instrumentation events (examples)
-"redis_queued_locks.lock_series_hold_and_release" => {hold_time: 6.41, ttl: 5000, acq_id: "rql:acq:57147/1696/1704/1712/70ff69bc025ace02", hst_id: "rql:hst:57147/1696/1712/70ff69bc025ace02", ts: 1769505674.958648, lock_keys: ["rql:lock:a", "rql:lock:b"], acq_time: 2.35, instrument: nil}
-"redis_queued_locks.lock_obtained" => {lock_key: "rql:lock:x", ttl: 15675, acq_id: "rql:acq:57685/1696/1704/1712/b5b8c38227c18e8a", hst_id: "rql:hst:57685/1696/1712/b5b8c38227c18e8a", ts: 1769505795.984393, acq_time: 4.15, instrument: nil}
+"redis_queued_locks.lock_series_hold_and_release" => # ?
+"redis_queued_locks.lock_series_obtained" => # ?
 ```
 
 ```shell
