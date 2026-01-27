@@ -154,7 +154,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   #
   # @api private
   # @since 1.9.0
-  # rubocop:disable Layout/ClassStructure, Lint/IneffectiveAccessModifier
+  # rubocop:disable Layout/ClassStructure, Lint/IneffectiveAccessModifier, Metrics/MethodLength
   def self.swarm_loop(&main_loop_spawner)
     # NOTE:
     #   This self.-related part of code is placed in the middle of class in order
@@ -177,7 +177,10 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
             # @type var main_loop: Thread
             RedisQueuedLocks::Utilities.thread_state(main_loop)
           end
-        Ractor.yield({ main_loop: { alive: main_loop_alive, state: main_loop_state } })
+        # NOTE: (will be reworked with Ractor::Port in the next RQL release (~1.17))
+        Ractor.yield({ # steep:ignore
+          main_loop: { alive: main_loop_alive, state: main_loop_state }
+        })
       when :is_active
         Ractor.yield(main_loop != nil && main_loop.alive?) # steep:ignore
       when :start
@@ -191,7 +194,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
       end
     end
   end
-  # rubocop:enable Layout/ClassStructure, Lint/IneffectiveAccessModifier
+  # rubocop:enable Layout/ClassStructure, Lint/IneffectiveAccessModifier, Metrics/MethodLength
 
   # @return [Boolean]
   #

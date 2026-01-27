@@ -155,7 +155,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     # @yieldreturn [Any]
     # @return [Hash<Symbol,Any>,yield]
     #  - Format: { ok: true/false, result: Any }
-    #  - If block is given the result of block's yeld will be returned.
+    #  - If block is given the result of block's yield will be returned.
     #
     # @api private
     # @since 1.0.0

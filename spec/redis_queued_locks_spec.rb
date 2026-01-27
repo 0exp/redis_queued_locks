@@ -29,6 +29,162 @@ RSpec.describe RedisQueuedLocks do
     redis.call('FLUSHDB')
   end
 
+  # NOTE: Lock Series PoC
+  describe 'Lock Series PoC' do
+    specify '#lock_series' do
+      test_logger_klass = Class.new do
+        attr_reader :logs
+
+        def initialize
+          @logs = []
+        end
+
+        def debug(progname = nil, &block)
+          puts "LOG: (#{yield if block_given?})"
+          logs << "#{progname} : #{yield if block_given?}"
+        end
+      end
+
+      test_notifier = Class.new do
+        attr_reader :notifications
+
+        def initialize
+          @notifications = []
+        end
+
+        def notify(event, payload = {})
+          puts "INSTRUMENT: (#{event}) => #{payload}"
+          notifications << { event:, payload: }
+        end
+      end
+
+      client = RedisQueuedLocks::Client.new(redis)
+
+      # successful obtaining
+      client.lock_series(
+        'a', 'b',
+        log_sample_this: true,
+        instr_sample_this: true,
+        logger: test_logger_klass.new,
+        instrumenter: test_notifier.new,
+        detailed_acq_timeout_error: true,
+        log_lock_try: true
+      ) { puts 'kek' }
+
+      # failed obtaining
+      client.lock('a', ttl: 10_000_000)
+      failed_result = client.lock_series(
+        'a', 'b',
+        log_sample_this: true,
+        instr_sample_this: true,
+        logger: test_logger_klass.new,
+        instrumenter: test_notifier.new
+      ) { puts 'kek' }
+
+      expect(failed_result).to match({
+        ok: false,
+        result: {
+          error: :failed_to_acquire_lock_series,
+          detailed_errors: { 'a' => { ok: false, result: :retry_limit_reached } },
+          lock_series: %w[a b],
+          acquired_locks: [],
+          missing_locks: %w[a b],
+          failed_on_lock: 'a'
+        }
+      })
+
+      # detailed result
+      some_block_result = rand(0..100)
+      detailed_result = client.lock_series(
+        'x', 'y', 'z',
+        detailed_result: true,
+        log_sample_this: true,
+        instr_sample_this: true,
+        logger: test_logger_klass.new,
+        instrumenter: test_notifier.new
+      ) do
+        some_block_result
+      end
+      expect(detailed_result).to match({
+        yield_result: some_block_result,
+        locks_released_at: be_a(Numeric),
+        locks_acq_time: be_a(Numeric),
+        locks_hold_time: be_a(Numeric),
+        lock_series: %w[x y z],
+        rql_lock_series: ['rql:lock:x', 'rql:lock:y', 'rql:lock:z']
+      })
+
+      # error-oriented locking works well
+      client.lock('b', ttl: 10_000_000)
+      expect do
+        client.lock_series(
+          'x', 'y', 'b',
+          ttl: 10_000,
+          detailed_result: true,
+          raise_errors: true,
+          log_sample_this: true,
+          instr_sample_this: true,
+          logger: test_logger_klass.new,
+          instrumenter: test_notifier.new
+        )
+      end.to raise_error(
+        # X and Y should be released! B - NOT!
+        RedisQueuedLocks::LockAcquirementRetryLimitError,
+        'Failed to acquire the lock "rql:lock:b" for the given retry_count limit (3 times).'
+      )
+      expect(client.locked?('x')).to eq(false)
+      expect(client.locked?('y')).to eq(false)
+      expect(client.locked?('b')).to eq(true)
+
+      # error-oriented locking works well
+      client.lock('c', ttl: 10_000_000)
+      expect do
+        client.lock_series!(
+          'x', 'y', 'c',
+          detailed_result: true,
+          log_sample_this: true,
+          instr_sample_this: true,
+          logger: test_logger_klass.new,
+          instrumenter: test_notifier.new
+        )
+      end.to raise_error(
+        # X and Y should be released! C - NOT!
+        RedisQueuedLocks::LockAcquirementRetryLimitError,
+        'Failed to acquire the lock "rql:lock:c" for the given retry_count limit (3 times).'
+      )
+      expect(client.locked?('x')).to eq(false)
+      expect(client.locked?('y')).to eq(false)
+      expect(client.locked?('c')).to eq(true)
+
+      # failed acquirement should works well with detailed errors
+      client.lock('d', ttl: 10_000_000)
+      detailed_result = client.lock_series(
+        'x', 'y', 'd',
+        ttl: 10_000,
+        detailed_result: true,
+        raise_errors: false,
+        log_sample_this: true,
+        instr_sample_this: true,
+        logger: test_logger_klass.new,
+        instrumenter: test_notifier.new
+      )
+      # X and Y should be released! D - NOT!
+      expect(detailed_result).to match({
+        ok: false,
+        result:
+        {
+          error: :failed_to_acquire_lock_series,
+          detailed_errors: { 'd' => { ok: false, result: :retry_limit_reached } },
+          lock_series: %w[x y d],
+          acquired_locks: %w[x y],
+          missing_locks: ['d'],
+          failed_on_lock: 'd'
+        }
+      })
+    end
+  end
+  # rubocop:enable all
+
   describe 'swarm' do
     specify '#current_host_id, #possible_host_ids' do
       client = RedisQueuedLocks::Client.new(redis)

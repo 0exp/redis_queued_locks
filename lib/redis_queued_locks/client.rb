@@ -2,7 +2,7 @@
 
 # @api public
 # @since 1.0.0
-# @version 1.14.0
+# @version 1.16.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @return [RedisClient]
@@ -305,7 +305,7 @@ class RedisQueuedLocks::Client
   #   @yieldreturn [Any]
   # @return [Hash<Symbol,Any>,yield]
   #   - Format: { ok: true/false, result: Symbol/Hash }.
-  #   - If block is given the result of block's yeld will be returned.
+  #   - If block is given the result of block's yield will be returned.
   #
   # @api public
   # @since 1.0.0
@@ -381,12 +381,156 @@ class RedisQueuedLocks::Client
   end
   # rubocop:enable Metrics/MethodLength
 
+  # NOTE: Lock Series PoC
+  # rubocop:disable all
+  # @api public
+  # @since 1.16.0
+  def lock_series( # steep:ignore
+    *lock_names,
+    detailed_result: false,
+    ttl: config['default_lock_ttl'], # steep:ignore
+    queue_ttl: config['default_queue_ttl'], # steep:ignore
+    timeout: config['try_to_lock_timeout'], # steep:ignore
+    timed: config['is_timed_by_default'], # steep:ignore
+    retry_count: config['retry_count'], # steep:ignore
+    retry_delay: config['retry_delay'], # steep:ignore
+    retry_jitter: config['retry_jitter'], # steep:ignore
+    raise_errors: false,
+    fail_fast: false,
+    conflict_strategy: config['default_conflict_strategy'], # steep:ignore
+    read_write_mode: :write,
+    access_strategy: config['default_access_strategy'], # steep:ignore
+    identity: uniq_identity,
+    meta: nil,
+    detailed_acq_timeout_error: config['detailed_acq_timeout_error'], # steep:ignore
+    logger: config['logger'], # steep:ignore
+    log_lock_try: config['log_lock_try'], # steep:ignore
+    instrumenter: config['instrumenter'], # steep:ignore
+    instrument: nil,
+    log_sampling_enabled: config['log_sampling_enabled'], # steep:ignore
+    log_sampling_percent: config['log_sampling_percent'], # steep:ignore
+    log_sampler: config['log_sampler'], # steep:ignore
+    log_sample_this: false,
+    instr_sampling_enabled: config['instr_sampling_enabled'], # steep:ignore
+    instr_sampling_percent: config['instr_sampling_percent'], # steep:ignore
+    instr_sampler: config['instr_sampler'], # steep:ignore
+    instr_sample_this: false,
+    &block
+  )
+    RedisQueuedLocks::Acquirer::LockSeriesPoC.lock_series_poc( # steep:ignore
+      redis_client,
+      lock_names,
+      detailed_result:,
+      process_id: RedisQueuedLocks::Resource.get_process_id,
+      thread_id: RedisQueuedLocks::Resource.get_thread_id,
+      fiber_id: RedisQueuedLocks::Resource.get_fiber_id,
+      ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
+      ttl:,
+      queue_ttl:,
+      timeout:,
+      timed:,
+      retry_count:,
+      retry_delay:,
+      retry_jitter:,
+      raise_errors:,
+      instrumenter:,
+      identity:,
+      fail_fast:,
+      conflict_strategy:,
+      read_write_mode:,
+      access_strategy:,
+      meta:,
+      detailed_acq_timeout_error:,
+      logger:,
+      log_lock_try:,
+      instrument:,
+      log_sampling_enabled:,
+      log_sampling_percent:,
+      log_sampler:,
+      log_sample_this:,
+      instr_sampling_enabled:,
+      instr_sampling_percent:,
+      instr_sampler:,
+      instr_sample_this:,
+      &block
+    )
+  end
+  # rubocop:enable all
+
+  # NOTE: Lock Series PoC
+  # rubocop:disable all
+  # @api public
+  # @since 1.16.0
+  def lock_series!( # steep:ignore
+    *lock_names,
+    detailed_result: false,
+    ttl: config['default_lock_ttl'], # steep:ignore
+    queue_ttl: config['default_queue_ttl'], # steep:ignore
+    timeout: config['try_to_lock_timeout'], # steep:ignore
+    timed: config['is_timed_by_default'], # steep:ignore
+    retry_count: config['retry_count'], # steep:ignore
+    retry_delay: config['retry_delay'], # steep:ignore
+    retry_jitter: config['retry_jitter'], # steep:ignore
+    fail_fast: false,
+    conflict_strategy: config['default_conflict_strategy'], # steep:ignore
+    read_write_mode: :write,
+    access_strategy: config['default_access_strategy'], # steep:ignore
+    identity: uniq_identity,
+    meta: nil,
+    detailed_acq_timeout_error: config['detailed_acq_timeout_error'], # steep:ignore
+    logger: config['logger'], # steep:ignore
+    log_lock_try: config['log_lock_try'], # steep:ignore
+    instrumenter: config['instrumenter'], # steep:ignore
+    instrument: nil,
+    log_sampling_enabled: config['log_sampling_enabled'], # steep:ignore
+    log_sampling_percent: config['log_sampling_percent'], # steep:ignore
+    log_sampler: config['log_sampler'], # steep:ignore
+    log_sample_this: false,
+    instr_sampling_enabled: config['instr_sampling_enabled'], # steep:ignore
+    instr_sampling_percent: config['instr_sampling_percent'], # steep:ignore
+    instr_sampler: config['instr_sampler'], # steep:ignore
+    instr_sample_this: false,
+    &block
+  )
+    lock_series( # steep:ignore
+      *lock_names, # steep:ignore
+      detailed_result:,
+      ttl:,
+      queue_ttl:,
+      timeout:,
+      timed:,
+      retry_count:,
+      retry_delay:,
+      retry_jitter:,
+      raise_errors: true,
+      fail_fast:,
+      conflict_strategy:,
+      read_write_mode:,
+      access_strategy:,
+      identity:,
+      meta:,
+      detailed_acq_timeout_error:,
+      logger:,
+      log_lock_try:,
+      instrumenter:,
+      instrument:,
+      log_sampling_enabled:,
+      log_sampling_percent:,
+      log_sampler:,
+      log_sample_this:,
+      instr_sampling_enabled:,
+      instr_sampling_percent:,
+      instr_sampler:,
+      instr_sample_this:,
+      &block
+    )
+  end
+
   # @note See #lock method signature.
   #
   # @api public
   # @since 1.0.0
   # @version 1.13.0
-  # rubocop:disable Metrics/MethodLength
   def lock!(
     lock_name,
     ttl: config['default_lock_ttl'], # steep:ignore
