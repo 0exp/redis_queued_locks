@@ -23,6 +23,8 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 - [Usage](#usage)
   - [lock](#lock---obtain-a-lock)
   - [lock!](#lock---exceptional-lock-obtaining)
+  - [lock_series (PoC)](#lock_series---poc-acquire-a-series-of-locks)
+  - [lock_series! (PoC)](#lock_series---poc-exceptional-lock_series)
   - [lock_info](#lock_info)
   - [queue_info](#queue_info)
   - [locked?](#locked)
@@ -849,6 +851,73 @@ def lock!(
 See `#lock` method [documentation](#lock---obtain-a-lock).
 
 ---
+
+#### #lock_series - (PoC) acquire a series of locks
+
+> (IMPORTANT!) "Proof of Concept" realization. Will be reworked in the future (very-very soon)
+
+`lock_series` - acquire a series of locks simultaniously and hold them all while your block of code is executing
+or (if block is not passed) while all locks will not expire.
+
+**IMPORTANT DETAILS AND LIMITATIONS**:
+- (this behavior will be reworked with another algorithm);
+- each lock will be released with the next formula: 
+  - `reverse-ordered lock position` * `ttl`
+  - this means taht in case of 3 locks (`lock_series("x", "y", "z", ttl: 15_000`) with `5 seconds TTL` your locks will be with the next TTL:
+    - `"x"` - 15 seconds
+    - `"y"` - 10 seconds
+    - `"z"` - 5 seconds
+- when your block of code has completed their execution - all locks will be released immediatly;
+- if you did not pass a block - all locks will be released with their forumla-based own TTL described above;
+  - **HOW WILL THIS CASE WORK IN FUTURE RELESAE**: all locks will have the same TTL (`5 seconds` for our example, not `15/10/5 seconds`);
+
+###### How to use:
+
+```ruby
+# typical logic-oriented way
+client.lock_series("a", "b", "c") { ...some_code... }
+
+# result-oriented way
+detailed_result = client.lock_series('x', 'y', 'z', detailed_result: true) { 1 + 2 }
+detailed_result # =>
+{
+  yield_result: 3, # result of your block of code
+  locks_released_at: 1769506100.676884, # (instrumentation) release time, epoch
+  locks_acq_time: 7.0, # (instrumentation) time spent to acquire all locks, milliseconds
+  locks_hold_time: 0.65, # (instrumentation) lock hold period, milliseconds
+  lock_series: ["x", "y", "z"], # your locks
+  rql_lock_series: ["rql:lock:x", "rql:lock:y", "rql:lock:z"] # internal RQL lock-keys of your locks
+}
+```
+
+###### New instrumentaiton events and logs:
+
+```ruby
+# NEW instrumentation events (examples)
+"redis_queued_locks.lock_series_hold_and_release" => {hold_time: 6.41, ttl: 5000, acq_id: "rql:acq:57147/1696/1704/1712/70ff69bc025ace02", hst_id: "rql:hst:57147/1696/1712/70ff69bc025ace02", ts: 1769505674.958648, lock_keys: ["rql:lock:a", "rql:lock:b"], acq_time: 2.35, instrument: nil}
+"redis_queued_locks.lock_obtained" => {lock_key: "rql:lock:x", ttl: 15675, acq_id: "rql:acq:57685/1696/1704/1712/b5b8c38227c18e8a", hst_id: "rql:hst:57685/1696/1712/b5b8c38227c18e8a", ts: 1769505795.984393, acq_time: 4.15, instrument: nil}
+```
+
+```shell
+# NEW logs (examples)
+[redis_queued_locks.start_lock_series_obtaining] lock_keys => '["rql:lock:x", "rql:lock:y", "rql:lock:c"]'queue_ttl => 15 acq_id => 'rql:acq:57685/1696/1704/1712/b5b8c38227c18e8a' hst_id => 'rql:hst:57685/1696/1712/b5b8c38227c18e8a' acs_strat => 'queued'
+[redis_queued_locks.lock_series_obtained] lock_keys => '["rql:lock:x", "rql:lock:y", "rql:lock:z"]' queue_ttl => 15 acq_id => 'rql:acq:57685/1696/1704/1712/b5b8c38227c18e8a' hst_id => 'rql:hst:57685/1696/1712/b5b8c38227c18e8a' acs_strat => 'queued' acq_time => 7.02 (ms)
+[redis_queued_locks.expire_lock_series] lock_keys => '["rql:lock:x", "rql:lock:y", "rql:lock:z"]' queue_ttl => 15 acq_id => 'rql:acq:57685/1696/1704/1712/b5b8c38227c18e8a' hst_id => 'rql:hst:57685/1696/1712/b5b8c38227c18e8a' acs_strat => 'queued'
+```
+
+----
+
+#### #lock_series! - (PoC) exceptional `lock_series`
+
+> (IMPORTANT!) "Proof of Concept" realization. Will be reworked in the future (very-very soon)
+
+For more details see `lock_series` [docs](#lock_series---poc-acquire-a-series-of-locks)
+
+```ruby
+client.lock_series!("x", "y", "z")
+```
+
+----
 
 #### #lock_info
 
@@ -2328,7 +2397,7 @@ Detalized event semantics and payload structure:
     - `write` - waits - `write`;
     - **write** mode is a default behavior for all RQL locks;
 - **Minor**:
-  - an ability to return all insturmentation metrics from the `lock` invocation (and block yielidng);
+  - an ability to return all insturmentation metrics from the `lock` invocation (and after block `yield`ing);
   - think about "thread priority" configuration :thinking:;
   - add `hst_id` to all methods that works with queues info;
   - try to return the `fiber object id` to the lock host identifier (we cant use fiber object id cuz `ObjectSpace` has no access to the fiber object space after the any ractor object initialization)

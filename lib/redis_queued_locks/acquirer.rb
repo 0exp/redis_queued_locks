@@ -4,6 +4,7 @@
 # @since 1.0.0
 module RedisQueuedLocks::Acquirer
   require_relative 'acquirer/acquire_lock'
+  require_relative 'acquirer/lock_series_poc'
   require_relative 'acquirer/release_lock'
   require_relative 'acquirer/release_all_locks'
   require_relative 'acquirer/release_locks_of'

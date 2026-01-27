@@ -1,4 +1,9 @@
-## [Unreleased]
+## [1.16.0]
+### Added
+- Brand new Feature **"Lock series of locks"**
+  - (*Proof of Concpet*-based implementation at the moment) 
+  - lock series of lock simultainously (and release them all at the finish of your the invocation of block of code under the obtained locks);
+  - exmaple: `client.lock_series("a", "b", "c")` (or in exceptional-based way `client.lock_series!("a", "b", "c")`;
 ### Changed
 - YARDOC documentation updates in order to prearet to the 100% yardoc-coverage;
 - updated dev deps;
