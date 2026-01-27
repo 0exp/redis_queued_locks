@@ -874,6 +874,8 @@ or (if block is not passed) while all locks will not expire.
 
 ###### How to use:
 
+- method signature is the same as the `lock` method;
+
 ```ruby
 # typical logic-oriented way
 client.lock_series("a", "b", "c") { ...some_code... }
