@@ -887,7 +887,7 @@ detailed_result # =>
   yield_result: 3, # result of your block of code
   locks_released_at: 1769506100.676884, # (instrumentation) release time, epoch
   locks_acq_time: 7.0, # (instrumentation) time spent to acquire all locks, milliseconds
-  locks_hold_time: 0.65, # (instrumentation) lock hold period, milliseconds
+  locks_hold_time: 0.65, # (instrumentation) lock series hold period (hold preiod of all required locks), milliseconds
   lock_series: ["x", "y", "z"], # your locks
   rql_lock_series: ["rql:lock:x", "rql:lock:y", "rql:lock:z"] # internal RQL lock-keys of your locks
 }
