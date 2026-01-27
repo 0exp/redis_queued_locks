@@ -862,7 +862,8 @@ or (if block is not passed) while all locks will not expire.
 **IMPORTANT DETAILS AND LIMITATIONS**:
 - (this behavior will be reworked with another algorithm);
 - each lock will be released with the next formula: 
-  - `reverse-ordered lock position` * `ttl`
+  - `lock position with reverse numbering` * `ttl`
+    - (positions exmaple: ["a", "b", "c"] => "a" position is 3, "b" position is 2, "c" position is 1);
   - this means taht in case of 3 locks (`lock_series("x", "y", "z", ttl: 15_000`) with `5 seconds TTL` your locks will be with the next TTL:
     - `"x"` - 15 seconds
     - `"y"` - 10 seconds
