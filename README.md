@@ -859,20 +859,26 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
 `lock_series` - acquire a series of locks simultaniously and hold them all while your block of code is executing
 or (if block is not passed) while all locks will not expire.
 
+If it is not possible to obtain all locks at the same time (taking into queue ttl, retry attempts count for each lock, etc)
+- no any lock will be acquired.
+
+Method options is the same as for `lock` method: `retry_count`, `retry_jitter`, `ttl`, `queue_ttl`, etc. Each option will be
+applied with the same value to the each lock acquirement process (for each lock in a series separately).
+
 **IMPORTANT DETAILS AND LIMITATIONS**:
-- (this behavior will be reworked with another algorithm);
+- (this behavior will be reworked with another algorithm in future);
 - each lock will be released with the next formula: 
   - `lock position with reverse numbering` * `ttl`
     - (positions exmaple: ["a", "b", "c"] => "a" position is 3, "b" position is 2, "c" position is 1);
-  - this means taht in case of 3 locks (`lock_series("x", "y", "z", ttl: 15_000`) with `5 seconds TTL` your locks will be with the next TTL:
+  - this means that in case of 3 locks (`lock_series("x", "y", "z", ttl: 5_000`) with `5 seconds TTL` your locks will be with the next TTL:
     - `"x"` - 15 seconds
     - `"y"` - 10 seconds
     - `"z"` - 5 seconds
 - when your block of code has completed their execution - all locks will be released immediatly;
-- if you did not pass a block - all locks will be released with their forumla-based own TTL described above;
+- if you did not pass a block - all locks will be released with their forumla-based TTL described above;
   - **HOW WILL THIS CASE WORK IN FUTURE RELESAE**: all locks will have the same TTL (`5 seconds` for our example, not `15/10/5 seconds`);
 
-###### How to use:
+##### How to use:
 
 - method signature is the same as the `lock` method;
 
@@ -880,32 +886,70 @@ or (if block is not passed) while all locks will not expire.
 # typical logic-oriented way
 client.lock_series("a", "b", "c") { ...some_code... }
 
-# result-oriented way
+# result-oriented way:
+# - (block is passed)
 detailed_result = client.lock_series('x', 'y', 'z', detailed_result: true) { 1 + 2 }
 detailed_result # =>
 {
   yield_result: 3, # result of your block of code
+  lock_release_strategy: :immediate_release_after_yield, # (block is passed)
   locks_released_at: 1769506100.676884, # (instrumentation) release time, epoch
   locks_acq_time: 7.0, # (instrumentation) time spent to acquire all locks, milliseconds
-  locks_hold_time: 0.65, # (instrumentation) lock hold period, milliseconds
+  locks_hold_time: 0.65, # (instrumentation) lock series hold period (hold preiod of all required locks), milliseconds
+  lock_series: ["x", "y", "z"], # your locks
+  rql_lock_series: ["rql:lock:x", "rql:lock:y", "rql:lock:z"] # internal RQL lock-keys of your locks
+}
+
+# - (block is not passed)
+detailed_result = client.lock_series('x', 'y', 'z', detailed_result: true)
+detailed_result # =>
+{
+  yield_result: nil, # block is not given - nothing to return
+  lock_release_strategy: :redis_key_ttl, # block is not given - locks are living in redis with their TTL
+  locks_released_at: nil, # (instrumentation) # block is not given - locks are living in redis with their TTL
+  locks_acq_time: 7.0, # (instrumentation) time spent to acquire all locks, milliseconds
+  locks_hold_time: nil, # (instrumentation) # block is not given - locks are living in redis with their TTL
   lock_series: ["x", "y", "z"], # your locks
   rql_lock_series: ["rql:lock:x", "rql:lock:y", "rql:lock:z"] # internal RQL lock-keys of your locks
 }
 ```
 
-###### New instrumentaiton events and logs:
+```ruby
+# (failed lock obtainig) when lock series can not be obtained for some reasons
+# for example: one of required lock in series is still obtained and can not be obtained now (and all retries are exhausted)
+
+# - lock 'a' is obtained with long ttl
+client.lock('a', ttl: 10_000_000)
+
+# - try to bobtain series of locks with `a` inside the series (`a` can not be obtained for now)
+client.lock_seires('c', 'a', 'b') # ... `a` is still obtained 
+# =>
+{
+  ok: false,
+  result: {
+    error: :failed_to_acquire_lock_series,
+    detailed_errors: { 'a' => { ok: false, result: :retry_limit_reached } },
+    lock_series: ["c", "a", "b"],
+    acquired_locks: ["c"],
+    missing_locks: ["a", "b"],
+    failed_on_lock: ["a"],
+  }
+}
+```
+
+##### New instrumentaiton events and logs:
 
 ```ruby
 # NEW instrumentation events (examples)
-"redis_queued_locks.lock_series_hold_and_release" => {hold_time: 6.41, ttl: 5000, acq_id: "rql:acq:57147/1696/1704/1712/70ff69bc025ace02", hst_id: "rql:hst:57147/1696/1712/70ff69bc025ace02", ts: 1769505674.958648, lock_keys: ["rql:lock:a", "rql:lock:b"], acq_time: 2.35, instrument: nil}
-"redis_queued_locks.lock_obtained" => {lock_key: "rql:lock:x", ttl: 15675, acq_id: "rql:acq:57685/1696/1704/1712/b5b8c38227c18e8a", hst_id: "rql:hst:57685/1696/1712/b5b8c38227c18e8a", ts: 1769505795.984393, acq_time: 4.15, instrument: nil}
+"redis_queued_locks.lock_series_obtained" => # {lock_keys: ["rql:lock:s", "rql:lock:t", "rql:lock:u"], ttl: 5000, acq_id: "rql:acq:4486/1696/1704/1712/e6fd0da7991e4303", hst_id: "rql:hst:4486/1696/1712/e6fd0da7991e4303", ts: "2026-01-28 22:05:06 +0300", acq_time: 2.61, instrument: nil}
+"redis_queued_locks.lock_series_hold_and_release" => # {lock_keys: ["rql:lock:x", "rql:lock:y", "rql:lock:z"], hold_time: 0.29, ttl: 5000, acq_id: "rql:acq:4486/1696/1704/1712/e6fd0da7991e4303", hst_id: "rql:hst:4486/1696/1712/e6fd0da7991e4303", ts: 1769627106.4717052, acq_time: 4.26, instrument: nil}
 ```
 
 ```shell
 # NEW logs (examples)
-[redis_queued_locks.start_lock_series_obtaining] lock_keys => '["rql:lock:x", "rql:lock:y", "rql:lock:c"]'queue_ttl => 15 acq_id => 'rql:acq:57685/1696/1704/1712/b5b8c38227c18e8a' hst_id => 'rql:hst:57685/1696/1712/b5b8c38227c18e8a' acs_strat => 'queued'
-[redis_queued_locks.lock_series_obtained] lock_keys => '["rql:lock:x", "rql:lock:y", "rql:lock:z"]' queue_ttl => 15 acq_id => 'rql:acq:57685/1696/1704/1712/b5b8c38227c18e8a' hst_id => 'rql:hst:57685/1696/1712/b5b8c38227c18e8a' acs_strat => 'queued' acq_time => 7.02 (ms)
-[redis_queued_locks.expire_lock_series] lock_keys => '["rql:lock:x", "rql:lock:y", "rql:lock:z"]' queue_ttl => 15 acq_id => 'rql:acq:57685/1696/1704/1712/b5b8c38227c18e8a' hst_id => 'rql:hst:57685/1696/1712/b5b8c38227c18e8a' acs_strat => 'queued'
+[redis_queued_locks.start_lock_series_obtaining] lock_keys => '["rql:lock:a", "rql:lock:b"]'queue_ttl => 15 acq_id => 'rql:acq:4486/1696/1704/1712/e6fd0da7991e4303' hst_id => 'rql:hst:4486/1696/1712/e6fd0da7991e4303' acs_strat => 'queued'
+[redis_queued_locks.lock_series_obtained] lock_keys => '["rql:lock:a", "rql:lock:b"]' queue_ttl => 15 acq_id => 'rql:acq:4486/1696/1704/1712/e6fd0da7991e4303' hst_id => 'rql:hst:4486/1696/1712/e6fd0da7991e4303' acs_strat => 'queued' acq_time => 2.55 (ms)
+[redis_queued_locks.expire_lock_series] lock_keys => '["rql:lock:x", "rql:lock:y", "rql:lock:z"]' queue_ttl => 15 acq_id => 'rql:acq:4486/1696/1704/1712/e6fd0da7991e4303' hst_id => 'rql:hst:4486/1696/1712/e6fd0da7991e4303' acs_strat => 'queued'
 ```
 
 ----
@@ -917,7 +961,7 @@ detailed_result # =>
 For more details see `lock_series` [docs](#lock_series---poc-acquire-a-series-of-locks)
 
 ```ruby
-client.lock_series!("x", "y", "z")
+client.lock_series!("x", "y", "z") { ...some_code... }
 ```
 
 ----

@@ -6,12 +6,16 @@
 # @api private
 # @since 1.16.0
 module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
-  # @since 1.16.0
+  require_relative 'lock_series_poc/log_visitor'
+  require_relative 'lock_series_poc/instr_visitor'
+
+  # @sine 1.16.0
   extend RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
 
   class << self
     # @api private
     # @since 1.16.0
+    # @version 1.16.1
     def lock_series_poc( # steep:ignore
       redis,
       lock_names,
@@ -123,7 +127,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
         identity
       )
 
-      RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor.start_lock_series_obtaining( # steep:ignore
+      RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.start_lock_series_obtaining( # steep:ignore
         logger, log_sampled, lock_keys_for_instrumentation,
         queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy
       )
@@ -202,11 +206,17 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
       if (successfully_acquired_locks.size == lock_names.size && (successfully_acquired_locks.all? { |res| res[:ok] }))
         acq_end_time = RedisQueuedLocks::Utilities.clock_gettime
         acq_time = ((acq_end_time - acq_start_time) / 1_000.0).ceil(2)
+        ts = Time.now.to_s
 
-        RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor.lock_series_obtained( # steep:ignore
+        RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.lock_series_obtained( # steep:ignore
           logger, log_sampled, lock_keys_for_instrumentation,
           queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation,
           acq_time, access_strategy
+        )
+
+        RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor.lock_series_obtained( # steep:ignore
+          instrumenter, instr_sampled, lock_keys_for_instrumentation,
+          ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, ts, acq_time, instrument
         )
 
         yield_time = RedisQueuedLocks::Utilities.clock_gettime
@@ -234,6 +244,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
           &block
         )
 
+        is_lock_manually_released = false
+
         # expire locks manually
         if block_given?
           redis.with do |conn|
@@ -244,18 +256,19 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
               end
             end
           end
+          is_lock_manually_released = true
         end
 
         rel_time = RedisQueuedLocks::Utilities.clock_gettime
         hold_time = ((rel_time - acq_end_time) / 1_000.0).ceil(2)
         ts = Time.now.to_f
 
-        RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor.expire_lock_series( # steep:ignore
+        RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.expire_lock_series( # steep:ignore
           logger, log_sampled, lock_keys_for_instrumentation,
           queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy
-        )
+        ) if is_lock_manually_released
 
-        RedisQueuedLocks::Acquirer::AcquireLock::InstrVisitor.lock_series_hold_and_release( # steep:ignore
+        RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor.lock_series_hold_and_release( # steep:ignore
           instrumenter,
           instr_sampled,
           lock_keys_for_instrumentation,
@@ -266,14 +279,15 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
           acq_time,
           hold_time,
           instrument
-        )
+        ) if is_lock_manually_released
 
         if detailed_result
           {
             yield_result: yield_result,
-            locks_released_at: ts,
+            locks_release_strategy: block_given? ? :immediate_release_after_yield : :redis_key_ttl,
+            locks_released_at: block_given? ? ts : nil,
             locks_acq_time: acq_time,
-            locks_hold_time: hold_time,
+            locks_hold_time: is_lock_manually_released ? hold_time : nil,
             lock_series: lock_names,
             rql_lock_series: lock_keys_for_instrumentation
           }

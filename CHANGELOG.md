@@ -1,3 +1,28 @@
+## [Unreleased]
+
+## [1.16.1]
+### Changed
+- `lock_series` PoC:
+  - added own instrumentation visitor and log ivsitor (`RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor` and
+   `RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor` respectively) and all `lock_series`-related
+   instrumentation/log methods were moved to these modules;
+  - documentaiton updates;
+- YARDOC documentaiton updates;
+### Added
+- `lock_series` PoC updates:
+  - added missing instrumentation event `lock_series_obtained`;
+  - added more data to the `detailed_event: true` lock invocation result:
+    - `locks_release_strategy` - `:immediate_release_after_yield` or `:redis_key_ttl`
+### Fixed
+- `lock_series` PoC:
+  - incorrect instrumentation/logs data:
+    - `expire_lock_series` log and instrumentation event should not be produced
+      when locks were obtained without a block of code (for this case obtained locks
+      lives in redis with their TTL);
+    - `locks_released_at` and `locks_hold_time` of the detailed invocation result (`detailed: true`)
+      has nil values in case when locks are obtained without a block of code
+      (lokcs are not released at this moment and lives in redis with their TTL);
+
 ## [1.16.0]
 ### Added
 - Brand new Feature **"Lock series of locks"**
