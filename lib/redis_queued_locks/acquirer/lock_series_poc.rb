@@ -234,6 +234,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
           &block
         )
 
+        is_lock_manually_released = false
+
         # expire locks manually
         if block_given?
           redis.with do |conn|
@@ -244,6 +246,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
               end
             end
           end
+          is_lock_manually_released = true
         end
 
         rel_time = RedisQueuedLocks::Utilities.clock_gettime
@@ -253,7 +256,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
         RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor.expire_lock_series( # steep:ignore
           logger, log_sampled, lock_keys_for_instrumentation,
           queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy
-        )
+        ) if is_lock_manually_released
 
         RedisQueuedLocks::Acquirer::AcquireLock::InstrVisitor.lock_series_hold_and_release( # steep:ignore
           instrumenter,
@@ -266,14 +269,15 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
           acq_time,
           hold_time,
           instrument
-        )
+        ) if is_lock_manually_released
 
         if detailed_result
           {
             yield_result: yield_result,
-            locks_released_at: ts,
+            locks_release_strategy: block_given? ? :immediate_release_after_yield : :redis_key_ttl,
+            locks_released_at: block_given? ? ts : nil,
             locks_acq_time: acq_time,
-            locks_hold_time: hold_time,
+            locks_hold_time: is_lock_manually_released ? hold_time : nil,
             lock_series: lock_names,
             rql_lock_series: lock_keys_for_instrumentation
           }

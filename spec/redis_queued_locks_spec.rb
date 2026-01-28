@@ -30,7 +30,7 @@ RSpec.describe RedisQueuedLocks do
   end
 
   # NOTE: Lock Series PoC
-  describe 'Lock Series PoC' do
+  describe 'Lock Series PoC', :focus do
     specify '#lock_series' do
       test_logger_klass = Class.new do
         attr_reader :logs
@@ -60,6 +60,9 @@ RSpec.describe RedisQueuedLocks do
 
       client = RedisQueuedLocks::Client.new(redis)
 
+      a_lock_status_inside_lock = nil
+      b_lock_status_inside_lock = nil
+
       # successful obtaining
       client.lock_series(
         'a', 'b',
@@ -69,7 +72,17 @@ RSpec.describe RedisQueuedLocks do
         instrumenter: test_notifier.new,
         detailed_acq_timeout_error: true,
         log_lock_try: true
-      ) { puts 'kek' }
+      ) do
+        a_lock_status_inside_lock = client.locked?('a')
+        b_lock_status_inside_lock = client.locked?('b')
+        puts 'kek'
+      end
+      # inside, when locks are acquired
+      expect(a_lock_status_inside_lock).to eq(true)
+      expect(b_lock_status_inside_lock).to eq(true)
+      # outside after locks hold
+      expect(client.locked?('a')).to eq(false)
+      expect(client.locked?('b')).to eq(false)
 
       # failed obtaining
       client.lock('a', ttl: 10_000_000)
@@ -80,6 +93,8 @@ RSpec.describe RedisQueuedLocks do
         logger: test_logger_klass.new,
         instrumenter: test_notifier.new
       ) { puts 'kek' }
+      expect(client.locked?('a')).to eq(true)
+      expect(client.locked?('b')).to eq(false)
 
       expect(failed_result).to match({
         ok: false,
@@ -93,7 +108,7 @@ RSpec.describe RedisQueuedLocks do
         }
       })
 
-      # detailed result
+      # detailed result (with block => locks_release_strategy: :immediate_release_after_yield inside)
       some_block_result = rand(0..100)
       detailed_result = client.lock_series(
         'x', 'y', 'z',
@@ -110,9 +125,31 @@ RSpec.describe RedisQueuedLocks do
         locks_released_at: be_a(Numeric),
         locks_acq_time: be_a(Numeric),
         locks_hold_time: be_a(Numeric),
+        locks_release_strategy: :immediate_release_after_yield,
         lock_series: %w[x y z],
         rql_lock_series: ['rql:lock:x', 'rql:lock:y', 'rql:lock:z']
       })
+
+      # detailed result (without block => locks_release_strategy: :redis_key_ttl inside)
+      some_block_result = rand(0..100)
+      detailed_result = client.lock_series(
+        's', 't', 'u',
+        detailed_result: true,
+        log_sample_this: true,
+        instr_sample_this: true,
+        logger: test_logger_klass.new,
+        instrumenter: test_notifier.new
+      )
+      expect(detailed_result).to match({
+        yield_result: nil, # block_given? ==> false (no block result)
+        locks_released_at: nil, # nil cuz locks are not relesed by RQL, no block given - locks are living inside redis with their TTL
+        locks_acq_time: be_a(Numeric),
+        locks_hold_time: nil, # nil cuz locks are not relesed by RQL, no block given - locks are living inside redis with their TTL
+        locks_release_strategy: :redis_key_ttl,
+        lock_series: %w[s t u],
+        rql_lock_series: ['rql:lock:s', 'rql:lock:t', 'rql:lock:u']
+      })
+
 
       # error-oriented locking works well
       client.lock('b', ttl: 10_000_000)

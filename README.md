@@ -880,14 +880,29 @@ or (if block is not passed) while all locks will not expire.
 # typical logic-oriented way
 client.lock_series("a", "b", "c") { ...some_code... }
 
-# result-oriented way
+# result-oriented way:
+# - (block is passed)
 detailed_result = client.lock_series('x', 'y', 'z', detailed_result: true) { 1 + 2 }
 detailed_result # =>
 {
   yield_result: 3, # result of your block of code
+  lock_release_strategy: :immediate_release_after_yield,
   locks_released_at: 1769506100.676884, # (instrumentation) release time, epoch
   locks_acq_time: 7.0, # (instrumentation) time spent to acquire all locks, milliseconds
   locks_hold_time: 0.65, # (instrumentation) lock series hold period (hold preiod of all required locks), milliseconds
+  lock_series: ["x", "y", "z"], # your locks
+  rql_lock_series: ["rql:lock:x", "rql:lock:y", "rql:lock:z"] # internal RQL lock-keys of your locks
+}
+
+# - (block is not passed)
+detailed_result = client.lock_series('x', 'y', 'z', detailed_result: true)
+detailed_result # =>
+{
+  yield_result: nil, # block is not given - nothing to return
+  lock_release_strategy: :redis_key_ttl, # block is not given - locks are living in redis with their TTL
+  locks_released_at: nil, # (instrumentation) # block is not given - locks are living in redis with their TTL
+  locks_acq_time: 7.0, # (instrumentation) time spent to acquire all locks, milliseconds
+  locks_hold_time: nil, # (instrumentation) # block is not given - locks are living in redis with their TTL
   lock_series: ["x", "y", "z"], # your locks
   rql_lock_series: ["rql:lock:x", "rql:lock:y", "rql:lock:z"] # internal RQL lock-keys of your locks
 }
