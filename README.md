@@ -86,7 +86,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
-- Redis Version: `~> 7.x`;
+- Redis Version: `>= 7`, `~> 8.x`;
 - Redis Protocol: `RESP3`;
 - gem `redis-client`: `~> 0.20`;
 - Ruby: `>= 3.3`;
