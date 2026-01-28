@@ -859,8 +859,7 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
 `lock_series` - acquire a series of locks simultaniously and hold them all while your block of code is executing
 or (if block is not passed) while all locks will not expire.
 
-If it is not possible to obtain all locks at the same time (taking into queue ttl, retry attempts count for each lock, etc)
-- no any lock will be acquired.
+If it is not possible to obtain all locks at the same time (taking into queue ttl, retry attempts count for each lock, etc) no any lock will be acquired.
 
 Method options is the same as for `lock` method: `retry_count`, `retry_jitter`, `ttl`, `queue_ttl`, etc. Each option will be
 applied with the same value to the each lock acquirement process (for each lock in a series separately).
@@ -937,13 +936,15 @@ client.lock_seires('c', 'a', 'b') # ... `a` is still obtained
 }
 ```
 
-##### New instrumentaiton events and logs:
+###### New instrumentaiton events:
 
 ```ruby
 # NEW instrumentation events (examples)
 "redis_queued_locks.lock_series_obtained" => # {lock_keys: ["rql:lock:s", "rql:lock:t", "rql:lock:u"], ttl: 5000, acq_id: "rql:acq:4486/1696/1704/1712/e6fd0da7991e4303", hst_id: "rql:hst:4486/1696/1712/e6fd0da7991e4303", ts: "2026-01-28 22:05:06 +0300", acq_time: 2.61, instrument: nil}
 "redis_queued_locks.lock_series_hold_and_release" => # {lock_keys: ["rql:lock:x", "rql:lock:y", "rql:lock:z"], hold_time: 0.29, ttl: 5000, acq_id: "rql:acq:4486/1696/1704/1712/e6fd0da7991e4303", hst_id: "rql:hst:4486/1696/1712/e6fd0da7991e4303", ts: 1769627106.4717052, acq_time: 4.26, instrument: nil}
 ```
+
+###### New logs:
 
 ```shell
 # NEW logs (examples)
