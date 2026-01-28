@@ -1,6 +1,6 @@
 ## [Unreleased]
 
-## [1.16.1]
+## [1.16.1] - 2026-01-28
 ### Changed
 - `lock_series` PoC:
   - added own instrumentation visitor and log ivsitor (`RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor` and
@@ -23,7 +23,7 @@
       has nil values in case when locks are obtained without a block of code
       (lokcs are not released at this moment and lives in redis with their TTL);
 
-## [1.16.0]
+## [1.16.0] - 2026-01-27
 ### Added
 - Brand new Feature **"Lock series of locks"**
   - (*Proof of Concpet*-based implementation at the moment) 
