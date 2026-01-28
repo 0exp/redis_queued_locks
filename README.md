@@ -89,7 +89,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 - Redis Version: `~> 7.x`;
 - Redis Protocol: `RESP3`;
 - gem `redis-client`: `~> 0.20`;
-- Ruby: `>= 3.1`;
+- Ruby: `>= 3.3`;
 
 ---
 
