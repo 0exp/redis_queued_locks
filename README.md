@@ -854,6 +854,8 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
 
 #### #lock_series - (PoC) acquire a series of locks
 
+<sup>\[[back to top](#usage)\]</sup>
+
 > (IMPORTANT!) "Proof of Concept" realization. Will be reworked in the future (very-very soon)
 
 `lock_series` - acquire a series of locks simultaniously and hold them all while your block of code is executing
@@ -956,6 +958,8 @@ client.lock_seires('c', 'a', 'b') # ... `a` is still obtained
 ----
 
 #### #lock_series! - (PoC) exceptional `lock_series`
+
+<sup>\[[back to top](#usage)\]</sup>
 
 > (IMPORTANT!) "Proof of Concept" realization. Will be reworked in the future (very-very soon)
 
