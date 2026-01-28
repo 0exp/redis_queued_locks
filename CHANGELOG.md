@@ -30,7 +30,7 @@
   - lock series of lock simultainously (and release them all at the finish of your the invocation of block of code under the obtained locks);
   - exmaple: `client.lock_series("a", "b", "c")` (or in exceptional-based way `client.lock_series!("a", "b", "c")`;
 ### Changed
-- YARDOC documentation updates in order to prearet to the 100% yardoc-coverage;
+- YARDOC documentation updates in order to prepare to the 100% yardoc-coverage;
 - updated dev deps;
 ### Fixed
 - fixed some yardoc documentation typos;
