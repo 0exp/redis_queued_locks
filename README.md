@@ -8,7 +8,7 @@ Each lock request is put into the request queue (each lock is hosted by its own 
 
 In addition to the classic `queued` (FIFO) strategy RQL supports `random` (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
 
-Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), **zombie locks elimination**, **reentrant locks**, logging and instrumentation (and much more).
+Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), **zombie locks elimination**, support for **reentrant locks**, logging and instrumentation (and much more).
 
 ---
 
