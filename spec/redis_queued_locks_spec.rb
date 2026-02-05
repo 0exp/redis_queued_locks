@@ -223,7 +223,21 @@ RSpec.describe RedisQueuedLocks do
       })
 
       # locks are successfully released when the passed block is failed with an exception
-      client.lock_series('aa', 'bb', 'cc', ttl: 50_000) { raise('Some Error') } rescue nil
+      is_aa_locked_isnide = nil
+      is_bb_locked_isnide = nil
+      is_cc_locked_isnide = nil
+
+      client.lock_series('aa', 'bb', 'cc', ttl: 50_000) do
+        is_aa_locked_isnide = client.locked?('aa')
+        is_bb_locked_isnide = client.locked?('bb')
+        is_cc_locked_isnide = client.locked?('cc')
+        raise('Some Error') # <- fails
+      end rescue nil
+
+      expect(is_aa_locked_isnide).to eq(true)
+      expect(is_bb_locked_isnide).to eq(true)
+      expect(is_cc_locked_isnide).to eq(true)
+
       expect(client.locked?('aa')).to eq(false)
       expect(client.locked?('bb')).to eq(false)
       expect(client.locked?('cc')).to eq(false)
