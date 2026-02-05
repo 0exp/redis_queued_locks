@@ -2472,7 +2472,7 @@ Detalized event semantics and payload structure:
   - better code stylization (+ some refactorings);
   - `RedisQueuedLocks::Acquirer::Try.try_to_lock` - detailed successful result analization;
   - Support for LIFO strategy;
-  - better specs with 100% test coverage (total specs rework);
+  - specs refactoring with 100% test coverage (total specs rework);
   - statistics with UI;
   - JSON log formatter;
   - **automatic** deadlock detection;
