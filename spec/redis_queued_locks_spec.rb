@@ -221,6 +221,12 @@ RSpec.describe RedisQueuedLocks do
           failed_on_lock: 'd'
         }
       })
+
+      # locks are successfully released when the passed block is failed with an exception
+      client.lock_series('aa', 'bb', 'cc', ttl: 50_000) { raise('Some Error') } rescue nil
+      expect(client.locked?('aa')).to eq(false)
+      expect(client.locked?('bb')).to eq(false)
+      expect(client.locked?('cc')).to eq(false)
     end
   end
   # rubocop:enable all

@@ -856,7 +856,7 @@ See `#lock` method [documentation](#lock---obtain-a-lock).
 
 <sup>\[[back to top](#usage)\]</sup>
 
-> (IMPORTANT!) "Proof of Concept" realization. Will be reworked in the future (very-very soon)
+> (IMPORTANT!) "Proof of Concept" realization. Will be reworked in the future.
 
 `lock_series` - acquire a series of locks simultaniously and hold them all while your block of code is executing
 or (if block is not passed) while all locks will not expire.
@@ -881,7 +881,7 @@ applied with the same value to the each lock acquirement process (for each lock 
 
 ##### How to use:
 
-- method signature is the same as the `lock` method;
+- method signature is the same as the `#lock`;
 
 ```ruby
 # typical logic-oriented way
@@ -2435,7 +2435,8 @@ Detalized event semantics and payload structure:
     some GVL-related things and problem situations when the global watcher thread is "dead";
   - lock request prioritization;
   - **strict redlock algorithm support** (support for many `RedisClient` instances that are fully independent (distributed redis instances));
-  - `#lock_series` - acquire a series of locks:
+  - #lock_series` - acquire a series of locks:
+    - (NOTE: "Proof of Concept" implementation is ready to use);
     ```ruby
     rql.lock_series('lock_a', 'lock_b', 'lock_c') { puts 'locked' }
     ```
@@ -2482,6 +2483,8 @@ Detalized event semantics and payload structure:
   - **Research**: support for `Garnet` database backend (https://microsoft.github.io/) (https://github.com/microsoft/garnet);
   - add a library-level exception, when RQL-related key in Redis (required for its logic) has incompatible type (means: some other program uses our key with their own type and logic and RQL can't work properly);
   - yardoc docs with CI check (full doc coverage check);
+  - split *exception* inheritance to the groups: `lock obtaining errors`, `block invocation errors`, `swarm errors`, and other groups (research possible groups):
+    - in some cases we need to intercept "Lock Obtaining Process Erros", in other cases: "Block Invocation Errors", and so on (in `Lock Serirs PoC` for example);
 
 ---
 

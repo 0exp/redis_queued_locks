@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+## [1.16.2] - 2026-02-06
+### Fixed
+- `lock_series` PoC:
+  - acquired locks are not released when the block of code invoked under the lock series fails with
+    an exception
+  - `raise_errors: true` option incorrectly suppresses the lock releasing when the lock series
+    reaches their obtaning limits
+
 ## [1.16.1] - 2026-01-28
 ### Changed
 - `lock_series` PoC:

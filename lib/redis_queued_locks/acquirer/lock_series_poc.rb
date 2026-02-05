@@ -15,7 +15,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
   class << self
     # @api private
     # @since 1.16.0
-    # @version 1.16.1
+    # @version 1.16.2
     def lock_series_poc( # steep:ignore
       redis,
       lock_names,
@@ -175,8 +175,12 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
               instr_sampler:,
               instr_sample_this:
             )
-          rescue => error
-            if raise_errors && successfully_acquired_locks.any?
+          rescue RedisQueuedLocks::LockAlreadyObtainedError,
+                 RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
+                 RedisQueuedLocks::LockAcquirementTimeoutError,
+                 RedisQueuedLocks::LockAcquirementRetryLimitError,
+                 RedisQueuedLocks::ConflictLockObtainError => error
+            if successfully_acquired_locks.any?
               # NOTE: release all previously acquired locks if any next lock is already locked
               successfully_acquired_locks.each do |operation_result|
                 lock_key = RedisQueuedLocks::Resource.prepare_lock_key(operation_result[:lock_name])
@@ -187,7 +191,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
                 end
               end
             end
-            raise(error)
+
+            raise(error) if raise_errors
           end
 
         if result[:ok]
@@ -225,61 +230,67 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
           RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
         ).ceil(2)
 
-        yield_result = yield_expire( # steep:ignore
-          redis,
-          logger,
-          lock_keys_for_instrumentation.last,
-          acquirer_id_for_instrumentation,
-          host_id_for_instrumentation,
-          access_strategy,
-          timed,
-          ttl_shift,
-          ttl,
-          queue_ttl,
-          meta,
-          log_sampled,
-          instr_sampled,
-          false, # should_expire (expire manually)
-          false, # should_decrease (expire manually)
-          &block
-        )
+        yield_result = nil
+        is_lock_manually_released = nil
+        hold_time = nil
 
-        is_lock_manually_released = false
+        begin
+          yield_result = yield_expire( # steep:ignore
+            redis,
+            logger,
+            lock_keys_for_instrumentation.last,
+            acquirer_id_for_instrumentation,
+            host_id_for_instrumentation,
+            access_strategy,
+            timed,
+            ttl_shift,
+            ttl,
+            queue_ttl,
+            meta,
+            log_sampled,
+            instr_sampled,
+            false, # should_expire (expire manually)
+            false, # should_decrease (expire manually)
+            &block
+          )
+        ensure
+          is_lock_manually_released = false
 
-        # expire locks manually
-        if block_given?
-          redis.with do |conn|
-            # use transaction in order to exclude any cross-locking during the group expiration
-            conn.multi(watch: lock_keys_for_instrumentation) do |transaction|
-              lock_keys_for_instrumentation.each do |lock_key|
-                transaction.call('EXPIRE', lock_key, '0')
+          # expire locks manually
+          if block_given?
+            redis.with do |conn|
+              # use transaction in order to exclude any cross-locking during the group expiration
+              conn.multi(watch: lock_keys_for_instrumentation) do |transaction|
+                lock_keys_for_instrumentation.each do |lock_key|
+                  transaction.call('EXPIRE', lock_key, '0')
+                end
               end
             end
+            is_lock_manually_released = true
           end
-          is_lock_manually_released = true
+
+          rel_time = RedisQueuedLocks::Utilities.clock_gettime
+          hold_time = ((rel_time - acq_end_time) / 1_000.0).ceil(2)
+          ts = Time.now.to_f
+
+          RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.expire_lock_series( # steep:ignore
+            logger, log_sampled, lock_keys_for_instrumentation,
+            queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy
+          ) if is_lock_manually_released
+
+          RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor.lock_series_hold_and_release( # steep:ignore
+            instrumenter,
+            instr_sampled,
+            lock_keys_for_instrumentation,
+            ttl,
+            acquirer_id_for_instrumentation,
+            host_id_for_instrumentation,
+            ts,
+            acq_time,
+            hold_time,
+            instrument
+          ) if is_lock_manually_released
         end
-
-        rel_time = RedisQueuedLocks::Utilities.clock_gettime
-        hold_time = ((rel_time - acq_end_time) / 1_000.0).ceil(2)
-        ts = Time.now.to_f
-
-        RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.expire_lock_series( # steep:ignore
-          logger, log_sampled, lock_keys_for_instrumentation,
-          queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy
-        ) if is_lock_manually_released
-
-        RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor.lock_series_hold_and_release( # steep:ignore
-          instrumenter,
-          instr_sampled,
-          lock_keys_for_instrumentation,
-          ttl,
-          acquirer_id_for_instrumentation,
-          host_id_for_instrumentation,
-          ts,
-          acq_time,
-          hold_time,
-          instrument
-        ) if is_lock_manually_released
 
         if detailed_result
           {
