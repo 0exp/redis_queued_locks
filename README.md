@@ -2451,7 +2451,7 @@ Detalized event semantics and payload structure:
     - **write** mode is a default behavior for all RQL locks;
 - **Minor**:
   - an ability to return all insturmentation metrics from the `lock` invocation (and after block `yield`ing);
-  - think about a PG-like `stats`-data/table, that should be helpful for lock history acquirement analyzation :thinking: (suitable for cases if we want
+  - think about a PG-like `stats`-data/table, that should be helpful for lock history acquirement analyzation :thinking: (suitable for cases when we want
     to check if the lock was acquired by some different parallel process durign the some period of time in the past or not);
   - think about "thread priority" configuration :thinking:;
   - add `hst_id` to all methods that works with queues info;
