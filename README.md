@@ -2487,6 +2487,7 @@ Detalized event semantics and payload structure:
   - yardoc docs with CI check (full doc coverage check);
   - split *exception* inheritance to the groups: `lock obtaining errors`, `block invocation errors`, `swarm errors`, and other groups (research possible groups):
     - in some cases we need to intercept "Lock Obtaining Process Erros", in other cases: "Block Invocation Errors", and so on (in `Lock Serirs PoC` for example);
+    - `#debounce` interface, `#throttle` itnerface;
 
 ---
 
