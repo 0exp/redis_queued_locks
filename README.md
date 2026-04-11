@@ -2449,6 +2449,13 @@ Detalized event semantics and payload structure:
     - `write` - waits - `read`;
     - `write` - waits - `write`;
     - **write** mode is a default behavior for all RQL locks;
+  - `README`-section `Issues with other Libs` about issues in other libraries that can broke RQL features:
+    - `Sentry`'s' bugs with Ractors:
+      - `Sentry`-OpenTelemetry problems with its global mutexes and non-sharable objects that is not accessible from the ractors (sentry tyies to
+        intercept all `redis-client` invocations managing their logic via global Mutex instance that brokes `swarm-mode` with `non-sharable` memory
+        access errors, cuz RQL's swarm works using its own RedisClient-instnace, that fails isnide the `Sentry`'s patch: Sentry tries to use the same
+        Mutex (instantiated inside the main Ractor) from the our non-main Ractor (swar-mode works under the non-main ractor) and this process fails\
+        on non-sharable memory error);
 - **Minor**:
   - an ability to return all insturmentation metrics from the `lock` invocation (and after block `yield`ing);
   - think about a PG-like `stats`-data/table, that should be helpful for lock history acquirement analyzation :thinking: (suitable for cases when we want
