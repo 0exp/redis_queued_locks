@@ -371,6 +371,8 @@ end
 
 - [lock](#lock---obtain-a-lock)
 - [lock!](#lock---exeptional-lock-obtaining)
+- [lock_series](#lock_series---poc-acquire-a-series-of-locks) (PoC)
+- [lock_series!](#lock_series---poc-exceptional-lock_series) (PoC)
 - [lock_info](#lock_info)
 - [queue_info](#queue_info)
 - [locked?](#locked)
