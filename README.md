@@ -12,6 +12,10 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 
 ---
 
+#### For future features and updates check the [ROADMAP](#roadmap) section.
+
+---
+
 ## Table of Contents
 
 - [Requirements](#requirements)
