@@ -53,7 +53,7 @@ module RedisQueuedLocks
         def swarm_loop__start: () -> void
         def swarm_loop__stop: () -> void
         def swarm_loop__kill: () -> void
-        def swarm_loop__request: (Symbol command) -> swarmLoopReply?
+        def swarm_loop__send_command: (Symbol command) -> swarmLoopReply?
       end
     end
   end

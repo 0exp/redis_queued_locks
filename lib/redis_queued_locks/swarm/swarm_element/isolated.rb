@@ -193,13 +193,14 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   #
   # @api private
   # @since 1.17.0
-  def spawn_swarm_element!(swarm_element_results_port) # steep:ignore
+  def spawn_swarm_element!(swarm_element_results_port)
     # IMPORTANT №1: create and return a Ractor here (pass `swarm_element_results_port` and all
     #   required configs into `Ractor.new` as shareable/copyable values);
     # IMPORTANT №2: your Ractor should invoke .swarm_loop(swarm_element_results_port) inside
     #   (see below);
     # IMPORTANT №3: you should pass the main loop logic as a block to .swarm_loop
     #   (the block should return a Thread that wraps the looped logic);
+    raise NotImplementedError, "#{self.class}#spawn_swarm_element! is not implemented"
   end
 
   # Internal protocol (bare scalars/primitives, no `{ ok:, result: }` wrapper):
@@ -342,7 +343,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   # @since 1.9.0
   # @version 1.17.0
   def swarm_loop__is_active
-    reply = swarm_loop__request(:is_active)
+    reply = swarm_loop__send_command(:is_active)
     reply.is_a?(Hash) ? nil : reply
   end
 
@@ -353,7 +354,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   # @since 1.9.0
   # @version 1.17.0
   def swarm_loop__status
-    reply = swarm_loop__request(:status)
+    reply = swarm_loop__send_command(:status)
     reply.is_a?(Hash) ? reply : nil
   end
 
@@ -363,7 +364,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   # @since 1.9.0
   # @version 1.17.0
   def swarm_loop__start
-    swarm_loop__request(:start)
+    swarm_loop__send_command(:start)
   end
 
   # @return [void]
@@ -371,7 +372,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   # @api private
   # @since 1.17.0
   def swarm_loop__stop
-    swarm_loop__request(:stop)
+    swarm_loop__send_command(:stop)
   end
 
   # @return [void]
@@ -382,7 +383,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   def swarm_loop__kill
     sync.synchronize do
       # NOTE: wait for the ractor finish only when it has confirmed the kill command;
-      killed = swarm_loop__request(:kill) == true
+      killed = swarm_loop__send_command(:kill) == true
       @swarm_element_commands_port = nil
       swarm_element.join if killed # steep:ignore
     end
@@ -399,7 +400,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   #
   # @api private
   # @since 1.17.0
-  def swarm_loop__request(command)
+  def swarm_loop__send_command(command)
     return if idle? || swarmed__dead? || swarm_element_commands_port == nil
     sync.synchronize do
       swarm_element_commands_port << command

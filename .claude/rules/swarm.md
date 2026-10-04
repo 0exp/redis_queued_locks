@@ -48,7 +48,7 @@ Command protocol: the same bare-value replies in both bases (see "Internal API: 
 | `:start` / `:stop` | `true` (ack) |
 | `:kill` | Isolated only: `true` (ack), then the ractor finishes. Threaded is terminated from outside. |
 
-Every request/reply pair is wrapped in `sync.synchronize` so concurrent callers can't interleave on the channel, and each reply belongs to the command just sent. Isolated sends every command through one helper, `swarm_loop__request(command)`, which returns the reply, or `nil` when the element is dead.
+Every request/reply pair is wrapped in `sync.synchronize` so concurrent callers can't interleave on the channel, and each reply belongs to the command just sent. Both bases send every command through one helper, `swarm_loop__send_command(command)`, which returns the reply, or `nil` when the element is dead (or, in Threaded, terminating). Abstract hooks (`spawn_main_loop!`, `spawn_swarm_element!`) raise `NotImplementedError` in the bases.
 
 ## Internal API: scalars and primitives
 `{ ok:, result: }` is the **public API** contract only: `Client` methods, `Acquirer::*` operations, and the `Swarm` facade's public methods (`swarm!`/`deswarm!`, plus the stateless operations behind `client.probe_hosts` / `client.flush_zombies`). Status reports (`swarm_status`, element `#status`, `Supervisor#status`) are plain nested Hashes with no wrapper.
@@ -67,7 +67,7 @@ Only the Ractor that created a port can `receive` from it; any Ractor can send t
 
 Ports belong to the element instance, so any number of Isolated elements work side by side without sharing channels. A new `swarm!` creates a fresh pair, and stale messages left in an old results port are dropped with it.
 
-Failure handling in `swarm_loop__request`:
+Failure handling in `swarm_loop__send_command`:
 - A non-Hash reply (`:exited`/`:aborted`) means the Ractor died, so the request returns `nil`.
 - Sending to a finished Ractor's port raises `Ractor::ClosedError`, which is also rescued to `nil`.
 - No request can block forever, because the monitor notice always arrives.

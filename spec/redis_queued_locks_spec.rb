@@ -662,9 +662,11 @@ RSpec.describe RedisQueuedLocks do
         expect(element1.swarm_element).not_to eq(first_ractor)
         expect(element1.status).to running_status
       end
-
-      element1.try_kill!
-      element2.try_kill!
+    ensure
+      # NOTE: kill element ractors even when an expectation fails
+      #   (they must not leak into other examples);
+      element1&.try_kill!
+      element2&.try_kill!
     end
 
     specify '#zombies_info: default zombie_ttl and lock_scan_size from config' do

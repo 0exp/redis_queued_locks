@@ -12,8 +12,8 @@ jobs:
     env:
       BUNDLE_FORCE_RUBY_PLATFORM: 1
     steps:
-      - uses: actions/checkout@v4
-      - uses: supercharge/redis-github-action@1.7.0
+      - uses: actions/checkout@v7
+      - uses: supercharge/redis-github-action@1.8.1
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby_version }}

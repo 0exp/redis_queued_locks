@@ -205,12 +205,14 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   #
   # @api private
   # @since 1.9.0
-  def spawn_main_loop! # steep:ignore
+  # @version 1.17.0
+  def spawn_main_loop!
     # NOTE:
     #   - provide the swarm element looped logic here wrapped into the thread;
     #   - created thread will be reconfigured inside the swarm_element logic with a
     #     `abort_on_exception = false` (cuz the stauts of the thread is
     #     totally controlled by the @swarm_element's logic);
+    raise NotImplementedError, "#{self.class}#spawn_main_loop! is not implemented"
   end
 
   # @return [Boolean]
@@ -283,11 +285,8 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0
   # @version 1.17.0
   def swarm_loop__is_active
-    return if idle? || swarmed__dead? || terminating?
-    sync.synchronize do
-      swarm_element_commands.push(:is_active) # steep:ignore
-      swarm_element_results.pop # steep:ignore
-    end
+    reply = swarm_loop__send_command(:is_active)
+    reply.is_a?(Hash) ? nil : reply
   end
 
   # @return [Hash<Symbol,Boolean|String>,NilClass]
@@ -297,34 +296,45 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0
   # @version 1.17.0
   def swarm_loop__status
-    return if idle? || swarmed__dead? || terminating?
-    sync.synchronize do
-      swarm_element_commands.push(:status) # steep:ignore
-      swarm_element_results.pop # steep:ignore
-    end
+    reply = swarm_loop__send_command(:status)
+    reply.is_a?(Hash) ? reply : nil
   end
 
   # @return [void]
   #
   # @api private
   # @since 1.9.0
+  # @version 1.17.0
   def swarm_loop__start
-    return if idle? || swarmed__dead? || terminating?
-    sync.synchronize do
-      swarm_element_commands.push(:start) # steep:ignore
-      swarm_element_results.pop # steep:ignore
-    end
+    swarm_loop__send_command(:start)
   end
 
   # @return [void]
   #
   # @api private
   # @since 1.9.0
+  # @version 1.17.0
   def swarm_loop__stop
+    swarm_loop__send_command(:stop)
+  end
+
+  # Sends the command to the control thread and waits for its reply. Replies are received
+  # strictly one by one under the lock, so each reply belongs to the sent command.
+  #
+  # @param command [Symbol]
+  # @return [Boolean,Hash<Symbol,Boolean|String>,NilClass]
+  #   The bare reply value (see #swarm!) or `nil` if the element is not available.
+  #
+  # @api private
+  # @since 1.17.0
+  def swarm_loop__send_command(command)
     return if idle? || swarmed__dead? || terminating?
     sync.synchronize do
-      swarm_element_commands.push(:stop) # steep:ignore
-      swarm_element_results.pop # steep:ignore
+      commands = swarm_element_commands
+      results = swarm_element_results
+      next if commands == nil || results == nil
+      commands.push(command)
+      results.pop
     end
   end
 
