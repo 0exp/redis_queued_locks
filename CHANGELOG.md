@@ -1,4 +1,6 @@
 ## [Unreleased]
+
+## [1.17.0] - 2026-10-04
 ### Changed
 - [**Breaking**] Minimal Ruby Version - **4.0** (previously - **3.3**):
   - removed `3.3` and `3.4` from `CI`;
