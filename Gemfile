@@ -17,5 +17,4 @@ gem 'reline', require: false
 gem 'rspec', require: false
 gem 'rspec-retry', require: false # NOTE: temporary decision for non-refactored tests
 gem 'simplecov', require: false
-gem 'simplecov-lcov', require: false
 gem 'steep', require: false

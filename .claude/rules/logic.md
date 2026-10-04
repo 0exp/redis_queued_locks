@@ -1,0 +1,48 @@
+---
+paths:
+  - "lib/**/*.rb"
+---
+
+# Logic rules: general (`lib/`)
+
+Related rule files (loaded for narrower paths):
+- `acquirer.md`: acquirer operations, Redis access, `AcquireLock` algorithm
+- `visitors.md`: log & instrumentation visitors
+- `arguments.md`: long explicit keyword/parameter lists (core API design principle)
+
+## Observed conventions
+- Every file starts with `# frozen_string_literal: true`.
+- Constants are defined compactly: `class RedisQueuedLocks::Acquirer::IsLocked` / `module ...`, never nested `module A; module B`.
+- Namespace files (`acquirer.rb`, `swarm.rb`, `logging.rb`, `swarm/swarm_element.rb`) only `require_relative` their children; the root `lib/redis_queued_locks.rb` requires the namespaces in dependency order.
+- YARD doc block on every class, module, constant, attr and method:
+  `@param name [Type]`, `@option`, `@return [Type]`, blank `#` line, then `@api public|private`, `@since X.Y.Z`, optional `@version X.Y.Z` (latest behavior change).
+- Operations are stateless modules with `class << self` functions; dependencies (`redis_client`, logger, instrumenter, sampling options) are passed as explicit args, never read from globals.
+- Results are hashes `{ ok: Boolean, result: Symbol|Hash }`; `Client` `!` methods raise `RedisQueuedLocks::*Error`.
+- `Client` methods only fill defaults from `config['...']` (trailing `# steep:ignore`) and delegate to `Acquirer::*` / `Swarm`.
+- Redis keys come only from `RedisQueuedLocks::Resource.prepare_*` helpers and its `*_PATTERN` / `SWARM_KEY` constants.
+- Config: `setting('key', default)` + `validate('key') { |val| ... }` in `config.rb`; dotted keys for nested groups (`swarm.flush_zombies.zombie_ttl`); units in a trailing `# NOTE: in milliseconds` comment.
+- Errors: subclasses in `errors.rb`, written as `class XError < Error; end` (not `Class.new`) so RBS/Steep can see the superclass.
+- Comments use `# NOTE:`, `# TODO:` and `# @type var x: T` / `#: T` for inline type hints.
+- Rubocop is suppressed locally with `# rubocop:disable Metrics/MethodLength` etc. (paired `enable`), mostly for large algorithm methods.
+- Shared mutable state is guarded by `RedisQueuedLocks::Utilities::Lock#synchronize`; Ractor code must not capture non-shareable objects (build a fresh Redis client via `Swarm::RedisClientBuilder`).
+
+## Claude rules
+1. Start new files with `# frozen_string_literal: true` and use compact constant paths.
+2. Add a full YARD block to every new public/private method; new code gets `@since <next version>`; when changing existing behavior, add/bump `@version`.
+3. New operation = new `Acquirer::*` module + thin `Client` method delegating to it (+ `!` variant only if it must raise); details in `acquirer.md`.
+4. Return `{ ok:, result: }` hashes from operations; raise only in `!` methods or on invalid arguments (`RedisQueuedLocks::ArgumentError`).
+5. Never hardcode `rql:` strings; add a `Resource.prepare_*` helper or constant instead.
+6. Use WATCH/MULTI or a Lua constant for any read-modify-write on lock/queue keys; never do check-then-set in Ruby without a transaction.
+7. New config option: `setting` with default + `validate` with a type check, both in `config.rb`; read it in `Client` as `config['key']`.
+8. Logs and instrumentation events go through visitor modules (see `visitors.md`); event names follow `redis_queued_locks.<snake_case>`.
+9. Keep thread/Ractor safety: guard shared state with `Utilities::Lock`, never share a `RedisClient` across Ractors.
+10. Disable rubocop cops only locally with a matching `rubocop:enable`, and only for Metrics/Layout on large methods.
+11. After any change here, update the mirrored `sig/` file (see `type-checking.md`) and add/adjust a spec (see `tests.md`).
+
+## Recommendations (proposed, not yet project policy)
+Apply to new or touched code; don't refactor existing code for these unless asked.
+1. Avoid `# rubocop:disable all` (used in `client.rb` lock_series and `lock_series_poc.rb`); disable only the specific cops.
+2. Document every option fully in YARD; `read_write_mode` is currently documented as `?` in `acquire_lock.rb`.
+3. Spell new identifiers correctly and don't copy existing typos (`swarm_element__termiante` method, `Acquier` in comments and the `acquier.rbs` filename); fix them only in a dedicated change.
+4. Include context in raised errors (lock name, acquirer id, timeout) so failures are diagnosable.
+5. Prefer `then` (the modern alias) over `yield_self` in new code.

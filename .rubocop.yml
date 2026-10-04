@@ -6,7 +6,7 @@ inherit_gem:
     - lib/rubocop.rbs.yml
 
 AllCops:
-  TargetRubyVersion: 3.3
+  TargetRubyVersion: 4.0
   NewCops: enable
   Include:
     - lib/**/*.rb
