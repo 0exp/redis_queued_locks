@@ -607,6 +607,20 @@ RSpec.describe RedisQueuedLocks do
       end
     end
 
+    specify '#zombies_info: default zombie_ttl and lock_scan_size from config' do
+      client = RedisQueuedLocks::Client.new(redis) do |conf|
+        conf['swarm.flush_zombies.zombie_ttl'] = 7_000
+        conf['swarm.flush_zombies.zombie_lock_scan_size'] = 123
+      end
+      allow(client.swarm).to receive(:zombies_info).and_call_original
+
+      client.zombies_info
+
+      expect(client.swarm).to have_received(:zombies_info).with(
+        zombie_ttl: 7_000, lock_scan_size: 123
+      )
+    end
+
     specify '(auto-swarming!): zombie locks (with hosts and acquirers)' do
       main_client = RedisQueuedLocks::Client.new(redis) do |conf|
         conf['swarm.auto_swarm'] = true

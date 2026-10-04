@@ -84,7 +84,6 @@ Public element API (called by `Swarm`/`Supervisor` only):
 13. Swarm specs (in `describe 'swarm'`) deal with real timing: set short periods via config, kill elements with `try_kill!`, wait longer than `liveness_probing_period`, and match states loosely (`eq('running').or(eq('blocking'))`, `'sleep'`/`'run'`).
 
 ## Known quirks (don't copy; fix only in a dedicated change)
-- `Client#zombies_info` uses `config['swarm.flush_zombies.zombie_ttl']` as the default `lock_scan_size` (it should be `zombie_lock_scan_size`).
 - Typos: `swarm_element__termiante`, `@since 19.0.0` on `Threaded#reswarm_if_dead!`, `@api ppublic` on `Swarm#zombie_acquirers`, "lopp"/"teh" in comments.
 - Stop is named `swarm_loop__stop` in Threaded and `swarm_loop__pause` in Isolated, and neither is used.
 - `sleep(0.1)` "give a timespot" waits in `swarm!`/`deswarm!`/`observe!` instead of real readiness signalling.

@@ -1,4 +1,7 @@
 ## [Unreleased]
+### Fixed
+- `RedisQueuedLocks::Client#zombies_info`: default `lock_scan_size` was taken from the
+  `swarm.flush_zombies.zombie_ttl` config instead of `swarm.flush_zombies.zombie_lock_scan_size`;
 
 ## [1.16.2] - 2026-02-06
 ### Fixed
