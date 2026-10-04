@@ -1,5 +1,7 @@
 ## [Unreleased]
 ### Changed
+- [**Breaking**] Minimal Ruby Version - **4.0** (previously - **3.3**):
+  - removed `3.3` and `3.4` from `CI`;
 - Swarm: isolated swarm elements (`RedisQueuedLocks::Swarm::SwarmElement::Isolated`, `FlushZombies`) are reworked
   to the Ruby 4 Ractor API: `Ractor.yield`/`Ractor#take` are replaced with `Ractor::Port`s (each element owns
   its own pair of ports: the results port is created in the main ractor where the swarm supervisor lives and the
