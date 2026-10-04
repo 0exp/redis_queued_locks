@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 # NOTE: Lock Series PoC
-# steep:ignore
 # rubocop:disable all
 # @api private
 # @since 1.16.0
@@ -324,5 +323,4 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
     end
   end
 end
-# steep:ignore
 # rubocop:enable all

@@ -161,7 +161,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           )
           inter_result = :extendable_conflict_work_through
 
-          # @type var sp_conflict_status: Symbol
           # @type var spc_processed_timestamp: Float
           LogVisitor.reentrant_lock__extend_and_work_through(
             logger, log_sampled, log_lock_try, lock_key,
@@ -188,7 +187,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
             'l_spc_ts', spc_processed_timestamp = Time.now.to_f
           )
 
-          # @type var sp_conflict_status: Symbol
           # @type var spc_processed_timestamp: Float
           LogVisitor.reentrant_lock__work_through(
             logger, log_sampled, log_lock_try, lock_key,
@@ -200,7 +198,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           inter_result = :conflict_dead_lock
           spc_processed_timestamp = Time.now.to_f
 
-          # @type var sp_conflict_status: Symbol
           # @type var spc_processed_timestamp: Float
           LogVisitor.single_process_lock_conflict__dead_lock(
             logger, log_sampled, log_lock_try, lock_key,
@@ -242,7 +239,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           )
 
           # Step 3: get the actual acquirer waiting in the queue
-          waiting_acquirer = Array(rconn.call('ZRANGE', lock_key_queue, '0', '0')).first
+          waiting_acquirer = Array(rconn.call('ZRANGE', lock_key_queue, '0', '0')).first #: String?
 
           LogVisitor.get_first_from_queue(
             logger, log_sampled, log_lock_try, lock_key,

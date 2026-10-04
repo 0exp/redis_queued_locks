@@ -3,15 +3,15 @@ inherit_gem:
     - lib/rubocop.general.yml
     - lib/rubocop.rake.yml
     - lib/rubocop.rspec.yml
-    - lib/rubocop.rbs.yml
 
+# NOTE: Ruby sources only. RBS signatures (sig/**/*.rbs) are linted separately with
+#   .rubocop.rbs.yml: the Ruby cops (and the project index they use) must not see them;
 AllCops:
-  TargetRubyVersion: 3.3
+  TargetRubyVersion: 4.0
   NewCops: enable
   Include:
     - lib/**/*.rb
     - spec/**/*.rb
-    - sig/**/*.rbs
     - Gemfile
     - Rakefile
     - redis_queued_locks.gemspec

@@ -89,7 +89,7 @@ class RedisQueuedLocks::Swarm::Supervisor
 
     {
       running: running?,
-      state: (visor == nil) ? 'non_initialized' : thread_state(visor), # steep:ignore
+      state: (visor == nil) ? 'non_initialized' : thread_state(visor),
       observable: (observable == nil) ? 'non_initialized' : 'initialized'
     }
   end

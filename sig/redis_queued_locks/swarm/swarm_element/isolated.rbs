@@ -8,10 +8,14 @@ module RedisQueuedLocks
 
         @rql_client: RQL::Client
         @swarm_element: Ractor?
+        @swarm_element_commands_port: Ractor::Port[Symbol]?
+        @swarm_element_results_port: Ractor::Port[resultsPortMessage]?
         @sync: RQL::Utilities::Lock
 
         attr_reader rql_client: RQL::Client
         attr_reader swarm_element: Ractor?
+        attr_reader swarm_element_commands_port: Ractor::Port[Symbol]?
+        attr_reader swarm_element_results_port: Ractor::Port[resultsPortMessage]?
         attr_reader sync: RQL::Utilities::Lock
 
         def initialize: (RQL::Client rql_client) -> void
@@ -27,25 +31,29 @@ module RedisQueuedLocks
         }
         def status: () -> elementStatus
 
-        def self.swarm_loop: () { () -> Thread } -> void
+        type swarmLoopStatus = { alive: bool, state: String }
+        type swarmLoopReply = swarmLoopStatus | bool
+        type resultsPortMessage = swarmLoopReply | Ractor::Port[Symbol] | Symbol
+        def self.swarm_loop: (Ractor::Port[resultsPortMessage] swarm_element_results_port) { () -> Thread } -> void
+        def self.terminate_thread: (Thread? thread) -> void
 
         private
 
         def swarm!: () -> void
+        def spawn_swarm_element!: (Ractor::Port[resultsPortMessage] swarm_element_results_port) -> Ractor
         def idle?: () -> bool
         def swarmed?: () -> bool
         def swarmed__alive?: () -> bool
         def swarmed__dead?: () -> bool
         def swarmed__running?: () -> bool
         def swarmed__stopped?: () -> bool
-        def swarm_loop__is_active: () -> bool
-
-        type swarmLoopStatus = { main_loop: { alive: bool, state: String } }
+        def swarm_loop__is_active: () -> bool?
         def swarm_loop__status: () -> swarmLoopStatus?
 
         def swarm_loop__start: () -> void
-        def swarm_loop__pause: () -> void
+        def swarm_loop__stop: () -> void
         def swarm_loop__kill: () -> void
+        def swarm_loop__send_command: (Symbol command) -> swarmLoopReply?
       end
     end
   end

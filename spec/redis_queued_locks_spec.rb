@@ -607,6 +607,82 @@ RSpec.describe RedisQueuedLocks do
       end
     end
 
+    specify 'isolated swarm elements: independent ractors with their own ports' do
+      client = RedisQueuedLocks::Client.new(redis)
+      element1 = RedisQueuedLocks::Swarm::FlushZombies.new(client)
+      element2 = RedisQueuedLocks::Swarm::FlushZombies.new(client)
+      running_status = match({
+        enabled: true,
+        ractor: match({ running: true, state: eq('running').or(eq('blocking')) }),
+        main_loop: match({ running: true, state: eq('sleep').or(eq('run')) })
+      })
+
+      element1.try_swarm!
+      element2.try_swarm!
+
+      aggregate_failures 'each element works in its own ractor via its own ports' do
+        expect(element1.swarm_element).not_to eq(element2.swarm_element)
+        expect(element1.swarm_element_results_port).not_to eq(element2.swarm_element_results_port)
+        expect(element1.swarm_element_commands_port).not_to eq(element2.swarm_element_commands_port)
+        expect(element1.status).to running_status
+        expect(element2.status).to running_status
+      end
+
+      first_ractor = element1.swarm_element
+      element1.send(:swarm_loop__stop)
+
+      aggregate_failures 'stopped main loop does not affect another element' do
+        expect(element1.status).to match({
+          enabled: true,
+          ractor: match({ running: true, state: eq('running').or(eq('blocking')) }),
+          main_loop: match({ running: false, state: 'non_initialized' })
+        })
+        expect(element2.status).to running_status
+      end
+
+      aggregate_failures 'stopped main loop is restarted inside the same ractor' do
+        element1.reswarm_if_dead!
+        expect(element1.swarm_element).to eq(first_ractor)
+        expect(element1.status).to running_status
+      end
+
+      element1.try_kill!
+
+      aggregate_failures 'killed element ractor is finished, another element still works' do
+        expect(element1.status).to match({
+          enabled: true,
+          ractor: match({ running: false, state: 'terminated' }),
+          main_loop: match({ running: false, state: 'non_initialized' })
+        })
+        expect(element2.status).to running_status
+      end
+
+      aggregate_failures 'killed element is re-created in a new ractor' do
+        element1.reswarm_if_dead!
+        expect(element1.swarm_element).not_to eq(first_ractor)
+        expect(element1.status).to running_status
+      end
+    ensure
+      # NOTE: kill element ractors even when an expectation fails
+      #   (they must not leak into other examples);
+      element1&.try_kill!
+      element2&.try_kill!
+    end
+
+    specify '#zombies_info: default zombie_ttl and lock_scan_size from config' do
+      client = RedisQueuedLocks::Client.new(redis) do |conf|
+        conf['swarm.flush_zombies.zombie_ttl'] = 7_000
+        conf['swarm.flush_zombies.zombie_lock_scan_size'] = 123
+      end
+      allow(client.swarm).to receive(:zombies_info).and_call_original
+
+      client.zombies_info
+
+      expect(client.swarm).to have_received(:zombies_info).with(
+        zombie_ttl: 7_000, lock_scan_size: 123
+      )
+    end
+
     specify '(auto-swarming!): zombie locks (with hosts and acquirers)' do
       main_client = RedisQueuedLocks::Client.new(redis) do |conf|
         conf['swarm.auto_swarm'] = true

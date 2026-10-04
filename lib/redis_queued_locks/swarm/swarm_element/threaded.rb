@@ -125,20 +125,16 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   #
   # @api private
   # @since 1.9.0
-  # rubocop:disable Style/RedundantBegin
+  # @version 1.17.0
   def status
     sync.synchronize do
       thread_running = swarmed__alive?
       thread_state = swarmed? ? thread_state(swarm_element) : 'non_initialized' # steep:ignore
 
       main_loop_running = swarmed__running?
-      main_loop_state = begin
-        if main_loop_running
-          swarm_loop__status[:result][:main_loop][:state] # steep:ignore
-        else
-          'non_initialized'
-        end
-      end
+      # NOTE: `nil` when the element is not alive (or has been terminated during the request);
+      loop_status = swarm_loop__status if main_loop_running
+      main_loop_state = loop_status ? loop_status[:state] : 'non_initialized'
 
       {
         enabled: enabled?,
@@ -153,7 +149,6 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
       }
     end
   end
-  # rubocop:enable Style/RedundantBegin
 
   private
 
@@ -169,7 +164,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   #
   # @api private
   # @since 1.9.0
-  # rubocop:disable Metrics/MethodLength
+  # @version 1.17.0
   def swarm!
     # NOTE: kill the main loop at start to prevent any async-thread-race-based memory leaks;
     main_loop&.kill
@@ -187,42 +182,37 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
           main_loop_alive = main_loop != nil && main_loop.alive?
           # steep:ignore:end
 
-          # steep:ignore:start
           main_loop_state = (main_loop == nil) ? 'non_initialized' : thread_state(main_loop)
-          # steep:ignore:end
 
           # steep:ignore:start
-          swarm_element_results.push({
-            ok: true,
-            result: { main_loop: { alive: main_loop_alive, state: main_loop_state } }
-          })
+          swarm_element_results.push({ alive: main_loop_alive, state: main_loop_state })
           # steep:ignore:end
         when :is_active
-          is_active = main_loop != nil && main_loop.alive? # steep:ignore
-          swarm_element_results.push({ ok: true, result: { is_active: } }) # steep:ignore
+          swarm_element_results.push(main_loop != nil && main_loop.alive?) # steep:ignore
         when :start
           main_loop&.kill
           @main_loop = spawn_main_loop!.tap { |thread| thread.abort_on_exception = false }
-          swarm_element_results.push({ ok: true, result: nil }) # steep:ignore
+          swarm_element_results.push(true) # steep:ignore
         when :stop
           main_loop&.kill
-          swarm_element_results.push({ ok: true, result: nil }) # steep:ignore
+          swarm_element_results.push(true) # steep:ignore
         end
       end
     end
   end
-  # rubocop:enable Metrics/MethodLength
 
   # @return [Thread] Thread with #abort_onexception == false that wraps loop'ed logic;
   #
   # @api private
   # @since 1.9.0
-  def spawn_main_loop! # steep:ignore
+  # @version 1.17.0
+  def spawn_main_loop!
     # NOTE:
     #   - provide the swarm element looped logic here wrapped into the thread;
     #   - created thread will be reconfigured inside the swarm_element logic with a
     #     `abort_on_exception = false` (cuz the stauts of the thread is
     #     totally controlled by the @swarm_element's logic);
+    raise NotImplementedError, "#{self.class}#spawn_main_loop! is not implemented"
   end
 
   # @return [Boolean]
@@ -261,10 +251,9 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   #
   # @api private
   # @since 1.9.0
+  # @version 1.17.0
   def swarmed__running?
-    swarmed__alive? && !terminating? && (swarm_loop__is_active.yield_self do |result|
-      result != nil && result[:ok] && result[:result][:is_active] # steep:ignore
-    end)
+    swarmed__alive? && !terminating? && swarm_loop__is_active == true
   end
 
   # @return [Boolean,NilClass]
@@ -284,57 +273,66 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   #
   # @api private
   # @since 1.9.0
+  # @version 1.17.0
   def swarmed__stopped?
-    swarmed__alive? && (terminating? || !(swarm_loop__is_active.yield_self do |result|
-      result && result[:ok] && result[:result][:is_active] # steep:ignore
-    end))
+    # NOTE: `nil` (no answer) is treated as "not active";
+    swarmed__alive? && (terminating? || swarm_loop__is_active != true)
   end
 
-  # @return [Boolean,NilClass]
+  # @return [Boolean,NilClass] Is the main loop alive (`nil` when the element is not available).
   #
   # @api private
   # @since 1.9.0
+  # @version 1.17.0
   def swarm_loop__is_active
-    return if idle? || swarmed__dead? || terminating?
-    sync.synchronize do
-      swarm_element_commands.push(:is_active) # steep:ignore
-      swarm_element_results.pop # steep:ignore
-    end
+    swarm_loop__send_command(:is_active) #: bool?
   end
 
-  # @return [Hash,NilClass]
+  # @return [Hash<Symbol,Boolean|String>,NilClass]
+  #   Format: `{ alive: <Boolean>, state: <String> }` (`nil` when the element is not available).
   #
   # @api private
   # @since 1.9.0
+  # @version 1.17.0
   def swarm_loop__status
-    return if idle? || swarmed__dead? || terminating?
-    sync.synchronize do
-      swarm_element_commands.push(:status) # steep:ignore
-      swarm_element_results.pop # steep:ignore
-    end
+    swarm_loop__send_command(:status) #: swarmLoopStatus?
   end
 
   # @return [void]
   #
   # @api private
   # @since 1.9.0
+  # @version 1.17.0
   def swarm_loop__start
-    return if idle? || swarmed__dead? || terminating?
-    sync.synchronize do
-      swarm_element_commands.push(:start) # steep:ignore
-      swarm_element_results.pop # steep:ignore
-    end
+    swarm_loop__send_command(:start)
   end
 
   # @return [void]
   #
   # @api private
   # @since 1.9.0
+  # @version 1.17.0
   def swarm_loop__stop
+    swarm_loop__send_command(:stop)
+  end
+
+  # Sends the command to the control thread and waits for its reply. Replies are received
+  # strictly one by one under the lock, so each reply belongs to the sent command.
+  #
+  # @param command [Symbol]
+  # @return [Boolean,Hash<Symbol,Boolean|String>,NilClass]
+  #   The bare reply value (see #swarm!) or `nil` if the element is not available.
+  #
+  # @api private
+  # @since 1.17.0
+  def swarm_loop__send_command(command)
     return if idle? || swarmed__dead? || terminating?
     sync.synchronize do
-      swarm_element_commands.push(:stop) # steep:ignore
-      swarm_element_results.pop # steep:ignore
+      commands = swarm_element_commands
+      results = swarm_element_results
+      next if commands == nil || results == nil
+      commands.push(command)
+      results.pop
     end
   end
 

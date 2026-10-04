@@ -100,19 +100,21 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
     rql_client.config['swarm.flush_zombies.enabled_for_swarm']
   end
 
-  # @return [void]
+  # @param swarm_element_results_port [Ractor::Port] Results port of the main Ractor.
+  # @return [Ractor]
   #
   # @api private
-  # @since 1.9.0
-  def swarm!
-    @swarm_element = Ractor.new(
+  # @since 1.17.0
+  def spawn_swarm_element!(swarm_element_results_port)
+    Ractor.new(
+      swarm_element_results_port,
       rql_client.config.slice('swarm.flush_zombies.redis_config'),
       rql_client.config['swarm.flush_zombies.zombie_ttl'],
       rql_client.config['swarm.flush_zombies.zombie_lock_scan_size'],
       rql_client.config['swarm.flush_zombies.zombie_queue_scan_size'],
       rql_client.config['swarm.flush_zombies.zombie_flush_period']
-    ) do |rc, z_ttl, z_lss, z_qss, z_fl_prd|
-      RedisQueuedLocks::Swarm::FlushZombies.swarm_loop do
+    ) do |r_res_p, rc, z_ttl, z_lss, z_qss, z_fl_prd|
+      RedisQueuedLocks::Swarm::FlushZombies.swarm_loop(r_res_p) do
         Thread.new do
           redis_client = RedisQueuedLocks::Swarm::RedisClientBuilder.build(
             pooled: rc['pooled'],

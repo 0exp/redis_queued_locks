@@ -87,7 +87,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
           acquirer_id,
           host_id,
           meta,
-          &block # steep:ignore
+          &block
         )
       else
         yield
