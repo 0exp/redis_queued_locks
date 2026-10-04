@@ -343,8 +343,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   # @since 1.9.0
   # @version 1.17.0
   def swarm_loop__is_active
-    reply = swarm_loop__send_command(:is_active)
-    reply.is_a?(Hash) ? nil : reply
+    swarm_loop__send_command(:is_active) #: bool?
   end
 
   # @return [Hash<Symbol,Boolean|String>,NilClass]
@@ -354,8 +353,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Isolated
   # @since 1.9.0
   # @version 1.17.0
   def swarm_loop__status
-    reply = swarm_loop__send_command(:status)
-    reply.is_a?(Hash) ? reply : nil
+    swarm_loop__send_command(:status) #: swarmLoopStatus?
   end
 
   # @return [void]
