@@ -15,12 +15,12 @@ Full details (config keys, key layout, events, errors, stack, CI): `.claude/proj
 - Locking: `ZADD NX` into `rql:lock_queue:<name>`, then WATCH/MULTI on `rql:lock:<name>`; Lua for TTL extension.
 - Strategies: `access_strategy` `:queued`|`:random`; `conflict_strategy` `:wait_for_lock`|`:work_through`|`:extendable_work_through`|`:dead_locking`.
 - `resource.rb`: all key names and acquirer/host IDs. `config.rb`: `setting`/`validate` DSL, read as `config['a.b']`.
-- `swarm/`: `Supervisor` thread; `ProbeHosts` (Thread), `FlushZombies` (Ractor, own Redis connection).
+- `swarm/`: zombie-lock cleanup. `Supervisor` thread revives `ProbeHosts` (`SwarmElement::Threaded`) and `FlushZombies` (`SwarmElement::Isolated`, Ractor); each element runs a main-loop thread with its own Redis connection.
 - `logging/`, `instrument/`: Void null-object defaults, percent samplers, ActiveSupport adapter.
 - `sig/`: RBS mirror of `lib/`. `spec/redis_queued_locks_spec.rb`: single integration spec.
 
 ## Rules
-Detailed, path-scoped rules in `.claude/rules/`: `logic.md` (lib, general), `acquirer.md` (acquirer modules, Redis access), `visitors.md` (log/instrumentation visitors), `arguments.md` (long keyword lists), `tests.md` (spec), `type-checking.md` (sig/Steep).
+Detailed, path-scoped rules in `.claude/rules/`: `logic.md` (lib, general), `acquirer.md` (acquirer modules, Redis access), `visitors.md` (log/instrumentation visitors), `arguments.md` (long keyword lists), `swarm.md` (swarm supervisor/elements, Ractor/Thread rules), `tests.md` (spec), `type-checking.md` (sig/Steep).
 - Long explicit keyword/parameter lists are intentional (minimal allocations, signature-as-DSL): never introduce parameter objects, option structs or `**opts`; add new options as explicit keywords to every `Client` variant and forward them by name.
 - Update the matching `sig/*.rbs` for every `lib/` change; keep Steep green.
 - Keep `# frozen_string_literal: true` and YARD `@api`/`@since`/`@version` tags.

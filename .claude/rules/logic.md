@@ -9,6 +9,15 @@ Related rule files (loaded for narrower paths):
 - `acquirer.md`: acquirer operations, Redis access, `AcquireLock` algorithm
 - `visitors.md`: log & instrumentation visitors
 - `arguments.md`: long explicit keyword/parameter lists (core API design principle)
+- `swarm.md`: swarm architecture, element lifecycle, Ractor/Thread coding rules
+
+## Swarm overview (details in `swarm.md`)
+- Purpose: zombie-lock elimination. `ProbeHosts` periodically `HSET`s every host id (`rql:hst:<pid>/<thread>/<ractor>/<identity>`) with `Time.now.to_f` into `rql:swarm:hsts`; `FlushZombies` treats hosts older than `zombie_ttl` (ms) as zombies and deletes their locks, their queue entries and the hosts themselves.
+- `Client#swarm` → `Swarm` facade (one per client) owns a `Supervisor` and the swarm elements; started by `swarmize!` / `swarm.auto_swarm`, stopped by `deswarmize!`.
+- Elements are independent background units: a control unit (`SwarmElement::Threaded` = Thread + `SizedQueue` command channel; `SwarmElement::Isolated` = Ractor + `Ractor.receive`) that spawns, stops and reports on a main-loop Thread with its own Redis connection (`Swarm::RedisClientBuilder`).
+- `ProbeHosts` is Threaded (it must see the client's ractor threads); `FlushZombies` is Isolated (copied config values only).
+- `Supervisor` is one Thread that calls `reswarm_if_dead!` on every element each `liveness_probing_period`, restarting dead control units or stopped main loops; `swarm_status` aggregates `{ running:, state: }` of all of them.
+- Redis work lives in stateless class-level functions (`ProbeHosts.probe_hosts`, `FlushZombies.flush_zombies`, `ZombieInfo.*`, `Acquirers.acquirers`), shared by main loops and the manual public API.
 
 ## Observed conventions
 - Every file starts with `# frozen_string_literal: true`.
