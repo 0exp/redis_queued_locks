@@ -7,7 +7,7 @@ module RedisQueuedLocks
       def self.flush_zombies: (RC::client redis_client, Integer zombie_ttl, Integer lock_scan_size, Integer queue_scan_size) -> flushedZombies
 
       def enabled?: () -> bool
-      def swarm!: () -> void
+      def spawn_swarm_element!: (Ractor::Port[SwarmElement::Isolated::resultsPortMessage] swarm_element_results_port) -> Ractor
     end
   end
 end

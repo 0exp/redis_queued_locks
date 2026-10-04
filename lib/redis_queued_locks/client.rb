@@ -159,7 +159,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
-  # @version 1.16.3
+  # @version 1.17.0
   def zombies_info(
     zombie_ttl: config['swarm.flush_zombies.zombie_ttl'], # steep:ignore
     lock_scan_size: config['swarm.flush_zombies.zombie_lock_scan_size'] # steep:ignore

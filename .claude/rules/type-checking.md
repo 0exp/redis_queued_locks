@@ -25,7 +25,7 @@ paths:
 1. Every change to a `lib/` file's public or private API (new method, param, return shape, constant, ivar) must be reflected in the mirrored `.rbs` file in the same change.
 2. Create new `.rbs` files at the mirrored path with nested module blocks and `use RedisQueuedLocks as RQL` / `use RedisClient as RC` aliases when needed.
 3. Reuse shared types (`RQL::loggerObj`, `RQL::instrObj`, `samplerObj`, `RC::client`) instead of `untyped`; use `untyped` only for truly dynamic values (e.g. user `meta`, `instrument`).
-4. Name result hashes with a `type xxxResult = { ok: bool, result: ... }` alias next to the method.
+4. Name public API result hashes with a `type xxxResult = { ok: bool, result: ... }` alias next to the method. Type internal swarm element replies with plain types (`bool`, `String`, a flat record such as `{ alive: bool, state: String }`, optional `?` for `nil`) instead of `{ ok:, result: }` records.
 5. Prefer fixing types or adding `# @type var` / `#: T` annotations over `# steep:ignore`; use `steep:ignore` only for `config['...']` lookups and other DSL-driven dynamic calls.
 6. Don't loosen `Steep::Diagnostic::Ruby.strict` or add `ignore` entries to the `Steepfile`.
 7. New third-party gem used in `lib/`: add it to `rbs_collection.yaml` (and `sig/manifest.yml` for stdlib) or write a minimal stub in `sig/vendor/`.

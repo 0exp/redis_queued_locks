@@ -43,7 +43,7 @@ This is a deliberate framework-level decision, **not** something to refactor int
 | `Client` → `Acquirer` | Explicit forwarding with Ruby 3.1 shorthand (`ttl:`, `queue_ttl:`); runtime identity values injected here (`process_id:`, `thread_id:`, `fiber_id:`, `ractor_id:`). |
 | `AcquireLock.acquire_lock` | Required keywords without defaults (`ttl:`, `timeout:`, ...): defaults live only in `Client`. |
 | Other `Acquirer::*`, mixins, visitors | Positional parameters in a fixed, documented order (subject, data, observability tail) for the cheapest possible internal calls. |
-| Results | Small literal Hashes (`{ ok:, result: }`), not result classes. |
+| Results | Public API (`Client`, `Acquirer::*`, `Swarm` facade actions): small literal Hashes (`{ ok:, result: }`), not result classes. Internal swarm element APIs: bare scalars/primitives (see `swarm.md`). |
 
 ## Claude rules
 1. **Do not introduce** parameter objects, context/options structs (`Data.define`, `Struct`, `OpenStruct`), builders, or `**opts` / `options = {}` hashes in `Client`, `Acquirer::*`, mixins or visitors. Long explicit lists are the intended design.

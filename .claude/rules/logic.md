@@ -14,7 +14,7 @@ Related rule files (loaded for narrower paths):
 ## Swarm overview (details in `swarm.md`)
 - Purpose: zombie-lock elimination. `ProbeHosts` periodically `HSET`s every host id (`rql:hst:<pid>/<thread>/<ractor>/<identity>`) with `Time.now.to_f` into `rql:swarm:hsts`; `FlushZombies` treats hosts older than `zombie_ttl` (ms) as zombies and deletes their locks, their queue entries and the hosts themselves.
 - `Client#swarm` → `Swarm` facade (one per client) owns a `Supervisor` and the swarm elements; started by `swarmize!` / `swarm.auto_swarm`, stopped by `deswarmize!`.
-- Elements are independent background units: a control unit (`SwarmElement::Threaded` = Thread + `SizedQueue` command channel; `SwarmElement::Isolated` = Ractor + `Ractor.receive`) that spawns, stops and reports on a main-loop Thread with its own Redis connection (`Swarm::RedisClientBuilder`).
+- Elements are independent background units: a control unit (`SwarmElement::Threaded` = Thread + `SizedQueue` command channel; `SwarmElement::Isolated` = Ractor driven via its own pair of `Ractor::Port`s: results port created in the main Ractor, where the Swarm and Supervisor live; command port created inside the element Ractor) that spawns, stops and reports on a main-loop Thread with its own Redis connection (`Swarm::RedisClientBuilder`).
 - `ProbeHosts` is Threaded (it must see the client's ractor threads); `FlushZombies` is Isolated (copied config values only).
 - `Supervisor` is one Thread that calls `reswarm_if_dead!` on every element each `liveness_probing_period`, restarting dead control units or stopped main loops; `swarm_status` aggregates `{ running:, state: }` of all of them.
 - Redis work lives in stateless class-level functions (`ProbeHosts.probe_hosts`, `FlushZombies.flush_zombies`, `ZombieInfo.*`, `Acquirers.acquirers`), shared by main loops and the manual public API.
@@ -26,7 +26,7 @@ Related rule files (loaded for narrower paths):
 - YARD doc block on every class, module, constant, attr and method:
   `@param name [Type]`, `@option`, `@return [Type]`, blank `#` line, then `@api public|private`, `@since X.Y.Z`, optional `@version X.Y.Z` (latest behavior change).
 - Operations are stateless modules with `class << self` functions; dependencies (`redis_client`, logger, instrumenter, sampling options) are passed as explicit args, never read from globals.
-- Results are hashes `{ ok: Boolean, result: Symbol|Hash }`; `Client` `!` methods raise `RedisQueuedLocks::*Error`.
+- Public API results are hashes `{ ok: Boolean, result: Symbol|Hash }` (`Client`, `Acquirer::*`, `Swarm` facade actions); `Client` `!` methods raise `RedisQueuedLocks::*Error`. Internal swarm element APIs return bare scalars/primitives (see `swarm.md`).
 - `Client` methods only fill defaults from `config['...']` (trailing `# steep:ignore`) and delegate to `Acquirer::*` / `Swarm`.
 - Redis keys come only from `RedisQueuedLocks::Resource.prepare_*` helpers and its `*_PATTERN` / `SWARM_KEY` constants.
 - Config: `setting('key', default)` + `validate('key') { |val| ... }` in `config.rb`; dotted keys for nested groups (`swarm.flush_zombies.zombie_ttl`); units in a trailing `# NOTE: in milliseconds` comment.
@@ -39,7 +39,7 @@ Related rule files (loaded for narrower paths):
 1. Start new files with `# frozen_string_literal: true` and use compact constant paths.
 2. Add a full YARD block to every new public/private method; new code gets `@since <next version>`; when changing existing behavior, add/bump `@version`.
 3. New operation = new `Acquirer::*` module + thin `Client` method delegating to it (+ `!` variant only if it must raise); details in `acquirer.md`.
-4. Return `{ ok:, result: }` hashes from operations; raise only in `!` methods or on invalid arguments (`RedisQueuedLocks::ArgumentError`).
+4. Return `{ ok:, result: }` hashes from public API operations (`Client`, `Acquirer::*`, `Swarm` facade actions); raise only in `!` methods or on invalid arguments (`RedisQueuedLocks::ArgumentError`). Internal APIs, and swarm element internals in particular, use bare scalars/primitives (`true`/`false`, String, Symbol, Integer, `nil`, a flat Hash of scalars) without the wrapper.
 5. Never hardcode `rql:` strings; add a `Resource.prepare_*` helper or constant instead.
 6. Use WATCH/MULTI or a Lua constant for any read-modify-write on lock/queue keys; never do check-then-set in Ruby without a transaction.
 7. New config option: `setting` with default + `validate` with a type check, both in `config.rb`; read it in `Client` as `config['key']`.

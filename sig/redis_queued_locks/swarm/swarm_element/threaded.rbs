@@ -10,14 +10,14 @@ module RedisQueuedLocks
         @swarm_element: Thread?
         @main_loop: Thread?
         @swarm_element_commands: Thread::SizedQueue[Symbol]?
-        @swarm_element_results: Thread::SizedQueue[{ ok: bool, result: Hash[untyped,untyped] }]?
+        @swarm_element_results: Thread::SizedQueue[swarmLoopReply]?
         @sync: RQL::Utilities::Lock
 
         attr_reader rql_client: RQL::Client
         attr_reader swarm_element: Thread?
         attr_reader main_loop: Thread?
         attr_reader swarm_element_commands: Thread::SizedQueue[Symbol]?
-        attr_reader swarm_element_results: Thread::SizedQueue[{ ok: bool, result: Hash[untyped,untyped] }]?
+        attr_reader swarm_element_results: Thread::SizedQueue[swarmLoopReply]?
         attr_reader sync: RQL::Utilities::Lock
 
         def initialize: (RQL::Client rql_client) -> void
@@ -46,10 +46,9 @@ module RedisQueuedLocks
         def terminating?: () -> bool?
         def swarmed__stopped?: () -> bool
 
-        type swarmLoopIsActive = { ok: bool, result: { is_active: bool } }
-        def swarm_loop__is_active: () -> swarmLoopIsActive?
-
-        type swarmLoopStatus = { ok: bool, result: { main_loop: { alive: bool, state: String } } }
+        type swarmLoopStatus = { alive: bool, state: String }
+        type swarmLoopReply = swarmLoopStatus | bool
+        def swarm_loop__is_active: () -> bool?
         def swarm_loop__status: () -> swarmLoopStatus?
 
         def swarm_loop__start: () -> void

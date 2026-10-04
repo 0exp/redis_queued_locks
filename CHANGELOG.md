@@ -1,4 +1,15 @@
 ## [Unreleased]
+### Changed
+- Swarm: isolated swarm elements (`RedisQueuedLocks::Swarm::SwarmElement::Isolated`, `FlushZombies`) are reworked
+  to the Ruby 4 Ractor API: `Ractor.yield`/`Ractor#take` are replaced with `Ractor::Port`s (each element owns
+  its own pair of ports: the results port is created in the main ractor where the swarm supervisor lives and the
+  command port is created inside the element ractor), element ractor termination is tracked via `Ractor#monitor`;
+- Swarm: isolated element ractor is terminated deterministically on `#try_kill!` / `#deswarm!`
+  (all ractor threads are killed and joined);
+- Swarm: `RedisQueuedLocks::Swarm::SwarmElement::Isolated` subclasses implement `#spawn_swarm_element!(results_port)`
+  instead of `#swarm!`;
+- Swarm: internal swarm element protocol (`Threaded` and `Isolated` command replies, isolated element handshake)
+  uses bare scalars/primitives instead of `{ ok:, result: }` wrappers (the wrapper is kept for the public API only);
 ### Fixed
 - `RedisQueuedLocks::Client#zombies_info`: default `lock_scan_size` was taken from the
   `swarm.flush_zombies.zombie_ttl` config instead of `swarm.flush_zombies.zombie_lock_scan_size`;
