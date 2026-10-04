@@ -7,7 +7,6 @@
 # rubocop:disable Metrics/MethodLength
 # rubocop:disable Metrics/ClassLength
 # rubocop:disable Metrics/BlockNesting
-# rubocop:disable Style/IfInsideElse
 module RedisQueuedLocks::Acquirer::AcquireLock
   require_relative 'acquire_lock/log_visitor'
   require_relative 'acquire_lock/instr_visitor'
@@ -563,9 +562,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             end
           end
         else
-          # rubocop:disable Layout/LineLength
           { ok: true, result: acq_process[:lock_info] } #: { ok: bool, result: Hash[Symbol,untyped] }
-          # rubocop:enable Layout/LineLength
         end
       else
         if acq_process[:result] != :retry_limit_reached &&
@@ -588,4 +585,3 @@ end
 # rubocop:enable Metrics/MethodLength
 # rubocop:enable Metrics/ClassLength
 # rubocop:enable Metrics/BlockNesting
-# rubocop:enable Style/IfInsideElse

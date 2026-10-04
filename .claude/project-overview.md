@@ -175,11 +175,13 @@ Known quirk: `sig/redis_queued_locks/acquier.rbs` is misspelled (should be `acqu
 - A real Redis is required (CI: `supercharge/redis-github-action@1.8.1`)
 - SimpleCov 1.3.2: line + branch coverage, HTML report; 100% minimum disabled (TODO)
 - RBS 4.2 + `rbs collection` + tsort; Steep 2.1 (static); RBS runtime testing via `rbs/test/setup`
-- RuboCop 1.89 through `armitage-rubocop` (general, rake, rspec, rbs presets) with plugins rubocop-rspec, -performance, -rake, -on-rbs, -thread_safety; several Metrics cops disabled
+- RuboCop 1.91 through `armitage-rubocop`, in two separate runs so Ruby cops (and their rubydex project index, `AllCops/UseProjectIndex`) never see RBS files:
+  - `.rubocop.yml`: Ruby sources (general, rake, rspec presets; plugins rubocop-rspec, -performance, -rake, -thread_safety); several Metrics cops disabled
+  - `.rubocop.rbs.yml`: RBS cops only (rbs preset, plugin rubocop-on-rbs, no project index): `RBS/*` on `sig/**/*.rbs` and `RBSInline/*` on inline annotations in `lib/**/*.rb`; Ruby cop departments are excluded explicitly because inline `# rubocop:enable` directives would re-enable them despite `DisabledByDefault`
 - rake, bundler, pry, pry-doc, reline, activesupport 8.1
 
 ### Rake tasks
-`rspec` (default), `rubocop`, `steep:check`, plus bundler gem tasks (`build`, `release`, ...).
+`rspec` (default), `rubocop` (runs `rubocop:ruby` and `rubocop:rbs`, fails if either fails), `steep:check`, plus bundler gem tasks (`build`, `release`, ...).
 
 ### CI (GitHub Actions, ubuntu-latest, Ruby 4.0, on every push)
 

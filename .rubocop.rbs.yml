@@ -1,0 +1,31 @@
+# NOTE: RBS cops only: RBS signatures (sig/**/*.rbs) and inline RBS annotations in Ruby sources
+#   (lib/**/*.rb, RBSInline/* cops). Ruby cops are disabled here: Ruby sources are linted with .rubocop.yml;
+inherit_gem:
+  armitage-rubocop:
+    - lib/rubocop.rbs.yml
+
+AllCops:
+  TargetRubyVersion: 4.0
+  NewCops: enable
+  DisabledByDefault: true
+  UseProjectIndex: false
+  Include:
+    - sig/**/*.rbs
+    - lib/**/*.rb
+  # NOTE: files with a ruby shebang are picked up implicitly;
+  Exclude:
+    - bin/**/*
+  SuggestExtensions: false
+
+# NOTE: `DisabledByDefault` is not enough for Ruby sources: inline `# rubocop:enable <Cop>`
+#   (and `# rubocop:enable all`) directives in lib/ re-enable Ruby cops for the rest of the file;
+#   so Ruby cop departments are excluded explicitly (they are covered by .rubocop.yml);
+Bundler: { Exclude: ['**/*'] }
+Gemspec: { Exclude: ['**/*'] }
+Layout: { Exclude: ['**/*'] }
+Lint: { Exclude: ['**/*'] }
+Metrics: { Exclude: ['**/*'] }
+Migration: { Exclude: ['**/*'] }
+Naming: { Exclude: ['**/*'] }
+Security: { Exclude: ['**/*'] }
+Style: { Exclude: ['**/*'] }

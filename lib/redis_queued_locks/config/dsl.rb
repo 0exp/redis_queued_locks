@@ -6,29 +6,23 @@ module RedisQueuedLocks::Config::DSL
   # @api private
   # @since 1.13.0
   module ClassMethods
-    # NOTE:
-    #   1. Style/DefWithParentheses rubocop's cop incorrectly drops `()` from method definition
-    #   and breaks ruby code syntax. So this cop is disabled here;
-    #   2. attr_reader is not used cuz `steep` can't understand it form inside the class where
+    # NOTE: attr_reader is not used cuz `steep` can't understand it form inside the class where
     #   the current module is mixed;
     #
     # @return [Hash<String,Block>]
     #
     # @api private
     # @since 1.13.0
-    def config_setters()= @config_setters
+    def config_setters = @config_setters
 
-    # NOTE:
-    #   1. Style/DefWithParentheses rubocop's cop incorrectly drops `()` from method definition
-    #   and breaks ruby code syntax. So this cop is disabled here;
-    #   2. attr_reader is not used cuz `steep` can't understand it form inside the class where
+    # NOTE: attr_reader is not used cuz `steep` can't understand it form inside the class where
     #   the current module is mixed;
     #
     # @return [Hash<String,Block>]
     #
     # @api private
     # @since 1.13.0
-    def config_validators()= @config_validators
+    def config_validators = @config_validators
 
     # @param config_key [String]
     # @param validator [Block]
