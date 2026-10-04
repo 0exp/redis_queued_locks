@@ -18,7 +18,8 @@ paths:
 - Instance variables are declared (`@config_setters: configSetters`) and attr readers typed.
 - Third-party types: `sig/vendor/*.rbs` hand-written stubs (redis_client, active_support, semantic_logger) plus `rbs collection` gems (redis-client, securerandom, timeout, logger, monitor) installed into `.gem_rbs_collection/`.
 - `Steepfile`: target `lib`, signatures `sig`, ignores `spec`, libraries timeout/securerandom/logger/monitor, diagnostics `Steep::Diagnostic::Ruby.strict`.
-- In Ruby code: `# @type var x: T` and `x = ... #: T` annotations narrow types; `# steep:ignore` silences dynamic spots (mostly `config['...']` defaults in `Client`).
+- In Ruby code: `# @type var x: T` and `x = ... #: T` annotations narrow types; `# steep:ignore` silences spots Steep really reports (nil-narrowed `attr_reader` results, pattern-matching destructures, splats). `Config#[]` returns `untyped`, so `config['...']` defaults in `Client` need no ignore.
+- Steep 2 narrows on `==` with literals (`x == :sym` makes `x` the literal type `:sym`) and rejects `# @type var` annotations that widen a narrowed variable; RBS 4's `Kernel#Array` has a `(nil) -> []` overload that `untyped` arguments resolve to, so `Array(rconn.call(...)).first` needs a `#: T` assertion.
 - Runtime checking: CI runs specs with `RUBYOPT=-rrbs/test/setup RBS_TEST_TARGET='RedisQueuedLocks::*'`, so signatures must match real runtime values, not just Steep's view.
 
 ## Claude rules
@@ -26,7 +27,7 @@ paths:
 2. Create new `.rbs` files at the mirrored path with nested module blocks and `use RedisQueuedLocks as RQL` / `use RedisClient as RC` aliases when needed.
 3. Reuse shared types (`RQL::loggerObj`, `RQL::instrObj`, `samplerObj`, `RC::client`) instead of `untyped`; use `untyped` only for truly dynamic values (e.g. user `meta`, `instrument`).
 4. Name public API result hashes with a `type xxxResult = { ok: bool, result: ... }` alias next to the method. Type internal swarm element replies with plain types (`bool`, `String`, a flat record such as `{ alive: bool, state: String }`, optional `?` for `nil`) instead of `{ ok:, result: }` records.
-5. Prefer fixing types or adding `# @type var` / `#: T` annotations over `# steep:ignore`; use `steep:ignore` only for `config['...']` lookups and other DSL-driven dynamic calls.
+5. Prefer fixing types or adding `# @type var` / `#: T` annotations over `# steep:ignore`; add `# steep:ignore` only where Steep reports a diagnostic. Strict mode fails the build on `Ruby::RedundantIgnoreComment`, so never add a speculative ignore and remove ones that become redundant.
 6. Don't loosen `Steep::Diagnostic::Ruby.strict` or add `ignore` entries to the `Steepfile`.
 7. New third-party gem used in `lib/`: add it to `rbs_collection.yaml` (and `sig/manifest.yml` for stdlib) or write a minimal stub in `sig/vendor/`.
 8. Verify with `bundle exec rbs collection install && bundle exec rake steep:check`; for signature/runtime mismatches run the specs under RBS runtime testing (command in `.github/workflows/typecheck-runtime.yml`).
@@ -34,7 +35,7 @@ paths:
 
 ## Recommendations (proposed, not yet project policy)
 1. Make the runtime type-check CI job blocking (drop `--failure-exit-code=0`) once current violations are fixed.
-2. Reduce the ~150 `# steep:ignore` in `client.rb` with a typed config accessor (e.g. per-key typed readers or an RBS overload table for `Config#[]`).
+2. Type `config['...']` lookups (`Config#[]` returns `untyped`, so `Client` keyword defaults are unchecked) with a typed config accessor (e.g. per-key typed readers or an RBS overload table for `Config#[]`).
 3. Remove duplicate entries in `rbs_collection.yaml` (`redis-client` and `securerandom` are listed twice) and pin the `gem_rbs_collection` revision instead of `main` for reproducible checks.
 4. Rename `sig/redis_queued_locks/acquier.rbs` to `acquirer.rbs` in a dedicated change.
 5. Replace remaining `untyped` in signatures with precise unions or interfaces where the value set is known (e.g. strategy symbols as `:queued | :random`).

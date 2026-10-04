@@ -39,7 +39,7 @@ This is a deliberate framework-level decision, **not** something to refactor int
 ## How it is applied (layer by layer)
 | Layer | Style |
 |---|---|
-| `Client` public methods | Positional subject (`lock_name`) + long keyword list with defaults from `config['...']` (`# steep:ignore`) or literals; trailing `&block`. Paired `x` / `x!` methods duplicate the full keyword list (no `**kwargs` delegation). |
+| `Client` public methods | Positional subject (`lock_name`) + long keyword list with defaults from `config['...']` or literals; trailing `&block`. Paired `x` / `x!` methods duplicate the full keyword list (no `**kwargs` delegation). |
 | `Client` → `Acquirer` | Explicit forwarding with Ruby 3.1 shorthand (`ttl:`, `queue_ttl:`); runtime identity values injected here (`process_id:`, `thread_id:`, `fiber_id:`, `ractor_id:`). |
 | `AcquireLock.acquire_lock` | Required keywords without defaults (`ttl:`, `timeout:`, ...): defaults live only in `Client`. |
 | Other `Acquirer::*`, mixins, visitors | Positional parameters in a fixed, documented order (subject, data, observability tail) for the cheapest possible internal calls. |

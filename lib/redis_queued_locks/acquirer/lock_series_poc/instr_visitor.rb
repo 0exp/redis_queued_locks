@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 # NOTE: Lock Series PoC
-# steep:ignore
 # @api private
 # @since 1.16.1
 module RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor # steep:ignore
@@ -48,4 +47,3 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor # steep:ignore
     end
   end
 end
-# steep:ignore

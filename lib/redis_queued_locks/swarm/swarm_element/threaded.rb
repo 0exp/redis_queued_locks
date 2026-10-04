@@ -182,9 +182,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
           main_loop_alive = main_loop != nil && main_loop.alive?
           # steep:ignore:end
 
-          # steep:ignore:start
           main_loop_state = (main_loop == nil) ? 'non_initialized' : thread_state(main_loop)
-          # steep:ignore:end
 
           # steep:ignore:start
           swarm_element_results.push({ alive: main_loop_alive, state: main_loop_state })

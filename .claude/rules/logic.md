@@ -27,7 +27,7 @@ Related rule files (loaded for narrower paths):
   `@param name [Type]`, `@option`, `@return [Type]`, blank `#` line, then `@api public|private`, `@since X.Y.Z`, optional `@version X.Y.Z` (latest behavior change).
 - Operations are stateless modules with `class << self` functions; dependencies (`redis_client`, logger, instrumenter, sampling options) are passed as explicit args, never read from globals.
 - Public API results are hashes `{ ok: Boolean, result: Symbol|Hash }` (`Client`, `Acquirer::*`, `Swarm` facade actions); `Client` `!` methods raise `RedisQueuedLocks::*Error`. Internal swarm element APIs return bare scalars/primitives (see `swarm.md`).
-- `Client` methods only fill defaults from `config['...']` (trailing `# steep:ignore`) and delegate to `Acquirer::*` / `Swarm`.
+- `Client` methods only fill defaults from `config['...']` and delegate to `Acquirer::*` / `Swarm`.
 - Redis keys come only from `RedisQueuedLocks::Resource.prepare_*` helpers and its `*_PATTERN` / `SWARM_KEY` constants.
 - Config: `setting('key', default)` + `validate('key') { |val| ... }` in `config.rb`; dotted keys for nested groups (`swarm.flush_zombies.zombie_ttl`); units in a trailing `# NOTE: in milliseconds` comment.
 - Errors: subclasses in `errors.rb`, written as `class XError < Error; end` (not `Class.new`) so RBS/Steep can see the superclass.

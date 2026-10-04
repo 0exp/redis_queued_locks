@@ -13,7 +13,11 @@ require 'rubocop-thread_safety'
 
 # NOTE: Ruby sources and RBS signatures are linted by separate runs with separate configs:
 #   Ruby cops (and the project index they use) must not see RBS signatures;
+desc 'Run RuboCop for Ruby sources'
 RuboCop::RakeTask.new('rubocop:ruby') do |t|
+  # NOTE: replace the default "Running RuboCop..." message (printed when verbose);
+  t.verbose = false
+  puts 'Running RuboCop (Ruby sources)...'
   config_path = File.expand_path(File.join('.rubocop.yml'), __dir__)
   t.options = [
     '--config', config_path,
@@ -24,7 +28,11 @@ RuboCop::RakeTask.new('rubocop:ruby') do |t|
   ]
 end
 
+desc 'Run RuboCop for RBS signatures and inline RBS annotations'
 RuboCop::RakeTask.new('rubocop:rbs') do |t|
+  # NOTE: replace the default "Running RuboCop..." message (printed when verbose);
+  t.verbose = false
+  puts 'Running RuboCop (RBS signatures and inline RBS annotations)...'
   config_path = File.expand_path(File.join('.rubocop.rbs.yml'), __dir__)
   t.options = [
     '--config', config_path,
