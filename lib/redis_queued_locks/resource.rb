@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.0.0
+# rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Resource
   # @return [String]
   #
@@ -157,13 +158,25 @@ module RedisQueuedLocks::Resource
 
     # Mode of the lock requests stored in the given lock queue.
     #
-    # @param lock_queue [String] Write lock queue (`rql:lock_queue:*`) or read lock queue.
-    # @return [String] `'read'` or `'write'`
+    # @param lock_queue [String]
+    #   Write lock queue (`rql:lock_queue:*`) or read lock queue (`rql:lock_read_queue:*`).
+    # @return [String,NilClass]
+    #   - `'write'` for the write lock queue, `'read'` for the read lock queue;
+    #   - `nil` for any other key (unreachable: lock queues are always passed consistently);
     #
     # @api private
     # @since 1.18.0
     def lock_queue_rw_mode(lock_queue)
-      lock_queue.start_with?('rql:lock_read_queue:') ? 'read' : 'write'
+      # NOTE:
+      #   - `start_with?` instead of regexp `when`-matchers: no MatchData allocations;
+      #   - write lock queues are checked first: they are met more often than read lock queues;
+      case
+      when lock_queue.start_with?('rql:lock_queue:') then 'write'
+      when lock_queue.start_with?('rql:lock_read_queue:') then 'read'
+      else
+        # NOTE: unreachable: the logic always passes a consistent lock queue (read or write)
+        nil
+      end
     end
 
     # @param lock_readers_key [String]
@@ -335,3 +348,4 @@ module RedisQueuedLocks::Resource
     end
   end
 end
+# rubocop:enable Metrics/ModuleLength

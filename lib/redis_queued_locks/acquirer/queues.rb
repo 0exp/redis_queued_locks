@@ -69,8 +69,10 @@ module RedisQueuedLocks::Acquirer::Queues
         # Step X: iterate over each lock queue and extract their info
         # @type var seeded_queues: Set[Hash[Symbol,untyped]]
         lock_queues.each do |lock_queue|
-          # NOTE: (RW) the mode of the requests of the queue (`'read'` or `'write'`)
-          rw_mode = RedisQueuedLocks::Resource.lock_queue_rw_mode(lock_queue)
+          # NOTE:
+          #   - (RW) the mode of the requests of the queue (`'read'` or `'write'`);
+          #   - lock queues are scanned by the lock queue patterns, so the mode is never `nil`;
+          rw_mode = RedisQueuedLocks::Resource.lock_queue_rw_mode(lock_queue) #: String
 
           # Step 1: extract lock queue info from reids
           queue_info = redis_client.pipelined do |pipeline|

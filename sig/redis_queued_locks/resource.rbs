@@ -30,7 +30,7 @@ module RedisQueuedLocks
     def self.prepare_read_lock_queue: (String lock_name) -> String
     def self.prepare_lock_readers: (String lock_name) -> String
     def self.prepare_read_lock_key: (String lock_name, String acquirer_id) -> String
-    def self.lock_queue_rw_mode: (String lock_queue) -> String
+    def self.lock_queue_rw_mode: (String lock_queue) -> String?
     def self.lock_name_from_readers: (String lock_readers_key) -> String
     def self.lock_key_from_readers: (String lock_readers_key) -> String
     def self.host_identifier_from_acquirer: (String acquirer_id) -> String
