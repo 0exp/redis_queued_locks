@@ -22,7 +22,7 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
     #
     # @api private
     # @since 1.0.0
-    # @version 1.6.0
+    # @version 1.18.0
     def clear_dead_requests(
       redis_client,
       scan_size,
@@ -66,10 +66,18 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
     #
     # @api private
     # @since 1.0.0
+    # @version 1.18.0
     def each_lock_queue(redis_client, scan_size, &block)
       redis_client.scan(
         'MATCH',
         RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
+        count: scan_size,
+        &block
+      )
+      # NOTE: (RW) read lock queues
+      redis_client.scan(
+        'MATCH',
+        RedisQueuedLocks::Resource::READ_LOCK_QUEUE_PATTERN,
         count: scan_size,
         &block
       )

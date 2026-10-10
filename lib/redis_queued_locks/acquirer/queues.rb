@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.0.0
+# @version 1.18.0
 module RedisQueuedLocks::Acquirer::Queues
   class << self
     # @param redis_client [RedisClient]
@@ -23,9 +24,11 @@ module RedisQueuedLocks::Acquirer::Queues
     # @param redis_client [RedisClient]
     # @param scan_size [Integer]
     # @return [Set<String>]
+    #   - (RW) queues of read lock requests are included;
     #
     # @api private
     # @since 1.0.0
+    # @version 1.18.0
     def scan_queues(redis_client, scan_size)
       Set.new.tap do |lock_queues|
         # @type var lock_queues: Set[String]
@@ -38,21 +41,37 @@ module RedisQueuedLocks::Acquirer::Queues
           # @type var lock_queue: String
           lock_queues.add(lock_queue)
         end
+
+        # NOTE: (RW) queues of read lock requests
+        redis_client.scan(
+          'MATCH',
+          RedisQueuedLocks::Resource::READ_LOCK_QUEUE_PATTERN,
+          count: scan_size
+        ) do |read_lock_queue|
+          # TODO: reduce unnecessary iterations
+          # @type var read_lock_queue: String
+          lock_queues.add(read_lock_queue)
+        end
       end
     end
 
     # @param redis_client [RedisClient]
     # @param lock_queues [Set<String>]
     # @return [Set<Hash<Symbol,Any>>]
+    #   - each request: `{ 'acq_id' => String, 'score' => Float, 'rw_mode' => 'read'/'write' }`;
     #
     # @api private
     # @since 1.0.0
+    # @version 1.18.0
     def extract_queues_info(redis_client, lock_queues)
       # TODO: refactor with RedisQueuedLocks::Acquier::QueueInfo
       Set.new.tap do |seeded_queues|
         # Step X: iterate over each lock queue and extract their info
         # @type var seeded_queues: Set[Hash[Symbol,untyped]]
         lock_queues.each do |lock_queue|
+          # NOTE: (RW) the mode of the requests of the queue (`'read'` or `'write'`)
+          rw_mode = RedisQueuedLocks::Resource.lock_queue_rw_mode(lock_queue)
+
           # Step 1: extract lock queue info from reids
           queue_info = redis_client.pipelined do |pipeline|
             pipeline.call('EXISTS', lock_queue)
@@ -64,14 +83,16 @@ module RedisQueuedLocks::Acquirer::Queues
             zrange_cmd_res = result[1]
 
             if exists_cmd_res == 1 # Step 2.X: lock queue existed during the piepline invocation
-              zrange_cmd_res.map { |val| { 'acq_id' => val[0], 'score' => val[1] } }
+              zrange_cmd_res.map do |val|
+                { 'acq_id' => val[0], 'score' => val[1], 'rw_mode' => rw_mode }
+              end
             else
               # Step 2.Y: lock queue did not exist during the pipeline invocation
-              [] #: Array[Hash[String,Float]]
+              [] #: Array[Hash[String,String|Float]]
             end
           end
 
-          # @type var queue_info: Array[Hash[String,Float]]
+          # @type var queue_info: Array[Hash[String,String|Float]]
 
           # Step 3: push the lock queue info to the result store
           seeded_queues << {

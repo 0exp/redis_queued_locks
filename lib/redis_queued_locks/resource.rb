@@ -21,17 +21,30 @@ module RedisQueuedLocks::Resource
   # @since 1.0.0
   LOCK_QUEUE_PATTERN = 'rql:lock_queue:*'
 
+  # NOTE:
+  #   - read/write keys use their own prefixes (not suffixes of the lock name) cuz the lock name
+  #     is an arbitrary string: `rql:lock_queue:<name>:read` collides with the queue of a lock
+  #     named "<name>:read";
+  #   - new prefixes are not matched by LOCK_PATTERN/LOCK_QUEUE_PATTERN
+  #     (`rql:lock_` vs `rql:lock:`) but are matched by KEY_PATTERN;
+  #   - write lock requests use the classic lock queue (LOCK_QUEUE_PATTERN);
   # @return [String]
   #
   # @api private
-  # @since ?.?.?
-  READ_LOCK_QUEUE_PATTERN = 'rql:lock_queue:*:read'
+  # @since 1.18.0
+  READ_LOCK_QUEUE_PATTERN = 'rql:lock_read_queue:*'
 
   # @return [String]
   #
   # @api private
-  # @since ?.?.?
-  WRITE_LOCK_QUEUE_PATTERN = 'rql:lock_queue:*:write'
+  # @since 1.18.0
+  LOCK_READERS_PATTERN = 'rql:lock_readers:*'
+
+  # @return [String]
+  #
+  # @api private
+  # @since 1.18.0
+  READ_LOCK_PATTERN = 'rql:lock_reader:*'
 
   # @return [String]
   #
@@ -105,22 +118,98 @@ module RedisQueuedLocks::Resource
       "rql:lock_queue:#{lock_name}"
     end
 
+    # Queue of read lock requests (write lock requests use the classic lock queue).
+    #
     # @param lock_name [String]
     # @return [String]
     #
     # @api private
-    # @api ?.?.?
+    # @since 1.18.0
     def prepare_read_lock_queue(lock_name)
-      "rql:lock_queue:#{lock_name}:read"
+      "rql:lock_read_queue:#{lock_name}"
     end
 
+    # Registry of read lock holders: a sorted set where the member is an acquirer id and
+    # the score is the read lock expiration time (redis server time, epoch milliseconds).
+    #
     # @param lock_name [String]
     # @return [String]
     #
     # @api private
-    # @api ?.?.?
-    def prepare_write_lock_queue(lock_name)
-      "rql:lock_queue:#{lock_name}:write"
+    # @since 1.18.0
+    def prepare_lock_readers(lock_name)
+      "rql:lock_readers:#{lock_name}"
+    end
+
+    # Read lock data of the concrete acquirer: a hash with the same structure as the write lock
+    # (acquirer, host, timestamp, ttl, meta, reentrant lock data). It is a data carrier only:
+    # the readers registry is the source of truth for the read lock existence.
+    #
+    # @param lock_name [String]
+    # @param acquirer_id [String]
+    # @return [String]
+    #
+    # @api private
+    # @since 1.18.0
+    def prepare_read_lock_key(lock_name, acquirer_id)
+      "rql:lock_reader:#{lock_name}:#{acquirer_id}"
+    end
+
+    # Mode of the lock requests stored in the given lock queue.
+    #
+    # @param lock_queue [String] Write lock queue (`rql:lock_queue:*`) or read lock queue.
+    # @return [String] `'read'` or `'write'`
+    #
+    # @api private
+    # @since 1.18.0
+    def lock_queue_rw_mode(lock_queue)
+      lock_queue.start_with?('rql:lock_read_queue:') ? 'read' : 'write'
+    end
+
+    # @param lock_readers_key [String]
+    # @return [String]
+    #
+    # @api private
+    # @since 1.18.0
+    def lock_name_from_readers(lock_readers_key)
+      lock_readers_key.delete_prefix('rql:lock_readers:')
+    end
+
+    # @param lock_readers_key [String]
+    # @return [String]
+    #
+    # @api private
+    # @since 1.18.0
+    def lock_key_from_readers(lock_readers_key)
+      "rql:lock:#{lock_readers_key.delete_prefix('rql:lock_readers:')}"
+    end
+
+    # Host identifier of the given acquirer
+    # (acquirer and host identifiers are built from the same process/thread/ractor/identity data).
+    #
+    # @param acquirer_id [String]
+    # @return [String,NilClass] nil for malformed acquirer identifiers
+    #
+    # @api private
+    # @since 1.18.0
+    def host_identifier_from_acquirer(acquirer_id)
+      return nil unless acquirer_id.start_with?('rql:acq:')
+
+      # NOTE: identity is the last part and can contain any symbols (so split is limited by 5 parts)
+      process_id, thread_id, _fiber_id, ractor_id, identity =
+        acquirer_id.delete_prefix('rql:acq:').split('/', 5)
+      return nil if process_id == nil || thread_id == nil || ractor_id == nil || identity == nil
+
+      host_identifier(process_id, thread_id, ractor_id, identity)
+    end
+
+    # @param redis_time [Array<String>] Result of the redis `TIME` command (seconds, microseconds).
+    # @return [Integer] Redis server time (epoch, in milliseconds).
+    #
+    # @api private
+    # @since 1.18.0
+    def redis_time_ms(redis_time)
+      (Integer(redis_time[0]) * 1_000) + (Integer(redis_time[1]) / 1_000)
     end
 
     # @return [Float] Redis's <Set> score that is calculated from the time (epoch) as a float.

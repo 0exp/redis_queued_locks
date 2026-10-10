@@ -11,11 +11,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor
     # @param acquirer_id [String]
     # @param host_id [String]
     # @param access_strategy [Symbol]
+    # @param rw_mode [Symbol]
     # @return [void]
     #
     # @api private
     # @since 1.7.0
-    # @version 1.9.0
+    # @version 1.18.0
     def expire_lock(
       logger,
       log_sampled,
@@ -23,7 +24,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor
       queue_ttl,
       acquirer_id,
       host_id,
-      access_strategy
+      access_strategy,
+      rw_mode
     )
       return unless log_sampled
 
@@ -33,7 +35,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor
         "queue_ttl => #{queue_ttl} " \
         "acq_id => '#{acquirer_id}' " \
         "hst_id => '#{host_id}' " \
-        "acs_strat => '#{access_strategy}'"
+        "acs_strat => '#{access_strategy}' " \
+        "rw_mode => '#{rw_mode}'"
       end rescue nil
     end
 
@@ -45,11 +48,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor
     # @param acquirer_id [String]
     # @param host_id [String]
     # @param access_strategy [Symbol]
+    # @param rw_mode [Symbol]
     # @return [void]
     #
     # @api private
     # @since 1.7.0
-    # @version 1.9.0
+    # @version 1.18.0
     def decrease_lock(
       logger,
       log_sampled,
@@ -58,7 +62,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor
       queue_ttl,
       acquirer_id,
       host_id,
-      access_strategy
+      access_strategy,
+      rw_mode
     )
       return unless log_sampled
 
@@ -69,7 +74,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire::LogVisitor
         "queue_ttl => #{queue_ttl} " \
         "acq_id => '#{acquirer_id}' " \
         "hst_id => '#{host_id}' " \
-        "acs_strat => '#{access_strategy}'"
+        "acs_strat => '#{access_strategy}' " \
+        "rw_mode => '#{rw_mode}'"
       end rescue nil
     end
   end

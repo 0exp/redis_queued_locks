@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.3.0
-# @version 1.7.0
+# @version 1.18.0
 module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   require_relative 'yield_expire/log_visitor'
 
@@ -18,6 +18,11 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @param redis [RedisClient] Redis connection.
   # @param logger [::Logger,#debug] Logger object.
   # @param lock_key [String] Obtained lock key that should be expired.
+  # @param lock_readers_key [String] Registry of read lock holders.
+  # @param read_lock_key [String] Read lock data of the current acquirer.
+  # @param rw_mode [Symbol]
+  #   - The mode of the obtained lock (`:read` or `:write`);
+  #   - `:read` => only the read lock of the current acquirer is released/decreased;
   # @param acquirer_id [String] Acquirer identifier.
   # @param host_id [String] Host identifier.
   # @param access_strategy [Symbol] Lock obtaining strategy.
@@ -38,12 +43,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   #
   # @api private
   # @since 1.3.0
-  # @version 1.9.0
+  # @version 1.18.0
   # rubocop:disable Metrics/MethodLength
   def yield_expire(
     redis,
     logger,
     lock_key,
+    lock_readers_key,
+    read_lock_key,
+    rw_mode,
     acquirer_id,
     host_id,
     access_strategy,
@@ -97,9 +105,17 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
     if should_expire # TODO: comment all cases/examples when should_expire is true
       LogVisitor.expire_lock(
         logger, log_sampled, lock_key,
-        queue_ttl, acquirer_id, host_id, access_strategy
+        queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
       )
-      redis.call('EXPIRE', lock_key, '0')
+      if rw_mode == :read
+        # NOTE: release only the read lock of the current acquirer (other readers keep working)
+        redis.multi do |transact|
+          transact.call('ZREM', lock_readers_key, acquirer_id)
+          transact.call('DEL', read_lock_key)
+        end
+      else
+        redis.call('EXPIRE', lock_key, '0')
+      end
     elsif should_decrease # TODO: comment all cases/examples when should_expire is true
       finish_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)
       # @type var initial_time: Integer
@@ -110,11 +126,19 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
       if decreased_ttl > 0
         LogVisitor.decrease_lock(
           logger, log_sampled, lock_key,
-          decreased_ttl, queue_ttl, acquirer_id, host_id, access_strategy
+          decreased_ttl, queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
         )
-        # NOTE:# NOTE: EVAL signature -> <lua script>, (number of keys), *(keys), *(arguments)
-        redis.call('EVAL', DECREASE_LOCK_PTTL, 1, lock_key, decreased_ttl)
-        # TODO: upload scripts to the redis
+        if rw_mode == :read
+          # NOTE:
+          #   - decrease the read lock expiration of the current acquirer;
+          #   - XX => do nothing if the read lock is already expired and removed from the registry;
+          #   - the read lock data TTL is not decreased (it is not used without the read lock);
+          redis.call('ZADD', lock_readers_key, 'XX', 'INCR', -decreased_ttl, acquirer_id)
+        else
+          # NOTE:# NOTE: EVAL signature -> <lua script>, (number of keys), *(keys), *(arguments)
+          redis.call('EVAL', DECREASE_LOCK_PTTL, 1, lock_key, decreased_ttl)
+          # TODO: upload scripts to the redis
+        end
       end
     end
   end

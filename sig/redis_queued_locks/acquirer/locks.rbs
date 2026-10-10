@@ -1,10 +1,11 @@
+use RedisQueuedLocks as RQL
 use RedisClient as RC
 
 module RedisQueuedLocks
   module Acquirer
     module Locks
       type lockList = Set[String]
-      type locksInfo = Set[{ lock: String, status: Symbol, info: Hash[String,String|Float|Integer] }]
+      type locksInfo = Set[{ lock: String, status: Symbol, info: RQL::Acquirer::LockInfo::lockInfo }]
       type locks = lockList | locksInfo
 
       def self.locks: (RC::client redis_client, scan_size: Integer, with_info: bool) -> locks

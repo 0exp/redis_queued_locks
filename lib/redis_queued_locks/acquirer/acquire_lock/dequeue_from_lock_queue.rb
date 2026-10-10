@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.7.0
+# @version 1.18.0
 module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
   require_relative 'dequeue_from_lock_queue/log_visitor'
 
@@ -9,9 +10,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
   # @param logger [::Logger,#debug]
   # @param lock_key [String]
   # @param read_write_mode [Symbol]
-  # @param lock_key_queue [String]
-  # @param read_lock_key_queue [String]
-  # @param write_lock_key_queue [String]
+  # @param lock_key_queue [String] Queue of write lock requests.
+  # @param read_lock_key_queue [String] Queue of read lock requests.
   # @param queue_ttl [Integer]
   # @param acquirer_id [String]
   # @param host_id [String]
@@ -22,7 +22,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
   #
   # @api private
   # @since 1.7.0
-  # @version 1.13.0
+  # @version 1.18.0
   def dequeue_from_lock_queue(
     redis,
     logger,
@@ -30,7 +30,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
     read_write_mode,
     lock_key_queue,
     read_lock_key_queue,
-    write_lock_key_queue,
     queue_ttl,
     acquirer_id,
     host_id,
@@ -38,12 +37,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue
     log_sampled,
     instr_sampled
   )
+    # NOTE: the request lives in the queue of the requested mode
+    request_queue = (read_write_mode == :read) ? read_lock_key_queue : lock_key_queue
+
     # @type var result: Integer
-    result = redis.call('ZREM', lock_key_queue, acquirer_id)
+    result = redis.call('ZREM', request_queue, acquirer_id)
 
     LogVisitor.dequeue_from_lock_queue(
       logger, log_sampled,
-      lock_key, queue_ttl, acquirer_id, host_id, access_strategy
+      lock_key, queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
     )
 
     { ok: true, result: result }

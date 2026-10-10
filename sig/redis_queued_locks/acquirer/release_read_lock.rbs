@@ -3,7 +3,7 @@ use RedisClient as RC
 
 module RedisQueuedLocks
   module Acquirer
-    module ReleaseLock
+    module ReleaseReadLock
       extend RQL::Utilities
 
       type releaseResult = {
@@ -11,18 +11,19 @@ module RedisQueuedLocks
         result: {
           rel_time: Integer|Float,
           rel_key: String,
-          rel_queue: String,
-          queue_res: Symbol,
+          rel_acq_id: String,
           lock_res: Symbol
         }
       }
-      def self.release_lock: (
+      def self.release_read_lock: (
         RC::client redis,
         String lock_name,
+        String acquirer_id,
         RQL::instrObj instrumenter,
         RQL::loggerObj logger,
+        untyped? instrument,
         bool log_sampling_enabled,
-        Integer log_samplingPercent,
+        Integer log_sampling_percent,
         RQL::Logging::samplerObj log_sampler,
         bool log_sample_this,
         bool instr_sampling_enabled,
@@ -31,14 +32,12 @@ module RedisQueuedLocks
         bool instr_sample_this
       ) -> releaseResult
 
-      type fullReleaseResult = { ok: bool, result: { queue: Symbol, lock: Symbol } }
-      private def self.fully_release_lock: (
+      type fullReleaseResult = { ok: bool, result: { lock: Symbol } }
+      private def self.fully_release_read_lock: (
         RC::client redis,
-        String lock_name,
-        String lock_key,
-        String lock_key_queue,
-        String read_lock_key_queue,
-        String lock_readers_key
+        String lock_readers_key,
+        String read_lock_key,
+        String acquirer_id
       ) -> fullReleaseResult
     end
   end

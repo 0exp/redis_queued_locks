@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.0.0
+# @version 1.18.0
 module RedisQueuedLocks::Acquirer::Locks
   class << self
     # @param redis_client [RedisClient]
@@ -23,9 +24,11 @@ module RedisQueuedLocks::Acquirer::Locks
     # @param redis_client [RedisClient]
     # @param scan_size [Integer]
     # @return [Set<String>]
+    #   - (RW) read locks are represented by their lock keys (`rql:lock:<lock_name>`) too;
     #
     # @api private
     # @since 1.0.0
+    # @version 1.18.0
     def scan_locks(redis_client, scan_size)
       Set.new.tap do |lock_keys|
         redis_client.scan(
@@ -36,6 +39,16 @@ module RedisQueuedLocks::Acquirer::Locks
           # TODO: reduce unnecessary iterations
           lock_keys.add(lock_key)
         end
+
+        # NOTE: (RW) read locks (readers registries can contain expired read locks only)
+        redis_client.scan(
+          'MATCH',
+          RedisQueuedLocks::Resource::LOCK_READERS_PATTERN,
+          count: scan_size
+        ) do |lock_readers_key|
+          # TODO: reduce unnecessary iterations
+          lock_keys.add(RedisQueuedLocks::Resource.lock_key_from_readers(lock_readers_key))
+        end
       end
     end
 
@@ -45,7 +58,7 @@ module RedisQueuedLocks::Acquirer::Locks
     #
     # @api private
     # @since 1.0.0
-    # @version 1.9.0
+    # @version 1.18.0
     # rubocop:disable Metrics/MethodLength
     def extract_locks_info(redis_client, lock_keys)
       # TODO: refactor with RedisQueuedLocks::Acquier::LockInfo
@@ -58,10 +71,17 @@ module RedisQueuedLocks::Acquirer::Locks
         lock_keys.each do |lock_key|
           # Step 1: extract lock info from redis
 
-          # @type var lock_info: Hash[String,String|Float|Integer]
+          # NOTE: (RW) readers registry of the lock
+          lock_readers_key = RedisQueuedLocks::Resource.prepare_lock_readers(
+            lock_key.delete_prefix('rql:lock:')
+          )
+
+          # @type var lock_info: Hash[String,String|Float|Integer|Array[RedisQueuedLocks::Acquirer::LockInfo::readerInfo]]
           lock_info = redis_client.pipelined do |pipeline|
             pipeline.call('HGETALL', lock_key)
             pipeline.call('PTTL', lock_key)
+            pipeline.call('TIME')
+            pipeline.call('ZRANGE', lock_readers_key, '0', '-1', 'WITHSCORES')
           end.yield_self do |result| # Step 2: format the result
             # Step 2.X: lock is released
             if result == nil
@@ -73,16 +93,22 @@ module RedisQueuedLocks::Acquirer::Locks
               #   - result[1] (PTTL) (Integer)
               #     => (without any mutation, integer is atomic)
 
-              # @type var result: [Hash[String,String|Float|Integer],Integer]
+              # rubocop:disable Layout/LineLength
+              # @type var result: [Hash[String,String|Float|Integer],Integer,Array[String],Array[[String, Float]]]
+              # rubocop:enable Layout/LineLength
               hget_cmd_res = result[0] # NOTE: HGETALL result (hash)
               pttl_cmd_res = result[1] # NOTE: PTTL result (integer)
 
-              # Step 2.Y: lock is released
+              # Step 2.Y: write lock is released
               if hget_cmd_res == {} || pttl_cmd_res == -2 # NOTE: key does not exist
-                {} #: Hash[String,String|Float|Integer]
+                # NOTE: (RW) read locks (or nothing if there are no live read locks)
+                RedisQueuedLocks::Acquirer::LockInfo.read_lock_info(
+                  redis_client, lock_key.delete_prefix('rql:lock:'), lock_key, result[2], result[3]
+                ) || {} #: Hash[String,String|Float|Integer]
               else
                 # Step 2.Z: lock is alive => format received info + add additional rem_ttl info
                 hget_cmd_res.tap do |lock_data|
+                  lock_data['rw_mode'] = 'write'
                   lock_data['ts'] = Float(lock_data['ts'])
                   lock_data['ini_ttl'] = Integer(lock_data['ini_ttl'])
                   lock_data['rem_ttl'] = ((pttl_cmd_res == -1) ? Float::INFINITY : pttl_cmd_res)

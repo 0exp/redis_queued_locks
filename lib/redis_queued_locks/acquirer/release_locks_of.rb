@@ -2,12 +2,16 @@
 
 # @api private
 # @since 1.14.0
+# @version 1.18.0
+# rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::ReleaseLocksOf
   # @since 1.14.0
   extend RedisQueuedLocks::Utilities
 
+  # rubocop:disable Metrics/ClassLength
   class << self
-    # Release all queues and locks that belong to the given host and its associated acquirer.
+    # Release all queues and locks (write locks and read locks) that belong to the given host
+    # and its associated acquirer.
     #
     # @param refused_host_id [String]
     #   A host whose locks and queues should be released.
@@ -84,7 +88,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     #
     # @api private
     # @since 1.14.0
-    # @version 1.15.0
+    # @version 1.18.0
     # rubocop:disable Metrics/MethodLength
     def release_locks_of(
       refused_host_id,
@@ -164,6 +168,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     #
     # @api private
     # @since 1.14.0
+    # @version 1.18.0
     # rubocop:disable Metrics/MethodLength
     def fully_release_locks_of(
       refused_host_id,
@@ -203,6 +208,30 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
           rel_key_cnt += refused_locks.size
         end
 
+        # Step A (RW): drop read locks of the passed host/acquirer
+        #   - read locks store acquirer ids only (the host is a part of the acquirer id);
+        if RedisQueuedLocks::Resource.host_identifier_from_acquirer(refused_acquirer_id) ==
+           refused_host_id
+          rconn.scan(
+            'MATCH',
+            RedisQueuedLocks::Resource::LOCK_READERS_PATTERN,
+            count: lock_scan_size
+          ) do |lock_readers_key|
+            res = rconn.call('ZREM', lock_readers_key, refused_acquirer_id)
+            next if res == 0
+
+            rel_key_cnt += 1
+            # NOTE: drop the read lock data
+            rconn.call(
+              'DEL',
+              RedisQueuedLocks::Resource.prepare_read_lock_key(
+                RedisQueuedLocks::Resource.lock_name_from_readers(lock_readers_key),
+                refused_acquirer_id
+              )
+            )
+          end
+        end
+
         # Step B: drop passed host/acquirer from lock queues
         rconn.scan(
           'MATCH',
@@ -212,10 +241,21 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
           res = rconn.call('ZREM', lock_queue, refused_acquirer_id)
           tch_queue_cnt += 1 if res != 0
         end
+
+        # Step B (RW): drop passed host/acquirer from read lock queues
+        rconn.scan(
+          'MATCH',
+          RedisQueuedLocks::Resource::READ_LOCK_QUEUE_PATTERN,
+          count: queue_scan_size
+        ) do |read_lock_queue|
+          res = rconn.call('ZREM', read_lock_queue, refused_acquirer_id)
+          tch_queue_cnt += 1 if res != 0
+        end
       end
 
       { ok: true, result: { rel_key_cnt:, tch_queue_cnt: } }
     end
   end
-  # rubocop:enable Metrics/MethodLength
+  # rubocop:enable Metrics/MethodLength, Metrics/ClassLength
 end
+# rubocop:enable Metrics/ModuleLength

@@ -1,4 +1,58 @@
 ## [Unreleased]
+### Added
+- Read/Write locks: `read_write_mode:` attribute of `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (`:write` by default):
+  - `:write` - exclusive lock (the classic RQL lock): waits for the write lock and for all read locks;
+  - `:read` - shared lock: waits for the write lock only (read locks of different acquirers work in parallel);
+  - `:queued` access strategy orders read and write lock requests in FIFO between modes (writers are not starved by readers);
+  - `:random` access strategy ignores lock queues (a continuous flow of readers can starve writers);
+  - read locks are stored in `rql:lock_readers:<lock_name>` (`ZSET`: acquirer id => expiration time in Redis time),
+    read lock requests - in `rql:lock_read_queue:<lock_name>`, read lock data - in `rql:lock_reader:<lock_name>:<acquirer_id>`
+    (the same structure as the write lock: acquirer, host, timestamp, ttl, `:meta`, reentrant lock data);
+    write locks and write lock requests use the classic keys;
+  - mutual exclusion is based on optimistic transactions (`WATCH`/`MULTI`, no Lua): readers watch the write lock key,
+    writers watch the write lock key and the read locks key (readers never invalidate transactions of each other);
+  - reentrant locks: read lock request under the obtained lock works as a reentrant lock of the obtained lock;
+    read-to-write lock upgrade fails with `RedisQueuedLocks::ConflictLockObtainError` (`:conflict_lock_upgrade`)
+    for `:work_through`/`:extendable_work_through` conflict strategies;
+  - `#unlock`, `#clear_locks`, `#clear_locks_of`, `#clear_current_locks`, `#clear_dead_requests`, `#flush_zombies`,
+    `#zombie_locks`, `#zombie_acquirers`, `#zombies_info`, `#locked?`, `#queued?`, `#lock_info`, `#queue_info`,
+    `#locks`, `#locks_info`, `#queues`, `#queues_info` support read locks and read lock requests;
+  - logs: `rw_mode` in the lock logs; new try-lock log events: `exit__write_request_ahead`, `exit__read_request_ahead`,
+    `exit__read_lock_still_obtained`, `single_process_lock_conflict__lock_upgrade`;
+  - instrumentation: `rw_mode` in `lock_obtained`, `reentrant_lock_obtained`, `extendable_reentrant_lock_obtained`,
+    `lock_hold_and_release`, `reentrant_lock_hold_completes` payloads;
+  - `:meta` for read locks (stored in the read lock data of each reader, returned by `#lock_info`/`#locks_info`);
+  - `#lock_series` with `read_write_mode: :read` (PoC): a series of read locks; only read locks obtained by the series
+    are released (reentrant read locks of the outer logic are kept);
+  - `#unlock_read` (aka `#release_read_lock`): releases the read lock of the current acquirer only
+    (new instrumentation event: `redis_queued_locks.explicit_read_lock_release`);
+  - `#extend_lock_ttl`: `read_write_mode:` (`:write` by default) and `identity:` options; `:read` mode extends the read lock
+    of the current acquirer only (an expired read lock or a read lock replaced by a writer is not extended);
+  - `#extend_lock_ttl`: `all_read_locks:` option (`false` by default, `:read` mode only, ignored in `:write` mode):
+    extends all live read locks of the lock (expired read locks are not revived);
+  - RBS: `read_write_mode` is typed as `:read | :write`;
+  - `#queue_info` / `#queues_info`: each lock request has `"rw_mode"` (`"write"` / `"read"`);
+  - `#lock_info` / `#locks_info`: write lock info has `"rw_mode" => "write"` (read locks info - `"rw_mode" => "read"`);
+  - `:meta`: `"rw_mode"` is a reserved lock data key (`RedisQueuedLocks::ArgumentError`), for write and read locks and lock series;
+  - **all processes should use the RQL version with read/write locks** before read locks are used
+    (write locks of older RQL versions do not check read locks);
+### Changed
+- **Breaking**: `#extend_lock_ttl` success result is `{ ok: true, result: { extended_locks_count: Integer } }`
+  instead of `{ ok: true, result: :ttl_extended }` (the number of locks whose TTL is extended: `1` for the write lock
+  and for the own read lock, the number of extended read locks for `all_read_locks: true`);
+  the failure result is unchanged (`{ ok: false, result: :async_expire_or_no_lock }`);
+- Lock acquirement attempt: the lock state is fetched in one pipelined round trip; lock data for
+  `exit__no_first`/`exit__lock_still_obtained` try-lock logs is extracted only when these logs are enabled
+  (previously `HGETALL` was called on every unsuccessful attempt);
+### Fixed
+- `dequeue_from_lock_queue` log: unclosed quote in the `acs_strat` value;
+- `lock_series` PoC:
+  - locks obtained by the failed series are released when the series fails without an exception
+    (`raise_errors: false`); previously they lived till their TTL;
+  - reentrant locks of the series (already obtained by the outer logic of the same acquirer) are not released
+    by the series anymore (previously the outer logic continued to work without its lock);
+  - the series releases only write locks that are still owned by the current acquirer (compare-and-delete):
+    a lock expired during the block and obtained by another acquirer is not deleted anymore;
 
 ## [1.17.0] - 2026-10-04
 ### Changed
