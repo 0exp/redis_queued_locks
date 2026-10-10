@@ -35,6 +35,13 @@ Client (client.rb)                              public API facade
 Every other public method is a thin wrapper: it fills option defaults from `config[...]` and calls
 an `Acquirer::*` module function with `redis_client`.
 
+Operation modules are independent of each other (all `Acquirer::*` except the `AcquireLock` core
+and PoC modules such as `LockSeriesPoC`, which may reuse other modules and `AcquireLock`): no
+cross-calls and no shared RBS types; common logic lives in `Resource`/`Utilities`, similar logic is
+duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatting, `Queues` the
+`QueueInfo` request formatting). Known debt: `AcquireLock::WithAcqTimeout` calls
+`LockInfo`/`QueueInfo` for detailed timeout errors.
+
 ### Client → implementation map
 
 | Client method | Implementation |

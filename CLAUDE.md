@@ -27,6 +27,7 @@ Detailed, path-scoped rules in `.claude/rules/`: `logic.md` (lib, general), `acq
 - Keep `# frozen_string_literal: true` and YARD `@api`/`@since`/`@version` tags.
 - `{ ok:, result: }` is for the public API only (`Client`, `Acquirer::*`, `Swarm` facade actions). Internal swarm element APIs (commands, replies, helpers) use bare scalars/primitives (see `swarm.md`).
 - New operation: `Acquirer::*` module, thin `Client` method (+ `!` variant), RBS, spec.
+- Operation modules behind `Client` methods (all `Acquirer::*` except the `AcquireLock` acquisition core and PoC modules such as `LockSeriesPoC`, which may reuse other modules) are independent: they never call each other or reference each other's RBS types, share logic only via `Resource`/`Utilities`, and duplicate similar logic on purpose (independence over DRY; e.g. `Locks` duplicates the `LockInfo` formatting). Details: `acquirer.md`.
 - New option: `setting` (+ `validate`) in `config.rb`.
 - Dev gems go in `Gemfile`, not the gemspec.
 - Commits (`git.md`): subject only `[<scope>] <summary>` (several features: 1-2 words each, comma-separated), no body; when a step is complete (requirement fully implemented, specs/rubocop/steep green) ask before committing, with the proposed subject and a recap of the changes; an explicit "commit" request needs no extra question; never on `master`, never push.

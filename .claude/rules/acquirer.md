@@ -9,6 +9,13 @@ paths:
 ## Observed style and patterns
 - **Module shape**: `module RedisQueuedLocks::Acquirer::<CamelName>` in `acquirer/<snake_name>.rb`, `# @api private`, a single public entry function inside `class << self` named after the file (`ReleaseLock.release_lock`, `IsLocked.locked?`), helpers under `private` in the same `class << self`.
 - **Utilities**: modules that time or instrument `extend RedisQueuedLocks::Utilities` (gives `clock_gettime`, `run_non_critical`).
+- **Independence of operation modules** (core principle): the modules behind `Client` public methods that don't acquire locks (`ClearDeadRequests`, `ExtendLockTTL`, `IsLocked`, `IsQueued`, `Keys`, `LockInfo`, `Locks`, `QueueInfo`, `Queues`, `ReleaseAllLocks`, `ReleaseLock`, `ReleaseLocksOf`, `ReleaseReadLock`) never call each other and never reference each other's RBS types. They share logic only through `Resource`, `Utilities` and other non-operation helpers; similar logic is duplicated on purpose (independence wins over DRY):
+  - `Locks.extract_locks_info` / `Locks.read_lock_info` duplicate the write/read lock formatting of `LockInfo.lock_info` / `LockInfo.read_lock_info`;
+  - `Queues.extract_queues_info` duplicates the request formatting of `QueueInfo.queue_info`;
+  - each module declares its own RBS aliases (`Locks::lockInfo` / `Locks::readerInfo` mirror `LockInfo::lockInfo` / `LockInfo::readerInfo`); only `Client` signatures reference them.
+  - `AcquireLock` is the lock acquisition core, not an operation module of this list.
+  - PoC modules (`*PoC`, e.g. `LockSeriesPoC`) are not covered by this principle: they may reuse operation modules and the `AcquireLock` core (`LockSeriesPoC` uses `AcquireLock.acquire_lock` and its `YieldExpire` mixin).
+  - Known debt (don't copy): `AcquireLock::WithAcqTimeout` calls `LockInfo.lock_info` / `QueueInfo.queue_info` for detailed timeout errors (its TODO asks to make `AcquireLock` independent of them).
 - **Signatures** (see `arguments.md` for the design rationale):
   - Read-only queries: few positional args `(redis_client, lock_name)`; collection queries use keywords `(redis_client, scan_size:, with_info:)`.
   - Mutating operations: long positional lists ending with the fixed observability tail
@@ -55,7 +62,7 @@ paths:
 8. Measure durations with `clock_gettime` and report ms with `/ 1_000.0).ceil(2)`; use `Time.now.to_f` only for event timestamps.
 9. Wrap every `instrumenter.notify` / logger call in `run_non_critical` (or a visitor) and gate it with `Instrument.should_instrument?` / `Logging.should_log?`; observability must never break locking.
 10. In `AcquireLock`, add behavior as a new step or mixin rather than growing `acquire_lock`; keep the `# Step N.x` comment numbering, update `acq_process` keys consistently, and add a matching `LogVisitor`/`InstrVisitor` method for each new lifecycle event.
-11. When normalizing lock hash fields, follow the `Float()` / `Integer()` conversion pattern; if a new lock field is added, update `lock_info.rb` and `locks.rb` (write lock formatting is duplicated there) and `LockInfo.read_lock_info` (reader data uses the same fields; `locks.rb` reuses it).
+11. When normalizing lock hash fields, follow the `Float()` / `Integer()` conversion pattern; if a new lock field is added, update every copy of the formatting: write locks in `LockInfo.lock_info` and `Locks.extract_locks_info`, readers in `LockInfo.read_lock_info` and `Locks.read_lock_info` (reader data uses the same fields).
 12. Read/write checklist for any change in this directory:
     - lock state checks: write requires no write lock and no **live** readers; read requires no write lock; same-acquirer reader/writer cases go through `conflict_strategy` (read→write upgrade never "works through");
     - WATCH: writers watch the write key + readers registry, readers watch the write key only (never the registry: readers must not abort each other); don't modify a watched key outside MULTI after WATCH (it aborts your own EXEC);
@@ -64,11 +71,11 @@ paths:
     - registry/reader-data TTLs: `PEXPIRE NX` + `PEXPIRE GT` pair to keep max TTL (`GT` alone never sets TTL on a key without one);
     - keep write-only result shapes unchanged; add read keys/fields only when read data exists.
 13. Values used only for logs (e.g. `HGETALL` of lock data) are fetched only when the log is enabled (`(log_sampled && log_lock_try) ? ... : {}`): visitor arguments are evaluated before the visitor's guard.
+14. Keep operation modules independent (see "Independence of operation modules"; PoC modules such as `LockSeriesPoC` are exempt): never call another operation module's function (public or private) or reference its RBS types from an operation module. When similar logic is needed, duplicate it inside the module (same method name and shape as the original copy, with a `NOTE` that it is duplicated on purpose) or move a pure, data-only helper (key names, id parsing, time conversion) to `Resource` / `Utilities`. Helpers used by one module stay `private`. When changing logic that has copies, update every copy in the same change.
 
 ## Recommendations (proposed, not yet project policy)
 Apply to new or touched code; don't refactor existing code for these unless asked.
 1. Load Lua scripts once (`SCRIPT LOAD` + `EVALSHA`, falling back to `EVAL` on `NOSCRIPT`), as the TODO in `extend_lock_ttl.rb` asks.
 2. Prefer indexed lookups over full `SCAN` loops for new features (see TODOs in `release_locks_of.rb`, `locks.rb`, `queues.rb`).
 3. Treat `lock_series_poc.rb` as experimental: don't build new features on it without asking. Its locks are released only through `release_lock_series` (obtained-by-series locks only, owner-checked, on success and on every failure path).
-4. Extract the duplicated write-lock hash normalization in `lock_info.rb` / `locks.rb` (and the identical reader normalization in `LockInfo.read_lock_info`) and queue formatting in `queue_info.rb` / `queues.rb` into shared helpers (their TODOs ask for this).
-5. Unify the observability tail order (`logger, instrumenter` vs `instrumenter, logger` in `release_lock`) when those signatures are next changed.
+4. Unify the observability tail order (`logger, instrumenter` vs `instrumenter, logger` in `release_lock`) when those signatures are next changed.

@@ -64,7 +64,8 @@ module RedisQueuedLocks::Acquirer::Queues
     # @since 1.0.0
     # @version 1.18.0
     def extract_queues_info(redis_client, lock_queues)
-      # TODO: refactor with RedisQueuedLocks::Acquier::QueueInfo
+      # NOTE: the same approach as in `QueueInfo` (duplicated on purpose: public operation modules
+      #   do not reuse each other, they share logic via `Resource`, `Utilities`);
       Set.new.tap do |seeded_queues|
         # Step X: iterate over each lock queue and extract their info
         # @type var seeded_queues: Set[Hash[Symbol,untyped]]

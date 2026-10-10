@@ -101,6 +101,8 @@ module RedisQueuedLocks::Acquirer::LockInfo
     end
     # rubocop:enable Metrics/MethodLength
 
+    private
+
     # Formats live read locks of the lock (expired read locks are ignored).
     #
     # @param redis_client [RedisClient]

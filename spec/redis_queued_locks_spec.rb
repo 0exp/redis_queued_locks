@@ -3175,10 +3175,22 @@ RSpec.describe RedisQueuedLocks do
           })
         })
         expect(client.locks).to include('rql:lock:rw.info')
+        # NOTE: `locks_info` extracts the read lock info by itself (the same format as `lock_info`)
         expect(client.locks_info).to include(match({
           lock: 'rql:lock:rw.info',
           status: :alive,
-          info: hash_including('rw_mode' => 'read')
+          info: {
+            'lock_key' => 'rql:lock:rw.info',
+            'rw_mode' => 'read',
+            'rem_ttl' => be_a(Integer),
+            'readers' => contain_exactly({
+              'acq_id' => reader.value[:result][:acq_id],
+              'hst_id' => reader.value[:result][:hst_id],
+              'ts' => be_a(Float),
+              'ini_ttl' => 10_000,
+              'rem_ttl' => be_a(Integer)
+            })
+          }
         }))
         expect(client.keys).to include('rql:lock_readers:rw.info')
       end

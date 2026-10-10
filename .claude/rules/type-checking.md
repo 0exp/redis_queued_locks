@@ -14,6 +14,7 @@ paths:
 - Common aliases at the top: `use RedisQueuedLocks as RQL`, `use RedisClient as RC`; Redis connections typed as `RC::client`.
 - Shared duck types live in `sig/redis_queued_locks.rbs`: `_Loggable`, `_Instrumentable`, `loggerObj`, `instrObj`; samplers as `RQL::Logging::samplerObj` / `RQL::Instrument::samplerObj`.
 - Result shapes are named record aliases inside the module, e.g. `type extendResult = { ok: bool, result: { extended_locks_count: Integer } | Symbol }`.
+- Each `Acquirer::*` operation module (except PoC modules) declares its own aliases and never references another operation module's aliases (`Locks::lockInfo` / `Locks::readerInfo` mirror `LockInfo::lockInfo` / `LockInfo::readerInfo`); `Client` signatures may reference any of them.
 - Module functions are declared `def self.name: (...) -> T`; long signatures put one param per line with names.
 - Instance variables are declared (`@config_setters: configSetters`) and attr readers typed.
 - Third-party types: `sig/vendor/*.rbs` hand-written stubs (redis_client, active_support, semantic_logger) plus `rbs collection` gems (redis-client, securerandom, timeout, logger, monitor) installed into `.gem_rbs_collection/`.

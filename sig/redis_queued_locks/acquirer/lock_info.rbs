@@ -6,7 +6,7 @@ module RedisQueuedLocks
       type readerInfo = Hash[String,String|Float|Integer|nil]
       type lockInfo = Hash[String,String|Float|Integer|Array[readerInfo]]
       def self.lock_info: (RC::client redis_client, String lock_name) -> lockInfo?
-      def self.read_lock_info: (
+      private def self.read_lock_info: (
         RC::client redis_client,
         String lock_name,
         String lock_key,
