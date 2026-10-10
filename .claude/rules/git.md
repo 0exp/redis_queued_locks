@@ -27,14 +27,15 @@ Applies to every commit Claude makes in this repository (no `paths:` scope: alwa
 6. Releases: `[gem] bump to X.Y.Z`. Never add ` (#N)` by hand.
 
 **When to commit**
-7. Commit automatically when a step with changes reaches completion:
-   - the feature/functionality required by the prompt is fully implemented (code, RBS, specs, README/CHANGELOG, `.claude/project-overview.md` and rules kept in sync);
-   - tests are green: the touched examples and the full suite (`bundle exec rake rspec`), plus `bundle exec rake rubocop` and `bundle exec rake steep:check` (no `ERROR`/`FATAL` lines); changes without code (docs, `.claude` rules) need no test run;
-   - an explicit user request ("commit", "закоммить") is also a completion point.
-8. Don't commit incomplete or red states (failing specs, lint/type errors, half-done requirements), and don't commit when the user asked to hold off; report the blocker instead.
-9. One commit per completed step. Stage only the files of that step (`git status` first); never commit environment artifacts: `rbs_collection.lock.yaml` rewritten by `rbs collection install` (restore it with `git checkout --`), `coverage/`, `.gem_rbs_collection/`, local settings.
-10. Never auto-commit to `master`: create a feature branch first (named after the feature, e.g. `read-write-locks-realisation`). Never push, amend, rebase, reset or force anything unless the user asks.
-11. After committing, report the short hash and the subject.
+7. Never commit on your own. When a step with changes reaches completion, ask the user for permission to commit and wait for the answer:
+   - completion = the feature/functionality required by the prompt is fully implemented (code, RBS, specs, README/CHANGELOG, `.claude/project-overview.md` and rules kept in sync) and checks are green: the touched examples and the full suite (`bundle exec rake rspec`), `bundle exec rake rubocop`, `bundle exec rake steep:check` (no `ERROR`/`FATAL` lines); changes without code (docs, `.claude` rules) need no test run;
+   - the question contains: the proposed commit subject (following the format rules above), a short recap of what was done in the changes (features/fixes, touched areas, check results) and the list of files that will be committed;
+   - commit only after an explicit "yes" (or with the subject the user corrects); on "no" leave the changes uncommitted (staging also only on request).
+8. An explicit user request to commit ("commit", "закоммить") is the permission itself: commit right away with the given subject (or a subject built by the rules) without asking again.
+9. Don't propose a commit for incomplete or red states (failing specs, lint/type errors, half-done requirements); report the blocker instead.
+10. One commit per completed step. Stage only the files of that step (`git status` first); never commit environment artifacts: `rbs_collection.lock.yaml` rewritten by `rbs collection install` (restore it with `git checkout --`), `coverage/`, `.gem_rbs_collection/`, local settings.
+11. Never commit to `master`: create a feature branch first (named after the feature, e.g. `read-write-locks-realisation`). Never push, amend, rebase, reset or force anything unless the user asks.
+12. After committing, report the short hash and the subject.
 
 **Examples**
 - `[read-write-locks] extend all read locks`

@@ -21,7 +21,7 @@ Full details (config keys, key layout, events, errors, stack, CI): `.claude/proj
 - `sig/`: RBS mirror of `lib/`. `spec/redis_queued_locks_spec.rb`: single integration spec.
 
 ## Rules
-Detailed, path-scoped rules in `.claude/rules/`: `logic.md` (lib, general), `acquirer.md` (acquirer modules, Redis access), `visitors.md` (log/instrumentation visitors), `arguments.md` (long keyword lists), `swarm.md` (swarm supervisor/elements, Ractor/Thread rules), `tests.md` (spec), `type-checking.md` (sig/Steep), `git.md` (commit messages and auto-commit, always loaded).
+Detailed, path-scoped rules in `.claude/rules/`: `logic.md` (lib, general), `acquirer.md` (acquirer modules, Redis access), `visitors.md` (log/instrumentation visitors), `arguments.md` (long keyword lists), `swarm.md` (swarm supervisor/elements, Ractor/Thread rules), `tests.md` (spec), `type-checking.md` (sig/Steep), `git.md` (commit messages and commit flow, always loaded).
 - Long explicit keyword/parameter lists are intentional (minimal allocations, signature-as-DSL): never introduce parameter objects, option structs or `**opts`; add new options as explicit keywords to every `Client` variant and forward them by name.
 - Update the matching `sig/*.rbs` for every `lib/` change; keep Steep green.
 - Keep `# frozen_string_literal: true` and YARD `@api`/`@since`/`@version` tags.
@@ -29,7 +29,7 @@ Detailed, path-scoped rules in `.claude/rules/`: `logic.md` (lib, general), `acq
 - New operation: `Acquirer::*` module, thin `Client` method (+ `!` variant), RBS, spec.
 - New option: `setting` (+ `validate`) in `config.rb`.
 - Dev gems go in `Gemfile`, not the gemspec.
-- Commits (`git.md`): subject only `[<scope>] <summary>` (several features: 1-2 words each, comma-separated), no body; commit automatically when a step is complete (requirement fully implemented, specs/rubocop/steep green), never on `master`, never push.
+- Commits (`git.md`): subject only `[<scope>] <summary>` (several features: 1-2 words each, comma-separated), no body; when a step is complete (requirement fully implemented, specs/rubocop/steep green) ask before committing, with the proposed subject and a recap of the changes; an explicit "commit" request needs no extra question; never on `master`, never push.
 - Before implementing, read the relevant sections of `.claude/project-overview.md` (key layout, lock flow, "Read/Write locks", events) and keep their invariants. In the same change, update the overview and the affected `.claude/rules/*.md` for every new/changed key, option, result shape, event, algorithm step or limitation (and README/CHANGELOG `[Unreleased]` for user-visible behavior).
 - Lock-touching code is read/write-aware: any operation over locks, queues, zombies or lock info must cover the read family (`rql:lock_readers:*`, `rql:lock_read_queue:*`, `rql:lock_reader:*`) next to `rql:lock:*`/`rql:lock_queue:*`. Mutual exclusion comes only from WATCH/MULTI on lock state (no Lua in the RW acquisition path unless asked); queues never guarantee safety.
 - Known debt: rspec-retry, disabled coverage minimum, runtime type-check CI uses `--failure-exit-code=0`.
