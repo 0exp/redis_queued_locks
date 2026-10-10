@@ -866,6 +866,25 @@ RSpec.describe RedisQueuedLocks do
     end
   end
 
+  specify 'host identifier of the acquirer' do
+    client = RedisQueuedLocks::Client.new(redis)
+
+    aggregate_failures 'host of the current acquirer' do
+      expect(
+        RedisQueuedLocks::Resource.host_identifier_from_acquirer(client.current_acquirer_id)
+      ).to eq(client.current_host_id)
+    end
+
+    aggregate_failures 'identity with slashes and multibyte symbols' do
+      ['ид/ен/ти/ти', 'b30ec5e4bea10512', 'ключ'].each do |identity|
+        acquirer_id = RedisQueuedLocks::Resource.acquirer_identifier(1, 22, 333, 4444, identity)
+        expect(RedisQueuedLocks::Resource.host_identifier_from_acquirer(acquirer_id)).to eq(
+          RedisQueuedLocks::Resource.host_identifier(1, 22, 4444, identity)
+        )
+      end
+    end
+  end
+
   specify ':random access strategy' do
     client = RedisQueuedLocks::Client.new(redis) do |conf|
       conf['default_access_strategy'] = :random

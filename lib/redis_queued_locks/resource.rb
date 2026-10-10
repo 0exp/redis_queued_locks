@@ -185,22 +185,27 @@ module RedisQueuedLocks::Resource
     end
 
     # Host identifier of the given acquirer
-    # (acquirer and host identifiers are built from the same process/thread/ractor/identity data).
+    # (acquirer and host identifiers are built from the same process/thread/ractor/identity data):
+    #   - acquirer id: `rql:acq:<pid>/<thread>/<fiber>/<ractor>/<identity>`;
+    #   - host id: `rql:hst:<pid>/<thread>/<ractor>/<identity>` (the same as `host_identifier`);
     #
     # @param acquirer_id [String]
-    # @return [String,NilClass] nil for malformed acquirer identifiers
+    # @return [String]
     #
     # @api private
     # @since 1.18.0
     def host_identifier_from_acquirer(acquirer_id)
-      return nil unless acquirer_id.start_with?('rql:acq:')
-
-      # NOTE: identity is the last part and can contain any symbols (so split is limited by 5 parts)
-      process_id, thread_id, _fiber_id, ractor_id, identity =
-        acquirer_id.delete_prefix('rql:acq:').split('/', 5)
-      return nil if process_id == nil || thread_id == nil || ractor_id == nil || identity == nil
-
-      host_identifier(process_id, thread_id, ractor_id, identity)
+      # NOTE:
+      #   - the host id is the acquirer id with another prefix and without the fiber part, so it is
+      #     built in place from the acquirer id copy (one allocation: no intermediate strings and
+      #     arrays of `delete_prefix`/`split`, no substrings);
+      #   - 8 is the size of the `rql:acq:` prefix;
+      #   - byte positions are used cuz identity can contain any (multibyte) symbols;
+      thread_end = acquirer_id.byteindex('/', acquirer_id.byteindex('/', 8).to_i + 1).to_i
+      fiber_end = acquirer_id.byteindex('/', thread_end + 1).to_i
+      host_id = acquirer_id.dup
+      host_id.bytesplice(thread_end, fiber_end - thread_end, '') # NOTE: drop "/<fiber>"
+      host_id.bytesplice(0, 8, 'rql:hst:')
     end
 
     # @param redis_time [Array<String>] Result of the redis `TIME` command (seconds, microseconds).

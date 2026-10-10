@@ -33,7 +33,7 @@ module RedisQueuedLocks
     def self.lock_queue_rw_mode: (String lock_queue) -> String
     def self.lock_name_from_readers: (String lock_readers_key) -> String
     def self.lock_key_from_readers: (String lock_readers_key) -> String
-    def self.host_identifier_from_acquirer: (String acquirer_id) -> String?
+    def self.host_identifier_from_acquirer: (String acquirer_id) -> String
     def self.redis_time_ms: (Array[String] redis_time) -> Integer
     def self.calc_initial_acquirer_position: () -> Float
     def self.acquirer_dead_score: (Integer|Float queue_ttl) -> Float

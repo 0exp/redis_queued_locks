@@ -1043,7 +1043,7 @@ class RedisQueuedLocks::Client
   # @example Release locks of a different host/acquirer:
   #   client.clear_locks_of(
   #     host_id: "rql:hst:62681/2016/2032/b30ec5e4bea10512",
-  #     acquirer_id: "ral:acq:62681/2016/2024/2032/b30ec5e4bea10512"
+  #     acquirer_id: "rql:acq:62681/2016/2024/2032/b30ec5e4bea10512"
   #   )
   #
   # @see #clear_current_locks
