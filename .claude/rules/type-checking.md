@@ -43,7 +43,7 @@ paths:
 ## Recommendations (proposed, not yet project policy)
 1. Make the runtime type-check CI job blocking (drop `--failure-exit-code=0`) once current violations are fixed.
 2. Type `config['...']` lookups (`Config#[]` returns `untyped`, so `Client` keyword defaults are unchecked) with a typed config accessor (e.g. per-key typed readers or an RBS overload table for `Config#[]`).
-3. Remove duplicate entries in `rbs_collection.yaml` (`redis-client` and `securerandom` are listed twice) and pin the `gem_rbs_collection` revision instead of `main` for reproducible checks.
+3. Pin the `gem_rbs_collection` revision in `rbs_collection.yaml` instead of `main` for reproducible checks.
 4. Rename `sig/redis_queued_locks/acquier.rbs` to `acquirer.rbs` in a dedicated change.
 5. Replace remaining `untyped` in signatures with precise unions or interfaces where the value set is known (e.g. strategy symbols as `:queued | :random`).
 6. Type strategy and mode options as literal unions (`conflict_strategy: :wait_for_lock | :work_through | :extendable_work_through | :dead_locking`) so Steep catches invalid values.
