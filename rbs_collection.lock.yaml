@@ -6,14 +6,22 @@ gems:
   source:
     type: git
     name: ruby/gem_rbs_collection
-    revision: 52a7ef8a9328fb2413e3b42dd8ee37deb703a940
+    revision: c69c75ba79d7c19870f8d0e6fa7fe2c1d356e5ae
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
 - name: logger
+  version: '1.7'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: c69c75ba79d7c19870f8d0e6fa7fe2c1d356e5ae
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: monitor
   version: '0'
   source:
     type: stdlib
-- name: monitor
+- name: random-formatter
   version: '0'
   source:
     type: stdlib
