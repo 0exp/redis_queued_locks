@@ -1,6 +1,8 @@
 ## [Unreleased]
+
+## [1.18.0] - 2026-10-11
 ### Added
-- Read/Write locks: `read_write_mode:` attribute of `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (`:write` by default):
+- Brand new feature - **Read/Write locks**: `read_write_mode:` attribute of `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (`:write` by default):
   - `:write` - exclusive lock (the classic RQL lock): waits for the write lock and for all read locks;
   - `:read` - shared lock: waits for the write lock only (read locks of different acquirers work in parallel);
   - `:queued` access strategy orders read and write lock requests in FIFO between modes (writers are not starved by readers);
