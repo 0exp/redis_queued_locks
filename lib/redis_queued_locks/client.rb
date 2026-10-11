@@ -2,7 +2,7 @@
 
 # @api public
 # @since 1.0.0
-# @version 1.18.0
+# @version 1.20.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @return [RedisClient]
@@ -179,6 +179,8 @@ class RedisQueuedLocks::Client
   #     stays in the lock index (`rql:index:locks`) for this period after the expiration of
   #     the lock keys;
   #   - should be greater than the client clock skew between your hosts plus the network latency;
+  #   - used only with the enabled lock index (`config['lock_index_enabled']`, the client-wide
+  #     mode: the lock index is maintained by all lock acquirements of the client);
   #   - pre-configured in `config['lock_index_grace_period']`;
   # @option timeout [Integer,NilClass]
   #   Time period whe should try to acquire the lock (in seconds). Nil means "without timeout".
@@ -380,6 +382,7 @@ class RedisQueuedLocks::Client
       ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
       ttl:,
       queue_ttl:,
+      lock_index_enabled: config['lock_index_enabled'],
       lock_index_grace_period:,
       timeout:,
       timed:,
@@ -459,6 +462,7 @@ class RedisQueuedLocks::Client
       ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
       ttl:,
       queue_ttl:,
+      lock_index_enabled: config['lock_index_enabled'],
       lock_index_grace_period:,
       timeout:,
       timed:,
@@ -661,7 +665,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.18.0
+  # @version 1.20.0
   def unlock(
     lock_name,
     logger: config['logger'],
@@ -679,6 +683,7 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Acquirer::ReleaseLock.release_lock(
       redis_client,
       lock_name,
+      config['lock_index_enabled'],
       instrumenter,
       logger,
       log_sampling_enabled,
@@ -939,7 +944,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.18.0
+  # @version 1.20.0
   def extend_lock_ttl(
     lock_name,
     milliseconds,
@@ -965,6 +970,7 @@ class RedisQueuedLocks::Client
       read_write_mode,
       all_read_locks,
       current_acquirer_id(identity:),
+      config['lock_index_enabled'],
       logger,
       instrumenter,
       instrument,
@@ -983,6 +989,7 @@ class RedisQueuedLocks::Client
   # Returns:
   #   - :rel_time - (milliseconds) - time spent to release all locks and queues;
   #   - :rel_key_cnt - (integer) - the number of released redis keys (queus+locks);
+  # Locks are found via the keyspace SCAN or via the lock index (`config['lock_index_enabled']`).
   #
   # @option batch_size [Integer]
   # @option logger [::Logger,#debug]
@@ -1001,7 +1008,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.6.0
+  # @version 1.20.0
   def clear_locks(
     batch_size: config['lock_release_batch_size'],
     logger: config['logger'],
@@ -1019,6 +1026,7 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Acquirer::ReleaseAllLocks.release_all_locks(
       redis_client,
       batch_size,
+      config['lock_index_enabled'],
       logger,
       instrumenter,
       instrument,
@@ -1039,6 +1047,8 @@ class RedisQueuedLocks::Client
   # This is a cleanup helper intended for operational and debugging scenarios (for example: your
   # current puma request thread is killed by Rack::Timeout and you need to cleanup all zombie RQL
   # locks and lock reuqests obtained during the request processing).
+  #
+  # Locks are found via the keyspace SCAN or via the lock index (`config['lock_index_enabled']`).
   #
   # Identifiers can be extracted via:
   #   - `#current_host_id`
@@ -1087,6 +1097,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.14.0
+  # @version 1.20.0
   def clear_locks_of(
     host_id:,
     acquirer_id:,
@@ -1110,6 +1121,7 @@ class RedisQueuedLocks::Client
       redis_client,
       lock_scan_size,
       queue_scan_size,
+      config['lock_index_enabled'],
       logger,
       instrumenter,
       instrument,
@@ -1199,10 +1211,16 @@ class RedisQueuedLocks::Client
   #     at the moment of Redis'es SCAN;
   # @return [Set<String>,Set<Hash<Symbol,Any>>]
   #
+  # NOTE: locks are found via the keyspace SCAN or via the lock index (ZSCAN, the enabled
+  #   `config['lock_index_enabled']`: `scan_size` is the number of locks in one batch);
+  #
   # @api public
   # @since 1.0.0
+  # @version 1.20.0
   def locks(scan_size: config['key_extraction_batch_size'], with_info: false)
-    RedisQueuedLocks::Acquirer::Locks.locks(redis_client, scan_size:, with_info:)
+    RedisQueuedLocks::Acquirer::Locks.locks(
+      redis_client, scan_size:, with_info:, lock_index_enabled: config['lock_index_enabled']
+    )
   end
 
   # Extracts lock keys with their info. See #locks(with_info: true) for details.
@@ -1230,10 +1248,16 @@ class RedisQueuedLocks::Client
   #     at the moment of Redis'es SCAN;
   # @return [Set<String>,String<Hash<Symbol,Any>>]
   #
+  # NOTE: lock queues are found via the keyspace SCAN or via the lock index (ZSCAN, the enabled
+  #   `config['lock_index_enabled']`: `scan_size` is the number of locks in one batch);
+  #
   # @api public
   # @since 1.0.0
+  # @version 1.20.0
   def queues(scan_size: config['key_extraction_batch_size'], with_info: false)
-    RedisQueuedLocks::Acquirer::Queues.queues(redis_client, scan_size:, with_info:)
+    RedisQueuedLocks::Acquirer::Queues.queues(
+      redis_client, scan_size:, with_info:, lock_index_enabled: config['lock_index_enabled']
+    )
   end
 
   # Extracts lock queues with their info. See #queues(with_info: true) for details.
@@ -1249,11 +1273,17 @@ class RedisQueuedLocks::Client
 
   # @option scan_size [Integer]
   # @return [Set<String>]
+  #   - the disabled lock index: all the RQL keys (`rql:lock*`) found via the keyspace SCAN;
+  #   - the enabled lock index (`config['lock_index_enabled']`): the existing keys of the locks of
+  #     the lock index (ZSCAN, `scan_size` is the number of locks in one batch);
   #
   # @api public
   # @since 1.0.0
+  # @version 1.20.0
   def keys(scan_size: config['key_extraction_batch_size'])
-    RedisQueuedLocks::Acquirer::Keys.keys(redis_client, scan_size:)
+    RedisQueuedLocks::Acquirer::Keys.keys(
+      redis_client, scan_size:, lock_index_enabled: config['lock_index_enabled']
+    )
   end
 
   # @option dead_ttl [Integer]
@@ -1261,7 +1291,8 @@ class RedisQueuedLocks::Client
   #     considered as dead;
   #   - `config['dead_request_ttl']` is used by default;
   # @option scan_size [Integer]
-  #   - the batch of scanned keys for Redis'es SCAN command;
+  #   - the batch of scanned keys for Redis'es SCAN command (or the number of locks in one batch of
+  #     the lock index ZSCAN pass: the enabled `config['lock_index_enabled']`);
   #   - `config['lock_release_batch_size']` is used by default;
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify]
@@ -1279,7 +1310,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.6.0
+  # @version 1.20.0
   def clear_dead_requests(
     dead_ttl: config['dead_request_ttl'],
     scan_size: config['lock_release_batch_size'],
@@ -1299,6 +1330,7 @@ class RedisQueuedLocks::Client
       redis_client,
       scan_size,
       dead_ttl,
+      config['lock_index_enabled'],
       logger,
       instrumenter,
       instrument,
@@ -1313,10 +1345,13 @@ class RedisQueuedLocks::Client
     )
   end
 
-  # Adds the lock keys without the lock index entry (keys of older RQL versions) to the lock index
-  # (`rql:index:locks`). Invoke it once after all your processes are upgraded to the RQL version
-  # with the lock index: the swarm (`#flush_zombies`, `#zombie_locks`, `#zombie_acquirers`,
-  # `#zombies_info`) finds locks via the lock index only.
+  # Adds the lock keys without the lock index entry (keys of older RQL versions, keys created while
+  # the lock index was disabled) to the lock index (`rql:index:locks`). Invoke it once after the lock
+  # index is enabled (`config['lock_index_enabled']`) on all your processes: lock-iterating
+  # operations (the swarm, `#locks`, `#queues`, `#keys`, `#clear_locks`, ...) find locks via
+  # the lock index only.
+  #   - works regardless of `config['lock_index_enabled']` (the lock index is not used and not
+  #     maintained while it is disabled);
   #   - one SCAN pass over the RQL keys;
   #   - lock queues without TTL (older RQL versions) get `queue_ttl` as their TTL;
   #   - idempotent: the lock index scores are never decreased, already indexed keys stay as is;

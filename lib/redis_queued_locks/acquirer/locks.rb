@@ -19,24 +19,56 @@ module RedisQueuedLocks::Acquirer::Locks
     # @param redis_client [RedisClient]
     # @option scan_size [Integer]
     # @option with_info [Boolean]
+    # @option lock_index_enabled [Boolean]
+    #   Find locks via the lock index (`index_locks`) instead of the keyspace SCAN (`scan_locks`).
     # @return [Set<String>,Set<Hash<Symbol,Any>>]
     #
     # @api private
     # @since 1.0.0
     # @version 1.20.0
-    def locks(redis_client, scan_size:, with_info:)
+    def locks(redis_client, scan_size:, with_info:, lock_index_enabled:)
       redis_client.with do |rconn|
-        lock_keys = index_locks(rconn, scan_size)
+        lock_keys =
+          lock_index_enabled ? index_locks(rconn, scan_size) : scan_locks(rconn, scan_size)
         with_info ? extract_locks_info(rconn, lock_keys, scan_size) : lock_keys
       end
     end
 
     private
 
-    # Write locks and read locks of the lock index: one ZSCAN pass over the lock names
-    # (`RedisQueuedLocks::Resource::LOCK_INDEX_KEY`, the keyspace is never scanned) with one round
-    # trip per batch of `scan_size` lock names (`EXISTS` of the write lock and of the readers
-    # registry of each lock name).
+    # Write locks and read locks in one SCAN pass (the disabled lock index).
+    #
+    # @param redis_client [RedisClient]
+    # @param scan_size [Integer]
+    # @return [Set<String>]
+    #   - (RW) read locks are represented by their lock keys (`rql:lock:<lock_name>`) too;
+    #
+    # @api private
+    # @since 1.0.0
+    # @version 1.20.0
+    def scan_locks(redis_client, scan_size)
+      Set.new.tap do |lock_keys|
+        # @type var lock_keys: Set[String]
+        redis_client.scan(
+          'MATCH',
+          RedisQueuedLocks::Resource::KEY_PATTERN,
+          count: scan_size
+        ) do |key|
+          case RedisQueuedLocks::Resource.lock_key_family(key)
+          when :lock
+            lock_keys.add(key)
+          when :lock_readers
+            # NOTE: (RW) read locks (readers registries can contain expired read locks only)
+            lock_keys.add(RedisQueuedLocks::Resource.lock_key_from_readers(key))
+          end
+        end
+      end
+    end
+
+    # Write locks and read locks of the lock index (the enabled lock index): one ZSCAN pass over
+    # the lock names (`RedisQueuedLocks::Resource::LOCK_INDEX_KEY`, the keyspace is never scanned)
+    # with one round trip per batch of `scan_size` lock names (`EXISTS` of the write lock and of
+    # the readers registry of each lock name).
     #
     # @param redis_client [RedisClient]
     # @param scan_size [Integer] ZSCAN count and the number of lock names in one batch.
@@ -45,8 +77,7 @@ module RedisQueuedLocks::Acquirer::Locks
     #     (readers registries can contain expired read locks only);
     #
     # @api private
-    # @since 1.0.0
-    # @version 1.20.0
+    # @since 1.20.0
     def index_locks(redis_client, scan_size)
       Set.new.tap do |lock_keys|
         # @type var lock_keys: Set[String]

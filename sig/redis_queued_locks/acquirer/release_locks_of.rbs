@@ -20,6 +20,7 @@ module RedisQueuedLocks
         RC::client redis,
         Integer lock_scan_size,
         Integer queue_scan_size,
+        bool lock_index_enabled,
         RQL::loggerObj logger,
         RQL::instrObj instrumenter,
         untyped instrument,
@@ -39,7 +40,8 @@ module RedisQueuedLocks
         String refused_acquirer_id,
         RC::client redis,
         Integer locks_scan_size,
-        Integer queue_scan_size
+        Integer queue_scan_size,
+        bool lock_index_enabled
       ) -> fullyReleaseAllLocksResult
       private def self.release_refused_locks: (
         RC::client redis_client,

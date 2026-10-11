@@ -11,8 +11,14 @@ module RedisQueuedLocks
 
       LOCK_STATE_REPLIES: Integer
 
-      def self.locks: (RC::client redis_client, scan_size: Integer, with_info: bool) -> locks
+      def self.locks: (
+        RC::client redis_client,
+        scan_size: Integer,
+        with_info: bool,
+        lock_index_enabled: bool
+      ) -> locks
 
+      private def self.scan_locks: (RC::client redis_client, Integer scan_size) -> lockList
       private def self.index_locks: (RC::client redis_client, Integer scan_size) -> lockList
       private def self.each_lock_name_batch: (RC::client redis_client, Integer scan_size) { (Array[String] lock_names) -> void } -> void
       private def self.extract_locks_info: (RC::client redis_client, Set[::String] lock_keys, Integer scan_size) -> locksInfo

@@ -15,24 +15,40 @@ module RedisQueuedLocks::Acquirer::Keys
   KEY_STATE_REPLIES = 4
 
   class << self
-    # All the existing keys of the locks of the lock index (write locks, lock queues, readers
-    # registries, read lock queues, read lock data): one ZSCAN pass over the lock names
-    # (`RedisQueuedLocks::Resource::LOCK_INDEX_KEY`, the keyspace is never scanned), lock keys
-    # are derived from the lock names.
+    # RQL keys of the locks:
+    #   - the disabled lock index: all the RQL keys (`RedisQueuedLocks::Resource::KEY_PATTERN`,
+    #     `rql:lock*`) found in one SCAN pass over the keyspace;
+    #   - the enabled lock index: all the existing keys of the locks of the lock index (write locks,
+    #     lock queues, readers registries, read lock queues, read lock data): one ZSCAN pass over
+    #     the lock names (`RedisQueuedLocks::Resource::LOCK_INDEX_KEY`, the keyspace is never
+    #     scanned), lock keys are derived from the lock names;
     #
     # @param redis_client [RedisClient]
-    # @option scan_size [Integer] ZSCAN count and the number of lock names in one batch.
+    # @option scan_size [Integer]
+    #   SCAN count (the disabled lock index) or ZSCAN count and the number of lock names in one
+    #   batch (the enabled lock index).
+    # @option lock_index_enabled [Boolean]
     # @return [Set<String>]
     #
     # @api private
     # @since 1.0.0
     # @version 1.20.0
-    def keys(redis_client, scan_size:)
+    def keys(redis_client, scan_size:, lock_index_enabled:)
       Set.new.tap do |keyset|
         # @type var keyset: Set[String]
-        redis_client.with do |rconn|
-          each_lock_name_batch(rconn, scan_size) do |lock_names|
-            collect_lock_keys(rconn, lock_names, keyset)
+        if lock_index_enabled
+          redis_client.with do |rconn|
+            each_lock_name_batch(rconn, scan_size) do |lock_names|
+              collect_lock_keys(rconn, lock_names, keyset)
+            end
+          end
+        else
+          redis_client.scan(
+            'MATCH',
+            RedisQueuedLocks::Resource::KEY_PATTERN,
+            count: scan_size
+          ) do |key|
+            keyset.add(key)
           end
         end
       end
@@ -40,7 +56,7 @@ module RedisQueuedLocks::Acquirer::Keys
 
     private
 
-    # Adds the existing keys of the given batch of lock names to the key set
+    # (lock index) Adds the existing keys of the given batch of lock names to the key set
     # (one round trip for the lock keys, one more for the read lock data when read locks exist).
     #
     # @param redis_client [RedisClient]

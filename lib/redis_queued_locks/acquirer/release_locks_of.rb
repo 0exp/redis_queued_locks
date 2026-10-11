@@ -20,13 +20,16 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     # @param redis [RedisClient]
     #   Redis connection client.
     # @param lock_scan_size [Integer]
-    #   The number of locks (lock names) that should be processed in a time (and the ZSCAN count
-    #   of the single ZSCAN pass over the lock index).
+    #   The number of lock keys (the disabled lock index: the SCAN count of the single SCAN pass
+    #   over the lock keys and lock queues) or locks (lock names, the enabled lock index: the ZSCAN
+    #   count of the single ZSCAN pass over the lock index) that should be processed in a time.
     #   Affects the RubyVM memmory (cuz each found lock will be temporary stored in memory for
     #   subsequent removal from redis in one query at a time).
     # @param queue_scan_size [Integer]
     #   The number of lock queues that should be processed removing an acquirer from them
     #   (in one round trip).
+    # @param lock_index_enabled [Boolean]
+    #   Find locks via the lock index instead of the keyspace SCAN.
     # @param logger [::Logger,#debug]
     #   - Logger object used from `configuration` layer (see config['logger']);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
@@ -98,6 +101,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
       redis,
       lock_scan_size,
       queue_scan_size,
+      lock_index_enabled,
       logger,
       instrumenter,
       instrument,
@@ -118,7 +122,8 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
         refused_acquirer_id,
         redis,
         lock_scan_size,
-        queue_scan_size
+        queue_scan_size,
+        lock_index_enabled
       ) => { ok:, result: }
       # steep:ignore:end
 
@@ -160,19 +165,27 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
 
     private
 
-    # One ZSCAN pass over the lock index (`LOCK_INDEX_KEY`: lock names, the keyspace is never
-    # scanned): the keys of each batch of `lock_scan_size` lock names are derived from the lock
-    # names and processed with one round trip per key family and batch:
+    # Releases the locks and the lock requests of the passed host/acquirer found in one pass:
+    #   - the disabled lock index: one SCAN pass over the RQL keys (`KEY_PATTERN`): the found keys
+    #     are processed in batches with one round trip per batch (batches are collected across
+    #     SCAN pages);
+    #   - the enabled lock index: one ZSCAN pass over the lock index (`LOCK_INDEX_KEY`: lock names,
+    #     the keyspace is never scanned): the keys of each batch of `lock_scan_size` lock names are
+    #     derived from the lock names and processed with one round trip per key family and batch;
+    #     the lock names stay in the lock index (other keys of the locks can exist);
+    # Batches:
     #   - write locks of the passed acquirer (`lock_scan_size` locks per batch);
     #   - (RW) read locks of the passed acquirer (`lock_scan_size` readers registries per batch);
     #   - requests of the passed acquirer in the lock queues (`queue_scan_size` queues per batch);
-    #   - the lock names stay in the lock index (other keys of the locks can exist);
     #
     # @param refused_host_id [String]
     # @param refused_acquirer_id [String]
     # @param redis [RedisClient]
-    # @param lock_scan_size [Integer] ZSCAN count and the batch size of locks (lock names).
+    # @param lock_scan_size [Integer]
+    #   SCAN count and the batch size of locks (the disabled lock index) or ZSCAN count and
+    #   the batch size of locks (lock names, the enabled lock index).
     # @param queue_scan_size [Integer] The batch size of lock queues.
+    # @param lock_index_enabled [Boolean]
     # @return [Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
     #   - Example: { ok: true, result: { rel_key_cnt: 12345, tch_queue_cnt: 321 } }
     #
@@ -185,7 +198,8 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
       refused_acquirer_id,
       redis,
       lock_scan_size,
-      queue_scan_size
+      queue_scan_size,
+      lock_index_enabled
     )
       rel_key_cnt = 0
       tch_queue_cnt = 0
@@ -203,32 +217,90 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
         # @type var lock_queues: Array[String]
         lock_queues = []
 
-        each_lock_name_batch(rconn, lock_scan_size) do |lock_names|
-          lock_names.each do |lock_name|
-            lock_keys << RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
-            if with_read_locks
-              lock_readers_keys << RedisQueuedLocks::Resource.prepare_lock_readers(lock_name)
+        if lock_index_enabled
+          # NOTE: (lock index) the keys of each batch of lock names are derived from the lock names
+          each_lock_name_batch(rconn, lock_scan_size) do |lock_names|
+            lock_names.each do |lock_name|
+              lock_keys << RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
+              if with_read_locks
+                lock_readers_keys << RedisQueuedLocks::Resource.prepare_lock_readers(lock_name)
+              end
+              lock_queues << RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
+              lock_queues << RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
             end
-            lock_queues << RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
-            lock_queues << RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
+
+            # Step A: drop locks of the passed host/acquirer
+            rel_key_cnt += release_refused_locks(
+              rconn, lock_keys, refused_host_id, refused_acquirer_id
+            )
+            # Step A (RW): drop read locks of the passed host/acquirer
+            unless lock_readers_keys.empty?
+              rel_key_cnt += release_refused_read_locks(
+                rconn, lock_readers_keys, refused_acquirer_id
+              )
+            end
+            # Step B: drop passed host/acquirer from lock queues (write and read)
+            lock_queues.each_slice(queue_scan_size) do |lock_queues_batch|
+              tch_queue_cnt += dequeue_refused_acquirer(
+                rconn, lock_queues_batch, refused_acquirer_id
+              )
+            end
+
+            lock_keys.clear
+            lock_readers_keys.clear
+            lock_queues.clear
+          end
+        else
+          # NOTE: (keyspace) the found keys are collected into batches by their key families
+          rconn.scan(
+            'MATCH',
+            RedisQueuedLocks::Resource::KEY_PATTERN,
+            count: lock_scan_size
+          ) do |key|
+            case RedisQueuedLocks::Resource.lock_key_family(key)
+            when :lock
+              # Step A: drop locks of the passed host/acquirer
+              lock_keys << key
+              next if lock_keys.size < lock_scan_size
+
+              rel_key_cnt += release_refused_locks(
+                rconn, lock_keys, refused_host_id, refused_acquirer_id
+              )
+              lock_keys.clear
+            when :lock_readers
+              # Step A (RW): drop read locks of the passed host/acquirer
+              next unless with_read_locks
+
+              lock_readers_keys << key
+              next if lock_readers_keys.size < lock_scan_size
+
+              rel_key_cnt += release_refused_read_locks(
+                rconn, lock_readers_keys, refused_acquirer_id
+              )
+              lock_readers_keys.clear
+            when :lock_queue, :read_lock_queue
+              # Step B: drop passed host/acquirer from lock queues (write and read)
+              lock_queues << key
+              next if lock_queues.size < queue_scan_size
+
+              tch_queue_cnt += dequeue_refused_acquirer(rconn, lock_queues, refused_acquirer_id)
+              lock_queues.clear
+            end
           end
 
-          # Step A: drop locks of the passed host/acquirer
-          rel_key_cnt += release_refused_locks(
-            rconn, lock_keys, refused_host_id, refused_acquirer_id
-          )
-          # Step A (RW): drop read locks of the passed host/acquirer
+          unless lock_keys.empty?
+            rel_key_cnt += release_refused_locks(
+              rconn, lock_keys, refused_host_id, refused_acquirer_id
+            )
+          end
           unless lock_readers_keys.empty?
-            rel_key_cnt += release_refused_read_locks(rconn, lock_readers_keys, refused_acquirer_id)
+            rel_key_cnt += release_refused_read_locks(
+              rconn, lock_readers_keys, refused_acquirer_id
+            )
           end
-          # Step B: drop passed host/acquirer from lock queues (write and read)
-          lock_queues.each_slice(queue_scan_size) do |lock_queues_batch|
-            tch_queue_cnt += dequeue_refused_acquirer(rconn, lock_queues_batch, refused_acquirer_id)
+          unless lock_queues.empty?
+            tch_queue_cnt += dequeue_refused_acquirer(rconn, lock_queues, refused_acquirer_id)
           end
-
-          lock_keys.clear
-          lock_readers_keys.clear
-          lock_queues.clear
         end
       end
 

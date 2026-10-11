@@ -7,8 +7,14 @@ module RedisQueuedLocks
       type queuesInfo = Set[{ queue: String, requests: Array[Hash[String,String|Float]] }]
       type queues = queueList | queuesInfo
 
-      def self.queues: (RC::client redis_client, scan_size: Integer, with_info: bool) -> queues
+      def self.queues: (
+        RC::client redis_client,
+        scan_size: Integer,
+        with_info: bool,
+        lock_index_enabled: bool
+      ) -> queues
 
+      private def self.scan_queues: (RC::client redis_client, Integer scan_size) -> queueList
       private def self.index_queues: (RC::client redis_client, Integer scan_size) -> queueList
       private def self.each_lock_name_batch: (RC::client redis_client, Integer scan_size) { (Array[String] lock_names) -> void } -> void
       private def self.extract_queues_info: (RC::client redis_client, Set[String] lock_queues, Integer scan_size) -> queuesInfo

@@ -6,13 +6,21 @@
 module RedisQueuedLocks::Acquirer::ClearDeadRequests
   class << self
     # Drops dead lock requests (requests older than `dead_ttl`) from the lock queues (write and
-    # read) of the locks of the lock index: one ZSCAN pass over the lock names (the keyspace is
-    # never scanned), one round trip per batch of `scan_size` lock names (both lock queues of each
-    # lock name). Expired lock names are dropped from the lock index first.
+    # read):
+    #   - the disabled lock index: the lock queues found in one SCAN pass, one round trip per batch
+    #     of `scan_size` lock queues (batches are collected across SCAN pages);
+    #   - the enabled lock index: the lock queues of the locks of the lock index: one ZSCAN pass
+    #     over the lock names (the keyspace is never scanned), one round trip per batch of
+    #     `scan_size` lock names (both lock queues of each lock name); expired lock names are
+    #     dropped from the lock index first;
     #
     # @param redis_client [RedisClient]
-    # @param scan_size [Integer] ZSCAN count and the number of lock names in one batch.
+    # @param scan_size [Integer]
+    #   SCAN count and the number of lock queues in one batch (the disabled lock index) or ZSCAN
+    #   count and the number of lock names in one batch (the enabled lock index).
     # @param dead_ttl [Integer] In milliseconds
+    # @param lock_index_enabled [Boolean]
+    #   Find lock queues via the lock index instead of the keyspace SCAN.
     # @param logger [::Logger,#debug]
     # @param instrumenter [#notify]
     # @param instrument [NilClass,Any]
@@ -33,6 +41,7 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
       redis_client,
       scan_size,
       dead_ttl,
+      lock_index_enabled,
       logger,
       instrumenter,
       instrument,
@@ -51,15 +60,35 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
       result = Set.new.tap do |processed_queues|
         # @type var processed_queues: Set[String]
         redis_client.with do |rconn|
-          # Step 1: drop the expired lock names from the lock index (all their keys are expired)
-          rconn.call(
-            'ZREMRANGEBYSCORE', RedisQueuedLocks::Resource::LOCK_INDEX_KEY,
-            '-inf', RedisQueuedLocks::Resource.lock_index_time - 1
-          )
+          if lock_index_enabled
+            # Step 1 (lock index): drop the expired lock names from the lock index
+            #   (all their keys are expired);
+            rconn.call(
+              'ZREMRANGEBYSCORE', RedisQueuedLocks::Resource::LOCK_INDEX_KEY,
+              '-inf', RedisQueuedLocks::Resource.lock_index_time - 1
+            )
 
-          # Step 2: drop dead requests from the lock queues of the lock index
-          each_lock_name_batch(rconn, scan_size) do |lock_names|
-            drop_dead_requests(rconn, lock_names, dead_score, processed_queues)
+            # Step 2 (lock index): drop dead requests from the lock queues of the lock index
+            each_lock_name_batch(rconn, scan_size) do |lock_names|
+              drop_dead_requests_of_locks(rconn, lock_names, dead_score, processed_queues)
+            end
+          else
+            # Step 1 (keyspace): drop dead requests from the lock queues found in one SCAN pass
+            # NOTE: dead requests are dropped with one pipeline per batch of `scan_size` queues
+            #   (batches are collected across SCAN pages: lock queues can be rare among other keys);
+            # @type var lock_queues: Array[String]
+            lock_queues = []
+
+            each_lock_queue(rconn, scan_size) do |lock_queue|
+              processed_queues << lock_queue
+              lock_queues << lock_queue
+              next if lock_queues.size < scan_size
+
+              drop_dead_requests(rconn, lock_queues, dead_score)
+              lock_queues.clear
+            end
+
+            drop_dead_requests(rconn, lock_queues, dead_score) unless lock_queues.empty?
           end
         end
       end
@@ -69,7 +98,49 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
 
     private
 
-    # Drops dead requests of both lock queues of the given lock names in one round trip.
+    # Write and read lock queues in one SCAN pass (the disabled lock index).
+    #
+    # @param redis_client [RedisClient]
+    # @param scan_size [Integer]
+    # @yield [lock_queue]
+    # @yieldparam lock_queue [String]
+    # @yieldreturn [void]
+    # @return [void]
+    #
+    # @api private
+    # @since 1.0.0
+    # @version 1.20.0
+    def each_lock_queue(redis_client, scan_size)
+      redis_client.scan(
+        'MATCH',
+        RedisQueuedLocks::Resource::ALL_LOCK_QUEUES_PATTERN,
+        count: scan_size
+      ) do |key|
+        # NOTE: the pattern matches other keys too (lock names with `queue:`): lock queues only
+        family = RedisQueuedLocks::Resource.lock_key_family(key)
+        yield(key) if family == :lock_queue || family == :read_lock_queue
+      end
+    end
+
+    # Drops dead requests of the given lock queues in one round trip (the disabled lock index).
+    #
+    # @param redis_client [RedisClient]
+    # @param lock_queues [Array<String>]
+    # @param dead_score [Float]
+    # @return [void]
+    #
+    # @api private
+    # @since 1.20.0
+    def drop_dead_requests(redis_client, lock_queues, dead_score)
+      redis_client.pipelined do |pipeline|
+        lock_queues.each do |lock_queue|
+          pipeline.call('ZREMRANGEBYSCORE', lock_queue, '-inf', dead_score)
+        end
+      end
+    end
+
+    # Drops dead requests of both lock queues of the given lock names in one round trip
+    # (the enabled lock index).
     #
     # @param redis_client [RedisClient]
     # @param lock_names [Array<String>]
@@ -79,7 +150,7 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
     #
     # @api private
     # @since 1.20.0
-    def drop_dead_requests(redis_client, lock_names, dead_score, processed_queues)
+    def drop_dead_requests_of_locks(redis_client, lock_names, dead_score, processed_queues)
       # NOTE: (pipeline layout) two replies per lock queue (two lock queues per lock name) in
       #   the batch order: EXISTS (the queue is processed when it exists), ZREMRANGEBYSCORE;
       # @type var replies: Array[Integer]

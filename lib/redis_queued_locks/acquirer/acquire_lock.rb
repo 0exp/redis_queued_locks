@@ -46,11 +46,16 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   Lock's time to live (in milliseconds). Nil means "without timeout".
     # @option queue_ttl [Integer]
     #   Lifetime of the acuier's lock request. In seconds.
+    # @option lock_index_enabled [Boolean]
+    #   - Maintain the lock index (`rql:index:locks`): the lock request and the obtained lock are
+    #     indexed, the lock request queue gets TTL, expired lock names are dropped from the index;
+    #   - `config['lock_index_enabled']` (the client-wide mode, not a per-call option);
     # @option lock_index_grace_period [Integer]
     #   - The lock index score margin over the lock key lifetime (in milliseconds): the lock name
     #     stays in the lock index for this period after the expiration of the lock keys;
     #   - tolerance of the client clock skew (between hosts) and of the network latency;
     #   - pre-configured in `config['lock_index_grace_period']`;
+    #   - used only with the enabled lock index (`lock_index_enabled`);
     # @option timeout [Integer,NilClass]
     #   Time period whe should try to acquire the lock (in seconds).
     # @option timed [Boolean]
@@ -181,6 +186,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       ractor_id:,
       ttl:,
       queue_ttl:,
+      lock_index_enabled:,
       lock_index_grace_period:,
       timeout:,
       timed:,
@@ -388,6 +394,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             acquirer_position,
             lock_ttl,
             queue_ttl,
+            lock_index_enabled,
             lock_index_grace_period,
             fail_fast,
             conflict_strategy,

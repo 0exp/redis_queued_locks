@@ -27,6 +27,7 @@ class RedisQueuedLocks::Config
   setting('logger', RedisQueuedLocks::Logging::VoidLogger)
   setting('log_lock_try', false)
   setting('dead_request_ttl', 1 * 24 * 60 * 60 * 1000) # NOTE: 1 day in milliseconds)
+  setting('lock_index_enabled', false)
   setting('lock_index_grace_period', 60_000) # NOTE: in milliseconds)
   setting('is_timed_by_default', false)
   setting('default_conflict_strategy', :wait_for_lock)
@@ -91,6 +92,7 @@ class RedisQueuedLocks::Config
   validate('logger') { |val| RedisQueuedLocks::Logging.valid_interface?(val) }
   validate('log_lock_try') { |val| val == true || val == false }
   validate('dead_request_ttl') { |val| val.is_a?(Integer) && val > 0 }
+  validate('lock_index_enabled') { |val| val == true || val == false }
   validate('lock_index_grace_period') { |val| val.is_a?(Integer) && val >= 0 }
   validate('is_timed_by_default') { |val| val == true || val == false }
   validate('log_sampler') { |val| RedisQueuedLocks::Logging.valid_sampler?(val) }

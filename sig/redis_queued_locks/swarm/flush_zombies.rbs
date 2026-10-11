@@ -4,7 +4,29 @@ module RedisQueuedLocks
   class Swarm
     class FlushZombies < SwarmElement::Isolated
       type flushedZombies = { ok: bool, deleted_zombie_hosts: Set[String], deleted_zombie_acquirers: Set[String], deleted_zombie_locks: Set[String] }
-      def self.flush_zombies: (RC::client redis_client, Integer zombie_ttl, Integer lock_scan_size, Integer queue_scan_size) -> flushedZombies
+      def self.flush_zombies: (
+        RC::client redis_client,
+        Integer zombie_ttl,
+        Integer lock_scan_size,
+        Integer queue_scan_size,
+        bool lock_index_enabled
+      ) -> flushedZombies
+      private def self.flush_keyspace_zombies: (
+        RC::client rconn,
+        Set[String] zombie_hosts,
+        Integer lock_scan_size,
+        Integer queue_scan_size,
+        Set[String] zombie_locks,
+        Set[String] zombie_acquirers
+      ) -> void
+      private def self.flush_lock_index_zombies: (
+        RC::client rconn,
+        Set[String] zombie_hosts,
+        Integer lock_scan_size,
+        Integer queue_scan_size,
+        Set[String] zombie_locks,
+        Set[String] zombie_acquirers
+      ) -> void
       private def self.batch_zombie_requests: (
         RC::client redis_client,
         Array[String] lock_queues,
