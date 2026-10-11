@@ -8,6 +8,8 @@ Each lock request is put into the request queue (each lock is hosted by its own 
 
 In addition to the classic `queued` (FIFO) strategy RQL supports `random` (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
 
+Supports `Read`/`Write` lock semantics and `Reentrant` locks.s
+
 Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), **zombie locks elimination**, support for **reentrant locks**, logging and instrumentation (and much more).
 
 ---
@@ -2722,13 +2724,6 @@ Detalized event semantics and payload structure:
   - an ability to release all locks and all requests of the concrete acquirer id or host id (or both in validation-orianted combination);
   - detailed lock informotion inside the error object in cases of exceptions (at the moment we have this info inside the error message only that hard to analyze in work);
   - a convenient way to mark any `lock` invocation as "non-instrumentable" / "non-loggable" (as an alternative to `VoidNotifier` and to `VoidLogger`);
-  - `Read`/`Write` semantics: you can mark your locks as `read` or `write` lock in order to simulate `read`/`write` lock behavior
-    (NOTE: implemented, see [Read/Write Locks](#readwrite-locks)):
-    - `read` - watis - `write`;
-    - `read` - not waits - `read`;
-    - `write` - waits - `read`;
-    - `write` - waits - `write`;
-    - **write** mode is a default behavior for all RQL locks;
   - `README`-section `Issues with other Libs` about issues in other libraries that can broke RQL features:
     - `Sentry`'s' bugs with Ractors:
       - `Sentry`-OpenTelemetry problems with its global mutexes and non-sharable objects that is not accessible from the ractors (sentry tyies to
