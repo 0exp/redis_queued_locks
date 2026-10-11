@@ -49,6 +49,34 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @since 1.20.0
   NO_LOCK_DATA = {}.freeze # steep:ignore
 
+  # Position of the first reply of the lock request queueing commands (`queue_lock_request`)
+  # in the lock state pipeline (eager queueing: see "pipeline layout" in `try_to_lock`).
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.20.0
+  LOCK_STATE_QUEUE_REPLIES_AT = 3
+
+  # Position of the first request of the request queue (`ZRANGE`) in the replies of the lock
+  # request queueing commands (`queue_lock_request`), relative to their first reply.
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.20.0
+  QUEUE_HEAD_REPLY = 3
+
+  # Position of the first request of the opposite request queue (`ZRANGE WITHSCORES`) in the
+  # replies of the lock request queueing commands (`queue_lock_request`), relative to their
+  # first reply.
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.20.0
+  OPPOSITE_QUEUE_HEAD_REPLY = 4
+
   # @param redis [RedisClient]
   # @param logger [::Logger,#debug]
   # @param log_lock_try [Boolean]
@@ -112,6 +140,20 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     held_rw_mode = read_write_mode
     # Step RW: read lock request flag
     read_mode = (read_write_mode == :read)
+    # Step RW: request queue of the current mode and the queue of the opposite mode
+    request_queue = read_mode ? read_lock_key_queue : lock_key_queue
+    opposite_request_queue = read_mode ? lock_key_queue : read_lock_key_queue
+    # Step 2.1 (prepare): requests queued before this score are expired (in both queues)
+    acquirer_dead_score = RedisQueuedLocks::Resource.acquirer_dead_score(queue_ttl)
+    # Step X: eager queueing - the lock request is queued in the lock state round trip (Step 0.1)
+    #   instead of a separate round trip in the classic logic (Steps 1-3). Only when the attempt
+    #   always reaches the classic logic or dequeues the request after the failure:
+    #   - `:wait_for_lock`: same-process conflicts are processed in the classic way;
+    #   - `:dead_locking`: same-process conflicts fail the acquirement (the request is dequeued);
+    #   - not for `fail_fast` (the failed "no try" attempt does not dequeue the request) and not for
+    #     `:work_through`/`:extendable_work_through` (same-process conflicts exit without queueing);
+    eager_queueing =
+      !fail_fast && (conflict_strategy == :wait_for_lock || conflict_strategy == :dead_locking)
 
     LogVisitor.start(
       logger, log_sampled, log_lock_try, lock_key,
@@ -140,29 +182,44 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         #   - read lock expiration of the current acquirer;
         #   - the longest read lock (the last one in the readers registry): write lock requests
         #     only (read lock requests do not wait for other readers);
+        #   - (eager queueing) the lock request queueing: Steps 1, 2.1, 3 (`queue_lock_request`);
         # NOTE: (pipeline layout) replies are read by their positions in the pipeline:
-        #   - [0] HGET, [1] TIME, [2] ZSCORE - all requests;
-        #   - [3] ZRANGE - write lock requests only (the "write-only tail" of the pipeline);
-        #   - read lock requests do not send the write-only tail, so it must stay at the end:
-        #     a command added after it would get another position for read lock requests
+        #   - [0] HGET, [1] TIME, [2] ZSCORE - all requests (the head of the pipeline);
+        #   - [LOCK_STATE_QUEUE_REPLIES_AT, +5] lock request queueing - eager queueing only;
+        #   - the last reply: ZRANGE - write lock requests only (the "write-only tail" of the
+        #     pipeline: it is read by `lock_state.last` under the same condition);
+        #   - conditional commands go after the head (the queueing commands, then the write-only
+        #     tail); the write-only tail must stay the last one: read lock requests do not send it,
+        #     so a command added after it would get another position for read lock requests
         #     (and its reply would be read as the reply of another command);
-        #   - new commands go before the write-only tail: update the positions in this NOTE,
-        #     the reply reading below, the `lock_state` tuple annotation and the spec
-        #     "lock state pipeline: the write-only tail" (it checks this layout in both modes);
-        # @type var lock_state: [String?, Array[String], Float?, Array[[String, Float]]?]
+        #   - new unconditional commands go into the head: update the positions in this NOTE,
+        #     the reply reading below, `LOCK_STATE_QUEUE_REPLIES_AT` and the spec
+        #     "lock state pipeline layout" (it checks the layout of both modes, with and without
+        #     eager queueing);
+        # @type var lock_state: Array[untyped]
         lock_state = rconn.pipelined do |pipeline|
           pipeline.call('HGET', lock_key, 'acq_id')
           pipeline.call('TIME')
           pipeline.call('ZSCORE', lock_readers_key, acquirer_id)
+          # NOTE: eager queueing commands (see "pipeline layout" above)
+          if eager_queueing
+            queue_lock_request(
+              pipeline, request_queue, opposite_request_queue,
+              acquirer_position, acquirer_id, acquirer_dead_score
+            )
+          end
           # NOTE: the write-only tail (keep it the last: see "pipeline layout" above)
           pipeline.call('ZRANGE', lock_readers_key, '-1', '-1', 'WITHSCORES') unless read_mode
         end
+        # @type var current_lock_obtainer: String?
         current_lock_obtainer = lock_state[0]
         redis_time = RedisQueuedLocks::Resource.redis_time_ms(lock_state[1])
+        # @type var own_read_lock_expiration: Float?
         own_read_lock_expiration = lock_state[2]
-        # NOTE: the write-only tail is read for write lock requests only (no reply at [3] for
-        #   read lock requests: never read it without the same condition as in the pipeline)
-        longest_read_lock = read_mode ? nil : lock_state[3]&.first
+        # NOTE: the write-only tail is the last reply of write lock requests only (read lock
+        #   requests have no such reply: never read it without the condition of the pipeline)
+        # @type var longest_read_lock: [String, Float]?
+        longest_read_lock = read_mode ? nil : lock_state.last.first
         # NOTE:
         #   - expired read locks are ignored (they can live in the registry till the cleanup);
         #   - nil expiration (no read lock) is converted to 0.0 (always expired);
@@ -370,48 +427,39 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # Fast-Step X1: lock is already obtained. fail fast leads to "no try".
           inter_result = :fail_fast_no_try
         else
-          # Step RW: request queue of the current mode and the queue of the opposite mode
-          request_queue = read_mode ? read_lock_key_queue : lock_key_queue
-          opposite_request_queue = read_mode ? lock_key_queue : read_lock_key_queue
-
           # Step 1: add an acquirer to the lock acquirement queue
-          # NOTE:
-          #   'NX' means "Only add new elements. Don't update already existing elements."
-          #   that works as:
-          #     1. (enqueue) <<if you are already in the queue - do nothing and wait your time>>
-          #     2. (requeue) or <<add to the right pre-calculated position if you are
-          #       not in the queue now>>;
-          rconn.call('ZADD', request_queue, 'NX', acquirer_position, acquirer_id)
+          # Step 2.1: drop expired acquirers from the lock queues
+          # Step 3: get the actual acquirer waiting in the queue
+          #   - one round trip for all of them (see `queue_lock_request`);
+          #   - eager queueing: already done in the lock state round trip (Step 0.1);
+          # @type var queue_replies: Array[untyped]
+          queue_replies =
+            if eager_queueing
+              lock_state
+            else
+              rconn.pipelined do |pipeline|
+                queue_lock_request(
+                  pipeline, request_queue, opposite_request_queue,
+                  acquirer_position, acquirer_id, acquirer_dead_score
+                )
+              end
+            end
+          # NOTE: the position of the first queueing reply (see "pipeline layout" in Step 0.1)
+          queue_replies_at = eager_queueing ? LOCK_STATE_QUEUE_REPLIES_AT : 0
+          # @type var waiting_acquirer: String?
+          waiting_acquirer = queue_replies[queue_replies_at + QUEUE_HEAD_REPLY].first
+          # @type var opposite_waiting_request: [String, Float]?
+          opposite_waiting_request =
+            queue_replies[queue_replies_at + OPPOSITE_QUEUE_HEAD_REPLY].first
 
           LogVisitor.acq_added_to_queue(
             logger, log_sampled, log_lock_try, lock_key,
             queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
           )
-
-          # Step 2.1: drop expired acquirers from the lock queues
-          #   - (RW) both queues are cleared: an expired request of the opposite mode should not
-          #     block the current request forever;
-          acquirer_dead_score = RedisQueuedLocks::Resource.acquirer_dead_score(queue_ttl)
-          rconn.pipelined do |pipeline|
-            pipeline.call('ZREMRANGEBYSCORE', request_queue, '-inf', acquirer_dead_score)
-            pipeline.call('ZREMRANGEBYSCORE', opposite_request_queue, '-inf', acquirer_dead_score)
-          end
-
           LogVisitor.remove_expired_acqs(
             logger, log_sampled, log_lock_try, lock_key,
             queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
           )
-
-          # Step 3: get the actual acquirer waiting in the queue
-          #   - (RW) and the first request of the opposite mode;
-          # @type var queue_heads: [Array[String], Array[[String, Float]]]
-          queue_heads = rconn.pipelined do |pipeline|
-            pipeline.call('ZRANGE', request_queue, '0', '0')
-            pipeline.call('ZRANGE', opposite_request_queue, '0', '0', 'WITHSCORES')
-          end
-          waiting_acquirer = queue_heads[0].first
-          opposite_waiting_request = queue_heads[1].first
-
           LogVisitor.get_first_from_queue(
             logger, log_sampled, log_lock_try, lock_key,
             queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer
@@ -422,7 +470,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           #   - equal positions are ordered by acquirer ids;
           # @type var opposite_request_ahead: String?
           opposite_request_ahead =
-            if access_strategy == :queued && opposite_waiting_request != nil &&
+            if access_strategy == :queued && opposite_waiting_request &&
                (opposite_waiting_request[1] < acquirer_position ||
                 (opposite_waiting_request[1] == acquirer_position &&
                  opposite_waiting_request[0] < acquirer_id))
@@ -726,5 +774,53 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     # rubocop:enable Lint/DuplicateBranch
   end
   # rubocop:enable Metrics/MethodLength
+
+  private
+
+  # Queues the lock request and reads the lock queue state (Steps 1, 2.1 and 3 of the attempt):
+  # the commands are added to the given pipeline (one round trip with other pipelined commands).
+  # Replies (positions relative to the first one): [0] ZADD NX, [1] ZREMRANGEBYSCORE (request
+  # queue), [2] ZREMRANGEBYSCORE (opposite request queue), [QUEUE_HEAD_REPLY] ZRANGE (the first
+  # request of the request queue), [OPPOSITE_QUEUE_HEAD_REPLY] ZRANGE WITHSCORES (the first
+  # request of the opposite request queue). Update these constants when the commands change.
+  #
+  # @param pipeline [RedisClient::Pipeline]
+  # @param request_queue [String] Queue of the requests of the requested lock mode.
+  # @param opposite_request_queue [String] Queue of the requests of the opposite lock mode.
+  # @param acquirer_position [Numeric]
+  # @param acquirer_id [String]
+  # @param acquirer_dead_score [Float] Requests queued before this score are expired.
+  # @return [void]
+  #
+  # @api private
+  # @since 1.20.0
+  def queue_lock_request(
+    pipeline,
+    request_queue,
+    opposite_request_queue,
+    acquirer_position,
+    acquirer_id,
+    acquirer_dead_score
+  )
+    # Step 1: add an acquirer to the lock acquirement queue
+    # NOTE:
+    #   'NX' means "Only add new elements. Don't update already existing elements."
+    #   that works as:
+    #     1. (enqueue) <<if you are already in the queue - do nothing and wait your time>>
+    #     2. (requeue) or <<add to the right pre-calculated position if you are
+    #       not in the queue now>>;
+    pipeline.call('ZADD', request_queue, 'NX', acquirer_position, acquirer_id)
+
+    # Step 2.1: drop expired acquirers from the lock queues
+    #   - (RW) both queues are cleared: an expired request of the opposite mode should not
+    #     block the current request forever;
+    pipeline.call('ZREMRANGEBYSCORE', request_queue, '-inf', acquirer_dead_score)
+    pipeline.call('ZREMRANGEBYSCORE', opposite_request_queue, '-inf', acquirer_dead_score)
+
+    # Step 3: get the actual acquirer waiting in the queue
+    #   - (RW) and the first request of the opposite mode;
+    pipeline.call('ZRANGE', request_queue, '0', '0')
+    pipeline.call('ZRANGE', opposite_request_queue, '0', '0', 'WITHSCORES')
+  end
 end
 # rubocop:enable Metrics/ModuleLength

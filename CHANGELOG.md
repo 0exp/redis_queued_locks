@@ -5,6 +5,9 @@
 - `#queue_info` / `#queues_info`: lock queues are read without `EXISTS` checks (Redis does not keep empty sorted sets);
 - Lock acquirement attempt: read lock requests do not fetch the longest read lock (it is used by write lock requests only),
   write lock requests do not build the read lock data key, disabled try-lock logs get a shared frozen hash instead of a new one;
+- Lock acquirement attempt: the lock request queueing (`ZADD NX`, expired requests pruning, queue heads) is one pipelined
+  round trip instead of three; with `:wait_for_lock`/`:dead_locking` conflict strategies (without `fail_fast`) it is sent
+  in the lock state round trip: `#lock` with a block takes 4 Redis round trips instead of 7, a failed attempt - 3 instead of 6;
 
 ## [1.19.0] - 2026-10-11
 ### Added

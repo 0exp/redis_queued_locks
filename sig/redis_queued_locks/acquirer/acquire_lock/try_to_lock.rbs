@@ -7,6 +7,9 @@ module RedisQueuedLocks
       module TryToLock
         EXTEND_LOCK_PTTL: String
         NO_LOCK_DATA: Hash[String, untyped]
+        LOCK_STATE_QUEUE_REPLIES_AT: Integer
+        QUEUE_HEAD_REPLY: Integer
+        OPPOSITE_QUEUE_HEAD_REPLY: Integer
 
         # { ok: bool, result: Symbol }
         # { ok: bool, result: Symbol }
@@ -45,6 +48,17 @@ module RedisQueuedLocks
           bool log_sampled,
           bool instr_sampled
         ) -> { ok: bool, result: Symbol|Hash[Symbol,untyped] }
+
+        private
+
+        def queue_lock_request: (
+          RedisClient::Pipeline pipeline,
+          String request_queue,
+          String opposite_request_queue,
+          Integer|Float acquirer_position,
+          String acquirer_id,
+          Float acquirer_dead_score
+        ) -> void
       end
     end
   end

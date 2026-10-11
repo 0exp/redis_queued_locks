@@ -3414,14 +3414,17 @@ RSpec.describe RedisQueuedLocks do
       client.clear_locks
     end
 
-    specify 'lock state pipeline: the write-only tail' do
-      # NOTE:
-      #   - try-lock replies of the lock state pipeline are read by their positions
-      #     (see "pipeline layout" in `TryToLock#try_to_lock`);
+    specify 'lock state pipeline layout' do
+      # NOTE: (see "pipeline layout" in `TryToLock#try_to_lock`)
+      #   - try-lock replies of the lock state pipeline are read by their positions;
       #   - read lock requests do not send the write-only commands (the write-only tail), so
       #     the read lock request pipeline should be the beginning of the write lock request
       #     pipeline and the write-only tail should be the last part of it;
+      #   - eager queueing (`:wait_for_lock`) sends the lock request queueing commands right after
+      #     the head of the lock state pipeline; without eager queueing (`:work_through`) they are
+      #     sent in a separate pipeline;
       #   - pipelines are observed via a separate pool (the same db) with a recording middleware;
+      try_to_lock = RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       pipelines = []
       recorder = Module.new do
         define_method(:call_pipelined) do |commands, redis_config, &block|
@@ -3431,23 +3434,60 @@ RSpec.describe RedisQueuedLocks do
       end
       recorded_redis = RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5)
       client = RedisQueuedLocks::Client.new(recorded_redis)
+      queue = 'rql:lock_queue:rw.pipeline'
+      read_queue = 'rql:lock_read_queue:rw.pipeline'
 
-      # NOTE: the lock state pipeline is the only pipeline with the redis server time request
-      lock_state_pipeline = lambda do |read_write_mode|
+      # NOTE: the lock state pipeline (the only one with TIME) and the pipeline with
+      #   the lock request queueing (ZADD NX) of an uncontended lock
+      lock_pipelines = lambda do |read_write_mode, conflict_strategy|
         pipelines.clear
-        client.lock('rw.pipeline', read_write_mode:, ttl: 10_000) {}
-        pipelines.find { |commands| commands.include?(['TIME']) }
+        client.lock('rw.pipeline', read_write_mode:, conflict_strategy:, ttl: 10_000) {}
+        [
+          pipelines.find { |commands| commands.include?(['TIME']) },
+          pipelines.find do |commands|
+            commands.any? { |command| command[0..2] in ['ZADD', _, 'NX'] }
+          end
+        ]
       end
-      write_pipeline = lock_state_pipeline.call(:write)
-      read_pipeline = lock_state_pipeline.call(:read)
+      expect_queueing = lambda do |queueing, request_queue, opposite_request_queue|
+        expect(queueing.map(&:first)).to eq(
+          %w[ZADD ZREMRANGEBYSCORE ZREMRANGEBYSCORE ZRANGE ZRANGE]
+        )
+        expect(queueing[try_to_lock::QUEUE_HEAD_REPLY]).to eq(['ZRANGE', request_queue, '0', '0'])
+        expect(queueing[try_to_lock::OPPOSITE_QUEUE_HEAD_REPLY]).to eq(
+          ['ZRANGE', opposite_request_queue, '0', '0', 'WITHSCORES']
+        )
+      end
 
-      # NOTE: command names only (queue commands can have mode-specific keys)
-      expect(write_pipeline.first(read_pipeline.size).map(&:first)).to eq(
-        read_pipeline.map(&:first)
-      )
-      expect(write_pipeline.drop(read_pipeline.size)).to eq([
-        ['ZRANGE', 'rql:lock_readers:rw.pipeline', '-1', '-1', 'WITHSCORES']
-      ])
+      %i[wait_for_lock work_through].each do |conflict_strategy|
+        write_state, write_queueing = lock_pipelines.call(:write, conflict_strategy)
+        read_state, read_queueing = lock_pipelines.call(:read, conflict_strategy)
+
+        aggregate_failures "the write-only tail (#{conflict_strategy})" do
+          # NOTE: command names only (queueing commands have mode-specific keys)
+          expect(write_state.first(read_state.size).map(&:first)).to eq(read_state.map(&:first))
+          expect(write_state.drop(read_state.size)).to eq([
+            ['ZRANGE', 'rql:lock_readers:rw.pipeline', '-1', '-1', 'WITHSCORES']
+          ])
+        end
+
+        aggregate_failures "lock request queueing (#{conflict_strategy})" do
+          if conflict_strategy == :wait_for_lock
+            # NOTE: eager queueing: right after the head of the lock state pipeline
+            queueing_at = try_to_lock::LOCK_STATE_QUEUE_REPLIES_AT
+            expect(write_queueing).to equal(write_state)
+            expect(read_queueing).to equal(read_state)
+            expect_queueing.call(write_state[queueing_at, 5], queue, read_queue)
+            expect_queueing.call(read_state[queueing_at, 5], read_queue, queue)
+          else
+            # NOTE: a separate pipeline
+            expect(write_queueing).not_to equal(write_state)
+            expect(read_queueing).not_to equal(read_state)
+            expect_queueing.call(write_queueing, queue, read_queue)
+            expect_queueing.call(read_queueing, read_queue, queue)
+          end
+        end
+      end
       expect(client.keys).to be_empty
 
       recorded_redis.close
