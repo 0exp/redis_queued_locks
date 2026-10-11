@@ -10,7 +10,7 @@ In addition to the classic `queued` (FIFO) strategy RQL supports `random` (RANDO
 
 Supports `Read`/`Write` locks and `Reentrant` locks.
 
-Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), **zombie locks elimination**, logging and instrumentation (and much more).
+Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), **zombie locks elimination**, **[lock indexing](#lock-index)**, logging and instrumentation (and much more).
 
 ---
 
