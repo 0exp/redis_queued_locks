@@ -265,7 +265,13 @@ module RedisQueuedLocks::Resource
     # @api private
     # @since 1.20.0
     def lock_index_time
-      # NOTE: an Integer of milliseconds without Time/Float objects
+      # NOTE:
+      #   - an Integer of milliseconds without Time/Float objects;
+      #   - CLOCK_REALTIME (epoch), not CLOCK_MONOTONIC: the lock index scores are absolute times
+      #     stored in the shared Redis and compared by other hosts (pruning, expired names),
+      #     while monotonic clocks have a per-host origin (boot time) and are not comparable
+      #     between hosts; the wall clock skew between hosts is covered by
+      #     `lock_index_grace_period`;
       ::Process.clock_gettime(::Process::CLOCK_REALTIME, :millisecond)
     end
 
