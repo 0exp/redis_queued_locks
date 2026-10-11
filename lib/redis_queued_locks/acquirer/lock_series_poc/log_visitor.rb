@@ -6,8 +6,10 @@
 module RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor # steep:ignore
   class << self
     # NOTE: Lock Series PoC
+    # @param rw_mode [Symbol] The mode of the lock series (`:read` or `:write`).
     # @api private
     # @since 1.16.0
+    # @version 1.18.0
     def start_lock_series_obtaining( # steep:ignore
       logger,
       log_sampled,
@@ -15,23 +17,27 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor # steep:ignore
       queue_ttl,
       acquirer_id,
       host_id,
-      access_strategy
+      access_strategy,
+      rw_mode
     )
       return unless log_sampled
 
       logger.debug do
         "[redis_queued_locks.start_lock_series_obtaining] " \
-        "lock_keys => '#{lock_keys.inspect}'" \
+        "lock_keys => '#{lock_keys.inspect}' " \
         "queue_ttl => #{queue_ttl} " \
         "acq_id => '#{acquirer_id}' " \
         "hst_id => '#{host_id}' " \
-        "acs_strat => '#{access_strategy}'"
+        "acs_strat => '#{access_strategy}' " \
+        "rw_mode => '#{rw_mode}'"
       end # rescue nil
     end
 
     # NOTE: Lock Series PoC
+    # @param rw_mode [Symbol] The mode of the lock series (`:read` or `:write`).
     # @api private
     # @since 1.16.0
+    # @version 1.18.0
     def lock_series_obtained( # steep:ignore
       logger,
       log_sampled,
@@ -40,7 +46,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor # steep:ignore
       acquirer_id,
       host_id,
       acq_time,
-      access_strategy
+      access_strategy,
+      rw_mode
     )
       return unless log_sampled
 
@@ -51,13 +58,16 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor # steep:ignore
         "acq_id => '#{acquirer_id}' " \
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
+        "rw_mode => '#{rw_mode}' " \
         "acq_time => #{acq_time} (ms)"
       end # rescue nil
     end
 
     # NOTE: Lock Series PoC
+    # @param rw_mode [Symbol] The mode of the lock series (`:read` or `:write`).
     # @api private
     # @since 1.16.0
+    # @version 1.18.0
     def expire_lock_series( # steep:ignore
       logger,
       log_sampled,
@@ -65,7 +75,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor # steep:ignore
       queue_ttl,
       acquirer_id,
       host_id,
-      access_strategy
+      access_strategy,
+      rw_mode
     )
       return unless log_sampled
 
@@ -75,7 +86,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor # steep:ignore
         "queue_ttl => #{queue_ttl} " \
         "acq_id => '#{acquirer_id}' " \
         "hst_id => '#{host_id}' " \
-        "acs_strat => '#{access_strategy}'"
+        "acs_strat => '#{access_strategy}' " \
+        "rw_mode => '#{rw_mode}'"
       end rescue nil
     end
   end

@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.9.0
+# rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElement::Isolated
   class << self
     # @param redis_client [RedisClient]
@@ -18,6 +19,7 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
     #
     # @api private
     # @since 1.9.0
+    # @version 1.18.0
     # rubocop:disable Metrics/MethodLength
     def flush_zombies(
       redis_client,
@@ -65,6 +67,32 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
         # NOTE: (steep) steep can't use <Set>s for splats
         rconn.call('DEL', *zombie_locks) if zombie_locks.any? # steep:ignore
 
+        # Step 3 (RW): find zombie read locks (read locks of zombie hosts) and drop them
+        #   - read locks store acquirer ids only (the host is a part of the acquirer id);
+        #   - readers registry is reported as a zombie lock if any of its read locks is dropped;
+        rconn.scan(
+          'MATCH', RedisQueuedLocks::Resource::LOCK_READERS_PATTERN, count: lock_scan_size
+        ) do |lock_readers_key|
+          # @type var read_lock_acquirers: Array[String]
+          read_lock_acquirers = rconn.call('ZRANGE', lock_readers_key, '0', '-1')
+          zombie_readers = read_lock_acquirers.select do |acquirer_id|
+            zombie_hosts.include?(RedisQueuedLocks::Resource.host_identifier_from_acquirer(acquirer_id))
+          end
+          next if zombie_readers.empty?
+
+          rconn.call('ZREM', lock_readers_key, *zombie_readers)
+          # NOTE: drop the zombie read lock data
+          lock_name = RedisQueuedLocks::Resource.lock_name_from_readers(lock_readers_key)
+          rconn.call(
+            'DEL',
+            *zombie_readers.map do |acquirer_id|
+              RedisQueuedLocks::Resource.prepare_read_lock_key(lock_name, acquirer_id)
+            end
+          )
+          zombie_locks << lock_readers_key
+          zombie_acquirers.merge(zombie_readers)
+        end
+
         # Step 4: find zombie requests => and drop them
         # TODO: indexing (in order to prevent full database scan);
         # NOTE: original redis does not support indexing so we need to use
@@ -74,6 +102,15 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
         ) do |lock_queue|
           zombie_acquirers.each do |zombie_acquirer|
             rconn.call('ZREM', lock_queue, zombie_acquirer)
+          end
+        end
+
+        # Step 4 (RW): drop zombie requests from the queues of read lock requests
+        rconn.scan(
+          'MATCH', RedisQueuedLocks::Resource::READ_LOCK_QUEUE_PATTERN, count: queue_scan_size
+        ) do |read_lock_queue|
+          zombie_acquirers.each do |zombie_acquirer|
+            rconn.call('ZREM', read_lock_queue, zombie_acquirer)
           end
         end
 
@@ -134,3 +171,4 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
     end
   end
 end
+# rubocop:enable Metrics/ClassLength

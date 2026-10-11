@@ -35,14 +35,22 @@ Client (client.rb)                              public API facade
 Every other public method is a thin wrapper: it fills option defaults from `config[...]` and calls
 an `Acquirer::*` module function with `redis_client`.
 
+Operation modules are independent of each other (all `Acquirer::*` except the `AcquireLock` core
+and PoC modules such as `LockSeriesPoC`, which may reuse other modules and `AcquireLock`): no
+cross-calls and no shared RBS types; common logic lives in `Resource`/`Utilities`, similar logic is
+duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatting, `Queues` the
+`QueueInfo` request formatting). Known debt: `AcquireLock::WithAcqTimeout` calls
+`LockInfo`/`QueueInfo` for detailed timeout errors.
+
 ### Client → implementation map
 
 | Client method | Implementation |
 |---|---|
 | `lock` / `lock!` | `acquirer/acquire_lock.rb` + `acquirer/acquire_lock/*` |
-| `lock_series` / `lock_series!` | `acquirer/lock_series_poc.rb` (proof of concept) |
+| `lock_series` / `lock_series!` | `acquirer/lock_series_poc.rb` (proof of concept; one `read_write_mode` for the whole series) |
 | `unlock` | `acquirer/release_lock.rb` |
-| `extend_lock_ttl` | `acquirer/extend_lock_ttl.rb` |
+| `unlock_read` / `release_read_lock` | `acquirer/release_read_lock.rb` (own read lock only) |
+| `extend_lock_ttl` | `acquirer/extend_lock_ttl.rb` (`read_write_mode: :read` extends own read lock, `+ all_read_locks: true` all live read locks) |
 | `locked?` / `queued?` | `acquirer/is_locked.rb` / `acquirer/is_queued.rb` |
 | `lock_info` / `queue_info` | `acquirer/lock_info.rb` / `acquirer/queue_info.rb` |
 | `locks`, `locks_info`, `queues`, `queues_info`, `keys` | `acquirer/locks.rb`, `queues.rb`, `keys.rb` (SCAN-based) |
@@ -58,23 +66,83 @@ an `Acquirer::*` module function with `redis_client`.
 
 | Mixin | Role |
 |---|---|
-| `TryToLock` (`try_to_lock.rb`) | One attempt: `ZADD NX` acquirer into the lock queue (timestamp score), then `multi(watch: [lock_key])` and take the lock if allowed (head of queue for `:queued`, any position for `:random`). Handles reentrant conflicts; TTL extension via inline Lua (`PTTL` + `PEXPIRE`). |
+| `TryToLock` (`try_to_lock.rb`) | One attempt: `multi(watch:)` (write: lock key + readers registry, read: lock key only), one pipelined read of the lock state (`HGET acq_id`, `TIME`, own reader score, longest reader), `ZADD NX` into the queue of the requested mode (timestamp score), prune both queues, take the lock if allowed (see Read/Write locks). Handles reentrant conflicts (incl. read/write ones); write TTL extension via inline Lua (`PTTL` + `PEXPIRE`). |
 | `WithAcqTimeout` | Global acquisition timeout (`timeout`). |
 | `DelayExecution` | Retry delay + jitter between attempts. |
-| `DequeueFromLockQueue` | Removes the acquirer from the queue on timeout/failure. |
-| `YieldExpire` | Runs the user block (optionally `timed`), then releases/expires the lock. |
+| `DequeueFromLockQueue` | Removes the acquirer from the queue of the requested mode on timeout/failure. |
+| `YieldExpire` | Runs the user block (optionally `timed`), then releases/expires the lock of the held mode (write: `EXPIRE 0`; read: `ZREM` own reader + `DEL` own read lock data; extendable reentrant: decrease). |
 | `LogVisitor` / `InstrVisitor` | One method per lifecycle event for logs and instrumentation. |
 
 ### Main `lock` options (defaults from config)
 
 `ttl`, `queue_ttl`, `timeout`, `timed`, `retry_count`, `retry_delay`, `retry_jitter`,
 `raise_errors`, `fail_fast`, `conflict_strategy`, `access_strategy`, `read_write_mode`
-(default `:write`; its doc is unfinished), `identity`, `meta`, `logger`, `log_lock_try`,
+(`:write` (default, exclusive) | `:read` (shared)), `identity`, `meta`, `logger`, `log_lock_try`,
 `instrumenter`, `instrument`, log/instr sampling options, `log_sample_this`, `instr_sample_this`.
 
 - `access_strategy`: `:queued` (FIFO, default) or `:random`.
 - `conflict_strategy` (same process re-acquires its own lock): `:wait_for_lock` (default),
   `:work_through`, `:extendable_work_through`, `:dead_locking`.
+- `read_write_mode`: `:write` (default) | `:read`, see "Read/Write locks" below.
+
+### Read/Write locks (`read_write_mode`)
+
+- Semantics: `:write` is exclusive (waits for the write lock and all live read locks); `:read` is
+  shared (waits for the write lock only). Default `:write` keeps the classic behavior and keys.
+- Safety (no Lua, WATCH/MULTI only): readers WATCH the write lock key; writers WATCH the write lock
+  key + readers registry. Readers never invalidate each other; a new reader aborts a concurrent
+  writer's EXEC and vice versa. Queues never participate in safety.
+- Reader liveness: registry score = expiration in Redis server time (`TIME`, ms); expired members are
+  ignored (`score > now`) and pruned on reader acquisition; registry TTL = max reader TTL (`PEXPIRE NX`
+  + `PEXPIRE GT` in the same MULTI).
+- Ordering (`:queued`): FIFO between modes by `(score, acq_id)`: read waits for earlier write requests;
+  write must be the head of the write queue and waits for earlier read requests. Every attempt prunes
+  dead requests in both queues. `:random` ignores queues (writers can starve). Ordering is best effort
+  (client clocks, `unlock` clears queues); it never affects mutual exclusion.
+- Read lock data: `rql:lock_reader:<name>:<acq_id>` HASH with the write-lock format (`acq_id`, `hst_id`,
+  `ts`, `ini_ttl`, `meta`, `spc_*` reentrant counters), TTL = read lock TTL; data carrier only (the
+  registry decides existence). Recreated (DEL + HSET) on each read acquisition.
+- Reentrancy (same acquirer): read under own write/read lock -> `conflict_strategy` as usual
+  (`held_rw_mode` decides which lock is extended/decreased/released); read->write upgrade ->
+  `:conflict_lock_upgrade` (`ConflictLockObtainError`) for `:work_through`/`:extendable_work_through`,
+  `:conflict_dead_lock` for `:dead_locking`, waits for own read expiration for `:wait_for_lock`.
+- `fail_fast`: write fails on write holder or live readers; read fails on write holder (or own live read).
+- Try results (internal symbols): `:write_request_is_ahead`, `:read_request_is_ahead`,
+  `:read_lock_is_still_acquired`, `:conflict_lock_upgrade`, `:read_lock_is_expired_during_extension`;
+  try success result carries internal `rw_mode` (held mode), not exposed in the public `lock` result.
+- Validation (`AcquireLock`): `read_write_mode` must be `:read`/`:write`; read `ttl` must be a positive
+  Integer (`RedisQueuedLocks::ArgumentError`).
+- RW-aware operations: `unlock` (write lock + readers + reader data + both queues, same result shape),
+  `clear_locks`, `clear_locks_of`/`clear_current_locks` (host derived from acq id via
+  `Resource.host_identifier_from_acquirer`), `clear_dead_requests`, `flush_zombies`/`zombie_*`
+  (zombie readers reported as their registry key), `locked?`, `queued?`, `lock_info` (read info:
+  `'rw_mode' => 'read'`, `'rem_ttl'`, `'readers' => [reader data + rem_ttl]` when no write lock),
+  `queue_info` (`'read_lock_queue'`/`'read_queue'` when present), `locks`/`locks_info`, `queues`/`queues_info`;
+  write lock info in `lock_info`/`locks_info` has `'rw_mode' => 'write'` (computed on formatting, not stored),
+  so `'rw_mode'` is a reserved `meta` key (validated in `AcquireLock` and `LockSeriesPoC`);
+  every request in `queue_info`/`queues_info` is `{ 'acq_id', 'score', 'rw_mode' => 'write'|'read' }`
+  (`queues_info` derives the mode from the queue key via `Resource.lock_queue_rw_mode`).
+- `lock_series` (both modes): one mode per series; `release_lock_series` releases only locks the series
+  obtained itself (`process == :lock_obtaining`, reentrant ones are kept) and only the current acquirer's:
+  write = compare-and-delete (`WATCH` + `HGET acq_id` + `DEL`), read = `ZREM` + `DEL` reader data. It runs
+  after the block and on any failure (exception or `raise_errors: false`), once per failed series.
+- Own read lock operations (current acquirer via `current_acquirer_id(identity:)`): `unlock_read` /
+  `release_read_lock` (`ZREM` + `DEL` reader data, event `explicit_read_lock_release`, result
+  `{ rel_time:, rel_key:, rel_acq_id:, lock_res: }`) and `extend_lock_ttl(..., read_write_mode: :read)`
+  (`multi(watch: [lock_key])`: extends only a live read lock while no write lock exists, never revives
+  an expired one; registry and reader data TTLs via `PEXPIRE NX`+`GT`). `unlock` releases everything.
+- `extend_lock_ttl(..., read_write_mode: :read, all_read_locks: true)` (`false` by default, ignored for
+  `:write`; non-boolean in `:read` => `ArgumentError`): same `multi(watch: [lock_key])` (registry not
+  watched, so concurrent readers don't abort it), `ZRANGE WITHSCORES` snapshot, every live reader gets
+  `ZADD XX INCR` + reader data `PEXPIRE NX`+`GT`, registry TTL = longest extended reader;
+  `extended_locks_count` = the number of non-nil `ZADD` results (0 => `:async_expire_or_no_lock`).
+  `extend_lock_ttl` success result (all modes): `{ ok: true, result: { extended_locks_count: Integer } }`
+  (write / own read = 1); failure stays `{ ok: false, result: :async_expire_or_no_lock }`. Internal param order: `read_write_mode, all_read_locks, acquirer_id`.
+- Design decisions (release semantics, not limitations to "fix"): read->write upgrade is an error unless
+  `:wait_for_lock`; nested reads of one acquirer go through `conflict_strategy` (no hold counting);
+  `:random` gives no fairness between modes; cross-host FIFO is best effort; no Lua in the RW path.
+- RBS: `Client` types `read_write_mode` as `:read | :write`. Older gem versions ignore readers: all processes must be upgraded
+  before read locks are used.
 
 ### Redis data layout (`resource.rb`)
 
@@ -82,7 +150,9 @@ an `Acquirer::*` module function with `redis_client`.
 |---|---|---|
 | `rql:lock:<name>` | HASH | lock owner + metadata (e.g. `l_spc_ts`, `l_spc_ext_ts` for reentrant cases) |
 | `rql:lock_queue:<name>` | ZSET | acquirer queue scored by enqueue time |
-| `rql:lock_queue:<name>:read` / `:write` | ZSET | read/write mode queues |
+| `rql:lock_readers:<name>` | ZSET | read locks: acquirer id => expiration (Redis `TIME`, ms) |
+| `rql:lock_read_queue:<name>` | ZSET | read lock requests (write requests use `rql:lock_queue:<name>`) |
+| `rql:lock_reader:<name>:<acq_id>` | HASH | read lock data (same fields as `rql:lock:<name>` incl. meta; data carrier only) |
 | `rql:swarm:hsts` | HASH | swarm host heartbeats |
 
 - Acquirer ID: `rql:acq:<pid>/<thread>/<fiber>/<ractor>/<identity>`
@@ -93,7 +163,12 @@ an `Acquirer::*` module function with `redis_client`.
 `redis_queued_locks.` + `lock_obtained`, `reentrant_lock_obtained`,
 `extendable_reentrant_lock_obtained`, `lock_hold_and_release`, `reentrant_lock_hold_completes`,
 `lock_series_obtained`, `lock_series_hold_and_release`, `explicit_lock_release`,
-`explicit_all_locks_release`, `release_locks_of`.
+`explicit_all_locks_release`, `release_locks_of`, `explicit_read_lock_release`.
+Lock events (`lock_obtained`, `reentrant_lock_obtained`, `extendable_reentrant_lock_obtained`,
+`lock_hold_and_release`, `reentrant_lock_hold_completes`) carry `rw_mode` (requested mode) in the payload;
+lock series events (`lock_series_obtained`, `lock_series_hold_and_release`) carry the mode of the series;
+lock log lines (incl. lock series logs) carry `rw_mode => '...'`. RW try-lock log events: `exit__write_request_ahead`,
+`exit__read_request_ahead`, `exit__read_lock_still_obtained`, `single_process_lock_conflict__lock_upgrade`.
 
 ### Errors (`errors.rb`)
 
@@ -111,7 +186,7 @@ inherit from `Timeout::Error`.
 |---|---|
 | `Client` | Facade; constructor injection (caller-supplied `RedisClient`); `x` returns a result hash, `x!` raises |
 | `Acquirer::*` | One module per command; stateless `class << self` functions; uniform `{ ok:, result: }` returns (public API contract; swarm element internals use bare scalars/primitives) |
-| `AcquireLock` | Composition via `extend` mixins; optimistic concurrency (WATCH/MULTI) + Lua for atomic updates; strategy options (`access_strategy`, `conflict_strategy`) |
+| `AcquireLock` | Composition via `extend` mixins; optimistic concurrency (WATCH/MULTI; asymmetric WATCH for read/write locks) + Lua only for write TTL extension/decrease; strategy options (`access_strategy`, `conflict_strategy`, `read_write_mode`) |
 | Log/Instr visitors | Visitor-style event hooks keep observability out of the algorithm; percent sampling via `sampling_happened?(percent)` |
 | `Logging` / `Instrument` | Null Object defaults (`VoidLogger`, `VoidNotifier`); Adapter (`instrument/active_support.rb`); duck typing (`::Logger` API, `#notify(event, payload)`) |
 | `Config` | Declarative DSL: `setting(key, default)` and `validate(key) { }` registries; access as `config['a.b']`; runtime `Client#configure` |
@@ -151,7 +226,7 @@ lib/redis_queued_locks/
   resource.rb                      keys and identities
   data.rb, errors.rb, utilities.rb, utilities/lock.rb, debugger/, version.rb
 sig/                               RBS mirror of lib/ + sig/vendor stubs (redis_client, active_support, semantic_logger)
-spec/                              redis_queued_locks_spec.rb (~2.6k lines, integration), spec_helper.rb, setup_simplecov.rb
+spec/                              redis_queued_locks_spec.rb (~3.4k lines, integration), spec_helper.rb, setup_simplecov.rb
 .github/workflows/                 tests, lint, typecheck-static, typecheck-runtime
 bin/console, bin/setup             dev scripts
 Rakefile, Steepfile, rbs_collection.yaml
@@ -202,4 +277,5 @@ Known quirk: `sig/redis_queued_locks/acquier.rbs` is misspelled (should be `acqu
 - New operation: new `Acquirer::*` module, thin `Client` method (+ `!` variant if it should raise), RBS, spec.
 - New config option: `setting` (+ `validate`) in `config.rb`, read via `config['key']`, document defaults.
 - Development gems go in `Gemfile` (`Gemspec/DevelopmentDependencies: Gemfile`), not the gemspec.
+- This overview and `.claude/rules/*.md` are updated in the same change as the code (keys, options, results, events, algorithm steps, limitations); README and CHANGELOG `[Unreleased]` for user-visible behavior (log keys and instrumentation payloads: README `## Logging` / `### Instrumentation Events`).
 - Temporary debt: rspec-retry, disabled coverage minimum, runtime type-check job that can't fail.

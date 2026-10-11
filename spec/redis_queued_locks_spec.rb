@@ -221,6 +221,9 @@ RSpec.describe RedisQueuedLocks do
           failed_on_lock: 'd'
         }
       })
+      expect(client.locked?('x')).to eq(false)
+      expect(client.locked?('y')).to eq(false)
+      expect(client.locked?('d')).to eq(true)
 
       # locks are successfully released when the passed block is failed with an exception
       is_aa_locked_isnide = nil
@@ -241,6 +244,52 @@ RSpec.describe RedisQueuedLocks do
       expect(client.locked?('aa')).to eq(false)
       expect(client.locked?('bb')).to eq(false)
       expect(client.locked?('cc')).to eq(false)
+    end
+
+    specify '#lock_series releases only the locks obtained by the series itself' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['retry_count'] = 3
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+      end
+
+      aggregate_failures 'reentrant write locks of the outer logic are kept' do
+        client.lock('ls.outer', ttl: 10_000) do
+          client.lock_series('ls.outer', 'ls.inner', conflict_strategy: :work_through) { :ok }
+          expect(client.lock_info('ls.outer')['acq_id']).to eq(client.current_acquirer_id)
+          expect(client.locked?('ls.inner')).to eq(false)
+        end
+        expect(client.locked?('ls.outer')).to eq(false)
+      end
+
+      aggregate_failures 'write locks of other acquirers are kept (owner check)' do
+        other_holder = nil
+        client.lock_series('ls.owned', 'ls.other', ttl: 10_000) do
+          # NOTE: simulate the lock expiration and the lock obtaining by another acquirer
+          client.unlock('ls.owned')
+          other_holder = Thread.new { client.lock('ls.owned', ttl: 10_000) }
+          other_holder.join
+        end
+        expect(client.lock_info('ls.owned')['acq_id']).to eq(other_holder.value[:result][:acq_id])
+        expect(client.locked?('ls.other')).to eq(false)
+        client.unlock('ls.owned')
+      end
+
+      aggregate_failures 'locks of the failed series are released without exceptions too' do
+        holder = Thread.new { client.lock('ls.busy', ttl: 10_000) }
+        holder.join
+        %i[write read].each do |mode|
+          result = client.lock_series(
+            'ls.first', 'ls.busy', read_write_mode: mode, fail_fast: true, ttl: 10_000
+          ) { :never }
+          expect(result).to match({
+            ok: false,
+            result: hash_including(acquired_locks: ['ls.first'], failed_on_lock: 'ls.busy')
+          })
+          expect(client.locked?('ls.first')).to eq(false)
+        end
+        client.unlock('ls.busy')
+      end
     end
   end
   # rubocop:enable all
@@ -817,6 +866,25 @@ RSpec.describe RedisQueuedLocks do
     end
   end
 
+  specify 'host identifier of the acquirer' do
+    client = RedisQueuedLocks::Client.new(redis)
+
+    aggregate_failures 'host of the current acquirer' do
+      expect(
+        RedisQueuedLocks::Resource.host_identifier_from_acquirer(client.current_acquirer_id)
+      ).to eq(client.current_host_id)
+    end
+
+    aggregate_failures 'identity with slashes and multibyte symbols' do
+      ['ид/ен/ти/ти', 'b30ec5e4bea10512', 'ключ'].each do |identity|
+        acquirer_id = RedisQueuedLocks::Resource.acquirer_identifier(1, 22, 333, 4444, identity)
+        expect(RedisQueuedLocks::Resource.host_identifier_from_acquirer(acquirer_id)).to eq(
+          RedisQueuedLocks::Resource.host_identifier(1, 22, 4444, identity)
+        )
+      end
+    end
+  end
+
   specify ':random access strategy' do
     client = RedisQueuedLocks::Client.new(redis) do |conf|
       conf['default_access_strategy'] = :random
@@ -1123,7 +1191,7 @@ RSpec.describe RedisQueuedLocks do
       })
     })
     expect(lock_state1.keys).to contain_exactly(
-      'acq_id', 'hst_id', 'ts', 'ini_ttl', 'lock_key', 'rem_ttl'
+      'acq_id', 'hst_id', 'ts', 'ini_ttl', 'lock_key', 'rem_ttl', 'rw_mode'
     )
     expect(lock_state1).to match({
       'acq_id' => be_a(String),
@@ -1131,7 +1199,8 @@ RSpec.describe RedisQueuedLocks do
       'ts' => be_a(Float),
       'ini_ttl' => eq(5000),
       'lock_key' => eq('rql:lock:pek'),
-      'rem_ttl' => be_a(Integer)
+      'rem_ttl' => be_a(Integer),
+      'rw_mode' => 'write'
     })
 
     expect(result2).to match({
@@ -1152,6 +1221,7 @@ RSpec.describe RedisQueuedLocks do
       'ini_ttl',
       'lock_key',
       'rem_ttl',
+      'rw_mode',
       'spc_ext_ttl',
       'spc_cnt',
       'l_spc_ext_ts',
@@ -1167,7 +1237,8 @@ RSpec.describe RedisQueuedLocks do
       'l_spc_ext_ts' => be_a(Float), # NOTE: the last extension time
       'l_spc_ext_ini_ttl' => eq(5000), # NOTE: the ttl attribute of the last extension time
       'lock_key' => eq('rql:lock:pek'),
-      'rem_ttl' => be_a(Integer)
+      'rem_ttl' => be_a(Integer),
+      'rw_mode' => 'write'
     })
     # NOTE: new remaing ttl should be greater than initial)
     expect(lock_state2['rem_ttl'] > 9000).to eq(true)
@@ -1193,6 +1264,7 @@ RSpec.describe RedisQueuedLocks do
       'ini_ttl',
       'lock_key',
       'rem_ttl',
+      'rw_mode',
       'spc_ext_ttl',
       'spc_cnt',
       'l_spc_ext_ts',
@@ -1208,7 +1280,8 @@ RSpec.describe RedisQueuedLocks do
       'l_spc_ext_ts' => be_a(Float), # NOTE: the last extension time
       'l_spc_ext_ini_ttl' => eq(4500), # NOTE: the ttl attribute of the last extension time
       'lock_key' => eq('rql:lock:pek'),
-      'rem_ttl' => be_a(Integer)
+      'rem_ttl' => be_a(Integer),
+      'rw_mode' => 'write'
     })
     # NOTE: new remaing ttl should be greater than initial)
     expect(lock_state3['rem_ttl'] > 13_000).to eq(true)
@@ -1229,7 +1302,8 @@ RSpec.describe RedisQueuedLocks do
       'l_spc_ext_ts' => be_a(Float), # NOTE: the last extension time
       'l_spc_ext_ini_ttl' => eq(5500), # NOTE: the ttl attribute of the last extension time
       'lock_key' => eq('rql:lock:pek'),
-      'rem_ttl' => be_a(Integer)
+      'rem_ttl' => be_a(Integer),
+      'rw_mode' => 'write'
     })
     expect(client.lock_info('pek')['rem_ttl'] > 14_000).to eq(true)
 
@@ -1257,7 +1331,8 @@ RSpec.describe RedisQueuedLocks do
       'l_spc_ext_ini_ttl',
       'l_spc_ts',
       'lock_key',
-      'rem_ttl'
+      'rem_ttl',
+      'rw_mode'
     )
     expect(lock_state5).to match({
       'acq_id' => be_a(String),
@@ -1270,7 +1345,8 @@ RSpec.describe RedisQueuedLocks do
       'l_spc_ext_ini_ttl' => eq(5500),
       'l_spc_ts' => be_a(Float),
       'lock_key' => eq('rql:lock:pek'),
-      'rem_ttl' => be_a(Integer)
+      'rem_ttl' => be_a(Integer),
+      'rw_mode' => 'write'
     })
 
     # TODO: pokrit novie logi
@@ -1311,7 +1387,8 @@ RSpec.describe RedisQueuedLocks do
       'ts',
       'ini_ttl',
       'lock_key',
-      'rem_ttl'
+      'rem_ttl',
+      'rw_mode'
     )
     expect(lock_state1).to match({
       'acq_id' => be_a(String),
@@ -1319,7 +1396,8 @@ RSpec.describe RedisQueuedLocks do
       'ts' => be_a(Float),
       'ini_ttl' => eq(10_000),
       'lock_key' => eq('rql:lock:trukek'),
-      'rem_ttl' => be_a(Integer)
+      'rem_ttl' => be_a(Integer),
+      'rw_mode' => 'write'
     })
 
     # OK + :conflict_work_through :process, SPC COUNT: 1
@@ -1341,7 +1419,8 @@ RSpec.describe RedisQueuedLocks do
       'spc_cnt',
       'l_spc_ts',
       'lock_key',
-      'rem_ttl'
+      'rem_ttl',
+      'rw_mode'
     )
     expect(lock_state2).to match({
       'acq_id' => be_a(String),
@@ -1351,7 +1430,8 @@ RSpec.describe RedisQueuedLocks do
       'spc_cnt' => eq(1),
       'l_spc_ts' => be_a(Float),
       'lock_key' => eq('rql:lock:trukek'),
-      'rem_ttl' => be_a(Integer)
+      'rem_ttl' => be_a(Integer),
+      'rw_mode' => 'write'
     })
 
     # OK + :conflict_work_through :process, SPC COUNT: 2
@@ -1373,7 +1453,8 @@ RSpec.describe RedisQueuedLocks do
       'spc_cnt',
       'l_spc_ts',
       'lock_key',
-      'rem_ttl'
+      'rem_ttl',
+      'rw_mode'
     )
     expect(lock_state3).to match({
       'acq_id' => be_a(String),
@@ -1383,7 +1464,8 @@ RSpec.describe RedisQueuedLocks do
       'spc_cnt' => eq(2),
       'l_spc_ts' => be_a(Float),
       'lock_key' => eq('rql:lock:trukek'),
-      'rem_ttl' => be_a(Integer)
+      'rem_ttl' => be_a(Integer),
+      'rw_mode' => 'write'
     })
 
     # CHECK: SPC count should change with another conflict strategy too (with their own info)
@@ -1410,7 +1492,8 @@ RSpec.describe RedisQueuedLocks do
       'l_spc_ext_ts',
       'l_spc_ext_ini_ttl',
       'lock_key',
-      'rem_ttl'
+      'rem_ttl',
+      'rw_mode'
     )
     expect(lock_state4).to match({
       'acq_id' => be_a(String),
@@ -1423,7 +1506,8 @@ RSpec.describe RedisQueuedLocks do
       'l_spc_ext_ts' => be_a(Float),
       'l_spc_ext_ini_ttl' => eq(5_500),
       'lock_key' => eq('rql:lock:trukek'),
-      'rem_ttl' => be_a(Integer)
+      'rem_ttl' => be_a(Integer),
+      'rw_mode' => 'write'
     })
 
     # TODO: pokrit novie logi
@@ -1454,7 +1538,8 @@ RSpec.describe RedisQueuedLocks do
       'ts',
       'ini_ttl',
       'lock_key',
-      'rem_ttl'
+      'rem_ttl',
+      'rw_mode'
     )
     expect(lock_state1).to match({
       'acq_id' => be_a(String),
@@ -1462,7 +1547,8 @@ RSpec.describe RedisQueuedLocks do
       'ts' => be_a(Float),
       'ini_ttl' => eq(10_000),
       'lock_key' => eq('rql:lock:bekkek'),
-      'rem_ttl' => be_a(Integer)
+      'rem_ttl' => be_a(Integer),
+      'rw_mode' => 'write'
     })
 
     result2 = client.lock('bekkek', ttl: 5_000)
@@ -1475,7 +1561,8 @@ RSpec.describe RedisQueuedLocks do
       'ts',
       'ini_ttl',
       'lock_key',
-      'rem_ttl'
+      'rem_ttl',
+      'rw_mode'
     )
     # CHECK: lock state does not change (except the `rem_ttl` key of course)
     expect(lock_state2).to match({
@@ -1484,7 +1571,8 @@ RSpec.describe RedisQueuedLocks do
       'ts' => eq(lock_state1['ts']),
       'ini_ttl' => eq(lock_state1['ini_ttl']),
       'lock_key' => eq('rql:lock:bekkek'),
-      'rem_ttl' => be_a(Integer)
+      'rem_ttl' => be_a(Integer),
+      'rw_mode' => 'write'
     })
 
     # TODO: pokrit novie logi
@@ -1538,30 +1626,30 @@ RSpec.describe RedisQueuedLocks do
     expect(client.queue_info('kek.dead.lock1')).to match({
       'lock_queue' => 'rql:lock_queue:kek.dead.lock1',
       'queue' => contain_exactly(
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) }
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' }
       )
     })
 
     expect(client.queue_info('kek.dead.lock2')).to match({
       'lock_queue' => 'rql:lock_queue:kek.dead.lock2',
       'queue' => contain_exactly(
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric) }
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
+        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' }
       )
     })
 
@@ -1839,7 +1927,7 @@ RSpec.describe RedisQueuedLocks do
     # NOTE: extend ttl of existing lock
     result = client.extend_lock_ttl('super_mega_kek_lock', 100_000)
     expect(result[:ok]).to eq(true)
-    expect(result[:result]).to eq(:ttl_extended)
+    expect(result[:result]).to eq({ extended_locks_count: 1 })
     lock_info = client.lock_info('super_mega_kek_lock')
     expect(lock_info['rem_ttl'] > 100_000).to eq(true)
 
@@ -1912,6 +2000,7 @@ RSpec.describe RedisQueuedLocks do
       'ini_ttl' => be_a(Integer), # reserved
       'lock_key' => be_a(String), # reserved
       'rem_ttl' => be_a(Numeric), # reserved
+      'rw_mode' => 'write', # reserved
       'chuk' => '321', # <custom meta> (expectation)
       'buk' => '123' # <custom meta> (expectation)
     })
@@ -1921,6 +2010,20 @@ RSpec.describe RedisQueuedLocks do
         client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'acq_id' => 'kek' })
       end.to raise_error(RedisQueuedLocks::ArgumentError)
       expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+
+      # NOTE: (RW) lock mode key of lock info
+      %i[write read].each do |mode|
+        expect do
+          client.lock(
+            'bum.bum.bam.bam', ttl: 5_000, read_write_mode: mode, meta: { 'rw_mode' => 'kek' }
+          )
+        end.to raise_error(RedisQueuedLocks::ArgumentError, /rw_mode/)
+        expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+      end
+      expect do
+        client.lock_series('bum.a', 'bum.b', ttl: 5_000, meta: { 'rw_mode' => 'kek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError, /rw_mode/)
+      expect(client.locked?('bum.a')).to eq(false)
 
       expect do
         client.lock('bum.bum.bam.bam', ttl: 5_000, meta: { 'hst_id' => 'kek' })
@@ -2178,7 +2281,8 @@ RSpec.describe RedisQueuedLocks do
       'hst_id' => be_a(String),
       'ts' => be_a(Float),
       'ini_ttl' => 10_000,
-      'rem_ttl' => be_a(Integer)
+      'rem_ttl' => be_a(Integer),
+      'rw_mode' => 'write'
     })
 
     expect(client.locked?(lock_name)).to eq(true)
@@ -2193,8 +2297,8 @@ RSpec.describe RedisQueuedLocks do
     expect(client.queue_info(lock_name)).to match({
       'lock_queue' => "rql:lock_queue:#{lock_name}",
       'queue' => match_array([
-        match({ 'acq_id' => be_a(String), 'score' => be_a(Numeric) }),
-        match({ 'acq_id' => be_a(String), 'score' => be_a(Numeric) })
+        match({ 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' }),
+        match({ 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' })
       ])
     })
 
@@ -2570,8 +2674,8 @@ RSpec.describe RedisQueuedLocks do
       :alive
     )
     expect(locks_info_a.map { |val| val[:info].keys }).to contain_exactly(
-      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl kek a]),
-      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl pek b])
+      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl rw_mode kek a]),
+      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl rw_mode pek b])
     )
     expect(locks_info_b.size).to eq(2)
     expect(locks_info_b.map { |val| val[:lock] }).to contain_exactly(
@@ -2583,8 +2687,8 @@ RSpec.describe RedisQueuedLocks do
       :alive
     )
     expect(locks_info_b.map { |val| val[:info].keys }).to contain_exactly(
-      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl kek a]),
-      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl pek b])
+      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl rw_mode kek a]),
+      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl rw_mode pek b])
     )
 
     # TODO: more time for work => better spec
@@ -2599,14 +2703,14 @@ RSpec.describe RedisQueuedLocks do
     )
     expect(queue_info_a.map { |val| val[:requests].map(&:keys) }).to contain_exactly(
       contain_exactly(
-        contain_exactly(*%w[acq_id score]),
-        contain_exactly(*%w[acq_id score]),
-        contain_exactly(*%w[acq_id score])
+        contain_exactly(*%w[acq_id score rw_mode]),
+        contain_exactly(*%w[acq_id score rw_mode]),
+        contain_exactly(*%w[acq_id score rw_mode])
       ),
       contain_exactly(
-        contain_exactly(*%w[acq_id score]),
-        contain_exactly(*%w[acq_id score]),
-        contain_exactly(*%w[acq_id score])
+        contain_exactly(*%w[acq_id score rw_mode]),
+        contain_exactly(*%w[acq_id score rw_mode]),
+        contain_exactly(*%w[acq_id score rw_mode])
       )
     )
 
@@ -2711,5 +2815,978 @@ RSpec.describe RedisQueuedLocks do
         config['swarm.flush_zombies.redis_config.pool_config'] = {}
       end
     end.not_to raise_error
+  end
+
+  describe 'read/write locks' do
+    specify 'readers share the lock, writer waits for readers, reader waits for writer (FIFO)' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['retry_count'] = nil
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+      end
+      timeline = {}
+      timeline_lock = Mutex.new
+      mark = lambda do |event|
+        timeline_lock.synchronize { timeline[event] = Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+      end
+
+      readers = Array.new(2) do |index|
+        Thread.new do
+          client.lock('rw.shared', read_write_mode: :read, ttl: 10_000) do
+            mark.call(:"reader#{index}_in")
+            sleep(0.5)
+            mark.call(:"reader#{index}_out")
+          end
+        end
+      end
+      sleep(0.2) # NOTE: give a timespot to readers to obtain the lock
+      writer = Thread.new do
+        client.lock('rw.shared', read_write_mode: :write, ttl: 10_000) do
+          mark.call(:writer_in)
+          sleep(0.3)
+          mark.call(:writer_out)
+        end
+      end
+      sleep(0.1) # NOTE: give a timespot to the writer to take its place in the lock queue
+      late_reader = Thread.new do
+        client.lock('rw.shared', read_write_mode: :read, ttl: 10_000) { mark.call(:late_reader_in) }
+      end
+      [*readers, writer, late_reader].each(&:join)
+
+      aggregate_failures 'readers work in parallel' do
+        expect(timeline[:reader0_in]).to be < timeline[:reader1_out]
+        expect(timeline[:reader1_in]).to be < timeline[:reader0_out]
+      end
+      aggregate_failures 'writer waits for all readers' do
+        expect(timeline[:writer_in]).to be >= timeline[:reader0_out]
+        expect(timeline[:writer_in]).to be >= timeline[:reader1_out]
+      end
+      aggregate_failures 'later reader waits for the earlier writer (:queued access strategy)' do
+        expect(timeline[:late_reader_in]).to be >= timeline[:writer_out]
+      end
+      expect(client.locked?('rw.shared')).to eq(false)
+      expect(client.queued?('rw.shared')).to eq(false)
+    end
+
+    specify ':random access strategy: readers do not wait for earlier write lock requests' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['retry_count'] = nil
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+        config['default_access_strategy'] = :random
+      end
+      timeline = {}
+      timeline_lock = Mutex.new
+      mark = lambda do |event|
+        timeline_lock.synchronize { timeline[event] = Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+      end
+
+      reader = Thread.new do
+        client.lock('rw.random', read_write_mode: :read, ttl: 10_000) do
+          sleep(0.6)
+          mark.call(:reader_out)
+        end
+      end
+      sleep(0.2) # NOTE: give a timespot to the reader to obtain the lock
+      writer = Thread.new do
+        client.lock('rw.random', read_write_mode: :write, ttl: 10_000) { mark.call(:writer_in) }
+      end
+      sleep(0.1) # NOTE: give a timespot to the writer to try to obtain the lock
+      late_reader = Thread.new do
+        client.lock('rw.random', read_write_mode: :read, ttl: 10_000) { mark.call(:late_reader_in) }
+      end
+      [reader, writer, late_reader].each(&:join)
+
+      expect(timeline[:late_reader_in]).to be < timeline[:reader_out]
+      expect(timeline[:late_reader_in]).to be < timeline[:writer_in]
+      expect(timeline[:writer_in]).to be >= timeline[:reader_out]
+    end
+
+    specify 'mutual exclusion under concurrency' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['retry_count'] = nil
+        config['retry_delay'] = 5
+        config['retry_jitter'] = 5
+      end
+      state = { readers: 0, writers: 0, max_readers: 0, violations: 0, completed: 0 }
+      state_lock = Mutex.new
+
+      workers = Array.new(8) do |worker|
+        Thread.new do
+          random = Random.new(worker)
+          12.times do
+            mode = (random.rand < 0.75) ? :read : :write
+            client.lock('rw.invariant', read_write_mode: mode, ttl: 10_000, timeout: 30) do
+              state_lock.synchronize do
+                if mode == :read
+                  state[:readers] += 1
+                  state[:max_readers] = state[:readers] if state[:readers] > state[:max_readers]
+                  state[:violations] += 1 if state[:writers] > 0
+                else
+                  state[:writers] += 1
+                  state[:violations] += 1 if state[:writers] > 1 || state[:readers] > 0
+                end
+              end
+              sleep(random.rand(0.002..0.01))
+              state_lock.synchronize do
+                (mode == :read) ? (state[:readers] -= 1) : (state[:writers] -= 1)
+                state[:completed] += 1
+              end
+            end
+          end
+        end
+      end
+      workers.each(&:join)
+
+      expect(state).to match({
+        readers: 0,
+        writers: 0,
+        max_readers: be >= 2,
+        violations: 0,
+        completed: 8 * 12
+      })
+      expect(client.locked?('rw.invariant')).to eq(false)
+      expect(client.queued?('rw.invariant')).to eq(false)
+    end
+
+    specify 'reentrant read/write locks of the same acquirer' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['retry_count'] = 3
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+      end
+
+      aggregate_failures 'read -> read (:work_through)' do
+        client.lock('rw.reentrant', read_write_mode: :read, ttl: 10_000) do
+          result = client.lock(
+            'rw.reentrant', read_write_mode: :read, ttl: 10_000, conflict_strategy: :work_through
+          )
+          expect(result).to match({
+            ok: true, result: hash_including(process: :conflict_work_through)
+          })
+          client.lock(
+            'rw.reentrant', read_write_mode: :read, ttl: 10_000, conflict_strategy: :work_through
+          ) { :inner }
+          # NOTE: the inner block does not release the outer read lock
+          expect(client.lock_info('rw.reentrant')).to match(hash_including(
+            'rw_mode' => 'read',
+            'readers' => contain_exactly(hash_including('acq_id' => client.current_acquirer_id))
+          ))
+        end
+        expect(client.locked?('rw.reentrant')).to eq(false)
+      end
+
+      aggregate_failures 'read -> read (:extendable_work_through)' do
+        client.lock('rw.reentrant', read_write_mode: :read, ttl: 5_000) do
+          client.lock(
+            'rw.reentrant',
+            read_write_mode: :read,
+            ttl: 20_000,
+            conflict_strategy: :extendable_work_through
+          ) do
+            expect(client.lock_info('rw.reentrant')['rem_ttl']).to be > 20_000
+          end
+          # NOTE:
+          #   - the extension is returned back after the inner block;
+          #   - the returned extension is decreased by the time spent inside the inner block
+          #     and by the redis time shift error (the same as for extendable write locks);
+          expect(client.lock_info('rw.reentrant')['rem_ttl']).to be < 5_100
+        end
+        expect(client.locked?('rw.reentrant')).to eq(false)
+      end
+
+      aggregate_failures 'read -> read (:dead_locking)' do
+        client.lock('rw.reentrant', read_write_mode: :read, ttl: 10_000) do
+          expect do
+            client.lock!('rw.reentrant', read_write_mode: :read, conflict_strategy: :dead_locking)
+          end.to raise_error(RedisQueuedLocks::ConflictLockObtainError)
+        end
+        expect(client.locked?('rw.reentrant')).to eq(false)
+      end
+
+      aggregate_failures 'write -> read (:work_through): read lock under the obtained write lock' do
+        client.lock('rw.reentrant', read_write_mode: :write, ttl: 10_000) do
+          client.lock(
+            'rw.reentrant', read_write_mode: :read, conflict_strategy: :work_through
+          ) do
+            expect(client.lock_info('rw.reentrant')['acq_id']).to eq(client.current_acquirer_id)
+          end
+          # NOTE: the inner block does not release the outer write lock
+          expect(client.lock_info('rw.reentrant')['acq_id']).to eq(client.current_acquirer_id)
+        end
+        expect(client.locked?('rw.reentrant')).to eq(false)
+      end
+
+      aggregate_failures 'read -> write (lock upgrade) fails for non-waiting conflict strategies' do
+        client.lock('rw.reentrant', read_write_mode: :read, ttl: 10_000) do
+          %i[work_through extendable_work_through].each do |strategy|
+            expect(
+              client.lock('rw.reentrant', read_write_mode: :write, conflict_strategy: strategy)
+            ).to match({ ok: false, result: :conflict_lock_upgrade })
+            expect do
+              client.lock!('rw.reentrant', read_write_mode: :write, conflict_strategy: strategy)
+            end.to raise_error(RedisQueuedLocks::ConflictLockObtainError, /upgrade/)
+          end
+          expect(
+            client.lock('rw.reentrant', read_write_mode: :write, conflict_strategy: :dead_locking)
+          ).to match({ ok: false, result: :conflict_dead_lock })
+          expect(client.queued?('rw.reentrant')).to eq(false)
+        end
+        expect(client.locked?('rw.reentrant')).to eq(false)
+      end
+
+      aggregate_failures 'read -> write (:wait_for_lock): waits for its own read lock expiration' do
+        client.lock('rw.reentrant', read_write_mode: :read, ttl: 400)
+        started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        result = client.lock(
+          'rw.reentrant',
+          read_write_mode: :write,
+          ttl: 10_000,
+          conflict_strategy: :wait_for_lock,
+          retry_count: nil,
+          timeout: 5
+        )
+        waited = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
+        expect(result).to match({ ok: true, result: hash_including(process: :lock_obtaining) })
+        expect(waited).to be >= 0.3
+        expect(client.lock_info('rw.reentrant')).to include('acq_id' => client.current_acquirer_id)
+        client.unlock('rw.reentrant')
+      end
+    end
+
+    specify 'fail_fast with read/write locks' do
+      client = RedisQueuedLocks::Client.new(redis)
+      # NOTE: (thread references are kept till the end of the spec in order to keep acquirer ids)
+      holders = []
+      take = lambda do |mode|
+        holder = Thread.new { client.lock('rw.ff', read_write_mode: mode, ttl: 10_000) }
+        holders << holder
+        holder.value
+      end
+
+      take.call(:write)
+      expect(client.lock('rw.ff', read_write_mode: :read, fail_fast: true)).to match({
+        ok: false, result: :fail_fast_no_try
+      })
+      expect do
+        client.lock!('rw.ff', read_write_mode: :read, fail_fast: true)
+      end.to raise_error(RedisQueuedLocks::LockAlreadyObtainedError)
+      client.unlock('rw.ff')
+
+      take.call(:read)
+      expect(client.lock('rw.ff', read_write_mode: :write, fail_fast: true)).to match({
+        ok: false, result: :fail_fast_no_try
+      })
+      expect do
+        client.lock!('rw.ff', read_write_mode: :write, fail_fast: true)
+      end.to raise_error(RedisQueuedLocks::LockAlreadyObtainedError)
+      expect(client.lock('rw.ff', read_write_mode: :read, ttl: 10_000, fail_fast: true)).to match({
+        ok: true, result: hash_including(process: :lock_obtaining)
+      })
+      expect(client.lock_info('rw.ff')['readers'].size).to eq(2)
+      client.unlock('rw.ff')
+    end
+
+    specify 'expired read locks and dead lock requests do not block other requests' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+      end
+      holders = Array.new(2) do |index|
+        Thread.new { client.lock('rw.expired', read_write_mode: :read, ttl: [300, 1_000][index]) }
+      end
+      holders.each(&:join)
+      sleep(0.5) # NOTE: the first read lock is expired, the second one is still alive
+
+      aggregate_failures 'expired read locks are ignored' do
+        expect(client.lock_info('rw.expired')).to match(hash_including(
+          'readers' => contain_exactly(
+            hash_including('acq_id' => holders[1].value[:result][:acq_id])
+          )
+        ))
+        started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        result = client.lock('rw.expired', read_write_mode: :write, ttl: 10_000, retry_count: nil)
+        waited = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
+        expect(result).to match({ ok: true, result: hash_including(process: :lock_obtaining) })
+        expect(waited).to be < 2
+        client.unlock('rw.expired')
+      end
+
+      aggregate_failures 'dead write lock request does not block readers' do
+        redis.call('ZADD', 'rql:lock_queue:rw.dead', Time.now.to_f - 60, 'rql:acq:1/2/3/4/dead')
+        result = client.lock('rw.dead', read_write_mode: :read, queue_ttl: 5, retry_count: 1)
+        expect(result).to match({ ok: true, result: hash_including(process: :lock_obtaining) })
+        expect(redis.call('EXISTS', 'rql:lock_queue:rw.dead')).to eq(0)
+        client.unlock('rw.dead')
+      end
+
+      aggregate_failures 'dead read lock request does not block writers' do
+        redis.call(
+          'ZADD', 'rql:lock_read_queue:rw.dead', Time.now.to_f - 60, 'rql:acq:1/2/3/4/dead'
+        )
+        result = client.lock('rw.dead', read_write_mode: :write, queue_ttl: 5, retry_count: 1)
+        expect(result).to match({ ok: true, result: hash_including(process: :lock_obtaining) })
+        expect(redis.call('EXISTS', 'rql:lock_read_queue:rw.dead')).to eq(0)
+        client.unlock('rw.dead')
+      end
+    end
+
+    specify 'read lock request is dequeued on timeout' do
+      client = RedisQueuedLocks::Client.new(redis)
+      holder = Thread.new { client.lock('rw.timeout', read_write_mode: :write, ttl: 10_000) }
+      holder.join
+
+      result = client.lock('rw.timeout', read_write_mode: :read, timeout: 1, retry_count: nil)
+      expect(result).to match({ ok: false, result: :timeout_reached })
+      expect(client.queue_info('rw.timeout')).to eq(nil)
+      expect(client.queued?('rw.timeout')).to eq(false)
+      client.unlock('rw.timeout')
+    end
+
+    specify 'lock info, queue info and #unlock with read/write locks' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['retry_count'] = nil
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+      end
+      reader = Thread.new { client.lock('rw.info', read_write_mode: :read, ttl: 10_000) }
+      reader.join
+      writer = Thread.new do
+        client.lock('rw.info', read_write_mode: :write, ttl: 10_000, timeout: 10) { :written }
+      end
+      sleep(0.2) # NOTE: give a timespot to the writer to take its place in the lock queue
+      late_reader = Thread.new do
+        client.lock('rw.info', read_write_mode: :read, ttl: 10_000, timeout: 10) { :read }
+      end
+      sleep(0.2) # NOTE: give a timespot to the reader to take its place in the read lock queue
+
+      aggregate_failures 'lock info' do
+        expect(client.locked?('rw.info')).to eq(true)
+        expect(client.lock_info('rw.info')).to match({
+          'lock_key' => 'rql:lock:rw.info',
+          'rw_mode' => 'read',
+          'rem_ttl' => be_a(Integer),
+          'readers' => contain_exactly({
+            'acq_id' => reader.value[:result][:acq_id],
+            'hst_id' => reader.value[:result][:hst_id],
+            'ts' => be_a(Float),
+            'ini_ttl' => 10_000,
+            'rem_ttl' => be_a(Integer)
+          })
+        })
+        expect(client.locks).to include('rql:lock:rw.info')
+        # NOTE: `locks_info` extracts the read lock info by itself (the same format as `lock_info`)
+        expect(client.locks_info).to include(match({
+          lock: 'rql:lock:rw.info',
+          status: :alive,
+          info: {
+            'lock_key' => 'rql:lock:rw.info',
+            'rw_mode' => 'read',
+            'rem_ttl' => be_a(Integer),
+            'readers' => contain_exactly({
+              'acq_id' => reader.value[:result][:acq_id],
+              'hst_id' => reader.value[:result][:hst_id],
+              'ts' => be_a(Float),
+              'ini_ttl' => 10_000,
+              'rem_ttl' => be_a(Integer)
+            })
+          }
+        }))
+        expect(client.keys).to include('rql:lock_readers:rw.info')
+      end
+
+      aggregate_failures 'queue info' do
+        expect(client.queued?('rw.info')).to eq(true)
+        expect(client.queue_info('rw.info')).to match({
+          'lock_queue' => 'rql:lock_queue:rw.info',
+          'queue' => contain_exactly(
+            { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' }
+          ),
+          'read_lock_queue' => 'rql:lock_read_queue:rw.info',
+          'read_queue' => contain_exactly(
+            { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'read' }
+          )
+        })
+        expect(client.queues).to include('rql:lock_queue:rw.info', 'rql:lock_read_queue:rw.info')
+        expect(client.queues_info.map { |info| info[:queue] }).to include(
+          'rql:lock_queue:rw.info',
+          'rql:lock_read_queue:rw.info'
+        )
+        expect(client.queues_info).to include(
+          match({
+            queue: 'rql:lock_queue:rw.info',
+            requests: contain_exactly(match(hash_including('rw_mode' => 'write')))
+          }),
+          match({
+            queue: 'rql:lock_read_queue:rw.info',
+            requests: contain_exactly(match(hash_including('rw_mode' => 'read')))
+          })
+        )
+      end
+
+      aggregate_failures '#unlock releases read locks' do
+        expect(client.unlock('rw.info')).to match({
+          ok: true,
+          result: match({
+            rel_time: be_a(Numeric),
+            rel_key: 'rql:lock:rw.info',
+            rel_queue: 'rql:lock_queue:rw.info',
+            lock_res: :released,
+            queue_res: :released
+          })
+        })
+        expect(writer.value).to eq(:written)
+        expect(late_reader.value).to eq(:read)
+        expect(client.locked?('rw.info')).to eq(false)
+        expect(client.queued?('rw.info')).to eq(false)
+      end
+    end
+
+    specify 'clear_current_locks, clear_locks and clear_dead_requests with read locks' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      aggregate_failures 'clear_current_locks' do
+        client.lock('rw.clear', read_write_mode: :read, ttl: 10_000)
+        redis.call(
+          'ZADD', 'rql:lock_read_queue:rw.clear.queue', Time.now.to_f, client.current_acquirer_id
+        )
+        expect(client.locked?('rw.clear')).to eq(true)
+        expect(client.clear_current_locks).to match({
+          ok: true,
+          result: match({ rel_key_cnt: 1, tch_queue_cnt: 1, rel_time: be_a(Numeric) })
+        })
+        expect(client.locked?('rw.clear')).to eq(false)
+        expect(client.queued?('rw.clear.queue')).to eq(false)
+      end
+
+      aggregate_failures 'clear_locks' do
+        client.lock('rw.clear', read_write_mode: :read, ttl: 10_000)
+        redis.call('ZADD', 'rql:lock_read_queue:rw.clear', Time.now.to_f, 'rql:acq:1/2/3/4/waiting')
+        expect(client.clear_locks).to match({
+          ok: true,
+          # NOTE: readers registry, read lock data and read lock queue
+          result: match({ rel_key_cnt: 3, rel_time: be_a(Numeric) })
+        })
+        expect(client.locked?('rw.clear')).to eq(false)
+        expect(client.queued?('rw.clear')).to eq(false)
+      end
+
+      aggregate_failures 'clear_dead_requests' do
+        redis.call(
+          'ZADD', 'rql:lock_read_queue:rw.dead', Time.now.to_f - 60, 'rql:acq:1/2/3/4/dead'
+        )
+        expect(client.clear_dead_requests(dead_ttl: 1_000)).to match({
+          ok: true,
+          result: match({ processed_queues: contain_exactly('rql:lock_read_queue:rw.dead') })
+        })
+        expect(client.queued?('rw.dead')).to eq(false)
+      end
+    end
+
+    specify 'zombie read locks' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['swarm.auto_swarm'] = false
+        # NOTE: we will manually probe hosts and flush zombies
+        config['swarm.probe_hosts.enabled_for_swarm'] = false
+        config['swarm.flush_zombies.enabled_for_swarm'] = false
+        config['swarm.flush_zombies.zombie_ttl'] = 1_000
+      end
+
+      client.lock('rw.zombie', read_write_mode: :read, ttl: 500_000)
+      client.probe_hosts
+      sleep(1.5) # NOTE: zombie_ttl is reached (no more host probes)
+
+      zombie_host = client.current_host_id
+      zombie_acquirer = client.current_acquirer_id
+      zombie_read_lock = 'rql:lock_readers:rw.zombie'
+
+      expect(client.locked?('rw.zombie')).to eq(true)
+      expect(client.zombies_info).to match({
+        zombie_hosts: include(zombie_host),
+        zombie_acquirers: include(zombie_acquirer),
+        zombie_locks: include(zombie_read_lock)
+      })
+      expect(client.zombie_locks).to include(zombie_read_lock)
+      expect(client.zombie_acquirers).to include(zombie_acquirer)
+
+      expect(client.flush_zombies).to match({
+        ok: true,
+        deleted_zombie_hosts: include(zombie_host),
+        deleted_zombie_acquirers: include(zombie_acquirer),
+        deleted_zombie_locks: include(zombie_read_lock)
+      })
+      expect(client.locked?('rw.zombie')).to eq(false)
+      expect(client.zombie_locks).to eq(Set.new)
+    end
+
+    specify 'read lock meta and read lock data' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+      end
+
+      aggregate_failures 'each reader has its own data (meta)' do
+        holders = Array.new(2) do |index|
+          Thread.new do
+            client.lock(
+              'rw.meta',
+              read_write_mode: :read,
+              ttl: 10_000,
+              meta: { 'reader' => index.to_s, 'num' => index }
+            )
+          end
+        end
+        holders.each(&:join)
+        results = holders.map { |holder| holder.value[:result] }
+        read_lock_keys = results.map do |result|
+          RedisQueuedLocks::Resource.prepare_read_lock_key('rw.meta', result[:acq_id])
+        end
+
+        expect(client.lock_info('rw.meta')['readers']).to contain_exactly(
+          *results.each_with_index.map do |result, index|
+            {
+              'acq_id' => result[:acq_id],
+              'hst_id' => result[:hst_id],
+              'ts' => be_a(Float),
+              'ini_ttl' => 10_000,
+              'rem_ttl' => be_a(Integer),
+              'reader' => index.to_s,
+              'num' => index.to_s
+            }
+          end
+        )
+        expect(client.locks_info).to include(match({
+          lock: 'rql:lock:rw.meta',
+          status: :alive,
+          info: hash_including(
+            'readers' => contain_exactly(
+              hash_including('reader' => '0'),
+              hash_including('reader' => '1')
+            )
+          )
+        }))
+        expect(client.keys).to include(*read_lock_keys)
+
+        # NOTE: #unlock drops the read lock data too
+        client.unlock('rw.meta')
+        expect(redis.call('EXISTS', *read_lock_keys)).to eq(0)
+      end
+
+      aggregate_failures 'read lock data of reentrant read locks' do
+        client.lock('rw.meta', read_write_mode: :read, ttl: 10_000, meta: { 'kek' => 'pek' }) do
+          client.lock('rw.meta', read_write_mode: :read, conflict_strategy: :work_through) { 1 }
+          client.lock(
+            'rw.meta',
+            read_write_mode: :read,
+            ttl: 2_000,
+            conflict_strategy: :extendable_work_through
+          ) { 1 }
+
+          expect(client.lock_info('rw.meta')['readers']).to contain_exactly(hash_including(
+            'acq_id' => client.current_acquirer_id,
+            'kek' => 'pek',
+            'ini_ttl' => 10_000,
+            'spc_cnt' => 2,
+            'l_spc_ts' => be_a(Float),
+            'spc_ext_ttl' => 2_000,
+            'l_spc_ext_ini_ttl' => 2_000,
+            'l_spc_ext_ts' => be_a(Float)
+          ))
+        end
+        # NOTE: the read lock and its data are released after the block
+        expect(client.locked?('rw.meta')).to eq(false)
+        expect(client.keys).to eq(Set.new)
+      end
+    end
+
+    specify 'lock series of read locks' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['retry_count'] = nil
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+      end
+      timeline = {}
+      timeline_lock = Mutex.new
+      mark = lambda do |event|
+        timeline_lock.synchronize { timeline[event] = Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+      end
+
+      aggregate_failures 'read lock series share the locks, writer waits for them' do
+        readers = Array.new(2) do |index|
+          Thread.new do
+            client.lock_series(
+              'rw.series.a', 'rw.series.b',
+              read_write_mode: :read,
+              ttl: 10_000,
+              meta: { 'series' => index.to_s }
+            ) do
+              mark.call(:"reader#{index}_in")
+              sleep(0.5)
+              mark.call(:"reader#{index}_out")
+            end
+          end
+        end
+        sleep(0.2) # NOTE: give a timespot to readers to obtain the lock series
+        expect(client.lock_info('rw.series.a')['readers']).to contain_exactly(
+          hash_including('series' => '0'),
+          hash_including('series' => '1')
+        )
+        expect(client.lock_info('rw.series.b')['readers'].size).to eq(2)
+
+        writer = Thread.new do
+          client.lock('rw.series.b', read_write_mode: :write, ttl: 10_000) { mark.call(:writer_in) }
+        end
+        [*readers, writer].each(&:join)
+
+        expect(timeline[:reader0_in]).to be < timeline[:reader1_out]
+        expect(timeline[:reader1_in]).to be < timeline[:reader0_out]
+        expect(timeline[:writer_in]).to be >= timeline[:reader0_out]
+        expect(timeline[:writer_in]).to be >= timeline[:reader1_out]
+        # NOTE: read locks (and their data) are released after the block
+        expect(client.keys).to eq(Set.new)
+      end
+
+      aggregate_failures 'read locks of the failed lock series are released' do
+        holder = Thread.new { client.lock('rw.series.c', read_write_mode: :write, ttl: 10_000) }
+        holder.join
+
+        expect do
+          client.lock_series!(
+            'rw.series.a', 'rw.series.c', read_write_mode: :read, fail_fast: true
+          ) { :never }
+        end.to raise_error(RedisQueuedLocks::LockAlreadyObtainedError)
+        expect(client.locked?('rw.series.a')).to eq(false)
+        client.unlock('rw.series.c')
+      end
+
+      aggregate_failures 'reentrant read locks of the lock series are not released by the series' do
+        client.lock('rw.series.a', read_write_mode: :read, ttl: 10_000) do
+          client.lock_series(
+            'rw.series.a', 'rw.series.b',
+            read_write_mode: :read,
+            conflict_strategy: :work_through
+          ) { :ok }
+          # NOTE: the outer read lock is still obtained, the series lock is released
+          expect(client.lock_info('rw.series.a')['readers']).to contain_exactly(
+            hash_including('acq_id' => client.current_acquirer_id)
+          )
+          expect(client.locked?('rw.series.b')).to eq(false)
+        end
+        expect(client.locked?('rw.series.a')).to eq(false)
+      end
+    end
+
+    specify '#unlock_read and #extend_lock_ttl for read locks' do
+      test_notifier = Class.new do
+        attr_reader :notifications
+
+        def initialize
+          @notifications = []
+        end
+
+        def notify(event, payload = {})
+          notifications << { event:, payload: }
+        end
+      end.new
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['instrumenter'] = test_notifier
+      end
+      other_reader = Thread.new { client.lock('rw.own', read_write_mode: :read, ttl: 10_000) }
+      other_reader.join
+      other_acquirer_id = other_reader.value[:result][:acq_id]
+      client.lock('rw.own', read_write_mode: :read, ttl: 3_000, meta: { 'kek' => 'pek' })
+      own_acquirer_id = client.current_acquirer_id
+      read_lock_key = RedisQueuedLocks::Resource.prepare_read_lock_key('rw.own', own_acquirer_id)
+      reader_info = lambda do |acquirer_id|
+        client.lock_info('rw.own')['readers'].find { |reader| reader['acq_id'] == acquirer_id }
+      end
+
+      aggregate_failures 'extend_lock_ttl extends the read lock of the current acquirer only' do
+        expect(client.extend_lock_ttl('rw.own', 20_000, read_write_mode: :read)).to eq({
+          ok: true, result: { extended_locks_count: 1 }
+        })
+        expect(reader_info.call(own_acquirer_id)['rem_ttl']).to be > 20_000
+        expect(reader_info.call(other_acquirer_id)['rem_ttl']).to be <= 10_000
+        expect(redis.call('PTTL', read_lock_key)).to be > 20_000
+        expect(redis.call('PTTL', 'rql:lock_readers:rw.own')).to be > 20_000
+      end
+
+      aggregate_failures 'unlock_read releases the read lock of the current acquirer only' do
+        expect(client.unlock_read('rw.own')).to match({
+          ok: true,
+          result: {
+            rel_time: be_a(Numeric),
+            rel_key: 'rql:lock:rw.own',
+            rel_acq_id: own_acquirer_id,
+            lock_res: :released
+          }
+        })
+        expect(client.lock_info('rw.own')['readers']).to contain_exactly(
+          hash_including('acq_id' => other_acquirer_id)
+        )
+        expect(redis.call('EXISTS', read_lock_key)).to eq(0)
+        expect(test_notifier.notifications).to include(match({
+          event: 'redis_queued_locks.explicit_read_lock_release',
+          payload: hash_including(
+            lock_key: 'rql:lock:rw.own',
+            acq_id: own_acquirer_id,
+            lock_res: :released,
+            rel_time: be_a(Numeric),
+            at: be_a(Float)
+          )
+        }))
+
+        # NOTE: there is no read lock of the current acquirer anymore
+        expect(client.release_read_lock('rw.own')).to match({
+          ok: true, result: hash_including(lock_res: :nothing_to_release)
+        })
+        expect(client.extend_lock_ttl('rw.own', 1_000, read_write_mode: :read)).to eq({
+          ok: false, result: :async_expire_or_no_lock
+        })
+      end
+
+      aggregate_failures 'expired read lock is not extended (not revived)' do
+        client.lock('rw.expiring', read_write_mode: :read, ttl: 100)
+        sleep(0.2) # NOTE: the read lock is expired
+        expect(client.extend_lock_ttl('rw.expiring', 10_000, read_write_mode: :read)).to eq({
+          ok: false, result: :async_expire_or_no_lock
+        })
+        expect(client.locked?('rw.expiring')).to eq(false)
+      end
+
+      aggregate_failures 'read lock is not extended while the write lock is held' do
+        writer = Thread.new { client.lock('rw.written', ttl: 10_000) }
+        writer.join
+        expect(client.extend_lock_ttl('rw.written', 10_000, read_write_mode: :read)).to eq({
+          ok: false, result: :async_expire_or_no_lock
+        })
+        client.unlock('rw.written')
+      end
+
+      client.unlock('rw.own')
+    end
+
+    specify '#extend_lock_ttl with all_read_locks: true' do
+      client = RedisQueuedLocks::Client.new(redis)
+      reader_threads = [5_000, 8_000, 100].map do |ttl|
+        Thread.new { client.lock('rw.all', read_write_mode: :read, ttl:) }
+      end
+      reader_threads.each(&:join)
+      long_reader_ids = reader_threads.first(2).map { |thread| thread.value[:result][:acq_id] }
+      expired_reader_id = reader_threads.last.value[:result][:acq_id]
+      own_reader_id = client.current_acquirer_id
+      reader_ttl = lambda do |acquirer_id|
+        client.lock_info('rw.all')['readers'].find { |reader| reader['acq_id'] == acquirer_id }
+          &.fetch('rem_ttl')
+      end
+      sleep(0.2) # NOTE: the last read lock is expired
+
+      aggregate_failures 'all live read locks are extended, expired read locks are not revived' do
+        expect(
+          client.extend_lock_ttl('rw.all', 20_000, read_write_mode: :read, all_read_locks: true)
+        ).to eq({ ok: true, result: { extended_locks_count: 2 } })
+        expect(reader_ttl.call(long_reader_ids[0])).to be_between(24_000, 25_000)
+        expect(reader_ttl.call(long_reader_ids[1])).to be_between(27_000, 28_000)
+        expect(reader_ttl.call(expired_reader_id)).to eq(nil)
+        long_reader_ids.each do |acquirer_id|
+          read_lock_key = RedisQueuedLocks::Resource.prepare_read_lock_key('rw.all', acquirer_id)
+          expect(redis.call('PTTL', read_lock_key)).to be > 24_000
+        end
+        expect(redis.call('PTTL', 'rql:lock_readers:rw.all')).to be > 27_000
+      end
+
+      aggregate_failures 'all_read_locks: false (default) extends the own read lock only' do
+        # NOTE: the current acquirer has no read lock
+        expect(reader_ttl.call(own_reader_id)).to eq(nil)
+        expect(client.extend_lock_ttl('rw.all', 1_000, read_write_mode: :read)).to eq({
+          ok: false, result: :async_expire_or_no_lock
+        })
+      end
+
+      aggregate_failures 'all_read_locks is ignored for write mode' do
+        # NOTE: there is no write lock (only read locks)
+        expect(client.extend_lock_ttl('rw.all', 1_000, all_read_locks: true)).to eq({
+          ok: false, result: :async_expire_or_no_lock
+        })
+        expect(reader_ttl.call(long_reader_ids[0])).to be <= 25_000
+      end
+
+      aggregate_failures 'no live read locks or the write lock is held' do
+        expect(
+          client.extend_lock_ttl('rw.all.none', 1_000, read_write_mode: :read, all_read_locks: true)
+        ).to eq({ ok: false, result: :async_expire_or_no_lock })
+
+        writer = Thread.new { client.lock('rw.all.written', ttl: 10_000) }
+        writer.join
+        expect(
+          client.extend_lock_ttl(
+            'rw.all.written', 1_000, read_write_mode: :read, all_read_locks: true
+          )
+        ).to eq({ ok: false, result: :async_expire_or_no_lock })
+      end
+
+      client.unlock('rw.all')
+      client.unlock('rw.all.written')
+      expect(client.keys).to be_empty
+    end
+
+    specify 'read/write lock arguments validation' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      # NOTE: (RBS) invalid values are checked via untyped entry points (lock_series has no RBS)
+      expect do
+        RedisQueuedLocks::Acquirer::ExtendLockTTL.extend_lock_ttl(
+          redis, 'rw.args', 1_000, :reed, false, client.current_acquirer_id,
+          client.config['logger'], client.config['instrumenter'], nil,
+          false, 15, RedisQueuedLocks::Logging::Sampler, false,
+          false, 15, RedisQueuedLocks::Instrument::Sampler, false
+        )
+      end.to raise_error(RedisQueuedLocks::ArgumentError, /read_write_mode/)
+      expect do
+        RedisQueuedLocks::Acquirer::ExtendLockTTL.extend_lock_ttl(
+          redis, 'rw.args', 1_000, :read, nil, client.current_acquirer_id,
+          client.config['logger'], client.config['instrumenter'], nil,
+          false, 15, RedisQueuedLocks::Logging::Sampler, false,
+          false, 15, RedisQueuedLocks::Instrument::Sampler, false
+        )
+      end.to raise_error(RedisQueuedLocks::ArgumentError, /all_read_locks/)
+      # NOTE: `all_read_locks` is ignored for `:write` mode
+      expect(
+        RedisQueuedLocks::Acquirer::ExtendLockTTL.extend_lock_ttl(
+          redis, 'rw.args', 1_000, :write, nil, client.current_acquirer_id,
+          client.config['logger'], client.config['instrumenter'], nil,
+          false, 15, RedisQueuedLocks::Logging::Sampler, false,
+          false, 15, RedisQueuedLocks::Instrument::Sampler, false
+        )
+      ).to eq({ ok: false, result: :async_expire_or_no_lock })
+      expect do
+        client.lock('rw.args', read_write_mode: :read, meta: { 'acq_id' => 'pek' })
+      end.to raise_error(RedisQueuedLocks::ArgumentError, /meta/)
+      expect do
+        client.lock('rw.args', read_write_mode: :read, ttl: 0)
+      end.to raise_error(RedisQueuedLocks::ArgumentError, /ttl/)
+      expect do
+        client.lock_series('rw.args.a', 'rw.args.b', read_write_mode: :reed)
+      end.to raise_error(RedisQueuedLocks::ArgumentError, /read_write_mode/)
+      expect(client.locked?('rw.args')).to eq(false)
+    end
+
+    specify 'read/write locks: logs and instrumentation' do
+      test_logger = Class.new do
+        attr_reader :logs
+
+        def initialize
+          @logs = []
+        end
+
+        def debug(progname = nil, &block)
+          logs << "#{progname} : #{yield if block_given?}"
+        end
+      end.new
+      test_notifier = Class.new do
+        attr_reader :notifications
+
+        def initialize
+          @notifications = []
+        end
+
+        def notify(event, payload = {})
+          notifications << { event:, payload: }
+        end
+      end.new
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['logger'] = test_logger
+        config['log_lock_try'] = true
+        config['instrumenter'] = test_notifier
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+      end
+
+      client.lock('rw.logs', read_write_mode: :read) { :ok }
+
+      aggregate_failures 'read lock logs' do
+        expect(test_logger.logs).to include(
+          a_string_including(
+            '[redis_queued_locks.try_lock.obtain__free_to_acquire]', "rw_mode => 'read'"
+          ),
+          a_string_including('[redis_queued_locks.lock_obtained]', "rw_mode => 'read'"),
+          a_string_including('[redis_queued_locks.expire_lock]', "rw_mode => 'read'")
+        )
+      end
+      aggregate_failures 'read lock instrumentation' do
+        expect(test_notifier.notifications).to include(
+          match({
+            event: 'redis_queued_locks.lock_obtained',
+            payload: hash_including(lock_key: 'rql:lock:rw.logs', rw_mode: :read)
+          }),
+          match({
+            event: 'redis_queued_locks.lock_hold_and_release',
+            payload: hash_including(lock_key: 'rql:lock:rw.logs', rw_mode: :read)
+          })
+        )
+      end
+
+      holder = Thread.new { client.lock('rw.logs', read_write_mode: :read, ttl: 10_000) }
+      holder.join
+      test_logger.logs.clear
+      client.lock('rw.logs', read_write_mode: :write, retry_count: 1)
+
+      aggregate_failures 'write lock waits for readers (logs)' do
+        expect(test_logger.logs).to include(
+          a_string_including(
+            '[redis_queued_locks.try_lock.exit__read_lock_still_obtained]', "rw_mode => 'write'"
+          )
+        )
+      end
+      client.unlock('rw.logs')
+
+      test_logger.logs.clear
+      client.lock('rw.logs.reentrant', ttl: 5_000) do
+        client.lock('rw.logs.reentrant', ttl: 5_000, conflict_strategy: :extendable_work_through) do
+          :ok
+        end
+      end
+
+      aggregate_failures 'extendable reentrant lock logs (the same host key as other logs)' do
+        expect(test_logger.logs).to include(
+          a_string_including(
+            '[redis_queued_locks.extendable_reentrant_lock_obtained]',
+            "hst_id => '#{client.current_host_id}'",
+            "rw_mode => 'write'"
+          )
+        )
+        expect(test_logger.logs.grep(/host_id =>/)).to be_empty
+      end
+
+      test_logger.logs.clear
+      test_notifier.notifications.clear
+      series_lock_keys = ['rql:lock:rw.logs.series.a', 'rql:lock:rw.logs.series.b']
+      client.lock_series(
+        'rw.logs.series.a', 'rw.logs.series.b', read_write_mode: :read, ttl: 5_000
+      ) { :ok }
+
+      aggregate_failures 'lock series logs and instrumentation (rw_mode of the series)' do
+        expect(test_logger.logs).to include(
+          a_string_including(
+            '[redis_queued_locks.start_lock_series_obtaining]',
+            "lock_keys => '#{series_lock_keys.inspect}' queue_ttl =>",
+            "rw_mode => 'read'"
+          ),
+          a_string_including('[redis_queued_locks.lock_series_obtained]', "rw_mode => 'read'"),
+          a_string_including('[redis_queued_locks.expire_lock_series]', "rw_mode => 'read'")
+        )
+        expect(test_notifier.notifications).to include(
+          match({
+            event: 'redis_queued_locks.lock_series_obtained',
+            payload: hash_including(lock_keys: series_lock_keys, rw_mode: :read, ts: be_a(Float))
+          }),
+          match({
+            event: 'redis_queued_locks.lock_series_hold_and_release',
+            payload: hash_including(lock_keys: series_lock_keys, rw_mode: :read, ts: be_a(Float))
+          })
+        )
+      end
+      expect(client.keys).to be_empty
+    end
   end
 end

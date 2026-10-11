@@ -12,8 +12,8 @@ paths:
 The swarm removes **zombie locks**: locks and queue entries left by dead workers.
 - **Host**: a `process/thread/ractor/identity` worker, with the id `rql:hst:<pid>/<thread_id>/<ractor_id>/<identity>` (`Resource.host_identifier`). Fibers are not included because `ObjectSpace` can't see Fibers or Threads once a Ractor exists. Hosts are enumerated with `Thread.list` (`Resource.possible_host_identifiers`).
 - **Liveness**: `ProbeHosts` runs `HSET rql:swarm:hsts <host_id> <Time.now.to_f>` for every possible host of the client's ractor (`Resource::SWARM_KEY`).
-- **Zombie**: a host whose last probe score is `< Resource.calc_zombie_score(zombie_ttl / 1_000.0)` (`now - ttl`). `zombie_ttl` is in milliseconds. Zombie locks are `rql:lock:*` whose `hst_id` field is a zombie host. Zombie acquirers are their `acq_id`s.
-- **Flush** (`FlushZombies.flush_zombies`) runs these steps: `HGETALL` hosts → zombie hosts (return early if none) → `SCAN MATCH rql:lock:*` + `HMGET acq_id hst_id` → `DEL` zombie locks → `SCAN MATCH rql:lock_queue:*` + `ZREM` zombie acquirers → `HDEL` zombie hosts. It is best-effort and non-transactional, with full keyspace scans (`TODO: indexing`).
+- **Zombie**: a host whose last probe score is `< Resource.calc_zombie_score(zombie_ttl / 1_000.0)` (`now - ttl`). `zombie_ttl` is in milliseconds. Zombie locks are `rql:lock:*` whose `hst_id` field is a zombie host, plus zombie read locks: readers registry members (`rql:lock_readers:*`) whose host (derived from the acquirer id by `Resource.host_identifier_from_acquirer`, a pure function usable inside the Ractor) is a zombie host; a zombie read lock is reported as its registry key. Zombie acquirers are their `acq_id`s.
+- **Flush** (`FlushZombies.flush_zombies`) runs these steps: `HGETALL` hosts → zombie hosts (return early if none) → `SCAN MATCH rql:lock:*` + `HMGET acq_id hst_id` → `DEL` zombie locks → `SCAN MATCH rql:lock_readers:*` + `ZRANGE` → `ZREM` zombie readers + `DEL` their reader data (`rql:lock_reader:<name>:<acq_id>`) → `SCAN MATCH rql:lock_queue:*` and `rql:lock_read_queue:*` + `ZREM` zombie acquirers → `HDEL` zombie hosts. `ZombieInfo` mirrors the read-lock part (`each_zombie_read_lock`). It is best-effort and non-transactional, with full keyspace scans (`TODO: indexing`).
 
 ## Components
 | Object | File | Kind | Role |
@@ -116,4 +116,5 @@ Public element API (called by `Swarm`/`Supervisor` only):
 - `sleep(0.1)` "give a timespot" waits in `swarm!`/`deswarm!`/`observe!` instead of real readiness signalling.
 - RBS runtime type checking (`rbs/test/setup`, the `typecheck-runtime` CI job) can't run inside Ractors. Its hooks on methods called in the element Ractor (`.swarm_loop`, `.flush_zombies`) read `RBS.logger` and raise `Ractor::IsolationError`, so Isolated elements die at startup and the swarm specs fail only under that job.
 - Swarm has no logging or instrumentation, and supervisor errors are silently dropped (`TODO: (CHECK)`).
-- `FlushZombies` scans the whole keyspace on every run and runs `ZREM` for every zombie acquirer on every queue.
+- `FlushZombies` scans the whole keyspace on every run (four patterns: write locks, readers registries, write and read queues) and runs `ZREM` for every zombie acquirer on every queue.
+- Zombie acquirers are collected only from held locks (write locks and read locks): requests of dead hosts that never obtained a lock are removed only by queue TTL pruning.

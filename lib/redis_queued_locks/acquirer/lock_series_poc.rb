@@ -14,7 +14,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
   class << self
     # @api private
     # @since 1.16.0
-    # @version 1.16.2
+    # @version 1.18.0
     def lock_series_poc( # steep:ignore
       redis,
       lock_names,
@@ -52,6 +52,9 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
       instr_sample_this:,
       &block
     )
+      # NOTE: (RW) the lock mode is the same for all locks of the series
+      #   (see RedisQueuedLocks::Acquirer::AcquireLock for read_write_mode validations);
+
       case meta
       when Hash, NilClass then nil
       else
@@ -72,13 +75,14 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
         key == 'spc_cnt' ||
         key == 'l_spc_ext_ini_ttl' ||
         key == 'l_spc_ext_ts' ||
-        key == 'l_spc_ts'
+        key == 'l_spc_ts' ||
+        key == 'rw_mode'
       end)
         raise(
           RedisQueuedLocks::ArgumentError,
           '`:meta` keys can not overlap reserved lock data keys ' \
           '"acq_id", "hst_id", "ts", "ini_ttl", "lock_key", "rem_ttl", "spc_cnt", ' \
-          '"spc_ext_ttl", "l_spc_ext_ini_ttl", "l_spc_ext_ts", "l_spc_ts"'
+          '"spc_ext_ttl", "l_spc_ext_ini_ttl", "l_spc_ext_ts", "l_spc_ts", "rw_mode"'
         )
       end
 
@@ -128,13 +132,16 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
 
       RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.start_lock_series_obtaining( # steep:ignore
         logger, log_sampled, lock_keys_for_instrumentation,
-        queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy
+        queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy,
+        read_write_mode
       )
 
       acq_start_time = RedisQueuedLocks::Utilities.clock_gettime
       successfully_acquired_locks = [] # steep:ignore
       failed_locks_and_errors = {} # steep:ignore
       failed_on_lock = nil
+      # NOTE: locks of the failed series are released once (exceptional or not)
+      is_failed_series_released = false
 
       lock_acquirement_operations.map do |lock_operation_options|
         result =
@@ -179,17 +186,11 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
                  RedisQueuedLocks::LockAcquirementTimeoutError,
                  RedisQueuedLocks::LockAcquirementRetryLimitError,
                  RedisQueuedLocks::ConflictLockObtainError => error
-            if successfully_acquired_locks.any?
-              # NOTE: release all previously acquired locks if any next lock is already locked
-              successfully_acquired_locks.each do |operation_result|
-                lock_key = RedisQueuedLocks::Resource.prepare_lock_key(operation_result[:lock_name])
-                redis.with do |conn|
-                  conn.multi(watch: [lock_key]) do |transact|
-                    transact.call('DEL', lock_key)
-                  end
-                end
-              end
-            end
+            # NOTE: release all previously acquired locks if any next lock is already locked
+            release_lock_series( # steep:ignore
+              redis, read_write_mode, successfully_acquired_locks, acquirer_id_for_instrumentation
+            )
+            is_failed_series_released = true
 
             raise(error) if raise_errors
           end
@@ -203,6 +204,13 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
         else
           failed_on_lock = lock_operation_options[:lock_name]
           failed_locks_and_errors[lock_operation_options[:lock_name]] = result
+          # NOTE: release all previously acquired locks (non-exceptional failure: raise_errors: false)
+          unless is_failed_series_released
+            release_lock_series( # steep:ignore
+              redis, read_write_mode, successfully_acquired_locks, acquirer_id_for_instrumentation
+            )
+            is_failed_series_released = true
+          end
           break
         end
       end
@@ -210,16 +218,16 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
       if (successfully_acquired_locks.size == lock_names.size && (successfully_acquired_locks.all? { |res| res[:ok] }))
         acq_end_time = RedisQueuedLocks::Utilities.clock_gettime
         acq_time = ((acq_end_time - acq_start_time) / 1_000.0).ceil(2)
-        ts = Time.now.to_s
+        ts = Time.now.to_f
 
         RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.lock_series_obtained( # steep:ignore
           logger, log_sampled, lock_keys_for_instrumentation,
           queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation,
-          acq_time, access_strategy
+          acq_time, access_strategy, read_write_mode
         )
 
         RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor.lock_series_obtained( # steep:ignore
-          instrumenter, instr_sampled, lock_keys_for_instrumentation,
+          instrumenter, instr_sampled, lock_keys_for_instrumentation, read_write_mode,
           ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, ts, acq_time, instrument
         )
 
@@ -238,6 +246,11 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
             redis,
             logger,
             lock_keys_for_instrumentation.last,
+            RedisQueuedLocks::Resource.prepare_lock_readers(lock_names.last),
+            RedisQueuedLocks::Resource.prepare_read_lock_key(
+              lock_names.last, acquirer_id_for_instrumentation
+            ),
+            read_write_mode,
             acquirer_id_for_instrumentation,
             host_id_for_instrumentation,
             access_strategy,
@@ -257,14 +270,9 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
 
           # expire locks manually
           if block_given?
-            redis.with do |conn|
-              # use transaction in order to exclude any cross-locking during the group expiration
-              conn.multi(watch: lock_keys_for_instrumentation) do |transaction|
-                lock_keys_for_instrumentation.each do |lock_key|
-                  transaction.call('EXPIRE', lock_key, '0')
-                end
-              end
-            end
+            release_lock_series( # steep:ignore
+              redis, read_write_mode, successfully_acquired_locks, acquirer_id_for_instrumentation
+            )
             is_lock_manually_released = true
           end
 
@@ -274,13 +282,15 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
 
           RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.expire_lock_series( # steep:ignore
             logger, log_sampled, lock_keys_for_instrumentation,
-            queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy
+            queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy,
+            read_write_mode
           ) if is_lock_manually_released
 
           RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor.lock_series_hold_and_release( # steep:ignore
             instrumenter,
             instr_sampled,
             lock_keys_for_instrumentation,
+            read_write_mode,
             ttl,
             acquirer_id_for_instrumentation,
             host_id_for_instrumentation,
@@ -319,6 +329,95 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
             failed_on_lock:,
           }
         }
+      end
+    end
+
+    private
+
+    # Releases locks of the series that are obtained by the series itself:
+    #   - reentrant locks (already obtained by the outer logic of the current acquirer) are kept;
+    #   - only locks of the current acquirer are released (owner check);
+    #
+    # @param redis [RedisClient]
+    # @param read_write_mode [Symbol]
+    # @param successfully_acquired_locks [Array<Hash<Symbol,Any>>]
+    # @param acquirer_id [String]
+    # @return [void]
+    #
+    # @api private
+    # @since 1.18.0
+    def release_lock_series(redis, read_write_mode, successfully_acquired_locks, acquirer_id) # steep:ignore
+      lock_names = obtained_lock_names(successfully_acquired_locks) # steep:ignore
+
+      if read_write_mode == :read
+        release_read_lock_series(redis, lock_names, acquirer_id) # steep:ignore
+      else
+        release_write_lock_series(redis, lock_names, acquirer_id) # steep:ignore
+      end
+    end
+
+    # Releases write locks of the given acquirer (compare-and-delete: the lock can be expired
+    # and obtained by another acquirer when the series logic exceeds the lock ttl).
+    #
+    # @param redis [RedisClient]
+    # @param lock_names [Array<String>]
+    # @param acquirer_id [String]
+    # @return [void]
+    #
+    # @api private
+    # @since 1.18.0
+    def release_write_lock_series(redis, lock_names, acquirer_id) # steep:ignore
+      return if lock_names.empty?
+
+      redis.with do |conn|
+        lock_names.each do |lock_name|
+          lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
+          conn.multi(watch: [lock_key]) do |transaction|
+            if conn.call('HGET', lock_key, 'acq_id') == acquirer_id
+              transaction.call('DEL', lock_key)
+            end
+          end
+        end
+      end
+    end
+
+    # Locks of the series that are obtained by the series itself (reentrant locks are obtained
+    # by the outer logic of the current acquirer and should be released by it).
+    #
+    # @param successfully_acquired_locks [Array<Hash<Symbol,Any>>]
+    # @return [Array<String>]
+    #
+    # @api private
+    # @since 1.18.0
+    def obtained_lock_names(successfully_acquired_locks) # steep:ignore
+      successfully_acquired_locks.filter_map do |operation_result|
+        operation_result[:lock_name] if operation_result[:result][:process] == :lock_obtaining
+      end
+    end
+
+    # Releases read locks of the given acquirer (other readers are not affected).
+    #
+    # @param redis [RedisClient]
+    # @param lock_names [Array<String>]
+    # @param acquirer_id [String]
+    # @return [void]
+    #
+    # @api private
+    # @since 1.18.0
+    def release_read_lock_series(redis, lock_names, acquirer_id) # steep:ignore
+      return if lock_names.empty?
+
+      redis.with do |conn|
+        conn.multi do |transaction|
+          lock_names.each do |lock_name|
+            transaction.call(
+              'ZREM', RedisQueuedLocks::Resource.prepare_lock_readers(lock_name), acquirer_id
+            )
+            transaction.call(
+              'DEL', RedisQueuedLocks::Resource.prepare_read_lock_key(lock_name, acquirer_id)
+            )
+          end
+        end
       end
     end
   end

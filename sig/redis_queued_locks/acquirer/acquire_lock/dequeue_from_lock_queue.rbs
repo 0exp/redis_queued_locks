@@ -12,7 +12,6 @@ module RedisQueuedLocks
           Symbol read_write_mode,
           String lock_key_queue,
           String read_lock_key_queue,
-          String write_lock_key_queue,
           Integer queue_ttl,
           String acquirer_id,
           String host_id,

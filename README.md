@@ -34,6 +34,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [locked?](#locked)
   - [queued?](#queued)
   - [unlock](#unlock---release-a-lock) (aka `release_lock`)
+  - [unlock_read](#unlock_read---release-the-read-lock-of-the-current-acquirer) (aka `release_read_lock`)
   - [clear_locks](#clear_locks---release-all-locks-and-lock-queues) (aka `release_locks`)
   - [clear_locks_of](#clear_locks_of) (aka `release_locks_of`)
   - [clear_current_locks](#clear_current_locks) (aka `release_current_locks`)
@@ -64,18 +65,22 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 - [Lock Access Strategies](#lock-access-strategies)
   - [queued](#lock-access-strategies)
   - [random](#lock-access-strategies)
+- [Read/Write Locks](#readwrite-locks)
 - [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks)
 - [Logging](#logging)
   - [Logging Configuration](#logging-configuration)
 - [Instrumentation](#instrumentation)
   - [Instrumentation Configuration](#instrumentation-configuration)
   - [Instrumentation Events](#instrumentation-events)
-    - ["redis_queued_locks.lock_obtained"](#redis_queued_lockslock_hold_and_release)
+    - ["redis_queued_locks.lock_obtained"](#redis_queued_lockslock_obtained)
     - ["redis_queued_locks.extendable_reentrant_lock_obtained"](#redis_queued_locksextendable_reentrant_lock_obtained)
     - ["redis_queued_locks.reentrant_lock_obtained"](#redis_queued_locksreentrant_lock_obtained)
     - ["redis_queued_locks.lock_hold_and_release"](#redis_queued_lockslock_hold_and_release)
     - ["redis_queued_locks.reentrant_lock_hold_completes"](#redis_queued_locksreentrant_lock_hold_completes)
+    - ["redis_queued_locks.lock_series_obtained"](#redis_queued_lockslock_series_obtained)
+    - ["redis_queued_locks.lock_series_hold_and_release"](#redis_queued_lockslock_series_hold_and_release)
     - ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release)
+    - ["redis_queued_locks.explicit_read_lock_release"](#redis_queued_locksexplicit_read_lock_release)
     - ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
     - ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of)
 - [Roadmap](#roadmap)
@@ -422,6 +427,7 @@ def lock(
   raise_errors: false,
   fail_fast: false,
   conflict_strategy: config['default_conflict_strategy'],
+  read_write_mode: :write,
   access_strategy: config['default_access_strategy'],
   identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config['uniq_identifier'] proc;
   meta: nil,
@@ -502,6 +508,13 @@ def lock(
     - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
     - `:dead_locking` - fail with deadlock exception;
   - See [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks) documentation section for details;
+- `read_write_mode` - (optional) - `[Symbol]`
+  - The lock mode (read/write lock semantics);
+  - `:write` by default;
+  - Modes:
+    - `:write` - exclusive lock: waits for the write lock and for all read locks;
+    - `:read` - shared lock: waits for the write lock only (read locks do not block each other);
+  - See [Read/Write Locks](#readwrite-locks) documentation section for details;
 - `identity` - (optional) `[String]`
   - An unique string that is unique per `RedisQueuedLock::Client` instance. Resolves the
     collisions between the same process_id/thread_id/fiber_id/ractor_id identifiers on different
@@ -511,7 +524,7 @@ def lock(
   - Identity calculator is pre-configured in `config['uniq_identifier']`;
 - `meta` - (optional) `[NilClass,Hash<String|Symbol,Any>]`
   - A custom metadata wich will be passed to the lock data in addition to the existing data;
-  - Custom metadata can not contain reserved lock data keys (such as `lock_key`, `acq_id`, `ts`, `ini_ttl`, `rem_ttl`);
+  - Custom metadata can not contain reserved lock data keys (such as `lock_key`, `acq_id`, `ts`, `ini_ttl`, `rem_ttl`, `rw_mode`);
   - `nil` by default (means "no metadata");
 - `detailed_acq_timeout_error` - (optional) `[Boolean]`
   - When the lock acquirement try reached the acquirement time limit (:timeout option) the
@@ -842,6 +855,7 @@ def lock!(
   instrumenter: config['instrumenter'],
   access_strategy: config['default_access_strategy'],
   conflict_strategy: config['default_conflict_strategy'],
+  read_write_mode: :write,
   log_sampling_enabled: config['log_sampling_enabled'],
   log_sampling_percent: config['log_sampling_percent'],
   log_sampler: config['log_sampler'],
@@ -882,6 +896,12 @@ applied with the same value to the each lock acquirement process (for each lock 
     - `"y"` - 10 seconds
     - `"z"` - 5 seconds
 - when your block of code has completed their execution - all locks will be released immediatly;
+- when the series fails (any lock can not be obtained, with or without an exception) - the locks that are already
+  obtained by the series are released immediatly (`acquired_locks` of the failure result lists them);
+- the series releases only locks obtained by itself and only if they are still owned by the current acquirer:
+  - reentrant locks (already obtained by your outer logic, `conflict_strategy: :work_through`/`:extendable_work_through`) are kept;
+  - a lock that is expired during your block and obtained by another acquirer is kept;
+- `read_write_mode:` is the same for all locks of the series (see [Read/Write Locks](#readwrite-locks));
 - if you did not pass a block - all locks will be released with their forumla-based TTL described above;
   - **HOW WILL THIS CASE WORK IN FUTURE RELESAE**: all locks will have the same TTL (`5 seconds` for our example, not `15/10/5 seconds`);
 
@@ -946,19 +966,25 @@ client.lock_seires('c', 'a', 'b') # ... `a` is still obtained
 
 ###### New instrumentaiton events:
 
+- `rw_mode` is the mode of the series (`read_write_mode`, the same for all locks of the series);
+- see [Instrumentation Events](#instrumentation-events) for the payload details;
+
 ```ruby
 # NEW instrumentation events (examples)
-"redis_queued_locks.lock_series_obtained" => # {lock_keys: ["rql:lock:s", "rql:lock:t", "rql:lock:u"], ttl: 5000, acq_id: "rql:acq:4486/1696/1704/1712/e6fd0da7991e4303", hst_id: "rql:hst:4486/1696/1712/e6fd0da7991e4303", ts: "2026-01-28 22:05:06 +0300", acq_time: 2.61, instrument: nil}
-"redis_queued_locks.lock_series_hold_and_release" => # {lock_keys: ["rql:lock:x", "rql:lock:y", "rql:lock:z"], hold_time: 0.29, ttl: 5000, acq_id: "rql:acq:4486/1696/1704/1712/e6fd0da7991e4303", hst_id: "rql:hst:4486/1696/1712/e6fd0da7991e4303", ts: 1769627106.4717052, acq_time: 4.26, instrument: nil}
+"redis_queued_locks.lock_series_obtained" => # {lock_keys: ["rql:lock:s", "rql:lock:t", "rql:lock:u"], rw_mode: :write, ttl: 5000, acq_id: "rql:acq:4486/1696/1704/1712/e6fd0da7991e4303", hst_id: "rql:hst:4486/1696/1712/e6fd0da7991e4303", ts: 1769627106.4688692, acq_time: 2.61, instrument: nil}
+"redis_queued_locks.lock_series_hold_and_release" => # {lock_keys: ["rql:lock:x", "rql:lock:y", "rql:lock:z"], rw_mode: :write, hold_time: 0.29, ttl: 5000, acq_id: "rql:acq:4486/1696/1704/1712/e6fd0da7991e4303", hst_id: "rql:hst:4486/1696/1712/e6fd0da7991e4303", ts: 1769627106.4717052, acq_time: 4.26, instrument: nil}
 ```
 
 ###### New logs:
 
+- `rw_mode` is the mode of the series (`read_write_mode`, the same for all locks of the series);
+- see [Logging](#logging) for the logged keys;
+
 ```shell
 # NEW logs (examples)
-[redis_queued_locks.start_lock_series_obtaining] lock_keys => '["rql:lock:a", "rql:lock:b"]'queue_ttl => 15 acq_id => 'rql:acq:4486/1696/1704/1712/e6fd0da7991e4303' hst_id => 'rql:hst:4486/1696/1712/e6fd0da7991e4303' acs_strat => 'queued'
-[redis_queued_locks.lock_series_obtained] lock_keys => '["rql:lock:a", "rql:lock:b"]' queue_ttl => 15 acq_id => 'rql:acq:4486/1696/1704/1712/e6fd0da7991e4303' hst_id => 'rql:hst:4486/1696/1712/e6fd0da7991e4303' acs_strat => 'queued' acq_time => 2.55 (ms)
-[redis_queued_locks.expire_lock_series] lock_keys => '["rql:lock:x", "rql:lock:y", "rql:lock:z"]' queue_ttl => 15 acq_id => 'rql:acq:4486/1696/1704/1712/e6fd0da7991e4303' hst_id => 'rql:hst:4486/1696/1712/e6fd0da7991e4303' acs_strat => 'queued'
+[redis_queued_locks.start_lock_series_obtaining] lock_keys => '["rql:lock:a", "rql:lock:b"]' queue_ttl => 15 acq_id => 'rql:acq:4486/1696/1704/1712/e6fd0da7991e4303' hst_id => 'rql:hst:4486/1696/1712/e6fd0da7991e4303' acs_strat => 'queued' rw_mode => 'write'
+[redis_queued_locks.lock_series_obtained] lock_keys => '["rql:lock:a", "rql:lock:b"]' queue_ttl => 15 acq_id => 'rql:acq:4486/1696/1704/1712/e6fd0da7991e4303' hst_id => 'rql:hst:4486/1696/1712/e6fd0da7991e4303' acs_strat => 'queued' rw_mode => 'write' acq_time => 2.55 (ms)
+[redis_queued_locks.expire_lock_series] lock_keys => '["rql:lock:x", "rql:lock:y", "rql:lock:z"]' queue_ttl => 15 acq_id => 'rql:acq:4486/1696/1704/1712/e6fd0da7991e4303' hst_id => 'rql:hst:4486/1696/1712/e6fd0da7991e4303' acs_strat => 'queued' rw_mode => 'write'
 ```
 
 ----
@@ -985,6 +1011,7 @@ client.lock_series!("x", "y", "z") { ...some_code... }
 - returns `nil` if lock does not exist;
 - lock data (`Hash<String,String|Integer>`):
   - `"lock_key"` - `string` - lock key in redis;
+  - `"rw_mode"` - `string` - lock mode: `"write"` (or `"read"` for read locks info, see [Read/Write Locks](#readwrite-locks));
   - `"acq_id"` - `string` - acquirer identifier (process_id/thread_id/fiber_id/ractor_id/identity);
   - `"hst_id"` - `string` - host identifier (process_id/thread_id/ractor_id/identity);
   - `"ts"` - `numeric`/`epoch` - the time when lock was obtained;
@@ -1008,6 +1035,7 @@ rql.lock_info("your_lock_name")
 # =>
 {
   "lock_key" => "rql:lock:your_lock_name",
+  "rw_mode" => "write",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
   "hst_id" => "rql:acq:123/456/678/374dd74324",
   "ts" => 123456789.12345,
@@ -1024,6 +1052,7 @@ rql.lock_info("your_lock_name")
 # =>
 {
   "lock_key" => "rql:lock:your_lock_name",
+  "rw_mode" => "write",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
   "hst_id" => "rql:acq:123/456/678/374dd74324",
   "ts" => 123456789.12345,
@@ -1046,6 +1075,7 @@ rql.lock_info("your_lock_name")
 # =>
 {
   "lock_key" => "rql:lock:your_lock_name",
+  "rw_mode" => "write",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
   "hst_id" => "rql:acq:123/456/678/374dd74324",
   "ts" => 123456789.12345,
@@ -1079,12 +1109,15 @@ you can receive the lock queue info with empty queue value (an empty array).
   - set is ordered by score in ASC manner (inside the Redis Set);
   - score is represented as a timestamp when the lock request was made;
   - represents the acquirer identifier and their score as an array of hashes;
-- returns `nil` if lock queue does not exist;
+- returns `nil` if lock queues (write and read) do not exist;
 - lock queue data (`Hash<String,String|Array<Hash<String|Numeric>>`):
-  - `"lock_queue"` - `string` - lock queue key in redis;
+  - `"lock_queue"` - `string` - lock queue key in redis (write lock requests);
   - `"queue"` - `array` - an array of lock requests (array of hashes):
     - `"acq_id"` - `string` - acquirer identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
     - `"score"` - `float`/`epoch` - time when the lock request was made (epoch);
+    - `"rw_mode"` - `string` - the requested lock mode (`"write"`);
+  - `"read_lock_queue"`, `"read_queue"` - (only when read lock requests exist) the read lock queue key and read lock requests
+    with the same structure (`"rw_mode"` - `"read"`), see [Read/Write Locks](#readwrite-locks);
 
 ```ruby
 rql.queue_info("your_lock_name")
@@ -1093,9 +1126,15 @@ rql.queue_info("your_lock_name")
 {
   "lock_queue" => "rql:lock_queue:your_lock_name",
   "queue" => [
-    { "acq_id" => "rql:acq:123/456/567/678/fa76df9cc2", "score" => 1711606640.540842},
-    { "acq_id" => "rql:acq:123/567/456/679/c7bfcaf4f9", "score" => 1711606640.540906},
-    { "acq_id" => "rql:acq:555/329/523/127/7329553b11", "score" => 1711606640.540963},
+    { "acq_id" => "rql:acq:123/456/567/678/fa76df9cc2", "score" => 1711606640.540842, "rw_mode" => "write" },
+    { "acq_id" => "rql:acq:123/567/456/679/c7bfcaf4f9", "score" => 1711606640.540906, "rw_mode" => "write" },
+    { "acq_id" => "rql:acq:555/329/523/127/7329553b11", "score" => 1711606640.540963, "rw_mode" => "write" },
+    # ...etc
+  ],
+  # (when read lock requests exist)
+  "read_lock_queue" => "rql:lock_read_queue:your_lock_name",
+  "read_queue" => [
+    { "acq_id" => "rql:acq:123/456/567/700/fa76df9cc2", "score" => 1711606640.541011, "rw_mode" => "read" },
     # ...etc
   ]
 }
@@ -1196,6 +1235,42 @@ rql.unlock("your_lock_name")
     rel_key: "rql:lock:your_lock_name", # released lock key
     rel_queue: "rql:lock_queue:your_lock_name", # released lock key queue
     queue_res: :released, # or :nothing_to_release
+    lock_res: :released # or :nothing_to_release
+  }
+}
+```
+
+---
+
+#### #unlock_read - release the read lock of the current acquirer
+
+<sup>\[[back to top](#usage)\]</sup>
+
+- releases the read lock of the current acquirer only (see [Read/Write Locks](#readwrite-locks)):
+  other read locks, the write lock and lock requests are not affected (`#unlock` releases the lock entirely);
+- suitable for read locks obtained without a block of code (`lock(..., read_write_mode: :read)` without a block);
+- the current acquirer is calculated in the same way as for `#lock` (`#current_acquirer_id`: process, thread, fiber, ractor, identity),
+  so call it from the same thread/fiber that obtained the read lock;
+- has an alias: `#release_read_lock`;
+- accepts:
+  - `lock_name` - (required) `[String]` - the lock name whose read lock should be released;
+  - `:identity` - (optional) `[String]` - the same identity as for `#lock` (`uniq_identity` by default);
+  - `:logger`, `:instrumenter`, `:instrument`, `:log_sampling_enabled`, `:log_sampling_percent`, `:log_sampler`, `:log_sample_this`,
+    `:instr_sampling_enabled`, `:instr_sampling_percent`, `:instr_sampler`, `:instr_sample_this` - (optional) - the same as for `#unlock`;
+- returns `{ ok: true, result: { rel_time:, rel_key:, rel_acq_id:, lock_res: } }` (`lock_res` - `:released` or `:nothing_to_release`);
+- raises the `"redis_queued_locks.explicit_read_lock_release"` instrumentation event;
+
+```ruby
+rql.lock('report', read_write_mode: :read, ttl: 30_000) # => obtained without a block
+# ...
+rql.unlock_read('report')
+# =>
+{
+  ok: true,
+  result: {
+    rel_time: 0.32, # milliseconds
+    rel_key: 'rql:lock:report',
+    rel_acq_id: 'rql:acq:17580/2260/2380/2280/3f16b93973612580',
     lock_res: :released # or :nothing_to_release
   }
 }
@@ -1471,6 +1546,25 @@ rql.release_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acqu
     - the lock name which ttl should be extended;
   - `milliseconds` - (required) `[Integer]`
     - how many milliseconds should be added to the lock's TTL;
+  - `:read_write_mode` - (optional) `[Symbol]`
+    - `:write` (default) - extends the write lock (the behavior described below);
+    - `:read` - extends the read lock of the current acquirer only (see [Read/Write Locks](#readwrite-locks)):
+      - the read lock expiration, the read locks registry TTL and the read lock data TTL are extended;
+      - an expired read lock (or a read lock replaced by a writer) is never extended ("revived"):
+        `{ ok: false, result: :async_expire_or_no_lock }` is returned;
+      - the extension is atomic (it is checked and applied inside a transaction that watches the write lock);
+  - `:all_read_locks` - (optional) `[Boolean]`
+    - `false` by default;
+    - `:read` mode only (ignored in `:write` mode): `true` extends **all live read locks** of the lock
+      (of all acquirers) instead of the read lock of the current acquirer:
+      - each live read lock (its expiration and its data TTL) is extended by `milliseconds`,
+        the read locks registry TTL is extended to the longest read lock;
+      - expired read locks are not extended ("revived"); nothing is extended while the write lock is held;
+      - read locks obtained concurrently with the extension (after it reads the read locks) are not extended;
+      - returns `{ ok: true, result: { extended_locks_count: <the number of extended read locks> } }`
+        when at least one read lock is extended;
+  - `:identity` - (optional) `[String]`
+    - the same identity as for `#lock` (`uniq_identity` by default); used for the current acquirer calculation in `:read` mode;
   - `:instrumenter` - (optional) `[#notify]`
     - custom instrumenter object;
     - pre-configured in `config['instrumetner']`;
@@ -1506,7 +1600,9 @@ rql.release_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acqu
     - marks the method that everything should be instrumneted despite the enabled instrumentation sampling;
     - makes sense when instrumentation sampling is enabled;
     - `false` by default;
-- returns `{ ok: true, result: :ttl_extended }` when ttl is extended;
+- returns `{ ok: true, result: { extended_locks_count: Integer } }` when ttl is extended:
+  - `extended_locks_count` - the number of locks whose TTL is extended: `1` for the write lock
+    and for the read lock of the current acquirer, the number of extended read locks for `all_read_locks: true`;
 - returns `{ ok: false, result: :async_expire_or_no_lock }` when a lock not found or a lock is already expired during
   some steps of invocation (see **Important** section below);
 - **Important**:
@@ -1526,7 +1622,7 @@ rql.release_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acqu
 rql.extend_lock_ttl("my_lock", 5_000) # NOTE: add 5_000 milliseconds
 
 # => `ok` case
-{ ok: true, result: :ttl_extended }
+{ ok: true, result: { extended_locks_count: 1 } }
 
 # => `failed` case
 { ok: false, result: :async_expire_or_no_lock }
@@ -1682,7 +1778,8 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
 - returns `Set<Hash<Symbol,Any>>` (see [#queue_info](#queue_info) and examples below for details).
   - contained data: `{ queue: String, requests: Array<Hash<String,Any>> }`
   - `:queue` - `String` - lock key queue in Redis;
-  - `:requests` - `Array<Hash<String,Any>>` - lock requests in the que with their acquirer id and score.
+  - `:requests` - `Array<Hash<String,Any>>` - lock requests in the que with their acquirer id, score and requested lock mode
+    (`"rw_mode"` - `"write"` for `rql:lock_queue:*`, `"read"` for read lock queues `rql:lock_read_queue:*`).
 
 ```ruby
 rql.queues_info # or rql.qeuues_info(scan_size: 123)
@@ -1690,14 +1787,13 @@ rql.queues_info # or rql.qeuues_info(scan_size: 123)
 => #<Set:
  {{:queue=>"rql:lock_queue:some-lock-123",
    :requests=>
-    [{"acq_id"=>"rql:acq:38529/4500/4520/4360/66093702f24a3129", "score"=>1711606640.540842},
-     {"acq_id"=>"rql:acq:38529/4580/4600/4360/66093702f24a3129", "score"=>1711606640.540906},
-     {"acq_id"=>"rql:acq:38529/4620/4640/4360/66093702f24a3129", "score"=>1711606640.5409632}]},
-  {:queue=>"rql:lock_queue:some-lock-456",
+    [{"acq_id"=>"rql:acq:38529/4500/4520/4360/66093702f24a3129", "score"=>1711606640.540842, "rw_mode"=>"write"},
+     {"acq_id"=>"rql:acq:38529/4580/4600/4360/66093702f24a3129", "score"=>1711606640.540906, "rw_mode"=>"write"},
+     {"acq_id"=>"rql:acq:38529/4620/4640/4360/66093702f24a3129", "score"=>1711606640.5409632, "rw_mode"=>"write"}]},
+  {:queue=>"rql:lock_read_queue:some-lock-456",
    :requests=>
-    [{"acq_id"=>"rql:acq:38529/4380/4400/4360/66093702f24a3129", "score"=>1711606640.540722},
-     {"acq_id"=>"rql:acq:38529/4420/4440/4360/66093702f24a3129", "score"=>1711606640.5407748},
-     {"acq_id"=>"rql:acq:38529/4460/4480/4360/66093702f24a3129", "score"=>1711606640.540808}]},
+    [{"acq_id"=>"rql:acq:38529/4380/4400/4360/66093702f24a3129", "score"=>1711606640.540722, "rw_mode"=>"read"},
+     {"acq_id"=>"rql:acq:38529/4420/4440/4360/66093702f24a3129", "score"=>1711606640.5407748, "rw_mode"=>"read"}]},
   ...}>
 ```
 ---
@@ -2110,6 +2206,92 @@ rql.possible_host_ids
 
 ---
 
+## Read/Write Locks
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
+
+- `read_write_mode:` attribute of `#lock` and `#lock!`:
+  - `:write` (default) - exclusive lock (the classic RQL lock): waits for the write lock and for all read locks;
+  - `:read` - shared lock: waits for the write lock only (read locks of different acquirers work in parallel);
+
+```ruby
+# readers work in parallel
+rql.lock('report', read_write_mode: :read) { read_report }
+
+# writer waits for all readers (and readers wait for the writer)
+rql.lock('report', read_write_mode: :write) { rebuild_report }
+rql.lock('report') { rebuild_report } # (write mode is the default mode)
+```
+
+- lock request ordering (`access_strategy`):
+  - `:queued` (default) - FIFO between modes: read lock request waits for every earlier write lock request,
+    write lock request waits for every earlier read and write lock request (so writers are not starved by a
+    continuous flow of readers and consecutive readers obtain the lock together);
+  - `:random` - lock queues are ignored: any free lock is obtained (a continuous flow of readers can starve writers);
+- read locks:
+  - each read lock has its own `ttl` and is released (after the block execution) or expired independently of other read locks;
+  - `ttl` should be a positive `Integer` (`RedisQueuedLocks::ArgumentError`);
+  - each read lock has its own data with the same structure as the write lock data: acquirer, host, timestamp,
+    initial ttl, `:meta` (with the same reserved keys) and reentrant lock data (`spc_cnt`, `spc_ext_ttl`, ...);
+    the read lock data lives as long as the read lock and is returned by `#lock_info`/`#locks_info` for each reader;
+  - `#unlock` releases the lock entirely: the write lock, all read locks (with their data) and all lock requests;
+  - `#unlock_read` (aka `#release_read_lock`) releases the read lock of the current acquirer only
+    (suitable for read locks obtained without a block);
+  - `#extend_lock_ttl(lock_name, milliseconds, read_write_mode: :read)` extends the read lock of the current acquirer only;
+    `all_read_locks: true` extends all live read locks of the lock;
+- `#lock_series` with `read_write_mode: :read` obtains a series of read locks (the mode is the same for all locks of the series):
+  - read lock series of different acquirers work in parallel, writers wait for them;
+  - after the block (or when the series fails) only the read locks of the current acquirer are released;
+  - reentrant read locks of the series (already obtained by the outer logic of the same acquirer) are not released by the series;
+- reentrant locks (the same acquirer, see [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks)):
+  - read lock request under the obtained read lock or write lock is processed as a reentrant lock of the obtained lock
+    in accordance with `conflict_strategy`;
+  - write lock request under the obtained read lock (read-to-write lock upgrade) fails with
+    `RedisQueuedLocks::ConflictLockObtainError` (`{ ok: false, result: :conflict_lock_upgrade }`) for
+    `:work_through` and `:extendable_work_through` (`:dead_locking` fails as usual, `:wait_for_lock` waits for the read lock expiration);
+- info methods:
+  - `#locked?` - the lock is obtained by a writer or by any reader;
+  - `#queued?` - there are write or read lock requests;
+  - `#lock_info` - write lock info (`'rw_mode' => 'write'`), or read locks info when there is no write lock:
+    ```ruby
+    {
+      'lock_key' => 'rql:lock:report',
+      'rw_mode' => 'read',
+      'rem_ttl' => 4985, # remaining ttl of the longest read lock (milliseconds)
+      'readers' => [
+        {
+          'acq_id' => 'rql:acq:...',
+          'hst_id' => 'rql:hst:...',
+          'ts' => 1791582966.125299,
+          'ini_ttl' => 5000,
+          'rem_ttl' => 4985,
+          'some_meta_key' => 'some_meta_value' # (custom `:meta`)
+        },
+        { 'acq_id' => 'rql:acq:...', 'hst_id' => 'rql:hst:...', 'ts' => 1791582967.5, 'ini_ttl' => 5000, 'rem_ttl' => 3120 }
+      ]
+    }
+    ```
+  - `#queue_info` - additional `"read_lock_queue"`/`"read_queue"` keys when read lock requests exist;
+    each request of `#queue_info`/`#queues_info` has `"rw_mode"` (`"write"`/`"read"`);
+  - `#locks`/`#locks_info`, `#queues`/`#queues_info`, `#keys` - include read locks and read lock queues
+    (`#locks_info` info has `'rw_mode'` - `'write'` or `'read'`);
+- logs and instrumentation: `rw_mode` is added to the lock logs and to the instrumentation payloads
+  (lock series logs and events: the mode of the series), see [Logging](#logging) and [Instrumentation Events](#instrumentation-events);
+- data layout:
+  - `rql:lock:<lock_name>` - write lock (`HASH`, the classic RQL lock);
+  - `rql:lock_queue:<lock_name>` - write lock requests (`ZSET`, the classic RQL lock queue);
+  - `rql:lock_readers:<lock_name>` - read locks (`ZSET`: acquirer id => read lock expiration time in Redis time, milliseconds);
+  - `rql:lock_read_queue:<lock_name>` - read lock requests (`ZSET`);
+  - `rql:lock_reader:<lock_name>:<acquirer_id>` - read lock data (`HASH`, the same structure as the write lock, read lock ttl);
+- implementation notes:
+  - optimistic transactions only (`WATCH`/`MULTI`): readers watch the write lock key, writers watch the write lock key and the read locks key,
+    so readers never invalidate transactions of each other;
+  - lock queues are responsible for the ordering only, mutual exclusion is guaranteed by the lock state check;
+  - **all your processes should use the RQL version with read/write locks** before you start to use read locks:
+    write locks of older RQL versions do not check read locks;
+
+---
+
 ## Deadlocks and Reentrant locks
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
@@ -2135,38 +2317,63 @@ rql.possible_host_ids
 - [Logging Configuration](#logging-configuration)
 
 
+- each lock log contains `rw_mode` - the lock mode (`'write'` or `'read'`, see [Read/Write Locks](#readwrite-locks)):
+  - the **requested** mode in lock obtaining logs, try-lock logs (`try_lock.*`) and `fail_fast_or_limits_reached_or_deadlock__dequeue`;
+  - the **held** mode in `expire_lock` and `decrease_lock` (the lock that is released or decreased: a reentrant read lock request
+    under the write lock of the same acquirer holds the write lock);
+
 - default logs (raised from `#lock`/`#lock!`):
 
 ```ruby
-"[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-"[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-"[redis_queued_locks.dead_score_reached__reset_acquirer_position]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-"[redis_queued_locks.lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time");
-"[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "acq_time");
-"[redis_queued_locks.reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "acq_time");
-"[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-"[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-"[redis_queued_locks.decrease_lock]" # (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.dead_score_reached__reset_acquirer_position]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+"[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+"[redis_queued_locks.reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+"[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.expire_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.decrease_lock]" # (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 ```
 
 - additional logs (raised from `#lock`/`#lock!` with `confg[:log_lock_try] == true`):
 
 ```ruby
-"[redis_queued_locks.try_lock.start]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-"[redis_queued_locks.try_lock.rconn_fetched]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-"[redis_queued_locks.try_lock.same_process_conflict_detected]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-"[redis_queued_locks.try_lock.same_process_conflict_analyzed]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status");
-"[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status", "last_ext_ttl", "last_ext_ts");
-"[redis_queued_locks.try_lock.reentrant_lock__work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status", last_spc_ts);
-"[redis_queued_locks.try_lock.single_process_lock_conflict__dead_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status", "last_spc_ts");
-"[redis_queued_locks.try_lock.acq_added_to_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-"[redis_queued_locks.try_lock.remove_expired_acqs]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-"[redis_queued_locks.try_lock.get_first_from_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue");
-"[redis_queued_locks.try_lock.exit__queue_ttl_reached]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-"[redis_queued_locks.try_lock.exit__no_first]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "<current_lock_data>");
-"[redis_queued_locks.try_lock.exit__lock_still_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
-"[redis_queued_locks.try_lock.obtain__free_to_acquire]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+"[redis_queued_locks.try_lock.start]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.try_lock.rconn_fetched]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.try_lock.same_process_conflict_detected]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.try_lock.same_process_conflict_analyzed]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status");
+"[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_ext_ttl", "last_ext_ts");
+"[redis_queued_locks.try_lock.reentrant_lock__work_through]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_spc_ts");
+"[redis_queued_locks.try_lock.single_process_lock_conflict__dead_lock]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_spc_ts");
+"[redis_queued_locks.try_lock.single_process_lock_conflict__lock_upgrade]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_spc_ts");
+"[redis_queued_locks.try_lock.acq_added_to_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.try_lock.remove_expired_acqs]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.try_lock.get_first_from_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue");
+"[redis_queued_locks.try_lock.exit__queue_ttl_reached]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.try_lock.exit__no_first]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue", "<current_lock_data>");
+"[redis_queued_locks.try_lock.exit__lock_still_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
+"[redis_queued_locks.try_lock.exit__write_request_ahead]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "ahead_acq_id");
+"[redis_queued_locks.try_lock.exit__read_request_ahead]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "ahead_acq_id");
+"[redis_queued_locks.try_lock.exit__read_lock_still_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue");
+"[redis_queued_locks.try_lock.obtain__free_to_acquire]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 ```
+
+- lock series logs (raised from `#lock_series`/`#lock_series!`, PoC; `rw_mode` is the mode of the series):
+
+```ruby
+"[redis_queued_locks.start_lock_series_obtaining]" # (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.lock_series_obtained]" # (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+"[redis_queued_locks.expire_lock_series]" # (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+```
+
+- read/write try-lock logs (see [Read/Write Locks](#readwrite-locks)):
+  - `single_process_lock_conflict__lock_upgrade` - write lock request of the acquirer that holds the read lock
+    (read-to-write lock upgrade is not supported for `:work_through` and `:extendable_work_through` conflict strategies);
+  - `exit__write_request_ahead` - read lock request waits for an earlier write lock request (`ahead_acq_id`, `:queued` access strategy);
+  - `exit__read_request_ahead` - write lock request waits for an earlier read lock request (`ahead_acq_id`, `:queued` access strategy);
+  - `exit__read_lock_still_obtained` - write lock request waits for live read locks
+    (read lock request: waits for the own read lock with `:wait_for_lock` conflict strategy);
 
 ---
 
@@ -2185,15 +2392,20 @@ rql.possible_host_ids
 # - should implement `debug(progname = nil, &block)` (minimal requirement) or be an instance of Ruby's `::Logger` class/subclass;
 # - supports `SemanticLogger::Logger` (see "semantic_logger" gem)
 # - at this moment the only debug logs are realised in following cases:
-#   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-#   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-#   - "[redis_queued_locks.dead_score_reached__reset_acquirer_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-#   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
-#   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
-#   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
-#   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-#   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-#   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+#   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.dead_score_reached__reset_acquirer_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+#   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+#   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+#   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.start_lock_series_obtaining]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.lock_series_obtained]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+#   - "[redis_queued_locks.expire_lock_series]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "rw_mode" is the requested lock mode ('write'/'read'), the held lock mode for "expire_lock" and "decrease_lock",
+#     the mode of the series for lock series logs;
 # - by default uses VoidLogger that does nothing;
 config['logger'] = RedisQueuedLocks::Logging::VoidLogger
 
@@ -2201,19 +2413,25 @@ config['logger'] = RedisQueuedLocks::Logging::VoidLogger
 # - adds additional debug logs;
 # - enables additional logs for each internal try-retry lock acquiring (a lot of logs can be generated depending on your retry configurations);
 # - it adds following debug logs in addition to the existing:
-#   - "[redis_queued_locks.try_lock.start]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-#   - "[redis_queued_locks.try_lock.rconn_fetched]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-#   - "[redis_queued_locks.try_lock.same_process_conflict_detected]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-#   - "[redis_queued_locks.try_lock.same_process_conflict_analyzed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status");
-#   - "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status", "last_ext_ttl", "last_ext_ts");
-#   - "[redis_queued_locks.try_lock.reentrant_lock__work_through]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status", last_spc_ts);
-#   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat")";
-#   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-#   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue");
-#   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-#   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "<current_lock_data>");
-#   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
-#   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+#   - "[redis_queued_locks.try_lock.start]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.try_lock.rconn_fetched]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.try_lock.same_process_conflict_detected]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.try_lock.same_process_conflict_analyzed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status");
+#   - "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_ext_ttl", "last_ext_ts");
+#   - "[redis_queued_locks.try_lock.reentrant_lock__work_through]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_spc_ts");
+#   - "[redis_queued_locks.try_lock.single_process_lock_conflict__dead_lock]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_spc_ts");
+#   - "[redis_queued_locks.try_lock.single_process_lock_conflict__lock_upgrade]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_spc_ts");
+#   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue");
+#   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue", "<current_lock_data>");
+#   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
+#   - "[redis_queued_locks.try_lock.exit__write_request_ahead]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "ahead_acq_id");
+#   - "[redis_queued_locks.try_lock.exit__read_request_ahead]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "ahead_acq_id");
+#   - "[redis_queued_locks.try_lock.exit__read_lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue");
+#   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "rw_mode" is the requested lock mode ('write'/'read');
 config['log_lock_try'] = false
 
 # (default: false)
@@ -2313,12 +2531,15 @@ config['instr_sampler'] = RedisQueuedLocks::Instrument::Sampler
 
 List of instrumentation events
 
-- ["redis_queued_locks.lock_obtained"](#redis_queued_lockslock_hold_and_release)
+- ["redis_queued_locks.lock_obtained"](#redis_queued_lockslock_obtained)
 - ["redis_queued_locks.extendable_reentrant_lock_obtained"](#redis_queued_locksextendable_reentrant_lock_obtained)
 - ["redis_queued_locks.reentrant_lock_obtained"](#redis_queued_locksreentrant_lock_obtained)
 - ["redis_queued_locks.lock_hold_and_release"](#redis_queued_lockslock_hold_and_release)
 - ["redis_queued_locks.reentrant_lock_hold_completes"](#redis_queued_locksreentrant_lock_hold_completes)
+- ["redis_queued_locks.lock_series_obtained"](#redis_queued_lockslock_series_obtained)
+- ["redis_queued_locks.lock_series_hold_and_release"](#redis_queued_lockslock_series_hold_and_release)
 - ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release)
+- ["redis_queued_locks.explicit_read_lock_release"](#redis_queued_locksexplicit_read_lock_release)
 - ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
 - ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of)
 
@@ -2333,6 +2554,7 @@ Detalized event semantics and payload structure:
   - `:acq_id` - `string` - lock acquirer identifier;
   - `:hst_id` - `string` - lock's host identifier;
   - `:lock_key` - `string` - lock name;
+  - `:rw_mode` - `symbol` - requested lock mode: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
   - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend;
   - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
   - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
@@ -2343,6 +2565,8 @@ Detalized event semantics and payload structure:
 - raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
 - payload:
   - `:lock_key` - `string` - lock name;
+  - `:rw_mode` - `symbol` - requested lock mode: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+    a read lock request under the write lock of the same acquirer works through the write lock (`:rw_mode` is `:read`);
   - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
   - `:acq_id` - `string` - lock acquirer identifier;
   - `:hst_id` - `string` - lock's host identifier;
@@ -2356,6 +2580,8 @@ Detalized event semantics and payload structure:
 - raised from `#lock`/`#lock!` when the lock was obtained as reentrant lock;
 - payload:
   - `:lock_key` - `string` - lock name;
+  - `:rw_mode` - `symbol` - requested lock mode: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+    a read lock request under the write lock of the same acquirer works through the write lock (`:rw_mode` is `:read`);
   - `:ttl` - `integer`/`milliseconds` - last lock ttl by reentrant locking;
   - `:acq_id` - `string` - lock acquirer identifier;
   - `:hst_id` - `string` - lock's host identifier;
@@ -2373,6 +2599,7 @@ Detalized event semantics and payload structure:
   - `:acq_id` - `string` - lock acquirer identifier;
   - `:hst_id` - `string` - lock's host identifier;
   - `:lock_key` - `string` - lock name;
+  - `:rw_mode` - `symbol` - requested lock mode: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
   - `:ts` - `numeric`/`epoch` - the time when lock was obtained;
   - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
   - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
@@ -2389,18 +2616,63 @@ Detalized event semantics and payload structure:
   - `:hst_id` - `string` - lock's host identifier;
   - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend as reentrant lock;
   - `:lock_key` - `string` - lock name;
+  - `:rw_mode` - `symbol` - requested lock mode: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+    a read lock request under the write lock of the same acquirer works through the write lock (`:rw_mode` is `:read`);
   - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
   - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+
+##### `"redis_queued_locks.lock_series_obtained"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- (PoC) a moment when all locks of the series were obtained;
+- raised from `#lock_series`/`#lock_series!`;
+- payload:
+  - `:lock_keys` - `array<string>` - lock names of the series;
+  - `:rw_mode` - `symbol` - the mode of the series (`read_write_mode`): `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+  - `:ttl` - `integer`/`milliseconds` - the `ttl` option of the series (each lock of the series gets its own ttl,
+    see [lock_series](#lock_series---poc-acquire-a-series-of-locks));
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:ts` - `numeric`/`epoch` - the time when the series was obtained;
+  - `:acq_time` - `float`/`milliseconds` - time spent on the series acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock_series`/`#lock_series!` method as `:instrument` attribute;
+
+##### `"redis_queued_locks.lock_series_hold_and_release"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- (PoC) an event signalizes about the "hold+and+release" process of the series is finished;
+- raised from `#lock_series`/`#lock_series!` when invoked with a block of code;
+- payload:
+  - `:lock_keys` - `array<string>` - lock names of the series;
+  - `:rw_mode` - `symbol` - the mode of the series (`read_write_mode`): `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+  - `:hold_time` - `float`/`milliseconds` - the series hold time;
+  - `:ttl` - `integer`/`milliseconds` - the `ttl` option of the series;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:ts` - `float`/`epoch` - the time when the series was released;
+  - `:acq_time` - `float`/`milliseconds` - time spent on the series acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock_series`/`#lock_series!` method as `:instrument` attribute;
 
 ##### `"redis_queued_locks.explicit_lock_release"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
 - an event signalizes about the explicit lock release (invoked via `RedisQueuedLock#unlock`);
 - raised from `#unlock`;
+- the write lock, all read locks and both lock request queues (write and read) are released;
 - payload:
   - `:at` - `float`/`epoch` - the time when the lock was released;
   - `:rel_time` - `float`/`milliseconds` - time spent on lock releasing;
   - `:lock_key` - `string` - released lock (lock name);
-  - `:lock_key_queue` - `string` - released lock queue (lock queue name);
+  - `:lock_key_queue` - `string` - released lock queue (the queue of write lock requests);
+
+##### `"redis_queued_locks.explicit_read_lock_release"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the explicit release of the read lock of the concrete acquirer (invoked via `RedisQueuedLock#unlock_read`);
+- raised from `#unlock_read` (aka `#release_read_lock`);
+- payload:
+  - `:at` - `float`/`epoch` - the time when the read lock was released;
+  - `:rel_time` - `float`/`milliseconds` - time spent on read lock releasing;
+  - `:lock_key` - `string` - lock key (`rql:lock:<lock_name>`);
+  - `:acq_id` - `string` - the read lock acquirer;
+  - `:lock_res` - `symbol` - `:released` or `:nothing_to_release`;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#unlock_read` method as `:instrument` attribute;
 
 ##### `"redis_queued_locks.explicit_all_locks_release"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
@@ -2409,7 +2681,8 @@ Detalized event semantics and payload structure:
 - payload:
   - `:rel_time` - `float`/`milliseconds` - time spent on "realese all locks" operation;
   - `:at` - `float`/`epoch` - the time when the operation has ended;
-  - `:rel_keys` - `integer` - released redis keys count (`released queue keys` + `released lock keys`);
+  - `:rel_key_cnt` - `integer` - released redis keys count (write locks, readers registries, read lock data,
+    write and read lock request queues);
 
 ##### `"redis_queued_locks.release_locks_of"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
@@ -2420,8 +2693,8 @@ Detalized event semantics and payload structure:
   - `:at` - `float`/`epoch` - the time when the opertaion has ended; 
   - `:acq_id` - `string` - refused acquirer identifier;
   - `:hst_id` - `string` - refused host identifier;
-  - `:rel_key_cnt` - `integer` - released locks count;
-  - `:tch_queue_cnt` - `:integer` - the number of queues from which the concrete host/acquirer was removed;
+  - `:rel_key_cnt` - `integer` - released locks count (write locks and read locks);
+  - `:tch_queue_cnt` - `:integer` - the number of queues (write and read lock request queues) from which the concrete host/acquirer was removed;
 
 ---
 
@@ -2449,7 +2722,8 @@ Detalized event semantics and payload structure:
   - an ability to release all locks and all requests of the concrete acquirer id or host id (or both in validation-orianted combination);
   - detailed lock informotion inside the error object in cases of exceptions (at the moment we have this info inside the error message only that hard to analyze in work);
   - a convenient way to mark any `lock` invocation as "non-instrumentable" / "non-loggable" (as an alternative to `VoidNotifier` and to `VoidLogger`);
-  - `Read`/`Write` semantics: you can mark your locks as `read` or `write` lock in order to simulate `read`/`write` lock behavior:
+  - `Read`/`Write` semantics: you can mark your locks as `read` or `write` lock in order to simulate `read`/`write` lock behavior
+    (NOTE: implemented, see [Read/Write Locks](#readwrite-locks)):
     - `read` - watis - `write`;
     - `read` - not waits - `read`;
     - `write` - waits - `read`;

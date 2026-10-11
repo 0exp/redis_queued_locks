@@ -44,7 +44,7 @@ module RedisQueuedLocks
       ?raise_errors: bool,
       ?fail_fast: bool,
       ?conflict_strategy: Symbol,
-      ?read_write_mode: Symbol,
+      ?read_write_mode: :read | :write,
       ?access_strategy: Symbol,
       ?identity: String,
       ?meta: Hash[String|Symbol,untyped]?,
@@ -74,7 +74,7 @@ module RedisQueuedLocks
       ?retry_jitter: Integer,
       ?fail_fast: bool,
       ?conflict_strategy: Symbol,
-      ?read_write_mode: Symbol,
+      ?read_write_mode: :read | :write,
       ?access_strategy: Symbol,
       ?identity: String,
       ?instrumenter: RQL::instrObj,
@@ -109,6 +109,23 @@ module RedisQueuedLocks
     ) -> RQL::Acquirer::ReleaseLock::releaseResult
     alias release_lock unlock
 
+    def unlock_read: (
+      String lock_name,
+      ?identity: String,
+      ?logger: RQL::loggerObj,
+      ?instrumenter: RQL::instrObj,
+      ?instrument: untyped?,
+      ?log_sampling_enabled: bool,
+      ?log_sampling_percent: Integer,
+      ?log_sampler: RQL::Logging::samplerObj,
+      ?log_sample_this: bool,
+      ?instr_sampling_enabled: bool,
+      ?instr_sampling_percent: Integer,
+      ?instr_sampler: RQL::Instrument::samplerObj,
+      ?instr_sample_this: bool
+    ) -> RQL::Acquirer::ReleaseReadLock::releaseResult
+    alias release_read_lock unlock_read
+
     def locked?: (String lock_name) -> bool
     def queued?: (String lock_name) -> bool
     def lock_info: (String lock_name) -> RQL::Acquirer::LockInfo::lockInfo?
@@ -138,6 +155,9 @@ module RedisQueuedLocks
     def extend_lock_ttl: (
       String lock_name,
       Integer milliseconds,
+      ?read_write_mode: :read | :write,
+      ?all_read_locks: bool,
+      ?identity: String,
       ?logger: RQL::loggerObj,
       ?instrumenter: RQL::instrObj,
       ?instrument: untyped?,

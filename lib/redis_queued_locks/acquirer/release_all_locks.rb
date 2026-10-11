@@ -10,6 +10,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     # Release all locks:
     # - 1. clear all lock queus: drop them all from Redis database by the lock queue pattern;
     # - 2. delete all locks: drop lock keys from Redis by the lock key pattern;
+    # - 3. (RW) clear all read lock queues and drop all read locks (readers registries and data);
     #
     # @param redis [RedisClient]
     #   Redis connection client.
@@ -71,7 +72,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     #
     # @api private
     # @since 1.0.0
-    # @version 1.14.0
+    # @version 1.18.0
     def release_all_locks(
       redis,
       batch_size,
@@ -129,6 +130,8 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     #
     # @api private
     # @since 1.0.0
+    # @version 1.18.0
+    # rubocop:disable Metrics/MethodLength
     def fully_release_all_locks(redis, batch_size)
       result = redis.with do |rconn|
         rconn.pipelined do |pipeline|
@@ -151,10 +154,41 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
             # TODO: reduce unnecessary iterations
             pipeline.call('EXPIRE', lock_key, '0')
           end
+
+          # Step C (RW): release all read lock queues
+          rconn.scan(
+            'MATCH',
+            RedisQueuedLocks::Resource::READ_LOCK_QUEUE_PATTERN,
+            count: batch_size
+          ) do |read_lock_queue|
+            # TODO: reduce unnecessary iterations
+            pipeline.call('EXPIRE', read_lock_queue, '0')
+          end
+
+          # Step D (RW): release all read locks
+          rconn.scan(
+            'MATCH',
+            RedisQueuedLocks::Resource::LOCK_READERS_PATTERN,
+            count: batch_size
+          ) do |lock_readers|
+            # TODO: reduce unnecessary iterations
+            pipeline.call('EXPIRE', lock_readers, '0')
+          end
+
+          # Step E (RW): release all read lock data
+          rconn.scan(
+            'MATCH',
+            RedisQueuedLocks::Resource::READ_LOCK_PATTERN,
+            count: batch_size
+          ) do |read_lock|
+            # TODO: reduce unnecessary iterations
+            pipeline.call('EXPIRE', read_lock, '0')
+          end
         end
       end
 
       { ok: true, result: { rel_key_cnt: result.sum } }
     end
+    # rubocop:enable Metrics/MethodLength
   end
 end

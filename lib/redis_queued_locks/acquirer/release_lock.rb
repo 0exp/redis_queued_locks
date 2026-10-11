@@ -11,6 +11,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     # - 1. clear lock queue: al; related processes released
     #      from the lock aquierment and should retry;
     # - 2. delete the lock: drop lock key from Redis;
+    # - 3. (RW) clear the read lock queue and drop all read locks (the readers registry);
     # It is safe because the lock obtain logic is transactional and
     # watches the original lock for changes.
     #
@@ -71,7 +72,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.14.0
+    # @version 1.18.0
     # rubocop:disable Metrics/MethodLength
     def release_lock(
       redis,
@@ -89,9 +90,15 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     )
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
+      read_lock_key_queue = RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
+      lock_readers_key = RedisQueuedLocks::Resource.prepare_lock_readers(lock_name)
 
       rel_start_time = clock_gettime
-      fully_release_lock(redis, lock_key, lock_key_queue) => { ok:, result: } # steep:ignore
+      # steep:ignore:start
+      fully_release_lock(
+        redis, lock_name, lock_key, lock_key_queue, read_lock_key_queue, lock_readers_key
+      ) => { ok:, result: }
+      # steep:ignore:end
 
       # @type var ok: bool
       # @type var result: Hash[Symbol,Symbol]
@@ -131,36 +138,60 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
 
     private
 
-    # Realease the lock: clear the lock queue and expire the lock.
+    # Realease the lock: clear the lock queues and expire the lock (write lock and read locks).
     #
     # @param redis [RedisClient]
+    # @param lock_name [String]
     # @param lock_key [String]
     # @param lock_key_queue [String]
+    # @param read_lock_key_queue [String]
+    # @param lock_readers_key [String]
     # @return [Hash<Symbol,Boolean|Hash<Symbol,Symbol>>]
     #   Format: {
     #     ok: true/false,
     #     result: {
-    #       queue: :released/:nothing_to_release,
-    #       lock: :released/:nothing_to_release
+    #       queue: :released/:nothing_to_release, # (any of the lock queues)
+    #       lock: :released/:nothing_to_release # (write lock or read locks)
     #     }
     #   }
     #
     # @api private
     # @since 1.0.0
-    def fully_release_lock(redis, lock_key, lock_key_queue)
-      # @type var result: [Integer,Integer]
+    # @version 1.18.0
+    def fully_release_lock(
+      redis,
+      lock_name,
+      lock_key,
+      lock_key_queue,
+      read_lock_key_queue,
+      lock_readers_key
+    )
+      # @type var result: [Integer,Integer,Integer,Integer]
       result = redis.with do |rconn|
+        # NOTE: (RW) data of read locks (it is a data carrier only: read locks are released via
+        #   the readers registry, so the data of concurrently obtained read locks expires itself)
+        # @type var read_lock_acquirers: Array[String]
+        read_lock_acquirers = rconn.call('ZRANGE', lock_readers_key, '0', '-1')
+
         rconn.multi do |transact|
           transact.call('ZREMRANGEBYSCORE', lock_key_queue, '-inf', '+inf')
           transact.call('EXPIRE', lock_key, '0')
+          transact.call('ZREMRANGEBYSCORE', read_lock_key_queue, '-inf', '+inf')
+          transact.call('EXPIRE', lock_readers_key, '0')
+          read_lock_acquirers.each do |acquirer_id|
+            transact.call(
+              'DEL',
+              RedisQueuedLocks::Resource.prepare_read_lock_key(lock_name, acquirer_id)
+            )
+          end
         end
       end
 
       {
         ok: true,
         result: {
-          queue: (result[0] != 0) ? :released : :nothing_to_release,
-          lock: (result[1] != 0) ? :released : :nothing_to_release
+          queue: (result[0] != 0 || result[2] != 0) ? :released : :nothing_to_release,
+          lock: (result[1] != 0 || result[3] != 0) ? :released : :nothing_to_release
         }
       }
     end

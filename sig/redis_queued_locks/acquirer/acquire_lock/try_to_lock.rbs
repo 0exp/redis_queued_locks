@@ -17,7 +17,8 @@ module RedisQueuedLocks
         #     acq_id: String,
         #     hst_id: String,
         #     ts: Integer?,
-        #     ttl: Integer?
+        #     ttl: Integer?,
+        #     rw_mode: Symbol
         #   }
         # }
 
@@ -29,7 +30,8 @@ module RedisQueuedLocks
           Symbol read_write_mode,
           String lock_key_queue,
           String read_lock_key_queue,
-          String write_lock_key_queue,
+          String lock_readers_key,
+          String read_lock_key,
           String acquirer_id,
           String host_id,
           Integer|Float acquirer_position,

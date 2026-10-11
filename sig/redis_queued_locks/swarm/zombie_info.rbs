@@ -19,6 +19,11 @@ module RedisQueuedLocks
       private def self.extract_zombie_locks: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieLocks
       private def self.extract_zombie_acquirers: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieAcquirers
       private def self.extract_all: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieInfo
+      private def self.each_zombie_read_lock: (
+        RC::client rconn,
+        Set[String] zombie_hosts,
+        Integer lock_scan_size
+      ) { (String lock_readers_key, String acquirer_id) -> void } -> void
     end
   end
 end

@@ -11,7 +11,5 @@ gems:
   - name: redis-client
   - name: securerandom
   - name: timeout
-  - name: redis-client
-  - name: securerandom
   - name: logger
   - name: monitor

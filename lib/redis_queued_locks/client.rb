@@ -2,7 +2,7 @@
 
 # @api public
 # @since 1.0.0
-# @version 1.16.0
+# @version 1.18.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @return [RedisClient]
@@ -207,7 +207,28 @@ class RedisQueuedLocks::Client
   #       (with timeouts, retry delays, retry limits, etc - in classic way :));
   #     - `:dead_locking` - fail with deadlock exception;
   # @option read_write_mode [Symbol]
-  #   - ?
+  #   - The lock mode (read/write lock semantics);
+  #   - `:write` mode is used by default;
+  #   - Supports:
+  #     - `:write` - exclusive lock: waits for the write lock and for all read locks;
+  #     - `:read` - shared lock: waits for the write lock only (read locks of different
+  #       acquirers do not block each other);
+  #   - `:queued` access strategy orders read and write lock requests in FIFO between modes
+  #     (read lock request waits for earlier write lock requests, write lock request waits for
+  #     earlier read and write lock requests) so writers are not starved by readers;
+  #   - `:random` access strategy ignores lock queues (a continuous flow of readers can starve
+  #     writers);
+  #   - read lock specifics:
+  #     - read lock is released (with a block of code) or expired (by `ttl`) independently
+  #       of other read locks; `#unlock` releases all read locks and the write lock;
+  #     - each read lock has its own data (acquirer, host, timestamp, ttl, `:meta`, reentrant
+  #       lock data) that is returned by `#lock_info` for each reader;
+  #   - same-process conflicts (`conflict_strategy`) work for both modes:
+  #     - read lock request under the obtained write lock (or read lock) works as a reentrant
+  #       lock of the obtained lock;
+  #     - write lock request under the obtained read lock (read-to-write lock upgrade) fails with
+  #       `RedisQueuedLocks::ConflictLockObtainError` for any conflict strategy except
+  #       `:wait_for_lock` (it waits for the read lock expiration);
   # @option access_strategy [Symbol]
   #   - The way in which the lock will be obtained;
   #   - By default it uses `:queued` strategy;
@@ -310,7 +331,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.13.0
+  # @version 1.18.0
   # rubocop:disable Metrics/MethodLength
   def lock(
     lock_name,
@@ -531,7 +552,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.13.0
+  # @version 1.18.0
   def lock!(
     lock_name,
     ttl: config['default_lock_ttl'],
@@ -596,6 +617,8 @@ class RedisQueuedLocks::Client
   end
   # rubocop:enable Metrics/MethodLength
 
+  # Releases the lock: the write lock, all read locks and all lock requests (write and read).
+  #
   # @param lock_name [String] The lock name that should be released.
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify]
@@ -615,14 +638,14 @@ class RedisQueuedLocks::Client
   #       rel_time: Integer, # <millisecnds>
   #       rel_key: String, # lock key
   #       rel_queue: String, # lock queue
-  #       queue_res: Symbol, # :released or :nothing_to_release
-  #       lock_res: Symbol # :released or :nothing_to_release
+  #       queue_res: Symbol, # :released or :nothing_to_release (write or read lock requests)
+  #       lock_res: Symbol # :released or :nothing_to_release (write lock or read locks)
   #     }
   #   }
   #
   # @api public
   # @since 1.0.0
-  # @version 1.6.0
+  # @version 1.18.0
   def unlock(
     lock_name,
     logger: config['logger'],
@@ -654,38 +677,112 @@ class RedisQueuedLocks::Client
   end
   alias_method :release_lock, :unlock
 
+  # Releases the read lock of the current acquirer only: other read locks, the write lock and
+  # lock requests are not affected (`#unlock` releases the lock entirely). It is suitable for
+  # read locks obtained without a block of code.
+  #
+  # @param lock_name [String] The lock name whose read lock should be released.
+  # @option identity [String]
+  #   Unique acquirer identity (the same as for `#lock`) that is used to calculate the current
+  #   acquirer id (see `#current_acquirer_id`).
+  # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify]
+  # @option instrument [NilClass,Any]
+  # @option log_sampling_enabled [Boolean]
+  # @option log_sampling_percent [Integer]
+  # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
+  # @return [Hash<Symbol,Any>]
+  #   Format: {
+  #     ok: true,
+  #     result: {
+  #       rel_time: Numeric, # <milliseconds>
+  #       rel_key: String, # lock key
+  #       rel_acq_id: String, # read lock acquirer
+  #       lock_res: Symbol # :released or :nothing_to_release
+  #     }
+  #   }
+  #
+  # @api public
+  # @since 1.18.0
+  def unlock_read(
+    lock_name,
+    identity: uniq_identity,
+    logger: config['logger'],
+    instrumenter: config['instrumenter'],
+    instrument: nil,
+    log_sampling_enabled: config['log_sampling_enabled'],
+    log_sampling_percent: config['log_sampling_percent'],
+    log_sampler: config['log_sampler'],
+    log_sample_this: false,
+    instr_sampling_enabled: config['instr_sampling_enabled'],
+    instr_sampling_percent: config['instr_sampling_percent'],
+    instr_sampler: config['instr_sampler'],
+    instr_sample_this: false
+  )
+    RedisQueuedLocks::Acquirer::ReleaseReadLock.release_read_lock(
+      redis_client,
+      lock_name,
+      current_acquirer_id(identity:),
+      instrumenter,
+      logger,
+      instrument,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler,
+      log_sample_this,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler,
+      instr_sample_this
+    )
+  end
+  alias_method :release_read_lock, :unlock_read
+
   # @param lock_name [String]
-  # @return [Boolean]
+  # @return [Boolean] Is the lock obtained by a writer or by any reader.
   #
   # @api public
   # @since 1.0.0
+  # @version 1.18.0
   def locked?(lock_name)
     RedisQueuedLocks::Acquirer::IsLocked.locked?(redis_client, lock_name)
   end
 
   # @param lock_name [String]
-  # @return [Boolean]
+  # @return [Boolean] Are there any write or read lock requests.
   #
   # @api public
   # @since 1.0.0
+  # @version 1.18.0
   def queued?(lock_name)
     RedisQueuedLocks::Acquirer::IsQueued.queued?(redis_client, lock_name)
   end
 
   # @param lock_name [String]
-  # @return [Hash<String,String|Numeric>,NilClass]
+  # @return [Hash<String,String|Numeric|Array<Hash<String,String|Numeric>>>,NilClass]
+  #   - write lock info or read locks info (when there is no write lock);
+  #   - see `RedisQueuedLocks::Acquirer::LockInfo.lock_info` for details;
   #
   # @api public
   # @since 1.0.0
+  # @version 1.18.0
   def lock_info(lock_name)
     RedisQueuedLocks::Acquirer::LockInfo.lock_info(redis_client, lock_name)
   end
 
   # @param lock_name [String]
   # @return [Hash<String|Array<Hash<String,String|Numeric>>,NilClass]
+  #   - write lock requests and read lock requests (when they exist);
+  #   - see `RedisQueuedLocks::Acquirer::QueueInfo.queue_info` for details;
   #
   # @api public
   # @since 1.0.0
+  # @version 1.18.0
   def queue_info(lock_name)
     RedisQueuedLocks::Acquirer::QueueInfo.queue_info(redis_client, lock_name)
   end
@@ -783,6 +880,16 @@ class RedisQueuedLocks::Client
   #
   # @param lock_name [String]
   # @param milliseconds [Integer] How many milliseconds should be added.
+  # @option read_write_mode [Symbol]
+  #   - `:write` (default) - extends the write lock (the method description above);
+  #   - `:read` - extends the read lock of the current acquirer only (an expired read lock or
+  #     a read lock replaced by a writer is not extended);
+  # @option all_read_locks [Boolean]
+  #   `:read` mode only (ignored for `:write` mode): extends all live read locks of the lock
+  #   instead of the read lock of the current acquirer (`false` by default).
+  # @option identity [String]
+  #   Unique acquirer identity (the same as for `#lock`) that is used to calculate the current
+  #   acquirer id for `:read` mode (see `#current_acquirer_id`).
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify] See `config['instrumenter']` docs for details.
   # @option instrument [NilClass,Any]
@@ -794,16 +901,21 @@ class RedisQueuedLocks::Client
   # @option instr_sampling_percent [Integer]
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
   # @option instr_sample_this [Boolean]
-  # @return [Hash<Symbol,Boolean|Symbol>]
-  #   - { ok: true, result: :ttl_extended }
+  # @return [Hash<Symbol,Boolean|Symbol|Hash<Symbol,Integer>>]
+  #   - { ok: true, result: { extended_locks_count: Integer } } - the number of extended locks:
+  #     `1` for the write lock and for the read lock of the current acquirer,
+  #     the number of extended read locks for `all_read_locks: true`;
   #   - { ok: false, result: :async_expire_or_no_lock }
   #
   # @api public
   # @since 1.0.0
-  # @version 1.6.0
+  # @version 1.18.0
   def extend_lock_ttl(
     lock_name,
     milliseconds,
+    read_write_mode: :write,
+    all_read_locks: false,
+    identity: uniq_identity,
     logger: config['logger'],
     instrumenter: config['instrumenter'],
     instrument: nil,
@@ -820,6 +932,9 @@ class RedisQueuedLocks::Client
       redis_client,
       lock_name,
       milliseconds,
+      read_write_mode,
+      all_read_locks,
+      current_acquirer_id(identity:),
       logger,
       instrumenter,
       instrument,
@@ -928,7 +1043,7 @@ class RedisQueuedLocks::Client
   # @example Release locks of a different host/acquirer:
   #   client.clear_locks_of(
   #     host_id: "rql:hst:62681/2016/2032/b30ec5e4bea10512",
-  #     acquirer_id: "ral:acq:62681/2016/2024/2032/b30ec5e4bea10512"
+  #     acquirer_id: "rql:acq:62681/2016/2024/2032/b30ec5e4bea10512"
   #   )
   #
   # @see #clear_current_locks

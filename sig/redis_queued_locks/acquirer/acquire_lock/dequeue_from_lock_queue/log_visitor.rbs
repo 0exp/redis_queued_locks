@@ -12,7 +12,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy
+            Symbol access_strategy,
+            Symbol rw_mode
           ) -> void
         end
       end
