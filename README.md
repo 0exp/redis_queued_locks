@@ -2409,6 +2409,13 @@ rql.possible_host_ids
   ```ruby
   RedisQueuedLocks::Client.new(redis_client) do |config|
     config['lock_index_enabled'] = true
+    # (milliseconds) (default: 60_000)
+    # - the lock name stays in the lock index for this period after the expiration of all its keys;
+    # - why: the lock index scores use the client clock, so this margin protects the index from the clock skew
+    #   between your hosts and from the network latency (otherwise a live lock can drop out of the index and
+    #   the swarm/lock-iterating operations will not see it);
+    # - keep it greater than the maximal clock skew between your hosts plus the network latency;
+    config['lock_index_grace_period'] = 60_000
   end
   ```
 - the client-wide mode (not a per-call option): the lock acquirement maintains the lock index and all lock-iterating operations
