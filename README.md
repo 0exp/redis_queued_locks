@@ -2403,6 +2403,13 @@ rql.possible_host_ids
 
 > Find locks without scanning the whole Redis keyspace (opt-in: `config['lock_index_enabled'] = true`).
 
+> [!IMPORTANT]
+> Your locks should work either **always with** the lock index or **always without** it (the same
+> `config['lock_index_enabled']` value on all your processes that share the Redis database): locks obtained without the lock
+> index are not indexed and are invisible to the lock-iterating operations of the processes with the enabled lock index
+> (the swarm, `#locks`, `#queues`, `#keys`, `#clear_locks`, ...). So every time you enable the lock index after working without it
+> (including the upgrade from older RQL versions) invoke [#reindex_locks](#reindex_locks) once all your processes use the lock index.
+
 - **disabled by default**: lock-iterating operations scan the Redis keyspace (`SCAN MATCH rql:lock*`, the classic way),
   no lock index commands are sent and lock request queues have no TTL; enable the lock index via config:
 
