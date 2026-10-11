@@ -385,6 +385,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             conflict_strategy,
             access_strategy,
             meta,
+            acq_process[:tries] > 0, # NOTE: retry attempt (see "pre-check" in `try_to_lock`)
             log_sampled,
             instr_sampled
           ) => { ok:, result: }

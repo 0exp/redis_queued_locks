@@ -26,6 +26,9 @@
 - `#flush_zombies` (and the zombie flusher of the swarm): requests of zombie hosts are dropped from the lock queues by the host
   of the request (derived from its acquirer id): requests of dead hosts that hold no locks are dropped too (previously they stayed
   until the queue ttl) and their acquirers are reported in `deleted_zombie_acquirers`;
+- Lock acquirement: retries and `fail_fast` attempts pre-check the lock state without `WATCH` (one round trip): a retry that can not
+  obtain the lock takes 1 Redis round trip instead of 3 and a `fail_fast` attempt on an obtained lock - 1 instead of 3 (an attempt
+  that can obtain the lock continues with `WATCH`/`MULTI`: one more round trip); mutual exclusion still relies on `WATCH`/`MULTI` only;
 
 ## [1.19.0] - 2026-10-11
 ### Added

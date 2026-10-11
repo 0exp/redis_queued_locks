@@ -7,6 +7,9 @@ module RedisQueuedLocks
       module TryToLock
         EXTEND_LOCK_PTTL: String
         NO_LOCK_DATA: Hash[String, untyped]
+        LOCK_STATE_OBTAINER_REPLY: Integer
+        LOCK_STATE_REDIS_TIME_REPLY: Integer
+        LOCK_STATE_OWN_READ_LOCK_REPLY: Integer
         LOCK_STATE_QUEUE_REPLIES_AT: Integer
         QUEUE_HEAD_REPLY: Integer
         OPPOSITE_QUEUE_HEAD_REPLY: Integer
@@ -45,6 +48,7 @@ module RedisQueuedLocks
           Symbol conflict_strategy,
           Symbol access_strategy,
           Hash[String|Symbol,untyped]? meta,
+          bool retry_attempt,
           bool log_sampled,
           bool instr_sampled
         ) -> { ok: bool, result: Symbol|Hash[Symbol,untyped] }
@@ -59,6 +63,79 @@ module RedisQueuedLocks
           String acquirer_id,
           Float acquirer_dead_score
         ) -> void
+
+        def pipeline_lock_state: (
+          RedisClient::Pipeline pipeline,
+          String lock_key,
+          String lock_readers_key,
+          String acquirer_id,
+          bool read_mode,
+          bool queueing,
+          String request_queue,
+          String opposite_request_queue,
+          Integer|Float acquirer_position,
+          Float acquirer_dead_score
+        ) -> void
+
+        def find_opposite_request_ahead: (
+          Symbol access_strategy,
+          [String, Float]? opposite_waiting_request,
+          Integer|Float acquirer_position,
+          String acquirer_id
+        ) -> String?
+
+        type lockObstacle = :dead_score_reached
+                          | :acquirer_is_not_first_in_queue
+                          | :write_request_is_ahead
+                          | :read_request_is_ahead
+                          | :lock_is_still_acquired
+                          | :read_lock_is_still_acquired
+
+        def lock_obstacle: (
+          bool read_mode,
+          Symbol access_strategy,
+          String acquirer_id,
+          String? waiting_acquirer,
+          String? opposite_request_ahead,
+          String? current_lock_obtainer,
+          bool read_locked
+        ) -> lockObstacle?
+
+        def log_lock_obstacle: (
+          RC::client rconn,
+          Symbol obstacle,
+          RQL::loggerObj logger,
+          bool log_sampled,
+          bool log_lock_try,
+          String lock_key,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          Symbol access_strategy,
+          Symbol read_write_mode,
+          String? waiting_acquirer,
+          String? opposite_request_ahead,
+          String? current_lock_obtainer
+        ) -> void
+
+        def precheck_lock: (
+          RC::client rconn,
+          RQL::loggerObj logger,
+          bool log_sampled,
+          bool log_lock_try,
+          String lock_key,
+          Symbol read_write_mode,
+          String lock_readers_key,
+          String request_queue,
+          String opposite_request_queue,
+          String acquirer_id,
+          String host_id,
+          Integer|Float acquirer_position,
+          Float acquirer_dead_score,
+          Integer queue_ttl,
+          bool fail_fast,
+          Symbol access_strategy
+        ) -> (lockObstacle | :fail_fast_no_try)?
       end
     end
   end

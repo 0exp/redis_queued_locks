@@ -3556,6 +3556,91 @@ RSpec.describe RedisQueuedLocks do
       recorded_redis.close
     end
 
+    specify 'pre-check of retries and fail_fast attempts (round trips)' do
+      # NOTE: round trips are observed via a separate pool (the same db, one connection) with
+      #   a recording middleware;
+      round_trips = []
+      recorder = Module.new do
+        define_method(:call) do |command, redis_config, &block|
+          round_trips << [command.first]
+          super(command, redis_config, &block)
+        end
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          round_trips << commands.map(&:first)
+          super(commands, redis_config, &block)
+        end
+      end
+      recorded_redis =
+        RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5, size: 1)
+      test_logger = Class.new do
+        attr_reader :logs
+
+        def initialize
+          @logs = []
+        end
+
+        def debug(progname = nil, &block)
+          logs << "#{progname} : #{yield if block_given?}"
+        end
+      end.new
+      client = RedisQueuedLocks::Client.new(recorded_redis) do |config|
+        config['retry_delay'] = 1
+        config['retry_jitter'] = 1
+      end
+      holder_client = RedisQueuedLocks::Client.new(redis)
+
+      # NOTE: the lock is obtained by another acquirer (the thread reference is kept till the end)
+      holder = Thread.new { holder_client.lock('rw.precheck', ttl: 10_000) }
+      holder.join
+      client.locked?('rw.precheck') # NOTE: establish the recorded connection
+
+      aggregate_failures 'retries: one round trip for each failed retry (no WATCH)' do
+        round_trips.clear
+        expect(client.lock('rw.precheck', ttl: 1_000, retry_count: 3)).to match({
+          ok: false,
+          result: :retry_limit_reached
+        })
+        # NOTE:
+        #   the first attempt (WATCH, lock state with the queueing, MULTI/EXEC),
+        #   two pre-checked retries, the dequeue (ZREM)
+        expect(round_trips.size).to eq(6)
+        expect(round_trips.count { |commands| commands.include?('WATCH') }).to eq(1)
+      end
+
+      aggregate_failures 'retries: the pre-checked retries log the same events as the attempts' do
+        client.lock(
+          'rw.precheck', ttl: 1_000, retry_count: 3, logger: test_logger, log_lock_try: true
+        )
+        %w[acq_added_to_queue remove_expired_acqs get_first_from_queue exit__lock_still_obtained]
+          .each do |event|
+            expect(test_logger.logs.count { |log| log.include?("try_lock.#{event}]") }).to eq(3)
+          end
+      end
+
+      aggregate_failures 'fail_fast on the obtained lock: one round trip' do
+        round_trips.clear
+        expect(client.lock('rw.precheck', fail_fast: true)).to match({
+          ok: false,
+          result: :fail_fast_no_try
+        })
+        expect(round_trips.size).to eq(1)
+      end
+
+      aggregate_failures 'fail_fast on the free lock: the pre-check and the attempt' do
+        holder_client.unlock('rw.precheck')
+        round_trips.clear
+        expect(client.lock('rw.precheck', fail_fast: true, ttl: 1_000)).to match({
+          ok: true,
+          result: hash_including(process: :lock_obtaining)
+        })
+        # NOTE: pre-check, WATCH, lock state, lock request queueing, MULTI/EXEC
+        expect(round_trips.size).to eq(5)
+      end
+
+      client.clear_locks
+      recorded_redis.close
+    end
+
     specify 'scan-based operations: one SCAN pass with small batches' do
       client = RedisQueuedLocks::Client.new(redis)
       acquirer_id = client.current_acquirer_id

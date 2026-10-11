@@ -50,8 +50,35 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @since 1.20.0
   NO_LOCK_DATA = {}.freeze # steep:ignore
 
+  # Position of the write lock obtainer (`HGET acq_id`) in the lock state pipeline
+  # (see "pipeline layout" in `pipeline_lock_state`).
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.20.0
+  LOCK_STATE_OBTAINER_REPLY = 0
+
+  # Position of the redis server time (`TIME`) in the lock state pipeline
+  # (see "pipeline layout" in `pipeline_lock_state`).
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.20.0
+  LOCK_STATE_REDIS_TIME_REPLY = 1
+
+  # Position of the read lock expiration of the current acquirer (`ZSCORE`) in the lock state
+  # pipeline (see "pipeline layout" in `pipeline_lock_state`).
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.20.0
+  LOCK_STATE_OWN_READ_LOCK_REPLY = 2
+
   # Position of the first reply of the lock request queueing commands (`queue_lock_request`)
-  # in the lock state pipeline (eager queueing: see "pipeline layout" in `try_to_lock`).
+  # in the lock state pipeline (see "pipeline layout" in `pipeline_lock_state`).
   #
   # @return [Integer]
   #
@@ -98,6 +125,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param conflict_strategy [Symbol]
   # @param access_strategy [Symbol]
   # @param meta [NilClass,Hash<String|Symbol,Any>]
+  # @param retry_attempt [Boolean]
+  #   The attempt is a retry (the previous attempt of the acquirement did not obtain the lock).
   # @param log_sampled [Boolean]
   # @param instr_sampled [Boolean]
   # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol|Hash<Symbol,Any> }
@@ -125,6 +154,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     conflict_strategy,
     access_strategy,
     meta,
+    retry_attempt,
     log_sampled,
     instr_sampled
   )
@@ -155,6 +185,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     #     `:work_through`/`:extendable_work_through` (same-process conflicts exit without queueing);
     eager_queueing =
       !fail_fast && (conflict_strategy == :wait_for_lock || conflict_strategy == :dead_locking)
+    # Step X: pre-check - the lock state is checked without WATCH first (see Step PRE): `fail_fast`
+    #   attempts (they fail on the obtained lock) and retries (the lock was not obtained yet);
+    precheck = fail_fast || retry_attempt
 
     LogVisitor.start(
       logger, log_sampled, log_lock_try, lock_key,
@@ -167,6 +200,20 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         logger, log_sampled, log_lock_try, lock_key,
         queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
       )
+
+      # Step PRE: (pre-check) the lock state without WATCH: the attempt that can not obtain
+      #   the lock fails in one round trip (no WATCH, lock state and MULTI/EXEC round trips);
+      #   - the pre-check never obtains the lock: the attempt that can obtain the lock continues
+      #     with the WATCH/MULTI logic below (the lock state is read again after WATCH);
+      #   - see `precheck_lock` for details;
+      if precheck
+        inter_result = precheck_lock(
+          rconn, logger, log_sampled, log_lock_try, lock_key, read_write_mode, lock_readers_key,
+          request_queue, opposite_request_queue, acquirer_id, host_id, acquirer_position,
+          acquirer_dead_score, queue_ttl, fail_fast, access_strategy
+        )
+        next if inter_result
+      end
 
       # Step 0:
       #   watch the lock key changes (and discard acquirement if lock is already
@@ -184,39 +231,19 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         #   - the longest read lock (the last one in the readers registry): write lock requests
         #     only (read lock requests do not wait for other readers);
         #   - (eager queueing) the lock request queueing: Steps 1, 2.1, 3 (`queue_lock_request`);
-        # NOTE: (pipeline layout) replies are read by their positions in the pipeline:
-        #   - [0] HGET, [1] TIME, [2] ZSCORE - all requests (the head of the pipeline);
-        #   - [LOCK_STATE_QUEUE_REPLIES_AT, +5] lock request queueing - eager queueing only;
-        #   - the last reply: ZRANGE - write lock requests only (the "write-only tail" of the
-        #     pipeline: it is read by `lock_state.last` under the same condition);
-        #   - conditional commands go after the head (the queueing commands, then the write-only
-        #     tail); the write-only tail must stay the last one: read lock requests do not send it,
-        #     so a command added after it would get another position for read lock requests
-        #     (and its reply would be read as the reply of another command);
-        #   - new unconditional commands go into the head: update the positions in this NOTE,
-        #     the reply reading below, `LOCK_STATE_QUEUE_REPLIES_AT` and the spec
-        #     "lock state pipeline layout" (it checks the layout of both modes, with and without
-        #     eager queueing);
+        # NOTE: replies are read by their positions: see "pipeline layout" in `pipeline_lock_state`
         # @type var lock_state: Array[untyped]
         lock_state = rconn.pipelined do |pipeline|
-          pipeline.call('HGET', lock_key, 'acq_id')
-          pipeline.call('TIME')
-          pipeline.call('ZSCORE', lock_readers_key, acquirer_id)
-          # NOTE: eager queueing commands (see "pipeline layout" above)
-          if eager_queueing
-            queue_lock_request(
-              pipeline, request_queue, opposite_request_queue,
-              acquirer_position, acquirer_id, acquirer_dead_score
-            )
-          end
-          # NOTE: the write-only tail (keep it the last: see "pipeline layout" above)
-          pipeline.call('ZRANGE', lock_readers_key, '-1', '-1', 'WITHSCORES') unless read_mode
+          pipeline_lock_state(
+            pipeline, lock_key, lock_readers_key, acquirer_id, read_mode, eager_queueing,
+            request_queue, opposite_request_queue, acquirer_position, acquirer_dead_score
+          )
         end
         # @type var current_lock_obtainer: String?
-        current_lock_obtainer = lock_state[0]
-        redis_time = RedisQueuedLocks::Resource.redis_time_ms(lock_state[1])
+        current_lock_obtainer = lock_state[LOCK_STATE_OBTAINER_REPLY]
+        redis_time = RedisQueuedLocks::Resource.redis_time_ms(lock_state[LOCK_STATE_REDIS_TIME_REPLY])
         # @type var own_read_lock_expiration: Float?
-        own_read_lock_expiration = lock_state[2]
+        own_read_lock_expiration = lock_state[LOCK_STATE_OWN_READ_LOCK_REPLY]
         # NOTE: the write-only tail is the last reply of write lock requests only (read lock
         #   requests have no such reply: never read it without the condition of the pipeline)
         # @type var longest_read_lock: [String, Float]?
@@ -466,84 +493,26 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
             queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer
           )
 
-          # Step 3.1 (RW): the opposite mode request that should obtain the lock earlier
-          #   - FIFO between modes (`:queued` access strategy only);
-          #   - equal positions are ordered by acquirer ids;
+          # Step 3.1 (RW) + Steps PRE-4.x, ROLLBACK 1.1, 1.2, 2, 3: the obstacle to the lock
+          #   obtaining (the same decision and logs as in the pre-check: `lock_obstacle`,
+          #   `log_lock_obstacle`);
           # @type var opposite_request_ahead: String?
-          opposite_request_ahead =
-            if access_strategy == :queued && opposite_waiting_request &&
-               (opposite_waiting_request[1] < acquirer_position ||
-                (opposite_waiting_request[1] == acquirer_position &&
-                 opposite_waiting_request[0] < acquirer_id))
-              opposite_waiting_request[0]
-            end
+          opposite_request_ahead = find_opposite_request_ahead(
+            access_strategy, opposite_waiting_request, acquirer_position, acquirer_id
+          )
+          obstacle = lock_obstacle(
+            read_mode, access_strategy, acquirer_id, waiting_acquirer, opposite_request_ahead,
+            current_lock_obtainer, (read_mode ? read_locked_by_acquirer : read_locked)
+          )
 
-          # Step PRE-4.x: check if the request time limit is reached
-          #   (when the current try self-removes itself from queue (queue ttl has come))
-          if waiting_acquirer == nil
-            LogVisitor.exit__queue_ttl_reached(
-              logger, log_sampled, log_lock_try, lock_key,
-              queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+          if obstacle
+            # Step ROLLBACK: the lock can not be obtained now. retry!
+            log_lock_obstacle(
+              rconn, obstacle, logger, log_sampled, log_lock_try, lock_key, queue_ttl,
+              acquirer_id, host_id, access_strategy, read_write_mode,
+              waiting_acquirer, opposite_request_ahead, current_lock_obtainer
             )
-
-            inter_result = :dead_score_reached
-            # Step STRATEGY: check the stragegy and corresponding preventing factor
-            # Step STRATEGY (queued): check the actual acquirer: is it ours? are we aready to lock?
-            #   - (RW) write lock requests are processed one by one;
-            #   - (RW) read lock requests are processed in parallel;
-          elsif !read_mode && access_strategy == :queued && waiting_acquirer != acquirer_id
-            # Step ROLLBACK 1.1: our time hasn't come yet. retry!
-
-            LogVisitor.exit__no_first(
-              logger, log_sampled, log_lock_try, lock_key,
-              queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer,
-              # NOTE: lock data is extracted for logs only
-              ((log_sampled && log_lock_try) ? rconn.call('HGETALL', lock_key).to_h : NO_LOCK_DATA)
-            )
-            inter_result = :acquirer_is_not_first_in_queue
-          elsif opposite_request_ahead
-            # Step ROLLBACK 1.2 (RW): an earlier request of the opposite mode goes first. retry!
-            if read_mode
-              LogVisitor.exit__write_request_ahead(
-                logger, log_sampled, log_lock_try, lock_key,
-                queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
-                opposite_request_ahead
-              )
-              inter_result = :write_request_is_ahead
-            else
-              LogVisitor.exit__read_request_ahead(
-                logger, log_sampled, log_lock_try, lock_key,
-                queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
-                opposite_request_ahead
-              )
-              inter_result = :read_request_is_ahead
-            end
-          # NOTE: our time has come! let's try to acquire the lock!
-          # Step 5: find the lock -> check if the our lock is already acquired
-          #   - NOTE: the lock state is fetched after WATCH (step 0.1) so any lock state change
-          #     invalidates the transaction;
-          elsif current_lock_obtainer
-            # Step ROLLBACK 2: required lock is stil acquired. retry!
-
-            LogVisitor.exit__lock_still_obtained(
-              logger, log_sampled, log_lock_try, lock_key,
-              queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
-              waiting_acquirer, current_lock_obtainer,
-              # NOTE: lock data is extracted for logs only
-              ((log_sampled && log_lock_try) ? rconn.call('HGETALL', lock_key).to_h : NO_LOCK_DATA)
-            )
-            inter_result = :lock_is_still_acquired
-          elsif read_mode ? read_locked_by_acquirer : read_locked
-            # Step ROLLBACK 3 (RW): the lock is still obtained by readers. retry!
-            #   - write lock request waits for all readers;
-            #   - read lock request waits for its own read lock
-            #     (`:wait_for_lock` conflict strategy);
-
-            LogVisitor.exit__read_lock_still_obtained(
-              logger, log_sampled, log_lock_try, lock_key,
-              queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer
-            )
-            inter_result = :read_lock_is_still_acquired
+            inter_result = obstacle
           elsif read_mode
             # NOTE: required lock is free and ready to be acquired! acquire! (read lock)
 
@@ -823,5 +792,333 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     pipeline.call('ZRANGE', request_queue, '0', '0')
     pipeline.call('ZRANGE', opposite_request_queue, '0', '0', 'WITHSCORES')
   end
+
+  # Adds the lock state commands to the given pipeline (the lock state of the attempt and of
+  # the pre-check: one round trip).
+  #
+  # NOTE: (pipeline layout) replies are read by their positions in the pipeline:
+  #   - [LOCK_STATE_OBTAINER_REPLY] HGET, [LOCK_STATE_REDIS_TIME_REPLY] TIME,
+  #     [LOCK_STATE_OWN_READ_LOCK_REPLY] ZSCORE - all requests (the head of the pipeline);
+  #   - [LOCK_STATE_QUEUE_REPLIES_AT, +5] lock request queueing (`queue_lock_request`) - only
+  #     with `queueing` (eager queueing, pre-check of retries);
+  #   - the last reply: ZRANGE (the longest read lock) - write lock requests only (the "write-only
+  #     tail" of the pipeline: it is read by `lock_state.last` under the same condition);
+  #   - conditional commands go after the head (the queueing commands, then the write-only
+  #     tail); the write-only tail must stay the last one: read lock requests do not send it,
+  #     so a command added after it would get another position for read lock requests
+  #     (and its reply would be read as the reply of another command);
+  #   - new unconditional commands go into the head: update the position constants, the reply
+  #     reading (`try_to_lock` Step 0.1 and `precheck_lock`) and the spec "lock state pipeline
+  #     layout" (it checks the layout of both modes, with and without the queueing);
+  #
+  # @param pipeline [RedisClient::Pipeline]
+  # @param lock_key [String]
+  # @param lock_readers_key [String]
+  # @param acquirer_id [String]
+  # @param read_mode [Boolean]
+  # @param queueing [Boolean] Queue the lock request in the same round trip.
+  # @param request_queue [String]
+  # @param opposite_request_queue [String]
+  # @param acquirer_position [Numeric]
+  # @param acquirer_dead_score [Float]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.20.0
+  def pipeline_lock_state(
+    pipeline,
+    lock_key,
+    lock_readers_key,
+    acquirer_id,
+    read_mode,
+    queueing,
+    request_queue,
+    opposite_request_queue,
+    acquirer_position,
+    acquirer_dead_score
+  )
+    pipeline.call('HGET', lock_key, 'acq_id')
+    pipeline.call('TIME')
+    pipeline.call('ZSCORE', lock_readers_key, acquirer_id)
+    # NOTE: the queueing commands (see "pipeline layout" above)
+    if queueing
+      queue_lock_request(
+        pipeline, request_queue, opposite_request_queue,
+        acquirer_position, acquirer_id, acquirer_dead_score
+      )
+    end
+    # NOTE: the write-only tail (keep it the last: see "pipeline layout" above)
+    pipeline.call('ZRANGE', lock_readers_key, '-1', '-1', 'WITHSCORES') unless read_mode
+  end
+
+  # (RW) The request of the opposite mode that should obtain the lock earlier
+  #   - FIFO between modes (`:queued` access strategy only);
+  #   - equal positions are ordered by acquirer ids;
+  #
+  # @param access_strategy [Symbol]
+  # @param opposite_waiting_request [Array<String,Float>,NilClass]
+  #   The first request of the opposite request queue (acquirer id, position).
+  # @param acquirer_position [Numeric]
+  # @param acquirer_id [String]
+  # @return [String,NilClass] The acquirer of the earlier request of the opposite mode.
+  #
+  # @api private
+  # @since 1.20.0
+  def find_opposite_request_ahead(
+    access_strategy,
+    opposite_waiting_request,
+    acquirer_position,
+    acquirer_id
+  )
+    return unless access_strategy == :queued && opposite_waiting_request
+
+    if opposite_waiting_request[1] < acquirer_position ||
+       (opposite_waiting_request[1] == acquirer_position &&
+        opposite_waiting_request[0] < acquirer_id)
+      opposite_waiting_request[0]
+    end
+  end
+
+  # The obstacle to the lock obtaining for the classic (queued) logic of the attempt
+  # (the same decision for the attempt and for its pre-check).
+  #
+  # @param read_mode [Boolean]
+  # @param access_strategy [Symbol]
+  # @param acquirer_id [String]
+  # @param waiting_acquirer [String,NilClass] The first request of the request queue.
+  # @param opposite_request_ahead [String,NilClass] See `find_opposite_request_ahead`.
+  # @param current_lock_obtainer [String,NilClass] The write lock obtainer.
+  # @param read_locked [Boolean]
+  #   Write lock requests: live read locks exist; read lock requests: the own read lock is live.
+  # @return [Symbol,NilClass] The obstacle (the failure result of the attempt) or `nil`.
+  #
+  # @api private
+  # @since 1.20.0
+  def lock_obstacle(
+    read_mode,
+    access_strategy,
+    acquirer_id,
+    waiting_acquirer,
+    opposite_request_ahead,
+    current_lock_obtainer,
+    read_locked
+  )
+    # Step PRE-4.x: check if the request time limit is reached
+    #   (when the current try self-removes itself from queue (queue ttl has come))
+    if waiting_acquirer == nil
+      :dead_score_reached
+    # Step STRATEGY (queued): check the actual acquirer: is it ours? are we aready to lock?
+    #   - (RW) write lock requests are processed one by one;
+    #   - (RW) read lock requests are processed in parallel;
+    elsif !read_mode && access_strategy == :queued && waiting_acquirer != acquirer_id
+      # Step ROLLBACK 1.1: our time hasn't come yet. retry!
+      :acquirer_is_not_first_in_queue
+    elsif opposite_request_ahead
+      # Step ROLLBACK 1.2 (RW): an earlier request of the opposite mode goes first. retry!
+      read_mode ? :write_request_is_ahead : :read_request_is_ahead
+    # Step 5: find the lock -> check if the our lock is already acquired
+    #   - NOTE: the attempt fetches the lock state after WATCH (step 0.1) so any lock state change
+    #     invalidates its transaction;
+    elsif current_lock_obtainer
+      # Step ROLLBACK 2: required lock is stil acquired. retry!
+      :lock_is_still_acquired
+    elsif read_locked
+      # Step ROLLBACK 3 (RW): the lock is still obtained by readers. retry!
+      #   - write lock request waits for all readers;
+      #   - read lock request waits for its own read lock (`:wait_for_lock` conflict strategy);
+      :read_lock_is_still_acquired
+    end
+  end
+
+  # Logs the obstacle to the lock obtaining (see `lock_obstacle`): the exit event of the attempt.
+  #
+  # @param rconn [RedisClient]
+  # @param obstacle [Symbol]
+  # @param logger [::Logger,#debug]
+  # @param log_sampled [Boolean]
+  # @param log_lock_try [Boolean]
+  # @param lock_key [String]
+  # @param queue_ttl [Integer]
+  # @param acquirer_id [String]
+  # @param host_id [String]
+  # @param access_strategy [Symbol]
+  # @param read_write_mode [Symbol]
+  # @param waiting_acquirer [String,NilClass]
+  # @param opposite_request_ahead [String,NilClass]
+  # @param current_lock_obtainer [String,NilClass]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.20.0
+  # rubocop:disable Metrics/MethodLength
+  def log_lock_obstacle(
+    rconn,
+    obstacle,
+    logger,
+    log_sampled,
+    log_lock_try,
+    lock_key,
+    queue_ttl,
+    acquirer_id,
+    host_id,
+    access_strategy,
+    read_write_mode,
+    waiting_acquirer,
+    opposite_request_ahead,
+    current_lock_obtainer
+  )
+    case obstacle
+    when :dead_score_reached
+      LogVisitor.exit__queue_ttl_reached(
+        logger, log_sampled, log_lock_try, lock_key,
+        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+      )
+    when :acquirer_is_not_first_in_queue
+      LogVisitor.exit__no_first(
+        logger, log_sampled, log_lock_try, lock_key,
+        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer,
+        # NOTE: lock data is extracted for logs only
+        ((log_sampled && log_lock_try) ? rconn.call('HGETALL', lock_key).to_h : NO_LOCK_DATA)
+      )
+    when :write_request_is_ahead
+      LogVisitor.exit__write_request_ahead(
+        logger, log_sampled, log_lock_try, lock_key,
+        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
+        opposite_request_ahead #: String
+      )
+    when :read_request_is_ahead
+      LogVisitor.exit__read_request_ahead(
+        logger, log_sampled, log_lock_try, lock_key,
+        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
+        opposite_request_ahead #: String
+      )
+    when :lock_is_still_acquired
+      LogVisitor.exit__lock_still_obtained(
+        logger, log_sampled, log_lock_try, lock_key,
+        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
+        waiting_acquirer, current_lock_obtainer, #: String
+        # NOTE: lock data is extracted for logs only
+        ((log_sampled && log_lock_try) ? rconn.call('HGETALL', lock_key).to_h : NO_LOCK_DATA)
+      )
+    when :read_lock_is_still_acquired
+      LogVisitor.exit__read_lock_still_obtained(
+        logger, log_sampled, log_lock_try, lock_key,
+        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer
+      )
+    end
+  end
+  # rubocop:enable Metrics/MethodLength
+
+  # Pre-check of the attempt (Step PRE): the lock state without WATCH (one round trip).
+  #   - `fail_fast` attempts: the lock state only (the request is not queued: the failed "no try"
+  #     attempt does not dequeue the request); fails with `:fail_fast_no_try` on the obtained lock;
+  #   - retries: the lock state and the lock request queueing (the request is already queued by
+  #     the previous attempts); fails with the obstacle of the classic logic (`lock_obstacle`)
+  #     and logs the same events as the failed attempt;
+  #   - same-process conflicts (the lock is obtained by the current acquirer) and locks that can be
+  #     obtained are not decided: the attempt continues with the WATCH/MULTI logic (`nil`);
+  #   - the pre-check never obtains the lock (mutual exclusion relies on WATCH/MULTI only);
+  #
+  # @param rconn [RedisClient]
+  # @param logger [::Logger,#debug]
+  # @param log_sampled [Boolean]
+  # @param log_lock_try [Boolean]
+  # @param lock_key [String]
+  # @param read_write_mode [Symbol]
+  # @param lock_readers_key [String]
+  # @param request_queue [String]
+  # @param opposite_request_queue [String]
+  # @param acquirer_id [String]
+  # @param host_id [String]
+  # @param acquirer_position [Numeric]
+  # @param acquirer_dead_score [Float]
+  # @param queue_ttl [Integer]
+  # @param fail_fast [Boolean]
+  # @param access_strategy [Symbol]
+  # @return [Symbol,NilClass] The failure result of the attempt or `nil` (continue the attempt).
+  #
+  # @api private
+  # @since 1.20.0
+  # rubocop:disable Metrics/MethodLength
+  def precheck_lock(
+    rconn,
+    logger,
+    log_sampled,
+    log_lock_try,
+    lock_key,
+    read_write_mode,
+    lock_readers_key,
+    request_queue,
+    opposite_request_queue,
+    acquirer_id,
+    host_id,
+    acquirer_position,
+    acquirer_dead_score,
+    queue_ttl,
+    fail_fast,
+    access_strategy
+  )
+    read_mode = (read_write_mode == :read)
+    # NOTE: the same pipeline layout and the same reply reading as in Step 0.1 of the attempt
+    # @type var lock_state: Array[untyped]
+    lock_state = rconn.pipelined do |pipeline|
+      pipeline_lock_state(
+        pipeline, lock_key, lock_readers_key, acquirer_id, read_mode, !fail_fast,
+        request_queue, opposite_request_queue, acquirer_position, acquirer_dead_score
+      )
+    end
+    # @type var current_lock_obtainer: String?
+    current_lock_obtainer = lock_state[LOCK_STATE_OBTAINER_REPLY]
+    redis_time = RedisQueuedLocks::Resource.redis_time_ms(lock_state[LOCK_STATE_REDIS_TIME_REPLY])
+    # @type var own_read_lock_expiration: Float?
+    own_read_lock_expiration = lock_state[LOCK_STATE_OWN_READ_LOCK_REPLY]
+    # @type var longest_read_lock: [String, Float]?
+    longest_read_lock = read_mode ? nil : lock_state.last.first
+    read_locked_by_acquirer = own_read_lock_expiration.to_f > redis_time
+    read_locked = longest_read_lock ? longest_read_lock[1] > redis_time : false
+
+    # NOTE: same-process conflicts are processed by the attempt (conflict strategies)
+    return if acquirer_id == current_lock_obtainer || read_locked_by_acquirer
+
+    # NOTE: the fail-fast check of the attempt (Fast-Step X0) without same-process conflicts
+    return ((current_lock_obtainer || read_locked) ? :fail_fast_no_try : nil) if fail_fast
+
+    # @type var waiting_acquirer: String?
+    waiting_acquirer =
+      lock_state[LOCK_STATE_QUEUE_REPLIES_AT + QUEUE_HEAD_REPLY].first
+    # @type var opposite_waiting_request: [String, Float]?
+    opposite_waiting_request =
+      lock_state[LOCK_STATE_QUEUE_REPLIES_AT + OPPOSITE_QUEUE_HEAD_REPLY].first
+    # @type var opposite_request_ahead: String?
+    opposite_request_ahead = find_opposite_request_ahead(
+      access_strategy, opposite_waiting_request, acquirer_position, acquirer_id
+    )
+    obstacle = lock_obstacle(
+      read_mode, access_strategy, acquirer_id, waiting_acquirer, opposite_request_ahead,
+      current_lock_obtainer, read_locked
+    )
+    return unless obstacle
+
+    # NOTE: the same log events as the failed attempt (queueing steps + the exit event)
+    LogVisitor.acq_added_to_queue(
+      logger, log_sampled, log_lock_try, lock_key,
+      queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+    )
+    LogVisitor.remove_expired_acqs(
+      logger, log_sampled, log_lock_try, lock_key,
+      queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+    )
+    LogVisitor.get_first_from_queue(
+      logger, log_sampled, log_lock_try, lock_key,
+      queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer
+    )
+    log_lock_obstacle(
+      rconn, obstacle, logger, log_sampled, log_lock_try, lock_key, queue_ttl,
+      acquirer_id, host_id, access_strategy, read_write_mode,
+      waiting_acquirer, opposite_request_ahead, current_lock_obtainer
+    )
+    obstacle
+  end
+  # rubocop:enable Metrics/MethodLength
 end
 # rubocop:enable Metrics/ModuleLength
