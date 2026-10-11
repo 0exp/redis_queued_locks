@@ -2442,6 +2442,34 @@ rql.possible_host_ids
 - (limitation) the lock index is one Redis key written on each lock request (a "hot" key): fine for a standalone Redis
   (and Sentinel); Redis Cluster is not supported (RQL transactions use several keys of each lock without hash tags);
 
+#### Lock Index Performance
+
+<sup>\[[back to top](#lock-index)\]</sup>
+
+- measured on a local Redis with 1 million keys of other applications in the same database and ~1 200 locks (+100 lock queues
+  for the lock-iterating operations, a zombie host for `#flush_zombies`): wall time and Redis CPU time of one call with
+  the keyspace `SCAN` (`config['lock_index_enabled'] = false`) and with the lock index (`config['lock_index_enabled'] = true`):
+
+| Operation | Keyspace `SCAN` (wall / Redis CPU) | Lock index (wall / Redis CPU) | Speedup (wall / Redis CPU) |
+|---|---|---|---|
+| `#flush_zombies` (the zombie flusher) | 263 ms / 181 ms | 20 ms / 2.4 ms | **x13** / **x75** |
+| `#locks` | 269 ms / 192 ms | 7.7 ms / 1.4 ms | **x35** / **x137** |
+| `#locks_info` | 288 ms / 194 ms | 23 ms / 2.3 ms | **x12.5** / **x84** |
+| `#queues` / `#queues_info` | 260-280 ms / 190 ms | 8 ms / 1-2 ms | **x32-35** / **x95-190** |
+| `#keys` | 272 ms / 193 ms | 17 ms / 2.6 ms | **x16** / **x74** |
+| `#clear_dead_requests` | 574 ms / 224 ms | 18 ms / 2.2 ms | **x32** / **x102** |
+| `#clear_locks_of` / `#clear_current_locks` | 322 ms / 200 ms | 14 ms / 1.9 ms | **x23** / **x105** |
+| `#clear_locks` | 574 ms / 225 ms | 14 ms / 5.1 ms | **x41** / **x44** |
+
+- the speedup grows with the number of keys in your Redis database: the keyspace `SCAN` visits all keys of the database (keys
+  of your other applications too), the lock index visits the lock names only (the cost depends on the number of your locks and
+  on the lock index size, see [Lock Index Size](#lock-index-size));
+- the zombie flusher runs in every process with the swarm (every `zombie_flush_period`): the saved Redis CPU is multiplied by
+  the number of your processes;
+- the price is paid by the lock acquirement (it maintains the lock index without new round trips: 4 more commands in
+  the queueing pipeline and 1 more command in the obtaining transaction): ~10% fewer locks per second in a single-thread
+  `lock {}` loop on a local Redis, 280 -> 348 allocations per `lock {}`;
+
 #### Lock Index Size
 
 <sup>\[[back to top](#lock-index)\]</sup>
