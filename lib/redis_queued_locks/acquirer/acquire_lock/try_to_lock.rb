@@ -5,9 +5,10 @@
 #   - `:read` lock is shared: it is obtained when there is no write lock;
 #   - read locks are stored in the readers registry: a sorted set where the member is an acquirer
 #     id and the score is the read lock expiration time (redis server time, in milliseconds);
-#   - each read lock has its own data hash (the same structure as the write lock: acquirer, host,
-#     timestamp, ttl, meta, reentrant lock data) with the read lock ttl; the readers registry is
-#     the only source of truth for the read lock existence (the data hash is a data carrier only);
+#   - each read lock has its own data hash (the same structure as the write lock: timestamp, ttl,
+#     meta, reentrant lock data; acquirer and host are derived from the acquirer id and are not
+#     stored) with the read lock ttl; the readers registry is the only source of truth for
+#     the read lock existence (the data hash is a data carrier only);
 #   - mutual exclusion relies on the optimistic transactions only (WATCH/MULTI):
 #     - readers WATCH the write lock key: a new write lock invalidates the reader's transaction;
 #     - writers WATCH the write lock key and the readers registry: a new read lock invalidates
@@ -561,15 +562,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
             transact.call('PEXPIRE', lock_readers_key, ttl, 'NX')
             transact.call('PEXPIRE', lock_readers_key, ttl, 'GT')
 
-            # Step 6.5 (RW): store the read lock data (the same structure as the write lock data)
+            # Step 6.5 (RW): store the read lock data (the same structure as the write lock data
+            #   without `acq_id`/`hst_id`: both are derived from the read lock acquirer id that is
+            #   a part of the data key and the registry member, so the info adds them on formatting)
             #   - drop the data of the expired read lock of the current acquirer (if any);
             #   - the read lock data lives as long as the read lock;
             transact.call('DEL', read_lock_key)
             transact.call(
               'HSET',
               read_lock_key,
-              'acq_id', acquirer_id,
-              'hst_id', host_id,
               'ts', timestamp = Time.now.to_f,
               'ini_ttl', ttl,
               *(meta.to_a if meta != nil) # steep:ignore

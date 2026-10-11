@@ -153,8 +153,9 @@ module RedisQueuedLocks::Resource
     end
 
     # Read lock data of the concrete acquirer: a hash with the same structure as the write lock
-    # (acquirer, host, timestamp, ttl, meta, reentrant lock data). It is a data carrier only:
-    # the readers registry is the source of truth for the read lock existence.
+    # (timestamp, ttl, meta, reentrant lock data; acquirer and host are derived from the acquirer
+    # id and are not stored). It is a data carrier only: the readers registry is the source of
+    # truth for the read lock existence.
     #
     # @param lock_name [String]
     # @param acquirer_id [String]

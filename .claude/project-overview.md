@@ -99,8 +99,9 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
   write must be the head of the write queue and waits for earlier read requests. Every attempt prunes
   dead requests in both queues. `:random` ignores queues (writers can starve). Ordering is best effort
   (client clocks, `unlock` clears queues); it never affects mutual exclusion.
-- Read lock data: `rql:lock_reader:<name>:<acq_id>` HASH with the write-lock format (`acq_id`, `hst_id`,
-  `ts`, `ini_ttl`, `meta`, `spc_*` reentrant counters), TTL = read lock TTL; data carrier only (the
+- Read lock data: `rql:lock_reader:<name>:<acq_id>` HASH with the write-lock format without `acq_id`/`hst_id`
+  (`ts`, `ini_ttl`, `meta`, `spc_*` reentrant counters; acquirer and host are derived from the acquirer id and are
+  added by `lock_info`/`locks_info` as the first reader fields), TTL = read lock TTL; data carrier only (the
   registry decides existence). Recreated (DEL + HSET) on each read acquisition.
 - Reentrancy (same acquirer): read under own write/read lock -> `conflict_strategy` as usual
   (`held_rw_mode` decides which lock is extended/decreased/released); read->write upgrade ->
@@ -153,7 +154,7 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 | `rql:lock_queue:<name>` | ZSET | acquirer queue scored by enqueue time |
 | `rql:lock_readers:<name>` | ZSET | read locks: acquirer id => expiration (Redis `TIME`, ms) |
 | `rql:lock_read_queue:<name>` | ZSET | read lock requests (write requests use `rql:lock_queue:<name>`) |
-| `rql:lock_reader:<name>:<acq_id>` | HASH | read lock data (same fields as `rql:lock:<name>` incl. meta; data carrier only) |
+| `rql:lock_reader:<name>:<acq_id>` | HASH | read lock data (same fields as `rql:lock:<name>` incl. meta, without `acq_id`/`hst_id`; data carrier only) |
 | `rql:swarm:hsts` | HASH | swarm host heartbeats |
 
 - SCAN-based operations (`clear_locks`, `clear_locks_of`, `clear_dead_requests`, `locks`/`locks_info`, `queues`/`queues_info`, `flush_zombies`, `zombie_*`) make one SCAN pass (`KEY_PATTERN`, or `ALL_LOCK_QUEUES_PATTERN` for queue-only operations), classify keys with `Resource.lock_key_family` and send per-key commands in pipelined batches collected across SCAN pages (batch size = the operation's scan/batch size); `clear_locks` deletes keys with one `DEL` per batch during the scan.

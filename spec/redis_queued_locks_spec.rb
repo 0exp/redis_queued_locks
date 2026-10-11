@@ -3709,6 +3709,21 @@ RSpec.describe RedisQueuedLocks do
         }))
         expect(client.keys).to include(*read_lock_keys)
 
+        # NOTE:
+        #   acquirer and host ids are not stored in the read lock data (both are derived from
+        #   the acquirer id), the info reports them as the first fields (like the write lock info)
+        read_lock_keys.each_with_index do |read_lock_key, index|
+          expect(redis.call('HGETALL', read_lock_key)).to match({
+            'ts' => be_a(String),
+            'ini_ttl' => '10000',
+            'reader' => index.to_s,
+            'num' => index.to_s
+          })
+        end
+        expect(client.lock_info('rw.meta')['readers'].map { |reader| reader.keys.first(2) }).to eq(
+          [%w[acq_id hst_id], %w[acq_id hst_id]]
+        )
+
         # NOTE: #unlock drops the read lock data too
         client.unlock('rw.meta')
         expect(redis.call('EXISTS', *read_lock_keys)).to eq(0)

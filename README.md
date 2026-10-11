@@ -2314,7 +2314,8 @@ rql.lock('report') { rebuild_report } # (write mode is the default mode)
   - `ttl` should be a positive `Integer` (`RedisQueuedLocks::ArgumentError`);
   - each read lock has its own data with the same structure as the write lock data: acquirer, host, timestamp,
     initial ttl, `:meta` (with the same reserved keys) and reentrant lock data (`spc_cnt`, `spc_ext_ttl`, ...);
-    the read lock data lives as long as the read lock and is returned by `#lock_info`/`#locks_info` for each reader;
+    the read lock data lives as long as the read lock and is returned by `#lock_info`/`#locks_info` for each reader
+    (acquirer and host are not stored: both are derived from the acquirer id);
   - `#unlock` releases the lock entirely: the write lock, all read locks (with their data) and all lock requests;
   - `#unlock_read` (aka `#release_read_lock`) releases the read lock of the current acquirer
     (suitable for read locks obtained without a block), or the read lock of the acquirer passed via `acquirer_id:`;
@@ -2363,7 +2364,7 @@ rql.lock('report') { rebuild_report } # (write mode is the default mode)
   - `rql:lock_queue:<lock_name>` - write lock requests (`ZSET`, the classic RQL lock queue);
   - `rql:lock_readers:<lock_name>` - read locks (`ZSET`: acquirer id => read lock expiration time in Redis time, milliseconds);
   - `rql:lock_read_queue:<lock_name>` - read lock requests (`ZSET`);
-  - `rql:lock_reader:<lock_name>:<acquirer_id>` - read lock data (`HASH`, the same structure as the write lock, read lock ttl);
+  - `rql:lock_reader:<lock_name>:<acquirer_id>` - read lock data (`HASH`, the same structure as the write lock without acquirer and host ids, read lock ttl);
 - implementation notes:
   - optimistic transactions only (`WATCH`/`MULTI`): readers watch the write lock key, writers watch the write lock key and the read locks key,
     so readers never invalidate transactions of each other;

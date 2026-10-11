@@ -201,6 +201,7 @@ module RedisQueuedLocks::Acquirer::Locks
     # @api private
     # @since 1.18.0
     # @version 1.20.0
+    # rubocop:disable Metrics/MethodLength
     def read_lock_info(lock_key, now, live_read_locks, read_locks_data, read_locks_data_at)
       return nil if live_read_locks.empty?
 
@@ -209,10 +210,15 @@ module RedisQueuedLocks::Acquirer::Locks
         rem_ttl = (expiration - now).ceil
         longest_rem_ttl = rem_ttl if rem_ttl > longest_rem_ttl
 
+        # NOTE: acquirer and host ids are not stored in the read lock data (both are derived from
+        #   the acquirer id): they are the first fields like in the write lock info (read lock data
+        #   of older versions contains them with the same values);
         # @type var reader: Hash[String,String|Float|Integer|nil]
-        reader = read_locks_data[read_locks_data_at + index] || {}
-        reader['acq_id'] = acquirer_id
-        reader['hst_id'] ||= RedisQueuedLocks::Resource.host_identifier_from_acquirer(acquirer_id)
+        reader = {
+          'acq_id' => acquirer_id,
+          'hst_id' => RedisQueuedLocks::Resource.host_identifier_from_acquirer(acquirer_id)
+        }
+        read_locks_data[read_locks_data_at + index]&.each { |field, value| reader[field] = value }
         reader['ts'] = Float(reader['ts']) if reader['ts']
         reader['ini_ttl'] = Integer(reader['ini_ttl']) if reader['ini_ttl']
         reader['rem_ttl'] = rem_ttl
@@ -232,6 +238,7 @@ module RedisQueuedLocks::Acquirer::Locks
         'readers' => readers
       }
     end
+    # rubocop:enable Metrics/MethodLength
   end
   # rubocop:enable Metrics/ClassLength
 end

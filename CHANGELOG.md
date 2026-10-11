@@ -16,6 +16,9 @@
   - `#clear_locks_of`/`#clear_current_locks` (`clear_locks_of__queue_scan_size`) and `#flush_zombies` (`zombie_queue_scan_size`):
     the queue scan size is the number of lock queues processed in one round trip (queues are found by the same pass as locks);
   - `#zombie_locks`/`#zombie_acquirers`/`#zombies_info` do not scan the keyspace when there are no zombie hosts;
+- Read lock data (`rql:lock_reader:<lock_name>:<acquirer_id>`) does not store `acq_id`/`hst_id` (both are derived from the acquirer id):
+  ~40% less memory per read lock (`MEMORY USAGE` 280 -> 168 bytes without `:meta`); `#lock_info`/`#locks_info` report them as before
+  (the first fields of each reader; read lock data of older versions is supported);
 
 ## [1.19.0] - 2026-10-11
 ### Added
