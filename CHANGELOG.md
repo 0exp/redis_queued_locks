@@ -1,4 +1,6 @@
 ## [Unreleased]
+
+## [1.20.0] - 2026-10-12
 ### Added
 - **Lock index** (opt-in: `config['lock_index_enabled']`, `false` by default: lock-iterating operations scan the keyspace as before):
   `rql:index:locks` (`ZSET`: lock name => the upper bound of the lifetime of all lock keys in client time, ms); with the enabled
