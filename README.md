@@ -412,6 +412,10 @@ end
 - If block is passed:
   - the obtained lock will be released after the block execution or the lock's ttl (what will happen first);
     - if you want to timeout (fail with timeout) the block execution with lock's TTL use `timed: true` option;
+    - (limitation) the write lock is released after the block without an owner check: if the block (without `timed: true`)
+      runs longer than the lock's ttl, the expired lock can be already obtained by another acquirer and the release
+      deletes that lock (the same for the ttl decrease of `:extendable_work_through` reentrant locks); use `timed: true`
+      or extend the lock (`#extend_lock_ttl`) for long blocks (read locks are released per acquirer and are not affected);
   - the block's result will be returned;
 - If block is not passed:
   - the obtained lock will be released after lock's ttl;

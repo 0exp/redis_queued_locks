@@ -117,5 +117,5 @@ Public element API (called by `Swarm`/`Supervisor` only):
 - RBS runtime type checking (`rbs/test/setup`, the `typecheck-runtime` CI job) can't run inside Ractors. Its hooks on methods called in the element Ractor (`.swarm_loop`, `.flush_zombies`) read `RBS.logger` and raise `Ractor::IsolationError`, so Isolated elements die at startup and the swarm specs fail only under that job.
 - Swarm has no logging or instrumentation, and supervisor errors are silently dropped (`TODO: (CHECK)`).
 - `FlushZombies` scans the whole keyspace (one SCAN pass) on every run with zombie hosts.
-- Zombie write locks are checked (`HMGET`) and deleted (`DEL`) in two round trips without `WATCH`: a lock that expires and is re-acquired by a live acquirer in between can be deleted (pending decision: `WATCH` per batch or a Lua compare-and-delete).
+- Zombie write locks are checked (`HMGET`) and deleted (`DEL`) in two round trips without `WATCH`: a lock that expires and is re-acquired by a live acquirer in between can be deleted (kept by the user's decision).
 - Zombie acquirers are collected only from held locks (write locks and read locks): requests of dead hosts that never obtained a lock are removed only by queue TTL pruning.

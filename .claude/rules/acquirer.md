@@ -16,7 +16,8 @@ paths:
   - `AcquireLock` is the lock acquisition core, not an operation module of this list.
   - PoC modules (`*PoC`, e.g. `LockSeriesPoC`) are not covered by this principle: they may reuse operation modules and the `AcquireLock` core (`LockSeriesPoC` uses `AcquireLock.acquire_lock` and its `YieldExpire` mixin).
   - Known debt (don't copy): `AcquireLock::WithAcqTimeout` calls `LockInfo.lock_info` / `QueueInfo.queue_info` for detailed timeout errors (its TODO asks to make `AcquireLock` independent of them).
-  - Known limitation: `ReleaseLocksOf` (and `FlushZombies`) check the lock owner (`HMGET`) and delete the lock (`DEL`) in two round trips without `WATCH`: a lock re-acquired in between by another acquirer can be deleted (pending decision: `WATCH` per batch or a Lua compare-and-delete).
+  - Known limitation (kept by the user's decision): `ReleaseLocksOf` (and `FlushZombies`) check the lock owner (`HMGET`) and delete the lock (`DEL`) in two round trips without `WATCH`: a lock re-acquired in between by another acquirer can be deleted.
+  - Known limitation (kept by the user's decision, documented in README `#lock`): `YieldExpire` releases the write lock (`EXPIRE 0`) and decreases its ttl (Lua) without an owner check: a block (without `timed`) longer than the lock ttl can delete/shorten the lock of another acquirer. Read lock release/decrease is per acquirer (owner-safe).
 - **Signatures** (see `arguments.md` for the design rationale):
   - Read-only queries: few positional args `(redis_client, lock_name)`; collection queries use keywords `(redis_client, scan_size:, with_info:)`.
   - Mutating operations: long positional lists ending with the fixed observability tail
