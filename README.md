@@ -262,7 +262,8 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   config['clear_locks_of__lock_scan_size'] = 300
 
   # (default: 300)
-  # - how many queues will be SCAN'ned at a time in #clear_locks_of and in #clear_current_locks methods (uses SCAN);
+  # - how many lock queues will be processed in one round trip in #clear_locks_of and in #clear_current_locks methods
+  #   (lock queues are found by the same SCAN pass as locks);
   # - affects the performance of your Redis (configure thoughtfully);
   config['clear_locks_of__queue_scan_size'] = 300
 
@@ -1363,11 +1364,11 @@ rql.unlock_read('report', acquirer_id: reader['acq_id'])
 <sup>\[[back to top](#usage)\]</sup>
 
 - release all obtained locks and related lock request queues;
-- queues will be released first;
+- all lock keys (locks, read locks and lock queues) are found in one `SCAN` pass and deleted during it with one `DEL` per batch;
 - has an alias: `#release_locks`;
 - accepts:
   - `:batch_size` - (optional) `[Integer]`
-    - the size of batch of locks and lock queus that should be cleared under the one pipelined redis command at once;
+    - the size of batch of locks and lock queus that should be cleared under the one `DEL` redis command at once (and the `SCAN` count);
     - pre-configured in `config['lock_release_batch_size']`;
   - `:logger` - (optional) `[::Logger,#debug]`
     - custom logger object;
@@ -1444,10 +1445,10 @@ rql.clear_locks
   - `:acquirer_id` - (required) `[String]`
     - acquirer indentifier whose locks we want to release and which we want to remove from all locks queues;
   - `:lock_scan_size` - (optional) `[Integer]`
-    - how many items will be released at a time (uses `SCAN `for batch extraction and `DEL` for batch deletion);
+    - how many items will be released at a time (uses one `SCAN` pass for batch extraction and `DEL` for batch deletion);
     - pre-configuerd value in `config['clear_locks_of__lock_scan_size']`;
   - `:queue_scan_size` - (optional) `[Integer]`
-    - how many queues will be SCAN'ned at a time (uses `SCAN)`;
+    - how many lock queues will be processed in one round trip (lock queues are found by the same `SCAN` pass as locks);
     - pre-configuerd value in `config['clear_locks_of__queue_scan_size']`;
   - `:logger` - (optional) `[::Logger,#debug]`
     - custom logger object;
@@ -1549,10 +1550,10 @@ rql.clear_current_locks
   ```
 - produces `"redis_queued_locks.release_locks_of"` instrumentation event;
   - `:lock_scan_size` - (optional) `[Integer]`
-    - how many items will be released at a time (uses `SCAN `for batch extraction and `DEL` for batch deletion);
+    - how many items will be released at a time (uses one `SCAN` pass for batch extraction and `DEL` for batch deletion);
     - pre-configuerd value in `config['clear_locks_of__lock_scan_size']`;
   - `:queue_scan_size` - (optional) `[Integer]`
-    - how many queues will be SCAN'ned at a time (uses `SCAN)`;
+    - how many lock queues will be processed in one round trip (lock queues are found by the same `SCAN` pass as locks);
     - pre-configuerd value in `config['clear_locks_of__queue_scan_size']`;
   - `:logger` - (optional) `[::Logger,#debug]`
     - custom logger object;
@@ -1815,7 +1816,7 @@ rql.keys # or rql.keys(scan_size: 123)
 <sup>\[[back to top](#usage)\]</sup>
 
 - get list of locks with their info;
-- uses redis `SCAN` under the hod;
+- uses redis `SCAN` under the hod (one pass), lock info is extracted in batches of `scan_size` locks (two round trips per batch);
 - accepts `scan_size:`/`Integer` option (`config['key_extraction_batch_size']` by default);
 - returns `Set<Hash<Symbol,Any>>` (see [#lock_info](#lock_info) and examples below for details).
   - contained data: `{ lock: String, status: Symbol, info: Hash<String,Any> }`;
@@ -1853,7 +1854,7 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
 <sup>\[[back to top](#usage)\]</sup>
 
 - get list of queues with their info;
-- uses redis `SCAN` under the hod;
+- uses redis `SCAN` under the hod (one pass), queue info is extracted in batches of `scan_size` queues (one round trip per batch);
 - accepts `scan_size:`/`Integer` option (`config['key_extraction_batch_size']` by default);
 - returns `Set<Hash<Symbol,Any>>` (see [#queue_info](#queue_info) and examples below for details).
   - contained data: `{ queue: String, requests: Array<Hash<String,Any>> }`
@@ -2130,8 +2131,8 @@ rql.possible_host_ids
     config['swarm.flush_zombies.enabled_for_swarm'] = true # NOTE: run zombie flushing or not
     config['swarm.flush_zombies.zombie_flush_period'] = 10 # NOTE: (in seconds) period of time when the zombie flusher is triggered
     config['swarm.flush_zombies.zombie_ttl'] = 15_000 # NOTE: (in milliseconds) when the lock/host/acquirer is considered a zombie
-    config['swarm.flush_zombies.zombie_lock_scan_size'] = 500 # NOTE: scan sizec during zombie flushing
-    config['swarm.flush_zombies.zombie_queue_scan_size'] = 500 # NOTE: scan sizec during zombie flushing
+    config['swarm.flush_zombies.zombie_lock_scan_size'] = 500 # NOTE: SCAN count and the batch size of locks during zombie flushing
+    config['swarm.flush_zombies.zombie_queue_scan_size'] = 500 # NOTE: the batch size of lock queues during zombie flushing (one round trip per batch)
     # (flush_zombies) individual redis config
     config['swarm.flush_zombies.redis_config.sentinel'] = false # NOTE: individual redis config
     config['swarm.flush_zombies.redis_config.pooled'] = false # NOTE: individual redis config

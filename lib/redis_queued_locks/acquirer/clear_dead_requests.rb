@@ -22,7 +22,7 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
     #
     # @api private
     # @since 1.0.0
-    # @version 1.18.0
+    # @version 1.20.0
     def clear_dead_requests(
       redis_client,
       scan_size,
@@ -45,10 +45,21 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
       result = Set.new.tap do |processed_queues|
         # @type var processed_queues: Set[String]
         redis_client.with do |rconn|
+          # NOTE: dead requests are dropped with one pipeline per batch of `scan_size` queues
+          #   (batches are collected across SCAN pages: lock queues can be rare among other keys);
+          # @type var lock_queues: Array[String]
+          lock_queues = []
+
           each_lock_queue(rconn, scan_size) do |lock_queue|
-            rconn.call('ZREMRANGEBYSCORE', lock_queue, '-inf', dead_score)
             processed_queues << lock_queue
+            lock_queues << lock_queue
+            next if lock_queues.size < scan_size
+
+            drop_dead_requests(rconn, lock_queues, dead_score)
+            lock_queues.clear
           end
+
+          drop_dead_requests(rconn, lock_queues, dead_score) unless lock_queues.empty?
         end
       end
 
@@ -57,30 +68,45 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
 
     private
 
+    # Write and read lock queues in one SCAN pass.
+    #
     # @param redis_client [RedisClient]
     # @param scan_size [Integer]
     # @yield [lock_queue]
     # @yieldparam lock_queue [String]
     # @yieldreturn [void]
-    # @return [Enumerator]
+    # @return [void]
     #
     # @api private
     # @since 1.0.0
-    # @version 1.18.0
-    def each_lock_queue(redis_client, scan_size, &block)
+    # @version 1.20.0
+    def each_lock_queue(redis_client, scan_size)
       redis_client.scan(
         'MATCH',
-        RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
-        count: scan_size,
-        &block
-      )
-      # NOTE: (RW) read lock queues
-      redis_client.scan(
-        'MATCH',
-        RedisQueuedLocks::Resource::READ_LOCK_QUEUE_PATTERN,
-        count: scan_size,
-        &block
-      )
+        RedisQueuedLocks::Resource::ALL_LOCK_QUEUES_PATTERN,
+        count: scan_size
+      ) do |key|
+        # NOTE: the pattern matches other keys too (lock names with `queue:`): lock queues only
+        family = RedisQueuedLocks::Resource.lock_key_family(key)
+        yield(key) if family == :lock_queue || family == :read_lock_queue
+      end
+    end
+
+    # Drops dead requests of the given lock queues in one round trip.
+    #
+    # @param redis_client [RedisClient]
+    # @param lock_queues [Array<String>]
+    # @param dead_score [Float]
+    # @return [void]
+    #
+    # @api private
+    # @since 1.20.0
+    def drop_dead_requests(redis_client, lock_queues, dead_score)
+      redis_client.pipelined do |pipeline|
+        lock_queues.each do |lock_queue|
+          pipeline.call('ZREMRANGEBYSCORE', lock_queue, '-inf', dead_score)
+        end
+      end
     end
   end
 end

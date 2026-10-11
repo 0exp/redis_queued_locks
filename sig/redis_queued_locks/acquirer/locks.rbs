@@ -9,16 +9,18 @@ module RedisQueuedLocks
       type locksInfo = Set[{ lock: String, status: Symbol, info: lockInfo }]
       type locks = lockList | locksInfo
 
+      LOCK_STATE_REPLIES: Integer
+
       def self.locks: (RC::client redis_client, scan_size: Integer, with_info: bool) -> locks
 
       private def self.scan_locks: (RC::client redis_client, Integer scan_size) -> lockList
-      private def self.extract_locks_info: (RC::client redis_client, Set[::String] lock_keys) -> locksInfo
+      private def self.extract_locks_info: (RC::client redis_client, Set[::String] lock_keys, Integer scan_size) -> locksInfo
       private def self.read_lock_info: (
-        RC::client redis_client,
-        String lock_name,
         String lock_key,
-        Array[String] redis_time,
-        Array[[String, Float]] read_locks
+        Integer now,
+        Array[[String, Float]] live_read_locks,
+        Array[Hash[String,String]] read_locks_data,
+        Integer read_locks_data_at
       ) -> lockInfo?
     end
   end

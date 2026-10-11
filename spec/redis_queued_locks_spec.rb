@@ -3493,6 +3493,174 @@ RSpec.describe RedisQueuedLocks do
       recorded_redis.close
     end
 
+    specify 'scan-based operations: one SCAN pass with small batches' do
+      client = RedisQueuedLocks::Client.new(redis)
+      acquirer_id = client.current_acquirer_id
+      host_id = client.current_host_id
+      dead_acquirer = 'rql:acq:1/2/3/4/dead'
+      live_acquirer = 'rql:acq:1/2/3/4/live'
+      write_locks = %w[scan.w.0 scan.w.1 scan.w.2]
+      # NOTE: the readers registry (and read lock data) of a lock with `queue:` in its name
+      #   matches the lock queues pattern (`rql:lock_*queue:*`) too
+      read_locks = %w[scan.r.0 scan.r.1 scan.my_queue:r]
+      write_locks.each { |lock_name| client.lock(lock_name, ttl: 60_000) }
+      read_locks.each { |lock_name| client.lock(lock_name, read_write_mode: :read, ttl: 60_000) }
+      lock_keys = (write_locks + read_locks).map { |lock_name| "rql:lock:#{lock_name}" }
+
+      now = Time.now.to_f
+      queues = %w[scan.q.0 scan.q.1 scan.q.2].flat_map do |lock_name|
+        ["rql:lock_queue:#{lock_name}", "rql:lock_read_queue:#{lock_name}"]
+      end
+      queues.each do |lock_queue|
+        redis.call(
+          'ZADD', lock_queue, now - 60, dead_acquirer, now, live_acquirer, now, acquirer_id
+        )
+      end
+      # NOTE: a key matched by `KEY_PATTERN` (`rql:lock*`) out of the lock key families
+      redis.call('SET', 'rql:lockX', 'value')
+
+      aggregate_failures 'locks and queues' do
+        expect(client.locks(scan_size: 2)).to contain_exactly(*lock_keys)
+        expect(client.queues(scan_size: 2)).to contain_exactly(*queues)
+        expect(client.locks_info(scan_size: 2)).to contain_exactly(
+          *write_locks.map do |lock_name|
+            match({
+              lock: "rql:lock:#{lock_name}",
+              status: :alive,
+              info: hash_including('acq_id' => acquirer_id, 'rw_mode' => 'write')
+            })
+          end,
+          *read_locks.map do |lock_name|
+            match({
+              lock: "rql:lock:#{lock_name}",
+              status: :alive,
+              info: hash_including(
+                'rw_mode' => 'read',
+                'readers' => contain_exactly(
+                  hash_including('acq_id' => acquirer_id, 'ts' => be_a(Float), 'ini_ttl' => 60_000)
+                )
+              )
+            })
+          end
+        )
+        expect(client.queues_info(scan_size: 2)).to contain_exactly(
+          *queues.map do |lock_queue|
+            match({
+              queue: lock_queue,
+              requests: contain_exactly(
+                hash_including('acq_id' => dead_acquirer),
+                hash_including('acq_id' => live_acquirer),
+                hash_including('acq_id' => acquirer_id)
+              )
+            })
+          end
+        )
+      end
+
+      aggregate_failures 'clear_dead_requests' do
+        # NOTE: 6 queues: a full batch and the rest
+        expect(client.clear_dead_requests(dead_ttl: 30_000, scan_size: 4)).to match({
+          ok: true,
+          result: match({ processed_queues: contain_exactly(*queues) })
+        })
+        queues.each do |lock_queue|
+          expect(redis.call('ZRANGE', lock_queue, '0', '-1')).to contain_exactly(
+            live_acquirer, acquirer_id
+          )
+        end
+      end
+
+      aggregate_failures 'clear_locks_of' do
+        expect(
+          client.clear_locks_of(host_id:, acquirer_id:, lock_scan_size: 2, queue_scan_size: 4)
+        ).to match({
+          ok: true,
+          # NOTE: 3 write locks + 3 read locks; requests in 6 queues
+          result: match({ rel_key_cnt: 6, tch_queue_cnt: 6, rel_time: be_a(Numeric) })
+        })
+        expect(client.locks).to be_empty
+        queues.each do |lock_queue|
+          expect(redis.call('ZRANGE', lock_queue, '0', '-1')).to eq([live_acquirer])
+        end
+      end
+
+      aggregate_failures 'clear_locks' do
+        client.lock('scan.w.0', ttl: 60_000)
+        client.lock('scan.r.0', read_write_mode: :read, ttl: 60_000)
+        expect(client.clear_locks(batch_size: 2)).to match({
+          ok: true,
+          # NOTE: write lock, readers registry, read lock data, 6 lock queues
+          result: match({ rel_key_cnt: 9, rel_time: be_a(Numeric) })
+        })
+        # NOTE: keys out of the lock key families are not deleted
+        expect(client.keys).to contain_exactly('rql:lockX')
+      end
+
+      redis.call('DEL', 'rql:lockX')
+    end
+
+    specify 'zombie locks and requests with small batches' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['swarm.auto_swarm'] = false
+        # NOTE: we will manually probe hosts and flush zombies
+        config['swarm.probe_hosts.enabled_for_swarm'] = false
+        config['swarm.flush_zombies.enabled_for_swarm'] = false
+        config['swarm.flush_zombies.zombie_ttl'] = 1_000
+      end
+
+      # NOTE: each fiber is a separate acquirer of the current (zombie) host
+      zombie_fibers = Array.new(3) do |index|
+        Fiber.new do
+          client.lock("zombie.batch.w.#{index}", ttl: 500_000)
+          client.lock("zombie.batch.r.#{index}", read_write_mode: :read, ttl: 500_000)
+          client.current_acquirer_id
+        end
+      end
+      zombie_acquirers = zombie_fibers.map(&:resume)
+      zombie_locks = Array.new(3) do |index|
+        ["rql:lock:zombie.batch.w.#{index}", "rql:lock_readers:zombie.batch.r.#{index}"]
+      end.flatten
+      live_acquirer = 'rql:acq:1/2/3/4/live'
+
+      now = Time.now.to_f
+      queues = %w[zombie.batch.q.0 zombie.batch.q.1 zombie.batch.q.2].flat_map do |lock_name|
+        ["rql:lock_queue:#{lock_name}", "rql:lock_read_queue:#{lock_name}"]
+      end
+      queues.each do |lock_queue|
+        redis.call(
+          'ZADD', lock_queue,
+          now, zombie_acquirers[0], now, zombie_acquirers[2], now, live_acquirer
+        )
+      end
+
+      client.probe_hosts
+      sleep(1.5) # NOTE: zombie_ttl is reached (no more host probes)
+
+      expect(client.zombies_info(lock_scan_size: 2)).to match({
+        zombie_hosts: include(client.current_host_id),
+        zombie_acquirers: contain_exactly(*zombie_acquirers),
+        zombie_locks: contain_exactly(*zombie_locks)
+      })
+      expect(client.flush_zombies(lock_scan_size: 2, queue_scan_size: 2)).to match({
+        ok: true,
+        deleted_zombie_hosts: include(client.current_host_id),
+        deleted_zombie_acquirers: contain_exactly(*zombie_acquirers),
+        deleted_zombie_locks: contain_exactly(*zombie_locks)
+      })
+      expect(client.locks).to be_empty
+      queues.each do |lock_queue|
+        expect(redis.call('ZRANGE', lock_queue, '0', '-1')).to eq([live_acquirer])
+      end
+      # NOTE: no zombie hosts after the flush => no zombie locks (and no SCAN)
+      expect(client.zombies_info(lock_scan_size: 2)).to match({
+        zombie_hosts: Set.new,
+        zombie_acquirers: Set.new,
+        zombie_locks: Set.new
+      })
+
+      client.clear_locks
+    end
+
     specify 'read lock meta and read lock data' do
       client = RedisQueuedLocks::Client.new(redis) do |config|
         config['retry_delay'] = 10

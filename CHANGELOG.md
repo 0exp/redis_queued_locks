@@ -8,6 +8,14 @@
 - Lock acquirement attempt: the lock request queueing (`ZADD NX`, expired requests pruning, queue heads) is one pipelined
   round trip instead of three; with `:wait_for_lock`/`:dead_locking` conflict strategies (without `fail_fast`) it is sent
   in the lock state round trip: `#lock` with a block takes 4 Redis round trips instead of 7, a failed attempt - 3 instead of 6;
+- SCAN-based operations (`#clear_locks`, `#clear_locks_of`/`#clear_current_locks`, `#clear_dead_requests`, `#locks`/`#locks_info`,
+  `#queues`/`#queues_info`, `#flush_zombies`, `#zombie_locks`/`#zombie_acquirers`/`#zombies_info`) make one `SCAN` pass instead
+  of 2-5 passes (one per key family) and send per-key commands in pipelined batches instead of one round trip per key:
+  - `#clear_locks` deletes the found keys during the scan with one `DEL` per batch (previously all keys were expired at the end,
+    lock queues first);
+  - `#clear_locks_of`/`#clear_current_locks` (`clear_locks_of__queue_scan_size`) and `#flush_zombies` (`zombie_queue_scan_size`):
+    the queue scan size is the number of lock queues processed in one round trip (queues are found by the same pass as locks);
+  - `#zombie_locks`/`#zombie_acquirers`/`#zombies_info` do not scan the keyspace when there are no zombie hosts;
 
 ## [1.19.0] - 2026-10-11
 ### Added

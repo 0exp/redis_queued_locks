@@ -47,6 +47,16 @@ module RedisQueuedLocks::Resource
   # @since 1.18.0
   READ_LOCK_PATTERN = 'rql:lock_reader:*'
 
+  # Write and read lock queues in one SCAN pass.
+  # NOTE:
+  #   - the pattern matches other keys too when the lock name contains `queue:` (for example,
+  #     `rql:lock_readers:my_queue:a`), so callers check the key family (`lock_key_family`);
+  # @return [String]
+  #
+  # @api private
+  # @since 1.20.0
+  ALL_LOCK_QUEUES_PATTERN = 'rql:lock_*queue:*'
+
   # @return [String]
   #
   # @api private
@@ -176,6 +186,33 @@ module RedisQueuedLocks::Resource
       else
         # NOTE: unreachable: the logic always passes a consistent lock queue (read or write)
         nil
+      end
+    end
+
+    # Family of the given RQL key: one SCAN pass over `KEY_PATTERN` (or `ALL_LOCK_QUEUES_PATTERN`)
+    # returns keys of several families, so callers keep the keys of the families they need.
+    #
+    # @param key [String]
+    # @return [Symbol,NilClass]
+    #   - `:lock` - write lock (`rql:lock:*`);
+    #   - `:lock_queue` - write lock requests (`rql:lock_queue:*`);
+    #   - `:lock_readers` - readers registry (`rql:lock_readers:*`);
+    #   - `:read_lock_queue` - read lock requests (`rql:lock_read_queue:*`);
+    #   - `:read_lock` - read lock data (`rql:lock_reader:*`);
+    #   - `nil` - any other key (for example, `rql:lockX` matched by `KEY_PATTERN`);
+    #
+    # @api private
+    # @since 1.20.0
+    def lock_key_family(key)
+      # NOTE:
+      #   - `start_with?` instead of regexp `when`-matchers: no MatchData allocations;
+      #   - prefixes are unambiguous: `rql:lock_reader:` is not a prefix of `rql:lock_readers:`;
+      case
+      when key.start_with?('rql:lock:') then :lock
+      when key.start_with?('rql:lock_queue:') then :lock_queue
+      when key.start_with?('rql:lock_readers:') then :lock_readers
+      when key.start_with?('rql:lock_read_queue:') then :read_lock_queue
+      when key.start_with?('rql:lock_reader:') then :read_lock
       end
     end
 

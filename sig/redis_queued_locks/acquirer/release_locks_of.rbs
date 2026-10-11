@@ -41,6 +41,22 @@ module RedisQueuedLocks
         Integer locks_scan_size,
         Integer queue_scan_size
       ) -> fullyReleaseAllLocksResult
+      private def self.release_refused_locks: (
+        RC::client redis_client,
+        Array[String] lock_keys,
+        String refused_host_id,
+        String refused_acquirer_id
+      ) -> Integer
+      private def self.release_refused_read_locks: (
+        RC::client redis_client,
+        Array[String] lock_readers_keys,
+        String refused_acquirer_id
+      ) -> Integer
+      private def self.dequeue_refused_acquirer: (
+        RC::client redis_client,
+        Array[String] lock_queues,
+        String refused_acquirer_id
+      ) -> Integer
     end
   end
 end

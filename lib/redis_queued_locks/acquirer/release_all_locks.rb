@@ -7,10 +7,9 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
   extend RedisQueuedLocks::Utilities
 
   class << self
-    # Release all locks:
-    # - 1. clear all lock queus: drop them all from Redis database by the lock queue pattern;
-    # - 2. delete all locks: drop lock keys from Redis by the lock key pattern;
-    # - 3. (RW) clear all read lock queues and drop all read locks (readers registries and data);
+    # Release all locks: delete the keys of all lock families (write locks, lock queues,
+    # readers registries, read lock queues and read lock data) found in one SCAN pass,
+    # with one `DEL` per batch of keys.
     #
     # @param redis [RedisClient]
     #   Redis connection client.
@@ -72,7 +71,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     #
     # @api private
     # @since 1.0.0
-    # @version 1.18.0
+    # @version 1.20.0
     def release_all_locks(
       redis,
       batch_size,
@@ -121,74 +120,40 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
 
     private
 
-    # Release all locks: clear all lock queus and expire all locks.
+    # Release all locks: one SCAN pass over the RQL keys (`KEY_PATTERN`); the keys of all lock
+    # families are deleted with one `DEL` per batch of `batch_size` keys (the keys are deleted
+    # during the scan: no list of all keys is kept in memory).
     #
     # @param redis [RedisClient]
-    # @param batch_size [Integer]
+    # @param batch_size [Integer] SCAN count and the number of keys in one `DEL`.
     # @return [Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
     #   - Exmaple: { ok: true, result: { rel_key_cnt: 12345 } }
     #
     # @api private
     # @since 1.0.0
-    # @version 1.18.0
-    # rubocop:disable Metrics/MethodLength
+    # @version 1.20.0
     def fully_release_all_locks(redis, batch_size)
-      result = redis.with do |rconn|
-        rconn.pipelined do |pipeline|
-          # Step A: release all queus and their related locks
-          rconn.scan(
-            'MATCH',
-            RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN,
-            count: batch_size
-          ) do |lock_queue|
-            # TODO: reduce unnecessary iterations
-            pipeline.call('EXPIRE', lock_queue, '0')
-          end
+      rel_key_cnt = 0
 
-          # Step B: release all locks
-          rconn.scan(
-            'MATCH',
-            RedisQueuedLocks::Resource::LOCK_PATTERN,
-            count: batch_size
-          ) do |lock_key|
-            # TODO: reduce unnecessary iterations
-            pipeline.call('EXPIRE', lock_key, '0')
-          end
+      redis.with do |rconn|
+        # @type var lock_keys: Array[String]
+        lock_keys = []
 
-          # Step C (RW): release all read lock queues
-          rconn.scan(
-            'MATCH',
-            RedisQueuedLocks::Resource::READ_LOCK_QUEUE_PATTERN,
-            count: batch_size
-          ) do |read_lock_queue|
-            # TODO: reduce unnecessary iterations
-            pipeline.call('EXPIRE', read_lock_queue, '0')
-          end
+        rconn.scan('MATCH', RedisQueuedLocks::Resource::KEY_PATTERN, count: batch_size) do |key|
+          # NOTE: lock families only (KEY_PATTERN matches any `rql:lock*` key)
+          next if RedisQueuedLocks::Resource.lock_key_family(key) == nil
 
-          # Step D (RW): release all read locks
-          rconn.scan(
-            'MATCH',
-            RedisQueuedLocks::Resource::LOCK_READERS_PATTERN,
-            count: batch_size
-          ) do |lock_readers|
-            # TODO: reduce unnecessary iterations
-            pipeline.call('EXPIRE', lock_readers, '0')
-          end
+          lock_keys << key
+          next if lock_keys.size < batch_size
 
-          # Step E (RW): release all read lock data
-          rconn.scan(
-            'MATCH',
-            RedisQueuedLocks::Resource::READ_LOCK_PATTERN,
-            count: batch_size
-          ) do |read_lock|
-            # TODO: reduce unnecessary iterations
-            pipeline.call('EXPIRE', read_lock, '0')
-          end
+          rel_key_cnt += rconn.call('DEL', *lock_keys)
+          lock_keys.clear
         end
+
+        rel_key_cnt += rconn.call('DEL', *lock_keys) unless lock_keys.empty?
       end
 
-      { ok: true, result: { rel_key_cnt: result.sum } }
+      { ok: true, result: { rel_key_cnt: } }
     end
-    # rubocop:enable Metrics/MethodLength
   end
 end

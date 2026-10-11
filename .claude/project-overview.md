@@ -156,6 +156,7 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 | `rql:lock_reader:<name>:<acq_id>` | HASH | read lock data (same fields as `rql:lock:<name>` incl. meta; data carrier only) |
 | `rql:swarm:hsts` | HASH | swarm host heartbeats |
 
+- SCAN-based operations (`clear_locks`, `clear_locks_of`, `clear_dead_requests`, `locks`/`locks_info`, `queues`/`queues_info`, `flush_zombies`, `zombie_*`) make one SCAN pass (`KEY_PATTERN`, or `ALL_LOCK_QUEUES_PATTERN` for queue-only operations), classify keys with `Resource.lock_key_family` and send per-key commands in pipelined batches collected across SCAN pages (batch size = the operation's scan/batch size); `clear_locks` deletes keys with one `DEL` per batch during the scan.
 - Acquirer ID: `rql:acq:<pid>/<thread>/<fiber>/<ractor>/<identity>`
 - Host ID: `rql:hst:<pid>/<thread>/<ractor>/<identity>` (no fiber)
 
