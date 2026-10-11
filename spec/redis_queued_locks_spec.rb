@@ -3493,6 +3493,64 @@ RSpec.describe RedisQueuedLocks do
       recorded_redis.close
     end
 
+    specify 'unlock round trips' do
+      # NOTE: round trips are observed via a separate pool (the same db) with a recording middleware
+      round_trips = []
+      recorder = Module.new do
+        define_method(:call) do |command, redis_config, &block|
+          round_trips << [command.first]
+          super(command, redis_config, &block)
+        end
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          round_trips << commands.map(&:first)
+          super(commands, redis_config, &block)
+        end
+      end
+      recorded_redis = RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5)
+      client = RedisQueuedLocks::Client.new(recorded_redis)
+      readers_client = RedisQueuedLocks::Client.new(redis)
+
+      aggregate_failures 'without read locks: one round trip (the release transaction)' do
+        client.lock('rw.unlock', ttl: 10_000)
+        round_trips.clear
+        expect(client.unlock('rw.unlock')).to match({
+          ok: true,
+          result: hash_including(queue_res: :nothing_to_release, lock_res: :released)
+        })
+        expect(round_trips.size).to eq(1)
+        expect(round_trips.first).to include('MULTI', 'ZRANGE', 'EXEC')
+      end
+
+      aggregate_failures 'with read locks: the read lock data is dropped in one more round trip' do
+        # NOTE: each thread is a separate acquirer (thread references are kept till the end)
+        readers = Array.new(2) do
+          Thread.new do
+            readers_client.lock('rw.unlock', read_write_mode: :read, ttl: 10_000)
+          end
+        end
+        readers.each(&:join)
+        read_lock_keys = readers.map do |reader|
+          RedisQueuedLocks::Resource.prepare_read_lock_key(
+            'rw.unlock', reader.value[:result][:acq_id]
+          )
+        end
+        expect(redis.call('EXISTS', *read_lock_keys)).to eq(2)
+
+        round_trips.clear
+        expect(client.unlock('rw.unlock')).to match({
+          ok: true,
+          result: hash_including(lock_res: :released)
+        })
+        expect(round_trips.size).to eq(2)
+        expect(round_trips.last).to eq(['DEL'])
+        expect(redis.call('EXISTS', *read_lock_keys)).to eq(0)
+        expect(client.locked?('rw.unlock')).to eq(false)
+      end
+
+      expect(client.keys).to be_empty
+      recorded_redis.close
+    end
+
     specify 'scan-based operations: one SCAN pass with small batches' do
       client = RedisQueuedLocks::Client.new(redis)
       acquirer_id = client.current_acquirer_id

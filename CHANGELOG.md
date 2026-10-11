@@ -19,6 +19,10 @@
 - Read lock data (`rql:lock_reader:<lock_name>:<acquirer_id>`) does not store `acq_id`/`hst_id` (both are derived from the acquirer id):
   ~40% less memory per read lock (`MEMORY USAGE` 280 -> 168 bytes without `:meta`); `#lock_info`/`#locks_info` report them as before
   (the first fields of each reader; read lock data of older versions is supported);
+- `#unlock`: one Redis round trip when there are no read locks (the readers registry is read in the release transaction;
+  the read lock data is dropped with one more `DEL` only when read locks existed);
+- `#lock_series` (PoC): write locks of the series are released (compare-and-delete) in one transaction for the whole series
+  (three round trips per series instead of three round trips per lock);
 
 ## [1.19.0] - 2026-10-11
 ### Added

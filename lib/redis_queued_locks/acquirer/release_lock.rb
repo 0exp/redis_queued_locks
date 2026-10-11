@@ -72,7 +72,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.18.0
+    # @version 1.20.0
     # rubocop:disable Metrics/MethodLength
     def release_lock(
       redis,
@@ -157,7 +157,8 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.18.0
+    # @version 1.20.0
+    # rubocop:disable Metrics/MethodLength
     def fully_release_lock(
       redis,
       lock_name,
@@ -166,34 +167,51 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
       read_lock_key_queue,
       lock_readers_key
     )
-      # @type var result: [Integer,Integer,Integer,Integer]
+      # @type var result: [Array[String],Integer,Integer,Integer,Integer]
       result = redis.with do |rconn|
-        # NOTE: (RW) data of read locks (it is a data carrier only: read locks are released via
-        #   the readers registry, so the data of concurrently obtained read locks expires itself)
-        # @type var read_lock_acquirers: Array[String]
-        read_lock_acquirers = rconn.call('ZRANGE', lock_readers_key, '0', '-1')
-
-        rconn.multi do |transact|
+        # Step 1: release the lock in one transaction (one round trip):
+        #   - (RW) the readers registry is read in the same transaction: the snapshot of all
+        #     released read locks (their data is dropped in Step 2);
+        # NOTE: (transaction layout) replies are read by their positions:
+        #   [0] ZRANGE (released read locks), [1] write lock queue, [2] write lock,
+        #   [3] read lock queue, [4] readers registry;
+        released = rconn.multi do |transact|
+          transact.call('ZRANGE', lock_readers_key, '0', '-1')
           transact.call('ZREMRANGEBYSCORE', lock_key_queue, '-inf', '+inf')
           transact.call('EXPIRE', lock_key, '0')
           transact.call('ZREMRANGEBYSCORE', read_lock_key_queue, '-inf', '+inf')
           transact.call('EXPIRE', lock_readers_key, '0')
-          read_lock_acquirers.each do |acquirer_id|
-            transact.call(
-              'DEL',
-              RedisQueuedLocks::Resource.prepare_read_lock_key(lock_name, acquirer_id)
-            )
-          end
         end
+
+        # Step 2: (RW) drop the data of the released read locks (only when read locks existed)
+        # NOTE:
+        #   - the read lock data is a data carrier only: read locks are released via the readers
+        #     registry (Step 1);
+        #   - (trade-off) a reader of the snapshot that obtains a new read lock between Step 1 and
+        #     Step 2 loses the data of the new read lock (meta, timestamps); the read lock itself is
+        #     not affected (the readers registry is the source of truth);
+        # @type var read_lock_acquirers: Array[String]
+        read_lock_acquirers = released[0]
+        unless read_lock_acquirers.empty?
+          rconn.call(
+            'DEL',
+            *read_lock_acquirers.map do |acquirer_id|
+              RedisQueuedLocks::Resource.prepare_read_lock_key(lock_name, acquirer_id)
+            end
+          )
+        end
+
+        released
       end
 
       {
         ok: true,
         result: {
-          queue: (result[0] != 0 || result[2] != 0) ? :released : :nothing_to_release,
-          lock: (result[1] != 0 || result[3] != 0) ? :released : :nothing_to_release
+          queue: (result[1] != 0 || result[3] != 0) ? :released : :nothing_to_release,
+          lock: (result[2] != 0 || result[4] != 0) ? :released : :nothing_to_release
         }
       }
     end
+    # rubocop:enable Metrics/MethodLength
   end
 end

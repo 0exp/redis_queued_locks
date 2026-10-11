@@ -357,7 +357,11 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
     end
 
     # Releases write locks of the given acquirer (compare-and-delete: the lock can be expired
-    # and obtained by another acquirer when the series logic exceeds the lock ttl).
+    # and obtained by another acquirer when the series logic exceeds the lock ttl) in one
+    # transaction for the whole series (three round trips: WATCH, lock owners, MULTI/EXEC):
+    #   - an aborted transaction (one of the watched locks is changed) is retried with the locks
+    #     that were still owned by the acquirer at the last check: the locks of other acquirers
+    #     are neither deleted nor watched, so the retries converge;
     #
     # @param redis [RedisClient]
     # @param lock_names [Array<String>]
@@ -366,17 +370,28 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
     #
     # @api private
     # @since 1.18.0
+    # @version 1.20.0
     def release_write_lock_series(redis, lock_names, acquirer_id) # steep:ignore
       return if lock_names.empty?
 
+      own_lock_keys = lock_names.map do |lock_name|
+        RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
+      end
+
       redis.with do |conn|
-        lock_names.each do |lock_name|
-          lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
-          conn.multi(watch: [lock_key]) do |transaction|
-            if conn.call('HGET', lock_key, 'acq_id') == acquirer_id
-              transaction.call('DEL', lock_key)
+        until own_lock_keys.empty?
+          released = conn.multi(watch: own_lock_keys) do |transaction|
+            # NOTE: (pipeline layout) one reply (lock owner) per lock in the series order
+            lock_owners = conn.pipelined do |pipeline|
+              own_lock_keys.each { |lock_key| pipeline.call('HGET', lock_key, 'acq_id') }
             end
+            own_lock_keys = own_lock_keys.select.with_index do |_lock_key, index|
+              lock_owners[index] == acquirer_id
+            end
+            own_lock_keys.each { |lock_key| transaction.call('DEL', lock_key) }
           end
+          # NOTE: `nil` => the transaction is aborted (a watched lock is changed) => retry
+          break unless released.nil?
         end
       end
     end

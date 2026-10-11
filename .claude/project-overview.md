@@ -113,7 +113,9 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
   try success result carries internal `rw_mode` (held mode), not exposed in the public `lock` result.
 - Validation (`AcquireLock`): `read_write_mode` must be `:read`/`:write`; read `ttl` must be a positive
   Integer (`RedisQueuedLocks::ArgumentError`).
-- RW-aware operations: `unlock` (write lock + readers + reader data + both queues, same result shape),
+- RW-aware operations: `unlock` (write lock + readers + reader data + both queues, same result shape; one release
+  `MULTI` that also reads the readers registry, then one `DEL` of the released readers' data only when readers existed:
+  1 round trip without readers; trade-off: a released reader that obtains a new read lock in between loses its new data),
   `clear_locks`, `clear_locks_of`/`clear_current_locks` (host derived from acq id via
   `Resource.host_identifier_from_acquirer`), `clear_dead_requests`, `flush_zombies`/`zombie_*`
   (zombie readers reported as their registry key), `locked?`, `queued?`, `lock_info` (read info:
@@ -125,7 +127,8 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
   (`queues_info` derives the mode from the queue key via `Resource.lock_queue_rw_mode`).
 - `lock_series` (both modes): one mode per series; `release_lock_series` releases only locks the series
   obtained itself (`process == :lock_obtaining`, reentrant ones are kept) and only the current acquirer's:
-  write = compare-and-delete (`WATCH` + `HGET acq_id` + `DEL`), read = `ZREM` + `DEL` reader data. It runs
+  write = compare-and-delete in one transaction per series (`WATCH` the own lock keys + pipelined `HGET acq_id` + `DEL`,
+  retried on abort with the keys still owned at the last check), read = `ZREM` + `DEL` reader data. It runs
   after the block and on any failure (exception or `raise_errors: false`), once per failed series.
 - Own read lock operations (current acquirer via `current_acquirer_id(identity:)`): `unlock_read` /
   `release_read_lock` (`ZREM` + `DEL` reader data, event `explicit_read_lock_release`, result
