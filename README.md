@@ -1094,6 +1094,64 @@ rql.lock_info("your_lock_name")
 }
 ```
 
+```ruby
+# <for read/write locks>
+# (see `read_write_mode:` kwarg attribute of #lock/#lock! methods and "Read/Write Locks" documentation section)
+# (lock requests are not included: use #queue_info to see the queued readers and writers)
+
+# -> case 1: the lock is held by readers, writers and readers are waiting in the lock queues;
+
+# process#1 and process#2 (readers, work in parallel):
+rql.lock("your_lock_name", read_write_mode: :read, ttl: 5_000, meta: { "kek" => "pek" }) { ... }
+rql.lock("your_lock_name", read_write_mode: :read, ttl: 3_000) { ... }
+# process#3 (writer, waits for all readers in the write lock queue):
+rql.lock("your_lock_name", read_write_mode: :write) { ... }
+# process#4 (reader, waits for the earlier writer in the read lock queue):
+rql.lock("your_lock_name", read_write_mode: :read) { ... }
+
+rql.lock_info("your_lock_name")
+
+# => (read locks info: process#1 and process#2)
+{
+  "lock_key" => "rql:lock:your_lock_name",
+  "rw_mode" => "read",
+  "rem_ttl" => 4_985, # remaining ttl of the longest read lock
+  "readers" => [
+    {
+      "acq_id" => "rql:acq:123/456/567/678/374dd74324",
+      "hst_id" => "rql:hst:123/456/678/374dd74324",
+      "ts" => 123456789.12345,
+      "ini_ttl" => 5_000,
+      "rem_ttl" => 4_985,
+      "kek" => "pek" # custom metadata of the read lock
+    },
+    {
+      "acq_id" => "rql:acq:124/457/568/679/a83cb4f9d1",
+      "hst_id" => "rql:hst:124/457/679/a83cb4f9d1",
+      "ts" => 123456789.54321,
+      "ini_ttl" => 3_000,
+      "rem_ttl" => 2_412
+    }
+  ]
+}
+
+# -> case 2: (some time later) readers are released, the lock is held by the writer (process#3),
+#    the reader (process#4) is still waiting in the read lock queue;
+
+rql.lock_info("your_lock_name")
+
+# => (write lock info: process#3, read lock requests are not included)
+{
+  "lock_key" => "rql:lock:your_lock_name",
+  "rw_mode" => "write",
+  "acq_id" => "rql:acq:125/458/569/680/c7bfcaf4f9",
+  "hst_id" => "rql:hst:125/458/680/c7bfcaf4f9",
+  "ts" => 123456795.12345,
+  "ini_ttl" => 5_000,
+  "rem_ttl" => 4_870
+}
+```
+
 ---
 
 #### #queue_info
