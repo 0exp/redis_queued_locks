@@ -3545,6 +3545,40 @@ RSpec.describe RedisQueuedLocks do
         })
       end
 
+      aggregate_failures 'unlock_read releases the read lock of the custom acquirer only' do
+        custom_reader = Thread.new { client.lock('rw.custom', read_write_mode: :read, ttl: 10_000) }
+        custom_reader.join
+        custom_acquirer_id = custom_reader.value[:result][:acq_id]
+        custom_read_lock_key =
+          RedisQueuedLocks::Resource.prepare_read_lock_key('rw.custom', custom_acquirer_id)
+        client.lock('rw.custom', read_write_mode: :read, ttl: 10_000)
+
+        expect(
+          client.unlock_read('rw.custom', acquirer_id: custom_acquirer_id, identity: 'ignored')
+        ).to match({
+          ok: true,
+          result: {
+            rel_time: be_a(Numeric),
+            rel_key: 'rql:lock:rw.custom',
+            rel_acq_id: custom_acquirer_id,
+            lock_res: :released
+          }
+        })
+        expect(client.lock_info('rw.custom')['readers']).to contain_exactly(
+          hash_including('acq_id' => own_acquirer_id)
+        )
+        expect(redis.call('EXISTS', custom_read_lock_key)).to eq(0)
+        expect(test_notifier.notifications).to include(match({
+          event: 'redis_queued_locks.explicit_read_lock_release',
+          payload: hash_including(lock_key: 'rql:lock:rw.custom', acq_id: custom_acquirer_id)
+        }))
+        expect(client.unlock_read('rw.custom', acquirer_id: custom_acquirer_id)).to match({
+          ok: true, result: hash_including(lock_res: :nothing_to_release)
+        })
+
+        client.unlock('rw.custom')
+      end
+
       aggregate_failures 'expired read lock is not extended (not revived)' do
         client.lock('rw.expiring', read_write_mode: :read, ttl: 100)
         sleep(0.2) # NOTE: the read lock is expired

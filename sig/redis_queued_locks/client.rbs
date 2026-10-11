@@ -111,6 +111,7 @@ module RedisQueuedLocks
 
     def unlock_read: (
       String lock_name,
+      ?acquirer_id: String?,
       ?identity: String,
       ?logger: RQL::loggerObj,
       ?instrumenter: RQL::instrObj,

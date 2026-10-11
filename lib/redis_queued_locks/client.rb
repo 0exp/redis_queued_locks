@@ -677,14 +677,20 @@ class RedisQueuedLocks::Client
   end
   alias_method :release_lock, :unlock
 
-  # Releases the read lock of the current acquirer only: other read locks, the write lock and
-  # lock requests are not affected (`#unlock` releases the lock entirely). It is suitable for
-  # read locks obtained without a block of code.
+  # Releases the read lock of the current acquirer (or of the custom acquirer passed via
+  # `acquirer_id:`) only: other read locks, the write lock and lock requests are not affected
+  # (`#unlock` releases the lock entirely). It is suitable for read locks obtained without
+  # a block of code.
   #
   # @param lock_name [String] The lock name whose read lock should be released.
+  # @option acquirer_id [String,NilClass]
+  #   - The acquirer whose read lock should be released (`nil` by default);
+  #   - `nil` => the current acquirer is used (calculated from `identity:`, see `#current_acquirer_id`);
+  #   - can be extracted from the lock data (`#lock_info`, `#locks_info`, `#queue_info`, `#queues_info`);
   # @option identity [String]
   #   Unique acquirer identity (the same as for `#lock`) that is used to calculate the current
-  #   acquirer id (see `#current_acquirer_id`).
+  #   acquirer id (see `#current_acquirer_id`). Ignored when `acquirer_id:` is passed: the acquirer id
+  #   already contains its own identity.
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify]
   # @option instrument [NilClass,Any]
@@ -707,10 +713,18 @@ class RedisQueuedLocks::Client
   #     }
   #   }
   #
+  # @example Release the read lock of the current acquirer:
+  #   client.unlock_read('report')
+  #
+  # @example Release the read lock of a different acquirer:
+  #   client.unlock_read('report', acquirer_id: "rql:acq:62681/2016/2024/2032/b30ec5e4bea10512")
+  #
   # @api public
   # @since 1.18.0
+  # @version 1.19.0
   def unlock_read(
     lock_name,
+    acquirer_id: nil,
     identity: uniq_identity,
     logger: config['logger'],
     instrumenter: config['instrumenter'],
@@ -727,7 +741,7 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Acquirer::ReleaseReadLock.release_read_lock(
       redis_client,
       lock_name,
-      current_acquirer_id(identity:),
+      acquirer_id || current_acquirer_id(identity:),
       instrumenter,
       logger,
       instrument,

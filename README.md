@@ -1311,10 +1311,15 @@ rql.unlock("your_lock_name")
 - suitable for read locks obtained without a block of code (`lock(..., read_write_mode: :read)` without a block);
 - the current acquirer is calculated in the same way as for `#lock` (`#current_acquirer_id`: process, thread, fiber, ractor, identity),
   so call it from the same thread/fiber that obtained the read lock;
+- the read lock of a different acquirer can be released via `:acquirer_id` (for example, extracted from `#lock_info`/`#locks_info`);
+  `:identity` is ignored in this case (the acquirer id already contains its own identity);
 - has an alias: `#release_read_lock`;
 - accepts:
   - `lock_name` - (required) `[String]` - the lock name whose read lock should be released;
+  - `:acquirer_id` - (optional) `[String, NilClass]` - the acquirer whose read lock should be released
+    (`nil` by default: the current acquirer is used);
   - `:identity` - (optional) `[String]` - the same identity as for `#lock` (`uniq_identity` by default);
+    ignored when `:acquirer_id` is passed: the acquirer id already contains its own identity;
   - `:logger`, `:instrumenter`, `:instrument`, `:log_sampling_enabled`, `:log_sampling_percent`, `:log_sampler`, `:log_sample_this`,
     `:instr_sampling_enabled`, `:instr_sampling_percent`, `:instr_sampler`, `:instr_sample_this` - (optional) - the same as for `#unlock`;
 - returns `{ ok: true, result: { rel_time:, rel_key:, rel_acq_id:, lock_res: } }` (`lock_res` - `:released` or `:nothing_to_release`);
@@ -1331,6 +1336,22 @@ rql.unlock_read('report')
     rel_time: 0.32, # milliseconds
     rel_key: 'rql:lock:report',
     rel_acq_id: 'rql:acq:17580/2260/2380/2280/3f16b93973612580',
+    lock_res: :released # or :nothing_to_release
+  }
+}
+```
+
+```ruby
+# release the read lock of a different acquirer
+reader = rql.lock_info('report')['readers'].first
+rql.unlock_read('report', acquirer_id: reader['acq_id'])
+# =>
+{
+  ok: true,
+  result: {
+    rel_time: 0.29, # milliseconds
+    rel_key: 'rql:lock:report',
+    rel_acq_id: 'rql:acq:17580/2260/2380/2280/3f16b93973612580', # reader['acq_id']
     lock_res: :released # or :nothing_to_release
   }
 }
@@ -2296,7 +2317,7 @@ rql.lock('report') { rebuild_report } # (write mode is the default mode)
     the read lock data lives as long as the read lock and is returned by `#lock_info`/`#locks_info` for each reader;
   - `#unlock` releases the lock entirely: the write lock, all read locks (with their data) and all lock requests;
   - `#unlock_read` (aka `#release_read_lock`) releases the read lock of the current acquirer only
-    (suitable for read locks obtained without a block);
+    (suitable for read locks obtained without a block), or the read lock of the acquirer passed via `acquirer_id:`;
   - `#extend_lock_ttl(lock_name, milliseconds, read_write_mode: :read)` extends the read lock of the current acquirer only;
     `all_read_locks: true` extends all live read locks of the lock;
 - `#lock_series` with `read_write_mode: :read` obtains a series of read locks (the mode is the same for all locks of the series):
