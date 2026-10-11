@@ -19,7 +19,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @param logger [::Logger,#debug] Logger object.
   # @param lock_key [String] Obtained lock key that should be expired.
   # @param lock_readers_key [String] Registry of read lock holders.
-  # @param read_lock_key [String] Read lock data of the current acquirer.
+  # @param read_lock_key [String,NilClass]
+  #   Read lock data of the current acquirer (`nil` for write lock requests: they never obtain
+  #   read locks).
   # @param rw_mode [Symbol]
   #   - The mode of the obtained lock (`:read` or `:write`);
   #   - `:read` => only the read lock of the current acquirer is released/decreased;

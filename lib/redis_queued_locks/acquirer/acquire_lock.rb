@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.18.0
+# @version 1.20.0
 # rubocop:disable Metrics/ModuleLength
 # rubocop:disable Metrics/MethodLength
 # rubocop:disable Metrics/ClassLength
@@ -166,7 +166,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.18.0
+    # @version 1.20.0
     def acquire_lock(
       redis,
       lock_name,
@@ -276,7 +276,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       # NOTE: (RW) write lock requests use the classic lock queue (lock_key_queue)
       read_lock_key_queue = RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
       lock_readers_key = RedisQueuedLocks::Resource.prepare_lock_readers(lock_name)
-      read_lock_key = RedisQueuedLocks::Resource.prepare_read_lock_key(lock_name, acquirer_id)
+      # NOTE: (RW) read lock data key is required by read lock requests only (write lock requests
+      #   never obtain read locks: read-to-write lock upgrade is not supported);
+      read_lock_key =
+        if read_write_mode == :read
+          RedisQueuedLocks::Resource.prepare_read_lock_key(lock_name, acquirer_id)
+        end
 
       acquirer_position = RedisQueuedLocks::Resource.calc_initial_acquirer_position
 

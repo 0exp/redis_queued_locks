@@ -6,6 +6,7 @@ module RedisQueuedLocks
     module AcquireLock
       module TryToLock
         EXTEND_LOCK_PTTL: String
+        NO_LOCK_DATA: Hash[String, untyped]
 
         # { ok: bool, result: Symbol }
         # { ok: bool, result: Symbol }
@@ -31,7 +32,7 @@ module RedisQueuedLocks
           String lock_key_queue,
           String read_lock_key_queue,
           String lock_readers_key,
-          String read_lock_key,
+          String? read_lock_key,
           String acquirer_id,
           String host_id,
           Integer|Float acquirer_position,

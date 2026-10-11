@@ -3283,6 +3283,37 @@ RSpec.describe RedisQueuedLocks do
       end
     end
 
+    specify 'queue info with read lock requests only' do
+      client = RedisQueuedLocks::Client.new(redis)
+      reader = 'rql:acq:1/2/3/4/reader'
+      redis.call('ZADD', 'rql:lock_read_queue:rw.read.queue', Time.now.to_f, reader)
+
+      aggregate_failures 'the queue of write lock requests does not exist' do
+        expect(client.queue_info('rw.read.queue')).to match({
+          'lock_queue' => 'rql:lock_queue:rw.read.queue',
+          'queue' => [],
+          'read_lock_queue' => 'rql:lock_read_queue:rw.read.queue',
+          'read_queue' => contain_exactly(
+            { 'acq_id' => reader, 'score' => be_a(Numeric), 'rw_mode' => 'read' }
+          )
+        })
+        expect(client.queues_info).to contain_exactly(
+          match({
+            queue: 'rql:lock_read_queue:rw.read.queue',
+            requests: contain_exactly(
+              { 'acq_id' => reader, 'score' => be_a(Numeric), 'rw_mode' => 'read' }
+            )
+          })
+        )
+      end
+
+      aggregate_failures 'no lock queues' do
+        redis.call('ZREM', 'rql:lock_read_queue:rw.read.queue', reader)
+        expect(client.queue_info('rw.read.queue')).to eq(nil)
+        expect(client.queues_info).to eq(Set.new)
+      end
+    end
+
     specify 'zombie read locks' do
       client = RedisQueuedLocks::Client.new(redis) do |config|
         config['swarm.auto_swarm'] = false
@@ -3317,6 +3348,109 @@ RSpec.describe RedisQueuedLocks do
       })
       expect(client.locked?('rw.zombie')).to eq(false)
       expect(client.zombie_locks).to eq(Set.new)
+    end
+
+    specify 'zombie lock requests (write and read lock queues)' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['swarm.auto_swarm'] = false
+        # NOTE: we will manually probe hosts and flush zombies
+        config['swarm.probe_hosts.enabled_for_swarm'] = false
+        config['swarm.flush_zombies.enabled_for_swarm'] = false
+        config['swarm.flush_zombies.zombie_ttl'] = 1_000
+      end
+
+      # NOTE: each fiber is a separate acquirer of the current (zombie) host
+      writer_fibers = Array.new(2) do |index|
+        Fiber.new do
+          client.lock("rw.zombie.write.#{index}", ttl: 500_000)
+          client.current_acquirer_id
+        end
+      end
+      reader_fiber = Fiber.new do
+        client.lock('rw.zombie.read', read_write_mode: :read, ttl: 500_000)
+        client.current_acquirer_id
+      end
+      zombie_writers = writer_fibers.map(&:resume)
+      zombie_reader = reader_fiber.resume
+      live_acquirer = 'rql:acq:1/2/3/4/live'
+
+      # NOTE: zombie and live requests in the queues of another lock (both modes)
+      now = Time.now.to_f
+      redis.call(
+        'ZADD', 'rql:lock_queue:rw.zombie.queue',
+        now, zombie_writers[0], now, zombie_writers[1], now, live_acquirer
+      )
+      redis.call(
+        'ZADD', 'rql:lock_read_queue:rw.zombie.queue',
+        now, zombie_writers[1], now, zombie_reader, now, live_acquirer
+      )
+
+      client.probe_hosts
+      sleep(1.5) # NOTE: zombie_ttl is reached (no more host probes)
+
+      expect(client.flush_zombies).to match({
+        ok: true,
+        deleted_zombie_hosts: include(client.current_host_id),
+        deleted_zombie_acquirers: include(*zombie_writers, zombie_reader),
+        deleted_zombie_locks: include(
+          'rql:lock:rw.zombie.write.0',
+          'rql:lock:rw.zombie.write.1',
+          'rql:lock_readers:rw.zombie.read'
+        )
+      })
+      # NOTE: only the requests of zombie acquirers are dropped
+      expect(client.queue_info('rw.zombie.queue')).to match({
+        'lock_queue' => 'rql:lock_queue:rw.zombie.queue',
+        'queue' => contain_exactly(
+          { 'acq_id' => live_acquirer, 'score' => be_a(Numeric), 'rw_mode' => 'write' }
+        ),
+        'read_lock_queue' => 'rql:lock_read_queue:rw.zombie.queue',
+        'read_queue' => contain_exactly(
+          { 'acq_id' => live_acquirer, 'score' => be_a(Numeric), 'rw_mode' => 'read' }
+        )
+      })
+      expect(client.zombie_locks).to eq(Set.new)
+
+      client.clear_locks
+    end
+
+    specify 'lock state pipeline: the write-only tail' do
+      # NOTE:
+      #   - try-lock replies of the lock state pipeline are read by their positions
+      #     (see "pipeline layout" in `TryToLock#try_to_lock`);
+      #   - read lock requests do not send the write-only commands (the write-only tail), so
+      #     the read lock request pipeline should be the beginning of the write lock request
+      #     pipeline and the write-only tail should be the last part of it;
+      #   - pipelines are observed via a separate pool (the same db) with a recording middleware;
+      pipelines = []
+      recorder = Module.new do
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          pipelines << commands.map(&:dup)
+          super(commands, redis_config, &block)
+        end
+      end
+      recorded_redis = RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5)
+      client = RedisQueuedLocks::Client.new(recorded_redis)
+
+      # NOTE: the lock state pipeline is the only pipeline with the redis server time request
+      lock_state_pipeline = lambda do |read_write_mode|
+        pipelines.clear
+        client.lock('rw.pipeline', read_write_mode:, ttl: 10_000) {}
+        pipelines.find { |commands| commands.include?(['TIME']) }
+      end
+      write_pipeline = lock_state_pipeline.call(:write)
+      read_pipeline = lock_state_pipeline.call(:read)
+
+      # NOTE: command names only (queue commands can have mode-specific keys)
+      expect(write_pipeline.first(read_pipeline.size).map(&:first)).to eq(
+        read_pipeline.map(&:first)
+      )
+      expect(write_pipeline.drop(read_pipeline.size)).to eq([
+        ['ZRANGE', 'rql:lock_readers:rw.pipeline', '-1', '-1', 'WITHSCORES']
+      ])
+      expect(client.keys).to be_empty
+
+      recorded_redis.close
     end
 
     specify 'read lock meta and read lock data' do

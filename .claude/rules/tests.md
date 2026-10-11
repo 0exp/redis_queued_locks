@@ -19,6 +19,7 @@ paths:
 - Logger/instrumenter fakes are anonymous classes (`Class.new { def debug(...); def notify(event, payload = {}) }`) collecting calls into arrays.
 - Concurrency is tested with real `Thread.new` and `sleep` to wait for async swarm elements; assertions use `match(...)`, `eq(...).or(eq(...))`, `include`, `raise_error(RedisQueuedLocks::...Error)`.
 - Every example cleans up its own state (`client.clear_locks`, `deswarmize!`, `redis.close`).
+- Command-layout specs observe the sent commands through a separate pool on db 0 built with a recording `redis-client` middleware (a `Module` with `define_method(:call_pipelined) { |commands, config, &block| ...; super(commands, config, &block) }`: the block must be forwarded explicitly), e.g. `lock state pipeline: the write-only tail`. Update their expectations deliberately when a pipeline layout changes.
 - Coverage: SimpleCov line + branch, HTML only; `minimum_coverage 100` is a TODO.
 
 ## Claude rules

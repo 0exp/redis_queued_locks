@@ -23,7 +23,7 @@
 #
 # @api private
 # @since 1.0.0
-# @version 1.18.0
+# @version 1.20.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   require_relative 'try_to_lock/log_visitor'
@@ -37,6 +37,18 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     return redis.call("PEXPIRE", KEYS[1], new_lock_pttl);
   LUA_SCRIPT
 
+  # Lock data for the try-lock log events when the lock data is not extracted
+  # (logs are disabled): shared frozen object instead of a new hash for each failed attempt.
+  #
+  # NOTE: (steep) an empty hash literal with a method call can't be annotated inline
+  #   (the constant type is declared in RBS);
+  #
+  # @return [Hash]
+  #
+  # @api private
+  # @since 1.20.0
+  NO_LOCK_DATA = {}.freeze # steep:ignore
+
   # @param redis [RedisClient]
   # @param logger [::Logger,#debug]
   # @param log_lock_try [Boolean]
@@ -45,7 +57,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param lock_key_queue [String] Queue of write lock requests.
   # @param read_lock_key_queue [String] Queue of read lock requests.
   # @param lock_readers_key [String] Registry of read lock holders.
-  # @param read_lock_key [String] Read lock data of the current acquirer.
+  # @param read_lock_key [String,NilClass]
+  #   Read lock data of the current acquirer (`nil` for write lock requests: they never obtain
+  #   read locks).
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param acquirer_position [Numeric]
@@ -61,7 +75,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   #
   # @api private
   # @since 1.0.0
-  # @version 1.18.0
+  # @version 1.20.0
   # rubocop:disable Metrics/MethodLength
   def try_to_lock(
     redis,
@@ -124,23 +138,37 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         #   - current write lock obtainer;
         #   - redis server time (read lock expiration is calculated in redis time);
         #   - read lock expiration of the current acquirer;
-        #   - the longest read lock (the last one in the readers registry);
-        # @type var lock_state: [String?, Array[String], Float?, Array[[String, Float]]]
+        #   - the longest read lock (the last one in the readers registry): write lock requests
+        #     only (read lock requests do not wait for other readers);
+        # NOTE: (pipeline layout) replies are read by their positions in the pipeline:
+        #   - [0] HGET, [1] TIME, [2] ZSCORE - all requests;
+        #   - [3] ZRANGE - write lock requests only (the "write-only tail" of the pipeline);
+        #   - read lock requests do not send the write-only tail, so it must stay at the end:
+        #     a command added after it would get another position for read lock requests
+        #     (and its reply would be read as the reply of another command);
+        #   - new commands go before the write-only tail: update the positions in this NOTE,
+        #     the reply reading below, the `lock_state` tuple annotation and the spec
+        #     "lock state pipeline: the write-only tail" (it checks this layout in both modes);
+        # @type var lock_state: [String?, Array[String], Float?, Array[[String, Float]]?]
         lock_state = rconn.pipelined do |pipeline|
           pipeline.call('HGET', lock_key, 'acq_id')
           pipeline.call('TIME')
           pipeline.call('ZSCORE', lock_readers_key, acquirer_id)
-          pipeline.call('ZRANGE', lock_readers_key, '-1', '-1', 'WITHSCORES')
+          # NOTE: the write-only tail (keep it the last: see "pipeline layout" above)
+          pipeline.call('ZRANGE', lock_readers_key, '-1', '-1', 'WITHSCORES') unless read_mode
         end
         current_lock_obtainer = lock_state[0]
         redis_time = RedisQueuedLocks::Resource.redis_time_ms(lock_state[1])
         own_read_lock_expiration = lock_state[2]
-        longest_read_lock = lock_state[3].first
+        # NOTE: the write-only tail is read for write lock requests only (no reply at [3] for
+        #   read lock requests: never read it without the same condition as in the pipeline)
+        longest_read_lock = read_mode ? nil : lock_state[3]&.first
         # NOTE:
         #   - expired read locks are ignored (they can live in the registry till the cleanup);
         #   - nil expiration (no read lock) is converted to 0.0 (always expired);
+        #   - `read_locked` is used by write lock requests only (always false for read requests);
         read_locked_by_acquirer = own_read_lock_expiration.to_f > redis_time
-        read_locked = longest_read_lock != nil && longest_read_lock[1] > redis_time
+        read_locked = longest_read_lock ? longest_read_lock[1] > redis_time : false
 
         # SP-Conflict status PREPARING: the mode of the lock (already obtained by the current
         #   acquirer) that the current lock request conflicts with;
@@ -421,7 +449,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
               logger, log_sampled, log_lock_try, lock_key,
               queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer,
               # NOTE: lock data is extracted for logs only
-              ((log_sampled && log_lock_try) ? rconn.call('HGETALL', lock_key).to_h : {})
+              ((log_sampled && log_lock_try) ? rconn.call('HGETALL', lock_key).to_h : NO_LOCK_DATA)
             )
             inter_result = :acquirer_is_not_first_in_queue
           elsif opposite_request_ahead
@@ -453,7 +481,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
               queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
               waiting_acquirer, current_lock_obtainer,
               # NOTE: lock data is extracted for logs only
-              ((log_sampled && log_lock_try) ? rconn.call('HGETALL', lock_key).to_h : {})
+              ((log_sampled && log_lock_try) ? rconn.call('HGETALL', lock_key).to_h : NO_LOCK_DATA)
             )
             inter_result = :lock_is_still_acquired
           elsif read_mode ? read_locked_by_acquirer : read_locked

@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.18.0
+# @version 1.20.0
 module RedisQueuedLocks::Acquirer::Queues
   class << self
     # @param redis_client [RedisClient]
@@ -62,7 +62,7 @@ module RedisQueuedLocks::Acquirer::Queues
     #
     # @api private
     # @since 1.0.0
-    # @version 1.18.0
+    # @version 1.20.0
     def extract_queues_info(redis_client, lock_queues)
       # NOTE: the same approach as in `QueueInfo` (duplicated on purpose: public operation modules
       #   do not reuse each other, they share logic via `Resource`, `Utilities`);
@@ -76,26 +76,15 @@ module RedisQueuedLocks::Acquirer::Queues
           rw_mode = RedisQueuedLocks::Resource.lock_queue_rw_mode(lock_queue) #: String
 
           # Step 1: extract lock queue info from reids
-          queue_info = redis_client.pipelined do |pipeline|
-            pipeline.call('EXISTS', lock_queue)
-            pipeline.call('ZRANGE', lock_queue, '0', '-1', 'WITHSCORES')
-          end.yield_self do |result| # Step 2: format the result
-            # @type var result: [Integer, Array[[String,Float]]]
+          #   - redis deletes empty sorted sets, so a queue that does not exist anymore gives
+          #     an empty ZRANGE result (no need for EXISTS checks);
+          # @type var zrange_cmd_res: Array[[String,Float]]
+          zrange_cmd_res = redis_client.call('ZRANGE', lock_queue, '0', '-1', 'WITHSCORES')
 
-            exists_cmd_res = result[0]
-            zrange_cmd_res = result[1]
-
-            if exists_cmd_res == 1 # Step 2.X: lock queue existed during the piepline invocation
-              zrange_cmd_res.map do |val|
-                { 'acq_id' => val[0], 'score' => val[1], 'rw_mode' => rw_mode }
-              end
-            else
-              # Step 2.Y: lock queue did not exist during the pipeline invocation
-              [] #: Array[Hash[String,String|Float]]
-            end
+          # Step 2: format the result
+          queue_info = zrange_cmd_res.map do |val|
+            { 'acq_id' => val[0], 'score' => val[1], 'rw_mode' => rw_mode }
           end
-
-          # @type var queue_info: Array[Hash[String,String|Float]]
 
           # Step 3: push the lock queue info to the result store
           seeded_queues << {

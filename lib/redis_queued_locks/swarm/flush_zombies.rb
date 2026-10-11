@@ -19,7 +19,7 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
     #
     # @api private
     # @since 1.9.0
-    # @version 1.18.0
+    # @version 1.20.0
     # rubocop:disable Metrics/MethodLength
     def flush_zombies(
       redis_client,
@@ -94,23 +94,28 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
         end
 
         # Step 4: find zombie requests => and drop them
+        #   - one ZREM per queue drops the requests of all zombie acquirers at once;
+        #   - queues are not scanned when zombie hosts hold no locks (no zombie acquirers);
         # TODO: indexing (in order to prevent full database scan);
         # NOTE: original redis does not support indexing so we need to use
         #   internal data structers to simulate data indexing (such as sorted sets or lists);
-        rconn.scan(
-          'MATCH', RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN, count: queue_scan_size
-        ) do |lock_queue|
-          zombie_acquirers.each do |zombie_acquirer|
-            rconn.call('ZREM', lock_queue, zombie_acquirer)
-          end
-        end
+        if zombie_acquirers.any?
+          # NOTE:
+          #   the list of zombie acquirers is built once for all queues: each splat of a Set
+          #   builds a temporary array (`Set#to_a`) for every ZREM call;
+          zombie_acquirer_ids = zombie_acquirers.to_a
 
-        # Step 4 (RW): drop zombie requests from the queues of read lock requests
-        rconn.scan(
-          'MATCH', RedisQueuedLocks::Resource::READ_LOCK_QUEUE_PATTERN, count: queue_scan_size
-        ) do |read_lock_queue|
-          zombie_acquirers.each do |zombie_acquirer|
-            rconn.call('ZREM', read_lock_queue, zombie_acquirer)
+          rconn.scan(
+            'MATCH', RedisQueuedLocks::Resource::LOCK_QUEUE_PATTERN, count: queue_scan_size
+          ) do |lock_queue|
+            rconn.call('ZREM', lock_queue, *zombie_acquirer_ids)
+          end
+
+          # Step 4 (RW): drop zombie requests from the queues of read lock requests
+          rconn.scan(
+            'MATCH', RedisQueuedLocks::Resource::READ_LOCK_QUEUE_PATTERN, count: queue_scan_size
+          ) do |read_lock_queue|
+            rconn.call('ZREM', read_lock_queue, *zombie_acquirer_ids)
           end
         end
 
