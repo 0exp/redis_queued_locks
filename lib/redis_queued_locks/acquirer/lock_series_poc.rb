@@ -14,7 +14,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
   class << self
     # @api private
     # @since 1.16.0
-    # @version 1.18.0
+    # @version 1.20.0
     def lock_series_poc( # steep:ignore
       redis,
       lock_names,
@@ -25,6 +25,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
       ractor_id:,
       ttl:,
       queue_ttl:,
+      lock_index_grace_period:,
       timeout:,
       timed:,
       retry_count:,
@@ -155,6 +156,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
               ractor_id:,
               ttl: lock_operation_options[:ttl],
               queue_ttl:,
+              lock_index_grace_period:,
               timeout:,
               timed:,
               retry_count:,

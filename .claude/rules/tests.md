@@ -21,6 +21,7 @@ paths:
 - Every example cleans up its own state (`client.clear_locks`, `deswarmize!`, `redis.close`).
 - Command-layout specs observe the sent commands through a separate pool on db 0 built with a recording `redis-client` middleware (a `Module` with `define_method(:call_pipelined) { |commands, config, &block| ...; super(commands, config, &block) }`: the block must be forwarded explicitly), e.g. `lock state pipeline layout` (it reads the position constants of `TryToLock`). Update their expectations deliberately when a pipeline layout changes.
 - Coverage: SimpleCov line + branch, HTML only; `minimum_coverage 100` is a TODO.
+- Lock index specs live in `describe 'lock index'` (`let(:index_score_ahead)` = index score minus the current client ms, `let(:upper_bound)` = `be_between(lifetime + grace - 1_000, lifetime + grace)`); the swarm finds locks via the lock index only, so keys written directly with raw commands (`ZADD` queues, `HSET` locks) are indexed with `client.reindex_locks` before swarm assertions.
 
 ## Claude rules
 1. Run specs with a local Redis available: `bundle exec rake rspec` (single example: `bundle exec rspec spec/redis_queued_locks_spec.rb:<line>`).

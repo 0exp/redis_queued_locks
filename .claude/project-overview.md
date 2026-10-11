@@ -57,6 +57,7 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 | `clear_locks` | `acquirer/release_all_locks.rb` |
 | `clear_locks_of`, `clear_current_locks` | `acquirer/release_locks_of.rb` |
 | `clear_dead_requests` | `acquirer/clear_dead_requests.rb` |
+| `reindex_locks` | `acquirer/reindex_locks.rb` (adds keys without lock index entries to the lock index: one SCAN pass) |
 | `current_acquirer_id`, `current_host_id`, `possible_host_ids` | `resource.rb` |
 | `swarmize!`, `deswarmize!`, `swarm_status`, `swarm_info`, `probe_hosts`, `flush_zombies`, `zombie_locks`, `zombie_acquirers`, `zombie_hosts`, `zombies_info` | `swarm.rb` + `swarm/*` |
 
@@ -66,7 +67,7 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 
 | Mixin | Role |
 |---|---|
-| `TryToLock` (`try_to_lock.rb`) | One attempt: `multi(watch:)` (write: lock key + readers registry, read: lock key only), one pipelined read of the lock state (`HGET acq_id`, `TIME`, own reader score, longest reader: write requests only), the lock request queueing in one pipelined round trip (`queue_lock_request`: `ZADD NX` into the queue of the requested mode (timestamp score), prune both queues, both queue heads), take the lock if allowed (see Read/Write locks). Eager queueing (`:wait_for_lock`/`:dead_locking` without `fail_fast`) sends the queueing commands in the lock state round trip: `lock {}` = 4 round trips (`WATCH`, state + queueing, `MULTI/EXEC`, release), a failed attempt = 3. Pre-check (`precheck_lock`, retries and `fail_fast` attempts): the lock state (+ the queueing for retries) without `WATCH` in one round trip; an attempt that can not obtain the lock fails there (same results and log events: `lock_obstacle`/`log_lock_obstacle`), otherwise the attempt continues with `WATCH`/`MULTI` (a failed retry = 1 round trip, a successful one = 4; `fail_fast` on an obtained lock = 1); same-process conflicts are never decided by the pre-check. Handles reentrant conflicts (incl. read/write ones); write TTL extension via inline Lua (`PTTL` + `PEXPIRE`). |
+| `TryToLock` (`try_to_lock.rb`) | One attempt: `multi(watch:)` (write: lock key + readers registry, read: lock key only), one pipelined read of the lock state (`HGET acq_id`, `TIME`, own reader score, longest reader: write requests only), the lock request queueing in one pipelined round trip (`queue_lock_request`: `ZADD NX` into the queue of the requested mode (timestamp score), prune both queues, both queue heads, then the lock index commands: request queue `PEXPIRE NX`+`GT` (queue ttl), `ZADD GT` of the lock name into the lock index with `max(queue ttl, lock ttl)` (covers the lock obtained later by the same attempt), `ZREMRANGEBYSCORE` of expired lock names), take the lock if allowed (see Read/Write locks; the `:extendable_work_through` extension `MULTI` ends with the lock index `ZADD XX INCR`). Eager queueing (`:wait_for_lock`/`:dead_locking` without `fail_fast`) sends the queueing commands in the lock state round trip: `lock {}` = 4 round trips (`WATCH`, state + queueing, `MULTI/EXEC`, release), a failed attempt = 3. Pre-check (`precheck_lock`, retries and `fail_fast` attempts): the lock state (+ the queueing for retries) without `WATCH` in one round trip; an attempt that can not obtain the lock fails there (same results and log events: `lock_obstacle`/`log_lock_obstacle`), otherwise the attempt continues with `WATCH`/`MULTI` (a failed retry = 1 round trip, a successful one = 4; `fail_fast` on an obtained lock = 1); same-process conflicts are never decided by the pre-check. Handles reentrant conflicts (incl. read/write ones); write TTL extension via inline Lua (`PTTL` + `PEXPIRE`). |
 | `WithAcqTimeout` | Global acquisition timeout (`timeout`). |
 | `DelayExecution` | Retry delay + jitter between attempts. |
 | `DequeueFromLockQueue` | Removes the acquirer from the queue of the requested mode on timeout/failure. |
@@ -75,7 +76,7 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 
 ### Main `lock` options (defaults from config)
 
-`ttl`, `queue_ttl`, `timeout`, `timed`, `retry_count`, `retry_delay`, `retry_jitter`,
+`ttl`, `queue_ttl`, `lock_index_grace_period`, `timeout`, `timed`, `retry_count`, `retry_delay`, `retry_jitter`,
 `raise_errors`, `fail_fast`, `conflict_strategy`, `access_strategy`, `read_write_mode`
 (`:write` (default, exclusive) | `:read` (shared)), `identity`, `meta`, `logger`, `log_lock_try`,
 `instrumenter`, `instrument`, log/instr sampling options, `log_sample_this`, `instr_sample_this`.
@@ -159,10 +160,36 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 | `rql:lock_read_queue:<name>` | ZSET | read lock requests (write requests use `rql:lock_queue:<name>`) |
 | `rql:lock_reader:<name>:<acq_id>` | HASH | read lock data (same fields as `rql:lock:<name>` incl. meta, without `acq_id`/`hst_id`; data carrier only) |
 | `rql:swarm:hsts` | HASH | swarm host heartbeats |
+| `rql:index:locks` | ZSET | lock index: lock name => upper bound of the lifetime of all its keys (client time ms + ttl + grace), see "Lock index" |
 
-- SCAN-based operations (`clear_locks`, `clear_locks_of`, `clear_dead_requests`, `locks`/`locks_info`, `queues`/`queues_info`, `flush_zombies`, `zombie_*`) make one SCAN pass (`KEY_PATTERN`, or `ALL_LOCK_QUEUES_PATTERN` for queue-only operations), classify keys with `Resource.lock_key_family` and send per-key commands in pipelined batches collected across SCAN pages (batch size = the operation's scan/batch size); `clear_locks` deletes keys with one `DEL` per batch during the scan.
+- Lock request queues have TTL: `PEXPIRE NX` + `GT` with the queue ttl on each queueing (the queue lives as long as its latest request).
+
+- SCAN-based operations (`clear_locks`, `clear_locks_of`, `clear_dead_requests`, `locks`/`locks_info`, `queues`/`queues_info`, `keys`, `reindex_locks`) make one SCAN pass (`KEY_PATTERN`, or `ALL_LOCK_QUEUES_PATTERN` for queue-only operations), classify keys with `Resource.lock_key_family` and send per-key commands in pipelined batches collected across SCAN pages (batch size = the operation's scan/batch size); `clear_locks` deletes keys with one `DEL` per batch during the scan. Their move to the lock index is in the README Roadmap (Major).
+- Lock-index-based operations (`flush_zombies` and the zombie flusher, `zombie_locks`/`zombie_acquirers`/`zombies_info`) make one `ZSCAN` pass over `rql:index:locks` (lock names) and derive the lock keys (`prepare_lock_key`, `prepare_lock_readers`, both queues) with the same pipelined batches; the full keyspace is never scanned.
 - Acquirer ID: `rql:acq:<pid>/<thread>/<fiber>/<ractor>/<identity>`
 - Host ID: `rql:hst:<pid>/<thread>/<ractor>/<identity>` (no fiber)
+
+### Lock index (`Resource::LOCK_INDEX_KEY` = `rql:index:locks`)
+
+- ZSET: member = lock name, score = upper bound of the lifetime of all keys of the lock (write lock, readers registry, both queues;
+  reader data is found via the registry) in client time: `Resource.lock_index_time` (epoch ms, `CLOCK_REALTIME`) + key ttl +
+  `lock_index_grace_period` (config `lock_index_grace_period`, 60_000 ms; tolerance of client clock skew + network latency).
+- Invariant: the index is a superset of the existing lock names (stale names are harmless, a missing name hides a lock from the swarm).
+  - every attempt indexes the keys it can create in its queueing pipeline (`queue_lock_request`, after the queue `ZADD NX`):
+    `ZADD GT <now + max(queue ttl, lock ttl) + grace> <name>`; the lock (write lock / registry / reader data) is created later
+    by the obtaining `MULTI` of the same attempt (the grace period covers the attempt duration), so the `MULTI` itself does not
+    touch the index;
+  - every extension of a lock key: `ZADD XX INCR <ms> <name>` in the same transaction (reentrant `:extendable_work_through`, `extend_lock_ttl`
+    write (`MULTI { EVAL; ZADD }`), own read, all read locks); `XX`: names without an entry (older versions) are not indexed with a wrong score;
+  - the score is never decreased (`GT`; ttl decreases and releases do not touch the index);
+  - lock request queues have TTL (`PEXPIRE NX` + `GT` = queue ttl on each queueing): the lifetime of every indexed key is bounded;
+  - pruning: `ZREMRANGEBYSCORE <index> -inf <now - 1>` in every queueing pipeline (amortized, no background jobs) and in `flush_zombies`;
+    `zombie_*` info skips names with an expired score.
+- Migration: keys of older RQL versions have no entries: `reindex_locks` (one SCAN pass: `PEXPIRE NX` queue ttl for queues, `PTTL` of
+  locks/registries/queues, `ZADD GT <now + pttl + grace>`; `-1` => `+inf`; idempotent) once after all processes are upgraded.
+- Limitations: completeness needs `grace > clock skew + attempt duration`; one hot key (fine for standalone/Sentinel; Cluster unsupported anyway);
+  hot path cost: 4 more commands per attempt in the existing queueing pipeline (local benchmark: ~+14 us and +53 allocations per `lock {}`).
+  non-swarm SCAN operations still scan the keyspace (README Roadmap, Major).
 
 ### Instrumentation events
 
@@ -210,6 +237,7 @@ inherit from `Timeout::Error`.
 | TTLs | `default_lock_ttl` (5000 ms), `default_queue_ttl` (15 s), `dead_request_ttl` (1 day, ms) |
 | Strategies | `default_conflict_strategy` (`:wait_for_lock`), `default_access_strategy` (`:queued`) |
 | Batching | `lock_release_batch_size` (100), `clear_locks_of__lock_scan_size` / `__queue_scan_size` (300), `key_extraction_batch_size` (500) |
+| Lock index | `lock_index_grace_period` (60_000 ms; also a `lock`/`lock!`/`lock_series`/`lock_series!`/`reindex_locks` option) |
 | Identity | `uniq_identifier` (lambda → `Resource.calc_uniq_identity`) |
 | Logging | `logger` (VoidLogger), `log_lock_try`, `log_sampling_enabled`, `log_sampling_percent` (15), `log_sampler` |
 | Instrumentation | `instrumenter` (VoidNotifier), `instr_sampling_enabled`, `instr_sampling_percent` (15), `instr_sampler` |
@@ -246,7 +274,7 @@ Known quirk: `sig/redis_queued_locks/acquier.rbs` is misspelled (should be `acqu
 
 ### Runtime
 - Ruby >= 4.0; stdlib `timeout`, `securerandom`, `logger`; Thread, Fiber, Ractor, Mutex
-- Redis server: WATCH/MULTI, EVAL (Lua), ZSET, HASH, PTTL/PEXPIRE, SCAN
+- Redis server: WATCH/MULTI, EVAL (Lua), ZSET, HASH, PTTL/PEXPIRE (NX/GT: Redis >= 7), SCAN/ZSCAN
 - `redis-client ~> 0.20`
 - Optional, duck-typed: any `::Logger`-compatible logger; any `#notify(event, payload)` instrumenter (ActiveSupport adapter included; SemanticLogger has only an RBS stub)
 

@@ -64,6 +64,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [zombie_locks](#zombie_locks)
   - [zombie_hosts](#zombie_hosts)
   - [zombie_acquirers](#zombie_acquirers)
+- [Lock Index](#lock-index)
 - [Lock Access Strategies](#lock-access-strategies)
   - [queued](#lock-access-strategies)
   - [random](#lock-access-strategies)
@@ -196,6 +197,8 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
 
   # (seconds) (default: 15)
   # - lock request timeout. after this timeout your lock request in queue will be requeued with new position (at the end of the queue);
+  # - the lock request queue lives as long as its latest lock request (the queue TTL is refreshed with the queue ttl on each lock request):
+  #   queues of dead acquirers expire by themselves;
   config['default_queue_ttl'] = 15
 
   # (boolean) (default: false)
@@ -277,6 +280,13 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - the default period of time (in milliseconds) after which a lock request is considered dead;
   # - used for `#clear_dead_requests` as default vaule of `:dead_ttl` option;
   config['dead_request_ttl'] = (1 * 24 * 60 * 60 * 1000) # one day in milliseconds
+
+  # (milliseconds) (default: 60_000)
+  # - the lock index grace period: the lock name stays in the lock index (`rql:index:locks`) for this period
+  #   after the expiration of all its keys (see the "Lock Index" documentation section);
+  # - tolerance of the client clock skew between your hosts and of the network latency: should be greater than
+  #   the maximal clock skew between your hosts plus the network latency;
+  config['lock_index_grace_period'] = 60_000
 
   # (default: RedisQueuedLocks::Instrument::VoidNotifier)
   # - instrumentation layer;
@@ -398,6 +408,7 @@ end
 - [locks_info](#locks_info---get-list-of-locks-with-their-info)
 - [queues_info](#queues_info---get-list-of-queues-with-their-info)
 - [clear_dead_requests](#clear_dead_requests)
+- [reindex_locks](#reindex_locks)
 - [current_acquirer_id](#current_acquirer_id)
 - [current_host_id](#current_host_id)
 - [possible_host_ids](#possible_host_ids)
@@ -426,6 +437,7 @@ def lock(
   lock_name,
   ttl: config['default_lock_ttl'],
   queue_ttl: config['default_queue_ttl'],
+  lock_index_grace_period: config['lock_index_grace_period'],
   timeout: config['try_to_lock_timeout'],
   timed: config['is_timed_by_default'],
   retry_count: config['retry_count'],
@@ -462,7 +474,13 @@ def lock(
   - pre-configured in `config['default_lock_ttl']`;
 - `queue_ttl` - (optional) `[Integer]`
   - Lifetime of the acuier's lock request. In seconds.
+  - the lock request queue lives as long as its latest lock request (the queue TTL is refreshed on each lock request);
   - pre-configured in `config['default_queue_ttl']`;
+- `lock_index_grace_period` - (optional) `[Integer]`
+  - The lock index grace period (in milliseconds): the lock name stays in the lock index for this period after the expiration
+    of all its keys (tolerance of the client clock skew between your hosts and of the network latency);
+  - see the [Lock Index](#lock-index) documentation section;
+  - pre-configured in `config['lock_index_grace_period']`;
 - `timeout` - (optional) `[Integer,NilClass]`
   - Time period a client should try to acquire the lock (in seconds). Nil means "without timeout".
   - pre-configured in `config['try_to_lock_timeout']`;
@@ -847,6 +865,7 @@ def lock!(
   lock_name,
   ttl: config['default_lock_ttl'],
   queue_ttl: config['default_queue_ttl'],
+  lock_index_grace_period: config['lock_index_grace_period'],
   timeout: config['try_to_lock_timeout'],
   timed: config['is_timed_by_default'],
   retry_count: config['retry_count'],
@@ -1626,6 +1645,7 @@ rql.release_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acqu
 
 - extends lock ttl by the required number of milliseconds;
 - expects the lock name and the number of milliseconds;
+- the lock index score of the lock is increased by the same number of milliseconds (see [Lock Index](#lock-index));
 - accepts:
   - `lock_name` - (required) `[String]`
     - the lock name which ttl should be extended;
@@ -1893,6 +1913,10 @@ before the lock acquire moment occurs and when no any other process does not nee
 For this case your lock reuquest will be cleared only when any process will try
 to acquire this lock again (cuz lock acquirement triggers the removement of expired requests).
 
+NOTE: the lock request queue lives as long as its latest lock request (the queue TTL is refreshed with the request `queue_ttl`
+on each lock request), so the queue of dead requests expires by itself (queues of older RQL versions have no TTL:
+see [#reindex_locks](#reindex_locks)).
+
 In order to help with these dead requests you may periodically call `#clear_dead_requests`
 with corresponding `:dead_ttl` option, that is pre-configured by default via `config['dead_request_ttl']`.
 
@@ -1958,6 +1982,38 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
     ...
   ]
 }
+```
+
+---
+
+#### #reindex_locks
+
+<sup>\[[back to top](#usage)\]</sup>
+
+- adds the lock keys without the lock index entry (keys of older RQL versions) to the lock index (see [Lock Index](#lock-index));
+- invoke it once after **all** your processes are upgraded to the RQL version with the lock index: the swarm
+  (`#flush_zombies`, the zombie flusher, `#zombie_locks`, `#zombie_acquirers`, `#zombies_info`) finds locks via the lock index only;
+- one `SCAN` pass over the RQL keys (`rql:lock*`) with pipelined batches (two round trips per batch);
+- write locks and read locks registries are indexed with their remaining TTL (+ the grace period), lock queues without TTL
+  (older RQL versions) get the `queue_ttl` TTL first; read lock data is not indexed (it is found via the read locks registry);
+- idempotent: the lock index scores are never decreased (it can be invoked at any time);
+- accepts:
+  - `:scan_size` - (optional) `[Integer]`
+    - the batch of scanned keys for Redis'es SCAN command;
+    - pre-configured in `config['lock_release_batch_size']`;
+  - `:queue_ttl` - (optional) `[Integer]`
+    - TTL of the lock queues without TTL (in seconds);
+    - pre-configured in `config['default_queue_ttl']`;
+  - `:lock_index_grace_period` - (optional) `[Integer]`
+    - the lock index grace period (in milliseconds);
+    - pre-configured in `config['lock_index_grace_period']`;
+- returns `{ ok: true, result: { idx_key_cnt: Integer } }` (the number of indexed keys);
+
+```ruby
+rql.reindex_locks
+
+# =>
+{ ok: true, result: { idx_key_cnt: 123 } }
 ```
 
 ---
@@ -2088,6 +2144,11 @@ rql.possible_host_ids
 
 **This documentation section is in progress!** (see the changelog and the usage preview for details at this moment)
 
+- zombie locks and zombie lock requests are found via the [Lock Index](#lock-index) (one `ZSCAN` pass over the lock names):
+  the swarm never scans the whole Redis keyspace (keys of your other applications are never visited);
+- after the upgrade to the RQL version with the lock index invoke [#reindex_locks](#reindex_locks) once (when all your processes
+  are upgraded): locks of older RQL versions are not indexed and are not found by the swarm until then;
+
 [(work and usage preview (temporary example-based docs))](#work-and-usage-preview-temporary-example-based-docs)
 
 - [How to Swarm](#how-to-swarm)
@@ -2135,7 +2196,7 @@ rql.possible_host_ids
     config['swarm.flush_zombies.enabled_for_swarm'] = true # NOTE: run zombie flushing or not
     config['swarm.flush_zombies.zombie_flush_period'] = 10 # NOTE: (in seconds) period of time when the zombie flusher is triggered
     config['swarm.flush_zombies.zombie_ttl'] = 15_000 # NOTE: (in milliseconds) when the lock/host/acquirer is considered a zombie
-    config['swarm.flush_zombies.zombie_lock_scan_size'] = 500 # NOTE: SCAN count and the batch size of locks during zombie flushing
+    config['swarm.flush_zombies.zombie_lock_scan_size'] = 500 # NOTE: ZSCAN count (lock index) and the batch size of locks during zombie flushing
     config['swarm.flush_zombies.zombie_queue_scan_size'] = 500 # NOTE: the batch size of lock queues during zombie flushing (one round trip per batch)
     # (flush_zombies) individual redis config
     config['swarm.flush_zombies.redis_config.sentinel'] = false # NOTE: individual redis config
@@ -2270,6 +2331,46 @@ rql.possible_host_ids
   "rql:swarm:hsts"
   ```
 </details>
+
+<details>
+  <summary>lock index key in Redis (used by the swarm)</summary>
+
+  ```ruby
+  "rql:index:locks"
+  ```
+</details>
+
+---
+
+## Lock Index
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
+
+> Find locks without scanning the whole Redis keyspace.
+
+- the lock index is a sorted set `rql:index:locks`: the member is the lock name, the score is the upper bound of the lifetime
+  of all lock keys (write lock, read locks registry, lock request queues): `client time (epoch, ms) + key ttl + grace period`;
+- the swarm (`#flush_zombies`, the zombie flusher, `#zombie_locks`, `#zombie_acquirers`, `#zombies_info`) iterates over the lock
+  index (`ZSCAN`) and derives lock keys from the lock names instead of the full keyspace `SCAN`: its cost depends on the number
+  of your locks only (not on the size of your Redis database);
+- the index is maintained by the lock acquirement itself (no background jobs, no additional Redis round trips):
+  - each lock request adds the lock name to the index (`ZADD GT` with `max(queue ttl, lock ttl)`: it covers the lock request
+    queue and the lock obtained by the same attempt), sets the lock request queue TTL (the queue lives as long as its latest
+    lock request) and drops the expired lock names from the index (`ZREMRANGEBYSCORE`): 4 commands in the existing
+    queueing pipeline;
+  - each lock extension (`#extend_lock_ttl`, `:extendable_work_through` reentrant locks) increases the score by the extension;
+  - the lock name is dropped from the index when all its keys are expired and the grace period is over;
+- `config['lock_index_grace_period']` (`60_000` milliseconds by default) and `lock_index_grace_period:` option of
+  `#lock`/`#lock!`/`#lock_series`/`#lock_series!`: the lock name stays in the index for this period after the expiration of
+  all its keys; it should be greater than the maximal client clock skew between your hosts plus the duration of one lock
+  acquirement attempt (network latency) (otherwise a lock can be dropped from the index before its expiration and the swarm
+  will not see it);
+- (migration) locks of older RQL versions have no lock index entries: invoke [#reindex_locks](#reindex_locks) once after
+  **all** your processes are upgraded;
+- (limitation) the lock index is one Redis key written on each lock request (a "hot" key): fine for a standalone Redis
+  (and Sentinel); Redis Cluster is not supported (RQL transactions use several keys of each lock without hash tags);
+- **Roadmap**: other key-iterating operations (`#locks`, `#queues`, `#keys`, `#clear_locks`, `#clear_locks_of`,
+  `#clear_dead_requests`, ...) will use the lock index too (they use `SCAN` at this moment);
 
 ---
 
@@ -2789,6 +2890,10 @@ Detalized event semantics and payload structure:
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - **Major**:
+  - lock index for all key-iterating operations (the swarm already uses it, see [Lock Index](#lock-index)):
+    - `#locks`/`#locks_info`, `#queues`/`#queues_info`, `#keys`, `#clear_locks`, `#clear_locks_of`/`#clear_current_locks`,
+      `#clear_dead_requests` should iterate over the lock index (`rql:index:locks`) instead of the full keyspace `SCAN`;
+    - `#unlock` should drop the lock name from the lock index (in the release transaction);
   - Swarm:
     - circuit-breaker for long-living failures of your infrastructure inside the swarm elements and supervisor:
       the supervisor will stop (for some period of time or while the some factor will return `true`)

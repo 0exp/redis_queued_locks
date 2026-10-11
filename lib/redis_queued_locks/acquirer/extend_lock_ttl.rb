@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.18.0
+# @version 1.20.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::ExtendLockTTL
   # @return [String]
@@ -43,7 +43,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     #
     # @api private
     # @since 1.0.0
-    # @version 1.18.0
+    # @version 1.20.0
     # rubocop:disable Metrics/MethodLength
     def extend_lock_ttl(
       redis_client,
@@ -91,12 +91,23 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
         return extend_read_lock_ttl(redis_client, lock_name, lock_key, acquirer_id, milliseconds)
       end
 
-      # NOTE: EVAL signature -> <lua script>, (number of keys), *(keys), *(arguments)
-      result = redis_client.call('EVAL', EXTEND_LOCK_PTTL, 1, lock_key, milliseconds)
+      # NOTE:
+      #   - EVAL signature -> <lua script>, (number of keys), *(keys), *(arguments);
+      #   - (lock index) the lock index score is increased by the extension in the same
+      #     transaction (`ZADD XX INCR`: the upper bound of the lock lifetime stays the upper bound,
+      #     locks without the index entry (of older RQL versions) are not indexed with a wrong
+      #     score); a failed extension (no lock) increases the score of the lock name too: the name
+      #     just stays in the index a bit longer;
+      # @type var result: [Integer, Float?]
+      result = redis_client.multi do |transact|
+        transact.call('EVAL', EXTEND_LOCK_PTTL, 1, lock_key, milliseconds)
+        transact.call(
+          'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, 'XX', 'INCR', milliseconds, lock_name
+        )
+      end
       # TODO: upload scripts to the redis
 
-      # @type var result: Integer
-      if result == 1
+      if result[0] == 1
         { ok: true, result: { extended_locks_count: 1 } }
       else
         { ok: false, result: :async_expire_or_no_lock }
@@ -121,6 +132,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     #
     # @api private
     # @since 1.18.0
+    # @version 1.20.0
     # rubocop:disable Metrics/MethodLength
     def extend_read_lock_ttl(redis_client, lock_name, lock_key, acquirer_id, milliseconds)
       lock_readers_key = RedisQueuedLocks::Resource.prepare_lock_readers(lock_name)
@@ -145,6 +157,11 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
             transact.call('PEXPIRE', lock_readers_key, extended_ttl, 'GT')
             transact.call('PEXPIRE', read_lock_key, extended_ttl, 'NX')
             transact.call('PEXPIRE', read_lock_key, extended_ttl, 'GT')
+            # NOTE: (lock index) the lock index score is increased by the extension
+            transact.call(
+              'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY,
+              'XX', 'INCR', milliseconds, lock_name
+            )
           end
         end
       end
@@ -178,6 +195,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     #
     # @api private
     # @since 1.18.0
+    # @version 1.20.0
     # rubocop:disable Metrics/MethodLength
     def extend_all_read_locks_ttl(redis_client, lock_name, lock_key, milliseconds)
       lock_readers_key = RedisQueuedLocks::Resource.prepare_lock_readers(lock_name)
@@ -214,6 +232,12 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
             if extended_read_locks_count > 0
               transact.call('PEXPIRE', lock_readers_key, registry_ttl, 'NX')
               transact.call('PEXPIRE', lock_readers_key, registry_ttl, 'GT')
+              # NOTE: (lock index) the lock index score is increased by the extension
+              #   (each read lock is extended by the same milliseconds);
+              transact.call(
+                'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY,
+                'XX', 'INCR', milliseconds, lock_name
+              )
             end
           end
         end

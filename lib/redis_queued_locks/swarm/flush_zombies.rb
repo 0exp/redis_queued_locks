@@ -47,15 +47,22 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
           deleted_zombie_locks: Set.new
         } if zombie_hosts.empty?
 
-        # Step 3: find zombie locks held by zombies and delete them
-        #   - one SCAN pass over the RQL keys (`KEY_PATTERN`): write locks and readers registries
-        #     are processed in batches of `lock_scan_size` keys (two round trips per batch,
-        #     batches are collected across SCAN pages);
-        #   - lock queues are collected during the pass and processed after it (Step 4): zombie
-        #     acquirers are known only when all locks are processed;
-        # TODO: indexing (in order to prevent full database scan);
-        # NOTE: original redis does not support indexing so we need to use
-        #   internal data structers to simulate data indexing (such as sorted sets or lists);
+        # Step 3: (lock index) drop the expired lock names from the lock index: all the keys of
+        #   these locks are expired (they are not visited by the index pass below);
+        rconn.call(
+          'ZREMRANGEBYSCORE', RedisQueuedLocks::Resource::LOCK_INDEX_KEY,
+          '-inf', RedisQueuedLocks::Resource.lock_index_time - 1
+        )
+
+        # Step 4: find zombie locks held by zombies and delete them
+        #   - one ZSCAN pass over the lock index (`LOCK_INDEX_KEY`: lock names) instead of
+        #     the full keyspace SCAN: lock keys are derived from the lock names (keys of other
+        #     applications are never visited);
+        #   - write locks and readers registries are processed in batches of `lock_scan_size`
+        #     locks (two round trips per batch, batches are collected across ZSCAN pages);
+        #   - (Step 5) lock queues (write and read) are processed in batches of `queue_scan_size`
+        #     queues during the same pass (two round trips per batch): zombie requests are found by
+        #     the host of the request, so they do not depend on the zombie locks;
         zombie_locks = Set.new #: Set[String]
         zombie_acquirers = Set.new #: Set[String]
         # @type var lock_keys: Array[String]
@@ -65,52 +72,49 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
         # @type var lock_queues: Array[String]
         lock_queues = []
 
-        rconn.scan(
-          'MATCH', RedisQueuedLocks::Resource::KEY_PATTERN, count: lock_scan_size
-        ) do |key|
-          case RedisQueuedLocks::Resource.lock_key_family(key)
-          when :lock
-            lock_keys << key
-            next if lock_keys.size < lock_scan_size
-
+        rconn.zscan(
+          RedisQueuedLocks::Resource::LOCK_INDEX_KEY, count: lock_scan_size
+        ) do |lock_name|
+          lock_keys << RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
+          # Step 4 (RW): zombie read locks (read locks of zombie hosts)
+          lock_readers_keys << RedisQueuedLocks::Resource.prepare_lock_readers(lock_name)
+          if lock_keys.size >= lock_scan_size
             flush_zombie_locks(rconn, lock_keys, zombie_hosts, zombie_locks, zombie_acquirers)
-            lock_keys.clear
-          when :lock_readers
-            # Step 3 (RW): zombie read locks (read locks of zombie hosts)
-            lock_readers_keys << key
-            next if lock_readers_keys.size < lock_scan_size
-
             flush_zombie_read_locks(
               rconn, lock_readers_keys, zombie_hosts, zombie_locks, zombie_acquirers
             )
+            lock_keys.clear
             lock_readers_keys.clear
-          when :lock_queue, :read_lock_queue
-            lock_queues << key
           end
+
+          # Step 5: drop zombie requests from the lock queues (write and read)
+          #   - requests of zombie hosts: the host is derived from the acquirer id of the request,
+          #     so the requests of zombie acquirers that hold no locks are dropped too (and their
+          #     acquirers are reported as zombie acquirers);
+          batch_zombie_requests(
+            rconn, lock_queues, RedisQueuedLocks::Resource.prepare_lock_queue(lock_name),
+            queue_scan_size, zombie_hosts, zombie_acquirers
+          )
+          batch_zombie_requests(
+            rconn, lock_queues, RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name),
+            queue_scan_size, zombie_hosts, zombie_acquirers
+          )
         end
 
         unless lock_keys.empty?
           flush_zombie_locks(rconn, lock_keys, zombie_hosts, zombie_locks, zombie_acquirers)
-        end
-        unless lock_readers_keys.empty?
           flush_zombie_read_locks(
             rconn, lock_readers_keys, zombie_hosts, zombie_locks, zombie_acquirers
           )
         end
-
-        # Step 4: drop zombie requests from the lock queues (write and read)
-        #   - requests of zombie hosts: the host is derived from the acquirer id of the request,
-        #     so the requests of zombie acquirers that hold no locks are dropped too (and their
-        #     acquirers are reported as zombie acquirers);
-        #   - two round trips per batch of `queue_scan_size` queues (requests, then ZREM);
-        lock_queues.each_slice(queue_scan_size) do |lock_queues_batch|
-          flush_zombie_requests(rconn, lock_queues_batch, zombie_hosts, zombie_acquirers)
+        unless lock_queues.empty?
+          flush_zombie_requests(rconn, lock_queues, zombie_hosts, zombie_acquirers)
         end
 
-        # Step 5: drop zombies from the swarm
+        # Step 6: drop zombies from the swarm
         rconn.call('HDEL', RedisQueuedLocks::Resource::SWARM_KEY, *zombie_hosts)
 
-        # Step 6: inform about deleted zombies
+        # Step 7: inform about deleted zombies
         {
           ok: true,
           deleted_zombie_hosts: zombie_hosts,
@@ -122,6 +126,34 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
     # rubocop:enable Metrics/MethodLength
 
     private
+
+    # Adds the lock queue to the batch of lock queues and drops the zombie requests of the batch
+    # when it is full (`queue_scan_size` queues; see `flush_zombie_requests`).
+    #
+    # @param redis_client [RedisClient]
+    # @param lock_queues [Array<String>] The batch of lock queues (cleared after the flush).
+    # @param lock_queue [String]
+    # @param queue_scan_size [Integer]
+    # @param zombie_hosts [Set<String>]
+    # @param zombie_acquirers [Set<String>] Collects acquirers of the dropped zombie requests.
+    # @return [void]
+    #
+    # @api private
+    # @since 1.20.0
+    def batch_zombie_requests(
+      redis_client,
+      lock_queues,
+      lock_queue,
+      queue_scan_size,
+      zombie_hosts,
+      zombie_acquirers
+    )
+      lock_queues << lock_queue
+      return if lock_queues.size < queue_scan_size
+
+      flush_zombie_requests(redis_client, lock_queues, zombie_hosts, zombie_acquirers)
+      lock_queues.clear
+    end
 
     # Drops zombie locks (write locks of zombie hosts) of the given batch of write locks
     # (two round trips: lock owners, then one `DEL` of the zombie locks).

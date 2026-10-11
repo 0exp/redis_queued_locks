@@ -174,6 +174,12 @@ class RedisQueuedLocks::Client
   #   Lock's time to live (in milliseconds).
   # @option queue_ttl [Integer]
   #   Lifetime of the acuier's lock request. In seconds.
+  # @option lock_index_grace_period [Integer]
+  #   - The lock index score margin over the lock key lifetime (in milliseconds): the lock name
+  #     stays in the lock index (`rql:index:locks`) for this period after the expiration of
+  #     the lock keys;
+  #   - should be greater than the client clock skew between your hosts plus the network latency;
+  #   - pre-configured in `config['lock_index_grace_period']`;
   # @option timeout [Integer,NilClass]
   #   Time period whe should try to acquire the lock (in seconds). Nil means "without timeout".
   # @option timed [Boolean]
@@ -331,12 +337,13 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.18.0
+  # @version 1.20.0
   # rubocop:disable Metrics/MethodLength
   def lock(
     lock_name,
     ttl: config['default_lock_ttl'],
     queue_ttl: config['default_queue_ttl'],
+    lock_index_grace_period: config['lock_index_grace_period'],
     timeout: config['try_to_lock_timeout'],
     timed: config['is_timed_by_default'],
     retry_count: config['retry_count'],
@@ -373,6 +380,7 @@ class RedisQueuedLocks::Client
       ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
       ttl:,
       queue_ttl:,
+      lock_index_grace_period:,
       timeout:,
       timed:,
       retry_count:,
@@ -407,11 +415,13 @@ class RedisQueuedLocks::Client
   # rubocop:disable all
   # @api public
   # @since 1.16.0
+  # @version 1.20.0
   def lock_series( # steep:ignore
     *lock_names,
     detailed_result: false,
     ttl: config['default_lock_ttl'],
     queue_ttl: config['default_queue_ttl'],
+    lock_index_grace_period: config['lock_index_grace_period'],
     timeout: config['try_to_lock_timeout'],
     timed: config['is_timed_by_default'],
     retry_count: config['retry_count'],
@@ -449,6 +459,7 @@ class RedisQueuedLocks::Client
       ractor_id: RedisQueuedLocks::Resource.get_ractor_id,
       ttl:,
       queue_ttl:,
+      lock_index_grace_period:,
       timeout:,
       timed:,
       retry_count:,
@@ -483,11 +494,13 @@ class RedisQueuedLocks::Client
   # rubocop:disable all
   # @api public
   # @since 1.16.0
+  # @version 1.20.0
   def lock_series!( # steep:ignore
     *lock_names,
     detailed_result: false,
     ttl: config['default_lock_ttl'],
     queue_ttl: config['default_queue_ttl'],
+    lock_index_grace_period: config['lock_index_grace_period'],
     timeout: config['try_to_lock_timeout'],
     timed: config['is_timed_by_default'],
     retry_count: config['retry_count'],
@@ -519,6 +532,7 @@ class RedisQueuedLocks::Client
       detailed_result:,
       ttl:,
       queue_ttl:,
+      lock_index_grace_period:,
       timeout:,
       timed:,
       retry_count:,
@@ -552,11 +566,12 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.18.0
+  # @version 1.20.0
   def lock!(
     lock_name,
     ttl: config['default_lock_ttl'],
     queue_ttl: config['default_queue_ttl'],
+    lock_index_grace_period: config['lock_index_grace_period'],
     timeout: config['try_to_lock_timeout'],
     timed: config['is_timed_by_default'],
     retry_count: config['retry_count'],
@@ -587,6 +602,7 @@ class RedisQueuedLocks::Client
       lock_name,
       ttl:,
       queue_ttl:,
+      lock_index_grace_period:,
       timeout:,
       timed:,
       retry_count:,
@@ -1294,6 +1310,41 @@ class RedisQueuedLocks::Client
       instr_sampling_percent,
       instr_sampler,
       instr_sample_this
+    )
+  end
+
+  # Adds the lock keys without the lock index entry (keys of older RQL versions) to the lock index
+  # (`rql:index:locks`). Invoke it once after all your processes are upgraded to the RQL version
+  # with the lock index: the swarm (`#flush_zombies`, `#zombie_locks`, `#zombie_acquirers`,
+  # `#zombies_info`) finds locks via the lock index only.
+  #   - one SCAN pass over the RQL keys;
+  #   - lock queues without TTL (older RQL versions) get `queue_ttl` as their TTL;
+  #   - idempotent: the lock index scores are never decreased, already indexed keys stay as is;
+  #
+  # @option scan_size [Integer]
+  #   - the batch of scanned keys for Redis'es SCAN command;
+  #   - `config['lock_release_batch_size']` is used by default;
+  # @option queue_ttl [Integer]
+  #   - TTL of the lock queues without TTL (in seconds);
+  #   - `config['default_queue_ttl']` is used by default;
+  # @option lock_index_grace_period [Integer]
+  #   - the lock index score margin over the key lifetime (in milliseconds);
+  #   - `config['lock_index_grace_period']` is used by default;
+  # @return [Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
+  #   Format: { ok: true, result: { idx_key_cnt: Integer } } (the number of indexed keys)
+  #
+  # @api public
+  # @since 1.20.0
+  def reindex_locks(
+    scan_size: config['lock_release_batch_size'],
+    queue_ttl: config['default_queue_ttl'],
+    lock_index_grace_period: config['lock_index_grace_period']
+  )
+    RedisQueuedLocks::Acquirer::ReindexLocks.reindex_locks(
+      redis_client,
+      scan_size,
+      queue_ttl,
+      lock_index_grace_period
     )
   end
 end

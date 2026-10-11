@@ -21,6 +21,7 @@ module RedisQueuedLocks
         ractor_id: Integer|String,
         ttl: Integer?,
         queue_ttl: Integer,
+        lock_index_grace_period: Integer,
         timeout: Integer?,
         timed: bool,
         retry_count: Integer?,

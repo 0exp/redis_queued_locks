@@ -3,9 +3,7 @@
 # @api private
 # @since 1.9.0
 # @version 1.20.0
-# rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Swarm::ZombieInfo
-  # rubocop:disable Metrics/ClassLength
   class << self
     # @param redis_client [RedisClient]
     # @param zombie_ttl [Integer]
@@ -140,10 +138,12 @@ module RedisQueuedLocks::Swarm::ZombieInfo
       { zombie_hosts:, zombie_acquirers:, zombie_locks: }
     end
 
-    # Iterates over the locks of zombie hosts in one SCAN pass over the RQL keys (`KEY_PATTERN`):
-    # write locks and readers registries are processed in batches of `lock_scan_size` keys with
-    # one round trip per batch (batches are collected across SCAN pages). Nothing is scanned when
-    # there are no zombie hosts.
+    # Iterates over the locks of zombie hosts in one ZSCAN pass over the lock index
+    # (`LOCK_INDEX_KEY`: lock names; lock keys are derived from the lock names, the full keyspace
+    # is never scanned): write locks and readers registries are processed in batches of
+    # `lock_scan_size` locks with one round trip per batch and per key family (batches are
+    # collected across ZSCAN pages). Expired lock names of the index are skipped (all their keys
+    # are expired). Nothing is scanned when there are no zombie hosts.
     #
     # @param rconn [RedisClient] redis connection obtained via `#with` from RedisClient instance;
     # @param zombie_hosts [Set<String>]
@@ -162,30 +162,28 @@ module RedisQueuedLocks::Swarm::ZombieInfo
       lock_keys = []
       # @type var lock_readers_keys: Array[String]
       lock_readers_keys = []
+      lock_index_time = RedisQueuedLocks::Resource.lock_index_time
 
-      rconn.scan(
-        'MATCH', RedisQueuedLocks::Resource::KEY_PATTERN, count: lock_scan_size
-      ) do |key|
-        case RedisQueuedLocks::Resource.lock_key_family(key)
-        when :lock
-          lock_keys << key
-          next if lock_keys.size < lock_scan_size
+      rconn.zscan(
+        RedisQueuedLocks::Resource::LOCK_INDEX_KEY, count: lock_scan_size
+      ) do |lock_name, lock_index_score|
+        # NOTE: the expired lock name (not dropped from the index yet): its keys are expired
+        next if lock_index_score.to_f < lock_index_time
 
-          each_zombie_write_lock(rconn, lock_keys, zombie_hosts, &block)
-          lock_keys.clear
-        when :lock_readers
-          lock_readers_keys << key
-          next if lock_readers_keys.size < lock_scan_size
+        lock_keys << RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
+        lock_readers_keys << RedisQueuedLocks::Resource.prepare_lock_readers(lock_name)
+        next if lock_keys.size < lock_scan_size
 
-          each_zombie_read_lock(rconn, lock_readers_keys, zombie_hosts, &block)
-          lock_readers_keys.clear
-        end
-      end
-
-      each_zombie_write_lock(rconn, lock_keys, zombie_hosts, &block) unless lock_keys.empty?
-      unless lock_readers_keys.empty?
+        each_zombie_write_lock(rconn, lock_keys, zombie_hosts, &block)
         each_zombie_read_lock(rconn, lock_readers_keys, zombie_hosts, &block)
+        lock_keys.clear
+        lock_readers_keys.clear
       end
+
+      return if lock_keys.empty?
+
+      each_zombie_write_lock(rconn, lock_keys, zombie_hosts, &block)
+      each_zombie_read_lock(rconn, lock_readers_keys, zombie_hosts, &block)
     end
 
     # Iterates over the write locks of zombie hosts in the given batch of write locks
@@ -247,6 +245,4 @@ module RedisQueuedLocks::Swarm::ZombieInfo
       end
     end
   end
-  # rubocop:enable Metrics/ClassLength
 end
-# rubocop:enable Metrics/ModuleLength

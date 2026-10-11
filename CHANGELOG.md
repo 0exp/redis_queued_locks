@@ -1,5 +1,27 @@
 ## [Unreleased]
+### Added
+- **Lock index** (`rql:index:locks`, `ZSET`: lock name => the upper bound of the lifetime of all lock keys in client time, ms):
+  the swarm finds locks without the full keyspace `SCAN` (see the "Lock Index" README section):
+  - maintained by the lock acquirement itself without new Redis round trips: each lock request adds the lock name (`ZADD GT`
+    with `max(queue ttl, lock ttl)`: the request queue and the lock obtained by the same attempt), sets the request queue TTL and
+    drops the expired lock names (`ZREMRANGEBYSCORE`) in the queueing pipeline (4 more commands per attempt), each extension
+    (`#extend_lock_ttl`, `:extendable_work_through` reentrant locks) increases the score by the extension (`ZADD XX INCR`);
+  - `config['lock_index_grace_period']` (`60_000` ms by default) and `lock_index_grace_period:` option of `#lock`/`#lock!`/
+    `#lock_series`/`#lock_series!`: the lock name stays in the index for this period after the expiration of all its keys
+    (the client clock skew and network latency tolerance);
+- `#reindex_locks`: adds the lock keys without the lock index entry (keys of older RQL versions) to the lock index (one `SCAN` pass,
+  lock queues without TTL get the queue ttl); **invoke it once after all your processes are upgraded**;
 ### Changed
+- Swarm (`#flush_zombies`, the zombie flusher, `#zombie_locks`/`#zombie_acquirers`/`#zombies_info`): locks and lock queues are found
+  via the lock index (one `ZSCAN` pass over the lock names, lock keys are derived from the lock names) instead of the full keyspace
+  `SCAN`: the cost depends on the number of locks only, keys of other applications are never visited; `zombie_lock_scan_size` is
+  the `ZSCAN` count and the batch size of locks, `zombie_queue_scan_size` - the batch size of lock queues (both processed during
+  the same pass); `#flush_zombies` drops the expired lock names from the index; locks of older RQL versions are not found until
+  `#reindex_locks`;
+- Lock request queues have TTL: the queue lives as long as its latest lock request (`PEXPIRE NX` + `GT` with the queue ttl on each
+  lock request), queues of dead acquirers expire by themselves (previously they stayed until `#clear_dead_requests` or the next
+  lock request);
+- `#extend_lock_ttl` (write locks): the lock ttl extension (`EVAL`) and the lock index update are sent in one transaction;
 - `#flush_zombies` (and the zombie flusher of the swarm): zombie lock requests are dropped with one `ZREM` per lock queue
   (previously one `ZREM` per zombie acquirer and lock queue);
 - `#queue_info` / `#queues_info`: lock queues are read without `EXISTS` checks (Redis does not keep empty sorted sets);

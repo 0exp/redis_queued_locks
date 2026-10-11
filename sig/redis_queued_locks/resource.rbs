@@ -8,6 +8,7 @@ module RedisQueuedLocks
     READ_LOCK_PATTERN: String
     ALL_LOCK_QUEUES_PATTERN: String
     SWARM_KEY: String
+    LOCK_INDEX_KEY: String
     REDIS_TIMESHIFT_ERROR: Integer
 
     def self.calc_uniq_identity: () -> String
@@ -34,6 +35,8 @@ module RedisQueuedLocks
     def self.lock_queue_rw_mode: (String lock_queue) -> String?
     type lockKeyFamily = :lock | :lock_queue | :lock_readers | :read_lock_queue | :read_lock
     def self.lock_key_family: (String key) -> lockKeyFamily?
+    def self.lock_name_from_key: (String key, lockKeyFamily? key_family) -> String?
+    def self.lock_index_time: () -> Integer
     def self.lock_name_from_readers: (String lock_readers_key) -> String
     def self.lock_key_from_readers: (String lock_readers_key) -> String
     def self.host_identifier_from_acquirer: (String acquirer_id) -> String

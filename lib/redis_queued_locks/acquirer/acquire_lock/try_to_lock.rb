@@ -22,6 +22,18 @@
 #   - `:random` access strategy ignores both queues (no ordering between modes, so
 #     a continuous flow of readers can starve writers);
 #
+# Lock index (`RedisQueuedLocks::Resource::LOCK_INDEX_KEY`):
+#   - each lock request queueing indexes the lock name (`ZADD GT`) with the upper bound of
+#     the lifetime of the keys created by the attempt: client time + max(queue ttl, lock ttl) +
+#     grace period (the request queue and the lock obtained by the same attempt: the lock is
+#     obtained only after the queueing of the same attempt, the grace period covers the attempt);
+#   - lock extensions (reentrant `:extendable_work_through`) increase the score by the extension
+#     in the same transaction (`ZADD XX INCR`);
+#   - lock request queues live as long as the latest lock request (`PEXPIRE NX` + `GT` with
+#     the queue ttl on each queueing) so the lifetime of every lock key is bounded;
+#   - each queueing drops the expired lock names from the index (`ZREMRANGEBYSCORE`): the index
+#     is maintained by the lock acquirement itself (no background jobs);
+#
 # @api private
 # @since 1.0.0
 # @version 1.20.0
@@ -116,11 +128,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param read_lock_key [String,NilClass]
   #   Read lock data of the current acquirer (`nil` for write lock requests: they never obtain
   #   read locks).
+  # @param lock_name [String] The lock name (the member of the lock index).
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param acquirer_position [Numeric]
   # @param ttl [Integer]
   # @param queue_ttl [Integer]
+  # @param lock_index_grace_period [Integer]
+  #   The lock index score margin (in milliseconds) over the key lifetime (client clock skew and
+  #   network latency tolerance).
   # @param fail_fast [Boolean]
   # @param conflict_strategy [Symbol]
   # @param access_strategy [Symbol]
@@ -145,11 +161,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     read_lock_key_queue,
     lock_readers_key,
     read_lock_key,
+    lock_name,
     acquirer_id,
     host_id,
     acquirer_position,
     ttl,
     queue_ttl,
+    lock_index_grace_period,
     fail_fast,
     conflict_strategy,
     access_strategy,
@@ -209,8 +227,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       if precheck
         inter_result = precheck_lock(
           rconn, logger, log_sampled, log_lock_try, lock_key, read_write_mode, lock_readers_key,
-          request_queue, opposite_request_queue, acquirer_id, host_id, acquirer_position,
-          acquirer_dead_score, queue_ttl, fail_fast, access_strategy
+          request_queue, opposite_request_queue, lock_name, acquirer_id, host_id,
+          acquirer_position, acquirer_dead_score, ttl, queue_ttl, lock_index_grace_period,
+          fail_fast, access_strategy
         )
         next if inter_result
       end
@@ -236,7 +255,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         lock_state = rconn.pipelined do |pipeline|
           pipeline_lock_state(
             pipeline, lock_key, lock_readers_key, acquirer_id, read_mode, eager_queueing,
-            request_queue, opposite_request_queue, acquirer_position, acquirer_dead_score
+            request_queue, opposite_request_queue, acquirer_position, acquirer_dead_score,
+            lock_name, ttl, queue_ttl, lock_index_grace_period
           )
         end
         # @type var current_lock_obtainer: String?
@@ -367,6 +387,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
             transact.call('PEXPIRE', read_lock_key, extended_read_lock_ttl, 'NX')
             transact.call('PEXPIRE', read_lock_key, extended_read_lock_ttl, 'GT')
           end
+          # SPCF Step 5: (lock index) the lock (write or read) lives longer by the extension:
+          #   - the lock index score is increased by the extension (the upper bound of the lock
+          #     lifetime stays the upper bound);
+          #   - XX => locks without the index entry (of older RQL versions) are not indexed with
+          #     a wrong score (see `reindex_locks`);
+          #   - [REDIS RESULT]: the new lock index score (nil for the lock without the index entry);
+          transact.call(
+            'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, 'XX', 'INCR', ttl, lock_name
+          )
           inter_result = :extendable_conflict_work_through
 
           # @type var spc_processed_timestamp: Float
@@ -468,7 +497,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
               rconn.pipelined do |pipeline|
                 queue_lock_request(
                   pipeline, request_queue, opposite_request_queue,
-                  acquirer_position, acquirer_id, acquirer_dead_score
+                  acquirer_position, acquirer_id, acquirer_dead_score,
+                  lock_name, ttl, queue_ttl, lock_index_grace_period
                 )
               end
             end
@@ -546,6 +576,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
             )
             transact.call('PEXPIRE', read_lock_key, ttl)
 
+            # NOTE: (lock index) the read lock is already indexed by the queueing of this attempt
+            #   (Step 3.3: the score covers the lock ttl)
+
             inter_result = :lock_obtaining
 
             LogVisitor.obtain__free_to_acquire(
@@ -571,6 +604,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
             # Step 6.3: set the lock expiration time in order to prevent "infinite locks"
             transact.call('PEXPIRE', lock_key, ttl) # NOTE: in milliseconds
+
+            # NOTE: (lock index) the lock is already indexed by the queueing of this attempt
+            #   (Step 3.3: the score covers the lock ttl)
 
             inter_result = :lock_obtaining
 
@@ -598,6 +634,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         #   1. ZADD XX INCR (new read lock expiration) (OK for != nil)
         #   2. PEXPIRE NX/GT (registry TTL)
         #   3. HINCRBY/HSET/PEXPIRE (read lock data)
+        #   4. ZADD XX INCR (the lock index score)
         if result[0] != nil
           {
             ok: true,
@@ -615,13 +652,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # NOTE: the read lock is expired and removed from the registry during the extension
           { ok: false, result: :read_lock_is_expired_during_extension }
         end
-      elsif result.is_a?(::Array) && result.size == 4 # NOTE: four commands should be processed
+      elsif result.is_a?(::Array) && result.size == 5 # NOTE: five commands should be processed
         # TODO:
         #   => (!) analyze the command result and do actions with the depending on it
         #   1. EVAL (extend lock pttl) (OK for != nil)
         #   2. HINCRBY (ttl extension) (OK for != nil)
         #   3. HINCRBY (increased spc count) (OK for != nil)
         #   4. HSET (store the last spc time and ttl data) (OK for == 2 or != nil)
+        #   5. ZADD XX INCR (the lock index score) (nil for the lock without the index entry:
+        #      it does not affect the extension)
         if result[0] != nil && result[1] != nil && result[2] != nil && result[3] != nil
           {
             ok: true,
@@ -747,12 +786,16 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
   private
 
-  # Queues the lock request and reads the lock queue state (Steps 1, 2.1 and 3 of the attempt):
-  # the commands are added to the given pipeline (one round trip with other pipelined commands).
+  # Queues the lock request and reads the lock queue state (Steps 1, 2.1, 3 and 3.2-3.4 of
+  # the attempt): the commands are added to the given pipeline (one round trip with other
+  # pipelined commands).
   # Replies (positions relative to the first one): [0] ZADD NX, [1] ZREMRANGEBYSCORE (request
   # queue), [2] ZREMRANGEBYSCORE (opposite request queue), [QUEUE_HEAD_REPLY] ZRANGE (the first
   # request of the request queue), [OPPOSITE_QUEUE_HEAD_REPLY] ZRANGE WITHSCORES (the first
-  # request of the opposite request queue). Update these constants when the commands change.
+  # request of the opposite request queue), [5] PEXPIRE NX, [6] PEXPIRE GT (the request queue
+  # TTL), [7] ZADD GT (the lock index), [8] ZREMRANGEBYSCORE (expired lock names of the lock
+  # index). Update these constants when the commands change (new commands go to the end: the
+  # replies are not read after `OPPOSITE_QUEUE_HEAD_REPLY`).
   #
   # @param pipeline [RedisClient::Pipeline]
   # @param request_queue [String] Queue of the requests of the requested lock mode.
@@ -760,6 +803,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param acquirer_position [Numeric]
   # @param acquirer_id [String]
   # @param acquirer_dead_score [Float] Requests queued before this score are expired.
+  # @param lock_name [String] The lock name (the member of the lock index).
+  # @param ttl [Integer,NilClass] The lock ttl (in milliseconds).
+  # @param queue_ttl [Integer] Lifetime of the lock request (in seconds).
+  # @param lock_index_grace_period [Integer] In milliseconds.
   # @return [void]
   #
   # @api private
@@ -770,7 +817,11 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     opposite_request_queue,
     acquirer_position,
     acquirer_id,
-    acquirer_dead_score
+    acquirer_dead_score,
+    lock_name,
+    ttl,
+    queue_ttl,
+    lock_index_grace_period
   )
     # Step 1: add an acquirer to the lock acquirement queue
     # NOTE:
@@ -791,6 +842,36 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     #   - (RW) and the first request of the opposite mode;
     pipeline.call('ZRANGE', request_queue, '0', '0')
     pipeline.call('ZRANGE', opposite_request_queue, '0', '0', 'WITHSCORES')
+
+    # Step 3.2: (lock index) the request queue lives as long as the latest lock request
+    #   - NX + GT => sets the queue TTL to max(current TTL, queue ttl): waiting acquirers refresh
+    #     it on each attempt, the queue of dead acquirers expires (no "infinite queues");
+    #   - queues order the lock requests only: a live acquirer whose request is dropped with
+    #     the expired queue re-queues it on its next attempt (`ZADD NX` with its position);
+    # NOTE: `ceil` - queue ttl can be passed as a Float (in seconds), PEXPIRE requires Integer
+    queue_pttl = (queue_ttl * 1_000).ceil
+    pipeline.call('PEXPIRE', request_queue, queue_pttl, 'NX')
+    pipeline.call('PEXPIRE', request_queue, queue_pttl, 'GT')
+
+    # Step 3.3: (lock index) the lock name lives in the lock index as long as the keys created
+    #   by this attempt: the request queue and the lock (the lock is obtained only after the
+    #   queueing of the same attempt: Step 6);
+    #   - the score is the upper bound of their lifetime: client time + max(queue ttl, lock ttl) +
+    #     grace period (the grace period covers the attempt duration and the client clock skew);
+    #   - GT => the score is never decreased (other keys of the lock can live longer);
+    #   - after the queue command: an index pruning between the queue command and the index
+    #     command can not leave the queue without the index entry;
+    lock_index_time = RedisQueuedLocks::Resource.lock_index_time
+    pipeline.call(
+      'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, 'GT',
+      lock_index_time + [queue_pttl, ttl.to_i].max + lock_index_grace_period, lock_name
+    )
+
+    # Step 3.4: (lock index) drop the expired lock names from the lock index: all the keys of
+    #   these locks are expired (amortized cleanup: no background jobs are required);
+    pipeline.call(
+      'ZREMRANGEBYSCORE', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, '-inf', lock_index_time - 1
+    )
   end
 
   # Adds the lock state commands to the given pipeline (the lock state of the attempt and of
@@ -799,8 +880,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # NOTE: (pipeline layout) replies are read by their positions in the pipeline:
   #   - [LOCK_STATE_OBTAINER_REPLY] HGET, [LOCK_STATE_REDIS_TIME_REPLY] TIME,
   #     [LOCK_STATE_OWN_READ_LOCK_REPLY] ZSCORE - all requests (the head of the pipeline);
-  #   - [LOCK_STATE_QUEUE_REPLIES_AT, +5] lock request queueing (`queue_lock_request`) - only
-  #     with `queueing` (eager queueing, pre-check of retries);
+  #   - [LOCK_STATE_QUEUE_REPLIES_AT, +9] lock request queueing (`queue_lock_request`: the request
+  #     queue commands and the lock index commands) - only with `queueing` (eager queueing,
+  #     pre-check of retries);
   #   - the last reply: ZRANGE (the longest read lock) - write lock requests only (the "write-only
   #     tail" of the pipeline: it is read by `lock_state.last` under the same condition);
   #   - conditional commands go after the head (the queueing commands, then the write-only
@@ -821,6 +903,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param opposite_request_queue [String]
   # @param acquirer_position [Numeric]
   # @param acquirer_dead_score [Float]
+  # @param lock_name [String] The lock name (the member of the lock index).
+  # @param ttl [Integer,NilClass] The lock ttl (in milliseconds).
+  # @param queue_ttl [Integer] In seconds.
+  # @param lock_index_grace_period [Integer] In milliseconds.
   # @return [void]
   #
   # @api private
@@ -835,7 +921,11 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     request_queue,
     opposite_request_queue,
     acquirer_position,
-    acquirer_dead_score
+    acquirer_dead_score,
+    lock_name,
+    ttl,
+    queue_ttl,
+    lock_index_grace_period
   )
     pipeline.call('HGET', lock_key, 'acq_id')
     pipeline.call('TIME')
@@ -844,7 +934,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     if queueing
       queue_lock_request(
         pipeline, request_queue, opposite_request_queue,
-        acquirer_position, acquirer_id, acquirer_dead_score
+        acquirer_position, acquirer_id, acquirer_dead_score,
+        lock_name, ttl, queue_ttl, lock_index_grace_period
       )
     end
     # NOTE: the write-only tail (keep it the last: see "pipeline layout" above)
@@ -1028,11 +1119,14 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param lock_readers_key [String]
   # @param request_queue [String]
   # @param opposite_request_queue [String]
+  # @param lock_name [String] The lock name (the member of the lock index).
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param acquirer_position [Numeric]
   # @param acquirer_dead_score [Float]
+  # @param ttl [Integer,NilClass] The lock ttl (in milliseconds).
   # @param queue_ttl [Integer]
+  # @param lock_index_grace_period [Integer] In milliseconds.
   # @param fail_fast [Boolean]
   # @param access_strategy [Symbol]
   # @return [Symbol,NilClass] The failure result of the attempt or `nil` (continue the attempt).
@@ -1050,11 +1144,14 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     lock_readers_key,
     request_queue,
     opposite_request_queue,
+    lock_name,
     acquirer_id,
     host_id,
     acquirer_position,
     acquirer_dead_score,
+    ttl,
     queue_ttl,
+    lock_index_grace_period,
     fail_fast,
     access_strategy
   )
@@ -1064,7 +1161,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     lock_state = rconn.pipelined do |pipeline|
       pipeline_lock_state(
         pipeline, lock_key, lock_readers_key, acquirer_id, read_mode, !fail_fast,
-        request_queue, opposite_request_queue, acquirer_position, acquirer_dead_score
+        request_queue, opposite_request_queue, acquirer_position, acquirer_dead_score,
+        lock_name, ttl, queue_ttl, lock_index_grace_period
       )
     end
     # @type var current_lock_obtainer: String?
