@@ -65,6 +65,8 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [zombie_hosts](#zombie_hosts)
   - [zombie_acquirers](#zombie_acquirers)
 - [Lock Index](#lock-index)
+  - [Lock Index Performance](#lock-index-performance)
+  - [Lock Index Size](#lock-index-size)
 - [Lock Access Strategies](#lock-access-strategies)
   - [queued](#lock-access-strategies)
   - [random](#lock-access-strategies)
