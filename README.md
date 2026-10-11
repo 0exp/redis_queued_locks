@@ -2393,6 +2393,21 @@ rql.possible_host_ids
 - (limitation) the lock index is one Redis key written on each lock request (a "hot" key): fine for a standalone Redis
   (and Sentinel); Redis Cluster is not supported (RQL transactions use several keys of each lock without hash tags);
 
+#### Lock Index Size
+
+<sup>\[[back to top](#lock-index)\]</sup>
+
+- the lock index size is about `<the number of distinct lock names per second> * (max(queue_ttl, ttl) + grace period)`
+  (`~75` seconds of lock names with the default settings: `config['default_queue_ttl']` (15 seconds) +
+  `config['lock_index_grace_period']` (60 seconds));
+- with very diverse lock names (for example, `order:#{id}`) lock-iterating operations (the swarm, `#locks`, `#queues`, `#keys`,
+  `#clear_locks`, ...) visit the dead lock names of this window too (lock names whose keys are already expired);
+- if it becomes noticeable, there are two levers:
+  - reduce `config['lock_index_grace_period']` (keep it greater than the maximal client clock skew between your hosts plus
+    the network latency);
+  - **TODO**: a cheap existence check of the lock name (`EXISTS` of its keys) before reading the lock details in
+    lock-iterating operations;
+
 ---
 
 ## Lock Access Strategies
