@@ -1160,9 +1160,8 @@ rql.lock_info("your_lock_name")
 
 Returns an information about the required lock queue by the lock name. The result
 represnts the ordered lock request queue that is ordered by score (Redis Sets) and shows
-lock acquirers and their position in queue. Async nature with redis communcation can lead
-the situation when the queue becomes empty during the queue data extraction. So sometimes
-you can receive the lock queue info with empty queue value (an empty array).
+lock acquirers and their position in queue. The queue of write lock requests is an empty array
+(`"queue" => []`) when only the queue of read lock requests exists.
 
 - get the lock queue information;
 - queue represents the ordered set of lock key reqests:
