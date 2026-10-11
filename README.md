@@ -2316,7 +2316,7 @@ rql.lock('report') { rebuild_report } # (write mode is the default mode)
     initial ttl, `:meta` (with the same reserved keys) and reentrant lock data (`spc_cnt`, `spc_ext_ttl`, ...);
     the read lock data lives as long as the read lock and is returned by `#lock_info`/`#locks_info` for each reader;
   - `#unlock` releases the lock entirely: the write lock, all read locks (with their data) and all lock requests;
-  - `#unlock_read` (aka `#release_read_lock`) releases the read lock of the current acquirer only
+  - `#unlock_read` (aka `#release_read_lock`) releases the read lock of the current acquirer
     (suitable for read locks obtained without a block), or the read lock of the acquirer passed via `acquirer_id:`;
   - `#extend_lock_ttl(lock_name, milliseconds, read_write_mode: :read)` extends the read lock of the current acquirer only;
     `all_read_locks: true` extends all live read locks of the lock;
