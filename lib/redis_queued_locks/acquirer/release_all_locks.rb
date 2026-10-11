@@ -2,19 +2,21 @@
 
 # @api private
 # @since 1.0.0
+# @version 1.20.0
 module RedisQueuedLocks::Acquirer::ReleaseAllLocks
   # @since 1.0.0
   extend RedisQueuedLocks::Utilities
 
   class << self
     # Release all locks: delete the keys of all lock families (write locks, lock queues,
-    # readers registries, read lock queues and read lock data) found in one SCAN pass,
-    # with one `DEL` per batch of keys.
+    # readers registries, read lock queues and read lock data) of the locks of the lock index
+    # (one ZSCAN pass) and drop their lock names from the lock index, with one transaction
+    # (`DEL` + `ZREM`) per batch of lock names.
     #
     # @param redis [RedisClient]
     #   Redis connection client.
     # @param batch_size [Integer]
-    #   The number of lock keys that should be released in a time.
+    #   The number of locks (lock names) that should be released in a time.
     # @param logger [::Logger,#debug]
     #   - Logger object used from `configuration` layer (see config['logger']);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
@@ -120,12 +122,16 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
 
     private
 
-    # Release all locks: one SCAN pass over the RQL keys (`KEY_PATTERN`); the keys of all lock
-    # families are deleted with one `DEL` per batch of `batch_size` keys (the keys are deleted
-    # during the scan: no list of all keys is kept in memory).
+    # Release all locks: one ZSCAN pass over the lock index (`LOCK_INDEX_KEY`: lock names, the
+    # keyspace is never scanned); the keys of all lock families of each batch of `batch_size` lock
+    # names are deleted with one `DEL` in one transaction with the `ZREM` of the lock names from
+    # the lock index (two round trips per batch: the read lock acquirers, then the transaction).
+    #   - expired lock names are dropped from the lock index first (all their keys are expired);
+    #   - lock names of the lock requests queued (or the locks obtained) after the transaction of
+    #     their batch are indexed again by the lock acquirement;
     #
     # @param redis [RedisClient]
-    # @param batch_size [Integer] SCAN count and the number of keys in one `DEL`.
+    # @param batch_size [Integer] ZSCAN count and the number of lock names in one transaction.
     # @return [Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
     #   - Exmaple: { ok: true, result: { rel_key_cnt: 12345 } }
     #
@@ -136,24 +142,101 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
       rel_key_cnt = 0
 
       redis.with do |rconn|
-        # @type var lock_keys: Array[String]
-        lock_keys = []
+        # Step 1: drop the expired lock names from the lock index (all their keys are expired)
+        rconn.call(
+          'ZREMRANGEBYSCORE', RedisQueuedLocks::Resource::LOCK_INDEX_KEY,
+          '-inf', RedisQueuedLocks::Resource.lock_index_time - 1
+        )
 
-        rconn.scan('MATCH', RedisQueuedLocks::Resource::KEY_PATTERN, count: batch_size) do |key|
-          # NOTE: lock families only (KEY_PATTERN matches any `rql:lock*` key)
-          next if RedisQueuedLocks::Resource.lock_key_family(key) == nil
-
-          lock_keys << key
-          next if lock_keys.size < batch_size
-
-          rel_key_cnt += rconn.call('DEL', *lock_keys)
-          lock_keys.clear
+        # Step 2: release the locks of the lock index in batches of lock names
+        each_lock_name_batch(rconn, batch_size) do |lock_names|
+          rel_key_cnt += release_locks(rconn, lock_names)
         end
-
-        rel_key_cnt += rconn.call('DEL', *lock_keys) unless lock_keys.empty?
       end
 
       { ok: true, result: { rel_key_cnt: } }
+    end
+
+    # Releases the locks of the given batch of lock names: deletes all their keys and drops
+    # the lock names from the lock index in one transaction.
+    #   - (RW) read lock data keys are found via the readers registries (one more round trip
+    #     before the transaction); the data of a read lock obtained between the registry read and
+    #     the transaction stays till its ttl (the read lock itself is released with the registry);
+    #
+    # @param redis_client [RedisClient]
+    # @param lock_names [Array<String>]
+    # @return [Integer] The number of the deleted keys.
+    #
+    # @api private
+    # @since 1.20.0
+    def release_locks(redis_client, lock_names)
+      # Step A: (RW) read lock acquirers of the readers registries (their read lock data keys)
+      # NOTE: (pipeline layout) one reply per lock name in the batch order
+      # @type var read_lock_acquirers: Array[Array[String]]
+      read_lock_acquirers = redis_client.pipelined do |pipeline|
+        lock_names.each do |lock_name|
+          pipeline.call(
+            'ZRANGE', RedisQueuedLocks::Resource.prepare_lock_readers(lock_name), '0', '-1'
+          )
+        end
+      end
+
+      # @type var lock_keys: Array[String]
+      lock_keys = []
+      lock_names.each_with_index do |lock_name, index|
+        lock_keys << RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
+        lock_keys << RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
+        lock_keys << RedisQueuedLocks::Resource.prepare_lock_readers(lock_name)
+        lock_keys << RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
+        read_lock_acquirers[index].each do |acquirer_id|
+          lock_keys << RedisQueuedLocks::Resource.prepare_read_lock_key(lock_name, acquirer_id)
+        end
+      end
+
+      # Step B: delete the keys and drop the lock names from the lock index in one transaction
+      #   (a lock obtained after the transaction indexes its lock name again);
+      # NOTE: (transaction layout) [0] DEL (the number of the deleted keys), [1] ZREM (not read)
+      # @type var released: [Integer, Integer]
+      released = redis_client.multi do |transact|
+        transact.call('DEL', *lock_keys)
+        transact.call('ZREM', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, *lock_names)
+      end
+      released[0]
+    end
+
+    # Iterates over the lock names of the lock index (one ZSCAN pass) in batches of `scan_size`
+    # lock names (batches are collected across ZSCAN pages). Expired lock names (not dropped from
+    # the index yet) are skipped: all their keys are expired.
+    #
+    # NOTE: each operation module iterates over the lock index by itself (duplicated on purpose:
+    #   operation modules are independent of each other, see `Locks.each_lock_name_batch`);
+    #
+    # @param redis_client [RedisClient]
+    # @param scan_size [Integer] ZSCAN count and the number of lock names in one batch.
+    # @yield [lock_names]
+    # @yieldparam lock_names [Array<String>] The batch of lock names (reused between batches).
+    # @return [void]
+    #
+    # @api private
+    # @since 1.20.0
+    def each_lock_name_batch(redis_client, scan_size)
+      lock_index_time = RedisQueuedLocks::Resource.lock_index_time
+      # @type var lock_names: Array[String]
+      lock_names = []
+
+      redis_client.zscan(
+        RedisQueuedLocks::Resource::LOCK_INDEX_KEY, count: scan_size
+      ) do |lock_name, lock_index_score|
+        next if lock_index_score.to_f < lock_index_time
+
+        lock_names << lock_name
+        next if lock_names.size < scan_size
+
+        yield(lock_names)
+        lock_names.clear
+      end
+
+      yield(lock_names) unless lock_names.empty?
     end
   end
 end

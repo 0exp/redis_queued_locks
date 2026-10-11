@@ -12,6 +12,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     #      from the lock aquierment and should retry;
     # - 2. delete the lock: drop lock key from Redis;
     # - 3. (RW) clear the read lock queue and drop all read locks (the readers registry);
+    # - 4. (lock index) drop the lock name from the lock index;
     # It is safe because the lock obtain logic is transactional and
     # watches the original lock for changes.
     #
@@ -138,7 +139,8 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
 
     private
 
-    # Realease the lock: clear the lock queues and expire the lock (write lock and read locks).
+    # Realease the lock: clear the lock queues and expire the lock (write lock and read locks),
+    # drop the lock name from the lock index.
     #
     # @param redis [RedisClient]
     # @param lock_name [String]
@@ -167,20 +169,24 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
       read_lock_key_queue,
       lock_readers_key
     )
-      # @type var result: [Array[String],Integer,Integer,Integer,Integer]
+      # @type var result: [Array[String],Integer,Integer,Integer,Integer,Integer]
       result = redis.with do |rconn|
         # Step 1: release the lock in one transaction (one round trip):
         #   - (RW) the readers registry is read in the same transaction: the snapshot of all
         #     released read locks (their data is dropped in Step 2);
+        #   - (lock index) all the indexed keys of the lock are dropped: the lock name is dropped
+        #     from the lock index in the same transaction (a lock request queued or a lock obtained
+        #     after this transaction indexes the lock name again);
         # NOTE: (transaction layout) replies are read by their positions:
         #   [0] ZRANGE (released read locks), [1] write lock queue, [2] write lock,
-        #   [3] read lock queue, [4] readers registry;
+        #   [3] read lock queue, [4] readers registry, [5] lock index (not read);
         released = rconn.multi do |transact|
           transact.call('ZRANGE', lock_readers_key, '0', '-1')
           transact.call('ZREMRANGEBYSCORE', lock_key_queue, '-inf', '+inf')
           transact.call('EXPIRE', lock_key, '0')
           transact.call('ZREMRANGEBYSCORE', read_lock_key_queue, '-inf', '+inf')
           transact.call('EXPIRE', lock_readers_key, '0')
+          transact.call('ZREM', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, lock_name)
         end
 
         # Step 2: (RW) drop the data of the released read locks (only when read locks existed)

@@ -4,7 +4,13 @@ module RedisQueuedLocks
   module Acquirer
     module Keys
       type keyList = Set[String]
+
+      KEY_STATE_REPLIES: Integer
+
       def self.keys: (RC::client redis_client, scan_size: Integer) -> keyList
+
+      private def self.collect_lock_keys: (RC::client redis_client, Array[String] lock_names, keyList keyset) -> void
+      private def self.each_lock_name_batch: (RC::client redis_client, Integer scan_size) { (Array[String] lock_names) -> void } -> void
     end
   end
 end

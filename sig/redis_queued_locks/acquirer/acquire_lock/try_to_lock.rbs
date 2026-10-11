@@ -65,7 +65,6 @@ module RedisQueuedLocks
           String acquirer_id,
           Float acquirer_dead_score,
           String lock_name,
-          Integer? ttl,
           Integer queue_ttl,
           Integer lock_index_grace_period
         ) -> void
@@ -82,7 +81,6 @@ module RedisQueuedLocks
           Integer|Float acquirer_position,
           Float acquirer_dead_score,
           String lock_name,
-          Integer? ttl,
           Integer queue_ttl,
           Integer lock_index_grace_period
         ) -> void
@@ -143,7 +141,6 @@ module RedisQueuedLocks
           String host_id,
           Integer|Float acquirer_position,
           Float acquirer_dead_score,
-          Integer? ttl,
           Integer queue_ttl,
           Integer lock_index_grace_period,
           bool fail_fast,

@@ -23,10 +23,11 @@
 #     a continuous flow of readers can starve writers);
 #
 # Lock index (`RedisQueuedLocks::Resource::LOCK_INDEX_KEY`):
-#   - each lock request queueing indexes the lock name (`ZADD GT`) with the upper bound of
-#     the lifetime of the keys created by the attempt: client time + max(queue ttl, lock ttl) +
-#     grace period (the request queue and the lock obtained by the same attempt: the lock is
-#     obtained only after the queueing of the same attempt, the grace period covers the attempt);
+#   - every command that creates a lock key is followed by the lock index update in the same
+#     pipeline/transaction: the lock name score is the upper bound of the key lifetime (`ZADD GT
+#     <client time + ttl + grace period>`): the request queue in the queueing pipeline, the lock
+#     (write lock / readers registry) in the obtaining transaction (atomically: the lock index
+#     entry can be dropped by `#unlock`/`#clear_locks` between the queueing and the obtaining);
 #   - lock extensions (reentrant `:extendable_work_through`) increase the score by the extension
 #     in the same transaction (`ZADD XX INCR`);
 #   - lock request queues live as long as the latest lock request (`PEXPIRE NX` + `GT` with
@@ -228,7 +229,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         inter_result = precheck_lock(
           rconn, logger, log_sampled, log_lock_try, lock_key, read_write_mode, lock_readers_key,
           request_queue, opposite_request_queue, lock_name, acquirer_id, host_id,
-          acquirer_position, acquirer_dead_score, ttl, queue_ttl, lock_index_grace_period,
+          acquirer_position, acquirer_dead_score, queue_ttl, lock_index_grace_period,
           fail_fast, access_strategy
         )
         next if inter_result
@@ -256,7 +257,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           pipeline_lock_state(
             pipeline, lock_key, lock_readers_key, acquirer_id, read_mode, eager_queueing,
             request_queue, opposite_request_queue, acquirer_position, acquirer_dead_score,
-            lock_name, ttl, queue_ttl, lock_index_grace_period
+            lock_name, queue_ttl, lock_index_grace_period
           )
         end
         # @type var current_lock_obtainer: String?
@@ -498,7 +499,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
                 queue_lock_request(
                   pipeline, request_queue, opposite_request_queue,
                   acquirer_position, acquirer_id, acquirer_dead_score,
-                  lock_name, ttl, queue_ttl, lock_index_grace_period
+                  lock_name, queue_ttl, lock_index_grace_period
                 )
               end
             end
@@ -576,8 +577,16 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
             )
             transact.call('PEXPIRE', read_lock_key, ttl)
 
-            # NOTE: (lock index) the read lock is already indexed by the queueing of this attempt
-            #   (Step 3.3: the score covers the lock ttl)
+            # Step 6.6 (lock index): the lock name lives in the lock index as long as the read lock
+            #   (the upper bound of the read lock lifetime: client time + ttl + grace period);
+            #   - in the same transaction: an index entry dropped between the queueing and this
+            #     transaction (`#unlock`, `#clear_locks`) is restored with the read lock;
+            #   - GT => the score is never decreased (other keys of the lock can live longer);
+            transact.call(
+              'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, 'GT',
+              RedisQueuedLocks::Resource.lock_index_time + ttl.to_i + lock_index_grace_period,
+              lock_name
+            )
 
             inter_result = :lock_obtaining
 
@@ -605,8 +614,16 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
             # Step 6.3: set the lock expiration time in order to prevent "infinite locks"
             transact.call('PEXPIRE', lock_key, ttl) # NOTE: in milliseconds
 
-            # NOTE: (lock index) the lock is already indexed by the queueing of this attempt
-            #   (Step 3.3: the score covers the lock ttl)
+            # Step 6.4 (lock index): the lock name lives in the lock index as long as the lock
+            #   (the upper bound of the lock lifetime: client time + ttl + grace period);
+            #   - in the same transaction: an index entry dropped between the queueing and this
+            #     transaction (`#unlock`, `#clear_locks`) is restored with the lock;
+            #   - GT => the score is never decreased (other keys of the lock can live longer);
+            transact.call(
+              'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, 'GT',
+              RedisQueuedLocks::Resource.lock_index_time + ttl.to_i + lock_index_grace_period,
+              lock_name
+            )
 
             inter_result = :lock_obtaining
 
@@ -804,7 +821,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param acquirer_id [String]
   # @param acquirer_dead_score [Float] Requests queued before this score are expired.
   # @param lock_name [String] The lock name (the member of the lock index).
-  # @param ttl [Integer,NilClass] The lock ttl (in milliseconds).
   # @param queue_ttl [Integer] Lifetime of the lock request (in seconds).
   # @param lock_index_grace_period [Integer] In milliseconds.
   # @return [void]
@@ -819,7 +835,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     acquirer_id,
     acquirer_dead_score,
     lock_name,
-    ttl,
     queue_ttl,
     lock_index_grace_period
   )
@@ -853,18 +868,17 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     pipeline.call('PEXPIRE', request_queue, queue_pttl, 'NX')
     pipeline.call('PEXPIRE', request_queue, queue_pttl, 'GT')
 
-    # Step 3.3: (lock index) the lock name lives in the lock index as long as the keys created
-    #   by this attempt: the request queue and the lock (the lock is obtained only after the
-    #   queueing of the same attempt: Step 6);
-    #   - the score is the upper bound of their lifetime: client time + max(queue ttl, lock ttl) +
-    #     grace period (the grace period covers the attempt duration and the client clock skew);
+    # Step 3.3: (lock index) the lock name lives in the lock index as long as the request queue
+    #   - the score is the upper bound of the queue lifetime: client time + queue ttl + grace;
+    #     (the lock obtained by the attempt is indexed by its own transaction: Step 6.4/6.6);
     #   - GT => the score is never decreased (other keys of the lock can live longer);
-    #   - after the queue command: an index pruning between the queue command and the index
-    #     command can not leave the queue without the index entry;
+    #   - after the queue command: an index entry dropping between the queue command and
+    #     the index command (pruning, `#unlock`, `#clear_locks`) can not leave the queue without
+    #     the index entry;
     lock_index_time = RedisQueuedLocks::Resource.lock_index_time
     pipeline.call(
       'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, 'GT',
-      lock_index_time + [queue_pttl, ttl.to_i].max + lock_index_grace_period, lock_name
+      lock_index_time + queue_pttl + lock_index_grace_period, lock_name
     )
 
     # Step 3.4: (lock index) drop the expired lock names from the lock index: all the keys of
@@ -904,7 +918,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param acquirer_position [Numeric]
   # @param acquirer_dead_score [Float]
   # @param lock_name [String] The lock name (the member of the lock index).
-  # @param ttl [Integer,NilClass] The lock ttl (in milliseconds).
   # @param queue_ttl [Integer] In seconds.
   # @param lock_index_grace_period [Integer] In milliseconds.
   # @return [void]
@@ -923,7 +936,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     acquirer_position,
     acquirer_dead_score,
     lock_name,
-    ttl,
     queue_ttl,
     lock_index_grace_period
   )
@@ -935,7 +947,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       queue_lock_request(
         pipeline, request_queue, opposite_request_queue,
         acquirer_position, acquirer_id, acquirer_dead_score,
-        lock_name, ttl, queue_ttl, lock_index_grace_period
+        lock_name, queue_ttl, lock_index_grace_period
       )
     end
     # NOTE: the write-only tail (keep it the last: see "pipeline layout" above)
@@ -1124,7 +1136,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param host_id [String]
   # @param acquirer_position [Numeric]
   # @param acquirer_dead_score [Float]
-  # @param ttl [Integer,NilClass] The lock ttl (in milliseconds).
   # @param queue_ttl [Integer]
   # @param lock_index_grace_period [Integer] In milliseconds.
   # @param fail_fast [Boolean]
@@ -1149,7 +1160,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     host_id,
     acquirer_position,
     acquirer_dead_score,
-    ttl,
     queue_ttl,
     lock_index_grace_period,
     fail_fast,
@@ -1162,7 +1172,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       pipeline_lock_state(
         pipeline, lock_key, lock_readers_key, acquirer_id, read_mode, !fail_fast,
         request_queue, opposite_request_queue, acquirer_position, acquirer_dead_score,
-        lock_name, ttl, queue_ttl, lock_index_grace_period
+        lock_name, queue_ttl, lock_index_grace_period
       )
     end
     # @type var current_lock_obtainer: String?

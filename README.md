@@ -254,25 +254,27 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   config['default_conflict_strategy'] = :wait_for_lock
 
   # (default: 100)
-  # - how many items will be released at a time in #clear_locks and in #clear_dead_requests (uses SCAN);
+  # - how many locks (lock names of the lock index) will be processed at a time in #clear_locks and in #clear_dead_requests
+  #   (the ZSCAN count of the lock index pass);
   # - affects the performance of your Redis and Ruby Application (configure thoughtfully);
   config['lock_release_batch_size'] = 100
 
   # (default: 300)
-  # - how many items will be released at a time in #clear_locks_of and in #clear_current_locks methods (uses SCAN for batch extraction and DEL for batch deletion);
+  # - how many locks (lock names of the lock index) will be processed at a time in #clear_locks_of and in #clear_current_locks
+  #   methods (the ZSCAN count of the lock index pass, DEL for batch deletion);
   # - affects the ruby's memory (cuz this batch will be stored in Set object in first, and then will be splatted to the DEL redis method invocation) (configure thoughtfully);
   # - affects the performance of your Redis (configure thoughtfully);
   config['clear_locks_of__lock_scan_size'] = 300
 
   # (default: 300)
   # - how many lock queues will be processed in one round trip in #clear_locks_of and in #clear_current_locks methods
-  #   (lock queues are found by the same SCAN pass as locks);
+  #   (lock queues are derived from the lock names of the same lock index pass);
   # - affects the performance of your Redis (configure thoughtfully);
   config['clear_locks_of__queue_scan_size'] = 300
 
   # (default: 500)
-  # - how many items should be extracted from redis during the #locks, #queues, #keys
-  #   #locks_info, and #queues_info operations (uses SCAN);
+  # - how many locks (lock names of the lock index) should be processed at a time during the #locks, #queues, #keys
+  #   #locks_info, and #queues_info operations (the ZSCAN count of the lock index pass);
   # - affects the performance of your Redis and Ruby Application (configure thoughtfully);
   config['key_extraction_batch_size'] = 500
 
@@ -1255,6 +1257,7 @@ rql.queued?("your_lock_name") # => true/false
 
 - release the concrete lock with lock request queue;
 - queue will be relased first;
+- the lock name is dropped from the [Lock Index](#lock-index) in the same transaction;
 - has an alias: `#release_lock`;
 - accepts:
   - `lock_name` - (required) `[String]` - the lock name that should be released.
@@ -1387,11 +1390,14 @@ rql.unlock_read('report', acquirer_id: reader['acq_id'])
 <sup>\[[back to top](#usage)\]</sup>
 
 - release all obtained locks and related lock request queues;
-- all lock keys (locks, read locks and lock queues) are found in one `SCAN` pass and deleted during it with one `DEL` per batch;
+- all locks are found in one `ZSCAN` pass over the [Lock Index](#lock-index) (the keyspace is never scanned): all the keys of
+  each batch of locks (locks, read locks and lock queues) are deleted with one `DEL` in one transaction with the removal of their
+  lock names from the lock index;
+- keys without the lock index entry (keys of older RQL versions) are not found (see [#reindex_locks](#reindex_locks));
 - has an alias: `#release_locks`;
 - accepts:
   - `:batch_size` - (optional) `[Integer]`
-    - the size of batch of locks and lock queus that should be cleared under the one `DEL` redis command at once (and the `SCAN` count);
+    - the number of locks (lock names) whose keys should be cleared under the one `DEL` redis command at once (and the `ZSCAN` count);
     - pre-configured in `config['lock_release_batch_size']`;
   - `:logger` - (optional) `[::Logger,#debug]`
     - custom logger object;
@@ -1468,10 +1474,12 @@ rql.clear_locks
   - `:acquirer_id` - (required) `[String]`
     - acquirer indentifier whose locks we want to release and which we want to remove from all locks queues;
   - `:lock_scan_size` - (optional) `[Integer]`
-    - how many items will be released at a time (uses one `SCAN` pass for batch extraction and `DEL` for batch deletion);
+    - how many locks will be processed at a time (one `ZSCAN` pass over the [Lock Index](#lock-index) for batch extraction
+      and `DEL` for batch deletion);
     - pre-configuerd value in `config['clear_locks_of__lock_scan_size']`;
   - `:queue_scan_size` - (optional) `[Integer]`
-    - how many lock queues will be processed in one round trip (lock queues are found by the same `SCAN` pass as locks);
+    - how many lock queues will be processed in one round trip (lock queues are derived from the lock names of the same
+      lock index pass);
     - pre-configuerd value in `config['clear_locks_of__queue_scan_size']`;
   - `:logger` - (optional) `[::Logger,#debug]`
     - custom logger object;
@@ -1573,10 +1581,12 @@ rql.clear_current_locks
   ```
 - produces `"redis_queued_locks.release_locks_of"` instrumentation event;
   - `:lock_scan_size` - (optional) `[Integer]`
-    - how many items will be released at a time (uses one `SCAN` pass for batch extraction and `DEL` for batch deletion);
+    - how many locks will be processed at a time (one `ZSCAN` pass over the [Lock Index](#lock-index) for batch extraction
+      and `DEL` for batch deletion);
     - pre-configuerd value in `config['clear_locks_of__lock_scan_size']`;
   - `:queue_scan_size` - (optional) `[Integer]`
-    - how many lock queues will be processed in one round trip (lock queues are found by the same `SCAN` pass as locks);
+    - how many lock queues will be processed in one round trip (lock queues are derived from the lock names of the same
+      lock index pass);
     - pre-configuerd value in `config['clear_locks_of__queue_scan_size']`;
   - `:logger` - (optional) `[::Logger,#debug]`
     - custom logger object;
@@ -1740,9 +1750,10 @@ rql.extend_lock_ttl("my_lock", 5_000) # NOTE: add 5_000 milliseconds
 <sup>\[[back to top](#usage)\]</sup>
 
 - get list of obtained locks;
-- uses redis `SCAN` under the hood;
+- uses the [Lock Index](#lock-index) under the hood (one `ZSCAN` pass, the keyspace is never scanned): keys without the lock index
+  entry (keys of older RQL versions) are not found (see [#reindex_locks](#reindex_locks));
 - accepts:
-  - `:scan_size` - `Integer` - (`config['key_extraction_batch_size']` by default);
+  - `:scan_size` - `Integer` - (`config['key_extraction_batch_size']` by default) - the `ZSCAN` count and the batch size of locks;
   - `:with_info` - `Boolean` - `false` by default (for details see [#locks_info](#locks_info---get-list-of-locks-with-their-info));
 - returns:
   - `Set<String>` (for `with_info: false`);
@@ -1773,9 +1784,10 @@ rql.locks # or rql.locks(scan_size: 123)
 <sup>\[[back to top](#usage)\]</sup>
 
 - get list of lock request queues;
-- uses redis `SCAN` under the hood;
+- uses the [Lock Index](#lock-index) under the hood (one `ZSCAN` pass, the keyspace is never scanned): keys without the lock index
+  entry (keys of older RQL versions) are not found (see [#reindex_locks](#reindex_locks));
 - accepts
-  - `:scan_size` - `Integer` - (`config['key_extraction_batch_size']` by default);
+  - `:scan_size` - `Integer` - (`config['key_extraction_batch_size']` by default) - the `ZSCAN` count and the batch size of locks;
   - `:with_info` - `Boolean` - `false` by default (for details see [#queues_info](#queues_info---get-list-of-queues-with-their-info));
 - returns:
   - `Set<String>` (for `with_info: false`);
@@ -1805,10 +1817,12 @@ rql.queues # or rql.queues(scan_size: 123)
 
 <sup>\[[back to top](#usage)\]</sup>
 
-- get list of taken locks and queues;
-- uses redis `SCAN` under the hood;
+- get list of taken locks and queues (all the existing keys of the locks: locks, lock queues, read locks registries,
+  read lock queues, read lock data);
+- uses the [Lock Index](#lock-index) under the hood (one `ZSCAN` pass, the keyspace is never scanned): keys without the lock index
+  entry (keys of older RQL versions) and other `rql:lock*` keys are not listed (see [#reindex_locks](#reindex_locks));
 - accepts:
-  `:scan_size` - `Integer` - (`config['key_extraction_batch_size']` by default);
+  `:scan_size` - `Integer` - (`config['key_extraction_batch_size']` by default) - the `ZSCAN` count and the batch size of locks;
 - returns: `Set<String>`
 
 ```ruby
@@ -1840,7 +1854,8 @@ rql.keys # or rql.keys(scan_size: 123)
 <sup>\[[back to top](#usage)\]</sup>
 
 - get list of locks with their info;
-- uses redis `SCAN` under the hod (one pass), lock info is extracted in batches of `scan_size` locks (two round trips per batch);
+- uses the [Lock Index](#lock-index) under the hood (one `ZSCAN` pass, the keyspace is never scanned), lock info is extracted in
+  batches of `scan_size` locks (two round trips per batch);
 - accepts `scan_size:`/`Integer` option (`config['key_extraction_batch_size']` by default);
 - returns `Set<Hash<Symbol,Any>>` (see [#lock_info](#lock_info) and examples below for details).
   - contained data: `{ lock: String, status: Symbol, info: Hash<String,Any> }`;
@@ -1878,7 +1893,8 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
 <sup>\[[back to top](#usage)\]</sup>
 
 - get list of queues with their info;
-- uses redis `SCAN` under the hod (one pass), queue info is extracted in batches of `scan_size` queues (one round trip per batch);
+- uses the [Lock Index](#lock-index) under the hood (one `ZSCAN` pass, the keyspace is never scanned), queue info is extracted in
+  batches of `scan_size` queues (one round trip per batch);
 - accepts `scan_size:`/`Integer` option (`config['key_extraction_batch_size']` by default);
 - returns `Set<Hash<Symbol,Any>>` (see [#queue_info](#queue_info) and examples below for details).
   - contained data: `{ queue: String, requests: Array<Hash<String,Any>> }`
@@ -1919,6 +1935,7 @@ see [#reindex_locks](#reindex_locks)).
 
 In order to help with these dead requests you may periodically call `#clear_dead_requests`
 with corresponding `:dead_ttl` option, that is pre-configured by default via `config['dead_request_ttl']`.
+Lock queues are found via the [Lock Index](#lock-index) (one `ZSCAN` pass, the keyspace is never scanned).
 
 `:dead_ttl` option is required because of it is no any **fast** and **resource-free** way to understand which request
 is dead now and is it really dead cuz each request queue can host their requests with
@@ -1929,7 +1946,8 @@ Accepts:
   - lock request ttl after which a lock request is considered dead;
   - has a preconfigured value in `config['dead_request_ttl']` (1 day by default);
 - `:scan_size` - (optional) `[Integer]`
-  - the batch of scanned keys for Redis'es SCAN command;
+  - the `ZSCAN` count of the [Lock Index](#lock-index) pass and the number of locks (both lock queues of each lock)
+    processed in one round trip;
   - has a preconfigured valie in `config['lock_release_batch_size']`;
 - `:logger` - (optional) `[::Logger,#debug]`
   - custom logger object;
@@ -1991,8 +2009,9 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 <sup>\[[back to top](#usage)\]</sup>
 
 - adds the lock keys without the lock index entry (keys of older RQL versions) to the lock index (see [Lock Index](#lock-index));
-- invoke it once after **all** your processes are upgraded to the RQL version with the lock index: the swarm
-  (`#flush_zombies`, the zombie flusher, `#zombie_locks`, `#zombie_acquirers`, `#zombies_info`) finds locks via the lock index only;
+- invoke it once after **all** your processes are upgraded to the RQL version with the lock index: all lock-iterating operations
+  (the swarm, `#locks`, `#queues`, `#keys`, `#clear_locks`, `#clear_locks_of`, `#clear_dead_requests`, ...) find locks via
+  the lock index only;
 - one `SCAN` pass over the RQL keys (`rql:lock*`) with pipelined batches (two round trips per batch);
 - write locks and read locks registries are indexed with their remaining TTL (+ the grace period), lock queues without TTL
   (older RQL versions) get the `queue_ttl` TTL first; read lock data is not indexed (it is found via the read locks registry);
@@ -2350,27 +2369,29 @@ rql.possible_host_ids
 
 - the lock index is a sorted set `rql:index:locks`: the member is the lock name, the score is the upper bound of the lifetime
   of all lock keys (write lock, read locks registry, lock request queues): `client time (epoch, ms) + key ttl + grace period`;
-- the swarm (`#flush_zombies`, the zombie flusher, `#zombie_locks`, `#zombie_acquirers`, `#zombies_info`) iterates over the lock
-  index (`ZSCAN`) and derives lock keys from the lock names instead of the full keyspace `SCAN`: its cost depends on the number
-  of your locks only (not on the size of your Redis database);
+- all lock-iterating operations iterate over the lock index (`ZSCAN`) and derive lock keys from the lock names instead of
+  the full keyspace `SCAN`: their cost depends on the number of your locks only (not on the size of your Redis database):
+  - the swarm: `#flush_zombies`, the zombie flusher, `#zombie_locks`, `#zombie_acquirers`, `#zombies_info`;
+  - `#locks`/`#locks_info`, `#queues`/`#queues_info`, `#keys`, `#clear_locks`, `#clear_locks_of`/`#clear_current_locks`,
+    `#clear_dead_requests`;
+  - only [#reindex_locks](#reindex_locks) scans the keyspace (it adds the keys of older RQL versions to the lock index);
 - the index is maintained by the lock acquirement itself (no background jobs, no additional Redis round trips):
-  - each lock request adds the lock name to the index (`ZADD GT` with `max(queue ttl, lock ttl)`: it covers the lock request
-    queue and the lock obtained by the same attempt), sets the lock request queue TTL (the queue lives as long as its latest
-    lock request) and drops the expired lock names from the index (`ZREMRANGEBYSCORE`): 4 commands in the existing
-    queueing pipeline;
+  - each lock request adds the lock name to the index (`ZADD GT` with the queue ttl), sets the lock request queue TTL
+    (the queue lives as long as its latest lock request) and drops the expired lock names from the index (`ZREMRANGEBYSCORE`):
+    4 commands in the existing queueing pipeline;
+  - each lock obtaining (write and read) adds the lock name with the lock ttl in the same transaction (1 command);
   - each lock extension (`#extend_lock_ttl`, `:extendable_work_through` reentrant locks) increases the score by the extension;
-  - the lock name is dropped from the index when all its keys are expired and the grace period is over;
+  - the lock name is dropped from the index when all its keys are expired and the grace period is over, by `#unlock` (in the
+    release transaction) and by `#clear_locks` (in the transaction that deletes the keys of the lock);
 - `config['lock_index_grace_period']` (`60_000` milliseconds by default) and `lock_index_grace_period:` option of
   `#lock`/`#lock!`/`#lock_series`/`#lock_series!`: the lock name stays in the index for this period after the expiration of
   all its keys; it should be greater than the maximal client clock skew between your hosts plus the duration of one lock
   acquirement attempt (network latency) (otherwise a lock can be dropped from the index before its expiration and the swarm
   will not see it);
-- (migration) locks of older RQL versions have no lock index entries: invoke [#reindex_locks](#reindex_locks) once after
-  **all** your processes are upgraded;
+- (migration) locks of older RQL versions have no lock index entries (they are not found by lock-iterating operations till then):
+  invoke [#reindex_locks](#reindex_locks) once after **all** your processes are upgraded;
 - (limitation) the lock index is one Redis key written on each lock request (a "hot" key): fine for a standalone Redis
   (and Sentinel); Redis Cluster is not supported (RQL transactions use several keys of each lock without hash tags);
-- **Roadmap**: other key-iterating operations (`#locks`, `#queues`, `#keys`, `#clear_locks`, `#clear_locks_of`,
-  `#clear_dead_requests`, ...) will use the lock index too (they use `SCAN` at this moment);
 
 ---
 
@@ -2890,10 +2911,6 @@ Detalized event semantics and payload structure:
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - **Major**:
-  - lock index for all key-iterating operations (the swarm already uses it, see [Lock Index](#lock-index)):
-    - `#locks`/`#locks_info`, `#queues`/`#queues_info`, `#keys`, `#clear_locks`, `#clear_locks_of`/`#clear_current_locks`,
-      `#clear_dead_requests` should iterate over the lock index (`rql:index:locks`) instead of the full keyspace `SCAN`;
-    - `#unlock` should drop the lock name from the lock index (in the release transaction);
   - Swarm:
     - circuit-breaker for long-living failures of your infrastructure inside the swarm elements and supervisor:
       the supervisor will stop (for some period of time or while the some factor will return `true`)

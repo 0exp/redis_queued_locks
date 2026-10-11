@@ -20,8 +20,8 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     # @param redis [RedisClient]
     #   Redis connection client.
     # @param lock_scan_size [Integer]
-    #   The number of lock keys that should be released in a time (and the SCAN count of
-    #   the single SCAN pass over the lock keys and lock queues).
+    #   The number of locks (lock names) that should be processed in a time (and the ZSCAN count
+    #   of the single ZSCAN pass over the lock index).
     #   Affects the RubyVM memmory (cuz each found lock will be temporary stored in memory for
     #   subsequent removal from redis in one query at a time).
     # @param queue_scan_size [Integer]
@@ -109,7 +109,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
       instr_sampling_percent,
       instr_sampler,
       instr_sample_this
-    ) # TODO: move from SCAN to indexes :thinking:
+    )
       rel_start_time = clock_gettime
 
       # steep:ignore:start
@@ -160,16 +160,18 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
 
     private
 
-    # One SCAN pass over the RQL keys (`KEY_PATTERN`): the found keys are processed in batches
-    # with one round trip per batch (batches are collected across SCAN pages):
+    # One ZSCAN pass over the lock index (`LOCK_INDEX_KEY`: lock names, the keyspace is never
+    # scanned): the keys of each batch of `lock_scan_size` lock names are derived from the lock
+    # names and processed with one round trip per key family and batch:
     #   - write locks of the passed acquirer (`lock_scan_size` locks per batch);
     #   - (RW) read locks of the passed acquirer (`lock_scan_size` readers registries per batch);
     #   - requests of the passed acquirer in the lock queues (`queue_scan_size` queues per batch);
+    #   - the lock names stay in the lock index (other keys of the locks can exist);
     #
     # @param refused_host_id [String]
     # @param refused_acquirer_id [String]
     # @param redis [RedisClient]
-    # @param lock_scan_size [Integer] SCAN count and the batch size of locks.
+    # @param lock_scan_size [Integer] ZSCAN count and the batch size of locks (lock names).
     # @param queue_scan_size [Integer] The batch size of lock queues.
     # @return [Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
     #   - Example: { ok: true, result: { rel_key_cnt: 12345, tch_queue_cnt: 321 } }
@@ -185,7 +187,6 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
       lock_scan_size,
       queue_scan_size
     )
-      # TODO: some indexing approach isntead of <scan>
       rel_key_cnt = 0
       tch_queue_cnt = 0
       # NOTE: (RW) read locks store acquirer ids only (the host is a part of the acquirer id),
@@ -202,50 +203,32 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
         # @type var lock_queues: Array[String]
         lock_queues = []
 
-        rconn.scan(
-          'MATCH',
-          RedisQueuedLocks::Resource::KEY_PATTERN,
-          count: lock_scan_size
-        ) do |key|
-          case RedisQueuedLocks::Resource.lock_key_family(key)
-          when :lock
-            # Step A: drop locks of the passed host/acquirer
-            lock_keys << key
-            next if lock_keys.size < lock_scan_size
-
-            rel_key_cnt += release_refused_locks(
-              rconn, lock_keys, refused_host_id, refused_acquirer_id
-            )
-            lock_keys.clear
-          when :lock_readers
-            # Step A (RW): drop read locks of the passed host/acquirer
-            next unless with_read_locks
-
-            lock_readers_keys << key
-            next if lock_readers_keys.size < lock_scan_size
-
-            rel_key_cnt += release_refused_read_locks(rconn, lock_readers_keys, refused_acquirer_id)
-            lock_readers_keys.clear
-          when :lock_queue, :read_lock_queue
-            # Step B: drop passed host/acquirer from lock queues (write and read)
-            lock_queues << key
-            next if lock_queues.size < queue_scan_size
-
-            tch_queue_cnt += dequeue_refused_acquirer(rconn, lock_queues, refused_acquirer_id)
-            lock_queues.clear
+        each_lock_name_batch(rconn, lock_scan_size) do |lock_names|
+          lock_names.each do |lock_name|
+            lock_keys << RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
+            if with_read_locks
+              lock_readers_keys << RedisQueuedLocks::Resource.prepare_lock_readers(lock_name)
+            end
+            lock_queues << RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
+            lock_queues << RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
           end
-        end
 
-        unless lock_keys.empty?
+          # Step A: drop locks of the passed host/acquirer
           rel_key_cnt += release_refused_locks(
             rconn, lock_keys, refused_host_id, refused_acquirer_id
           )
-        end
-        unless lock_readers_keys.empty?
-          rel_key_cnt += release_refused_read_locks(rconn, lock_readers_keys, refused_acquirer_id)
-        end
-        unless lock_queues.empty?
-          tch_queue_cnt += dequeue_refused_acquirer(rconn, lock_queues, refused_acquirer_id)
+          # Step A (RW): drop read locks of the passed host/acquirer
+          unless lock_readers_keys.empty?
+            rel_key_cnt += release_refused_read_locks(rconn, lock_readers_keys, refused_acquirer_id)
+          end
+          # Step B: drop passed host/acquirer from lock queues (write and read)
+          lock_queues.each_slice(queue_scan_size) do |lock_queues_batch|
+            tch_queue_cnt += dequeue_refused_acquirer(rconn, lock_queues_batch, refused_acquirer_id)
+          end
+
+          lock_keys.clear
+          lock_readers_keys.clear
+          lock_queues.clear
         end
       end
 
@@ -333,6 +316,41 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
         lock_queues.each { |lock_queue| pipeline.call('ZREM', lock_queue, refused_acquirer_id) }
       end
       replies.count { |zrem_cmd_res| zrem_cmd_res != 0 }
+    end
+
+    # Iterates over the lock names of the lock index (one ZSCAN pass) in batches of `scan_size`
+    # lock names (batches are collected across ZSCAN pages). Expired lock names (not dropped from
+    # the index yet) are skipped: all their keys are expired.
+    #
+    # NOTE: each operation module iterates over the lock index by itself (duplicated on purpose:
+    #   operation modules are independent of each other, see `Locks.each_lock_name_batch`);
+    #
+    # @param redis_client [RedisClient]
+    # @param scan_size [Integer] ZSCAN count and the number of lock names in one batch.
+    # @yield [lock_names]
+    # @yieldparam lock_names [Array<String>] The batch of lock names (reused between batches).
+    # @return [void]
+    #
+    # @api private
+    # @since 1.20.0
+    def each_lock_name_batch(redis_client, scan_size)
+      lock_index_time = RedisQueuedLocks::Resource.lock_index_time
+      # @type var lock_names: Array[String]
+      lock_names = []
+
+      redis_client.zscan(
+        RedisQueuedLocks::Resource::LOCK_INDEX_KEY, count: scan_size
+      ) do |lock_name, lock_index_score|
+        next if lock_index_score.to_f < lock_index_time
+
+        lock_names << lock_name
+        next if lock_names.size < scan_size
+
+        yield(lock_names)
+        lock_names.clear
+      end
+
+      yield(lock_names) unless lock_names.empty?
     end
   end
   # rubocop:enable Metrics/ClassLength

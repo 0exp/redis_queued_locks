@@ -47,16 +47,6 @@ module RedisQueuedLocks::Resource
   # @since 1.18.0
   READ_LOCK_PATTERN = 'rql:lock_reader:*'
 
-  # Write and read lock queues in one SCAN pass.
-  # NOTE:
-  #   - the pattern matches other keys too when the lock name contains `queue:` (for example,
-  #     `rql:lock_readers:my_queue:a`), so callers check the key family (`lock_key_family`);
-  # @return [String]
-  #
-  # @api private
-  # @since 1.20.0
-  ALL_LOCK_QUEUES_PATTERN = 'rql:lock_*queue:*'
-
   # @return [String]
   #
   # @api private
@@ -70,11 +60,11 @@ module RedisQueuedLocks::Resource
   # NOTE:
   #   - the key is not matched by `KEY_PATTERN` (`rql:index:` vs `rql:lock`) and can not collide
   #     with lock keys (`rql:lock:<name>`, `rql:lock_<kind>:<name>`);
-  #   - the index is a superset of the existing locks: a lock name is added by each lock request
-  #     queueing (the score covers the request queue and the lock obtained by the same attempt),
-  #     its score is increased by each lock extension (in the same transaction) and it is removed
-  #     only when its score is reached (`ZREMRANGEBYSCORE`): all the keys of the lock are expired
-  #     by that time;
+  #   - the index is a superset of the existing locks: a lock name is added (or its score is
+  #     increased) by every command that creates or extends a lock key (in the same pipeline or
+  #     transaction, after the key command) and it is removed only when its score is reached
+  #     (`ZREMRANGEBYSCORE`: all the keys of the lock are expired by that time) or in the same
+  #     transaction with all the keys of the lock (`#unlock`, `#clear_locks`);
   # @return [String]
   #
   # @api private
@@ -209,8 +199,8 @@ module RedisQueuedLocks::Resource
       end
     end
 
-    # Family of the given RQL key: one SCAN pass over `KEY_PATTERN` (or `ALL_LOCK_QUEUES_PATTERN`)
-    # returns keys of several families, so callers keep the keys of the families they need.
+    # Family of the given RQL key: a SCAN pass over `KEY_PATTERN` (`reindex_locks`) returns keys of
+    # several families, so callers keep the keys of the families they need.
     #
     # @param key [String]
     # @return [Symbol,NilClass]

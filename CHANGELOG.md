@@ -1,48 +1,52 @@
 ## [Unreleased]
 ### Added
 - **Lock index** (`rql:index:locks`, `ZSET`: lock name => the upper bound of the lifetime of all lock keys in client time, ms):
-  the swarm finds locks without the full keyspace `SCAN` (see the "Lock Index" README section):
+  all lock-iterating operations find locks without the full keyspace `SCAN` (see the "Lock Index" README section):
   - maintained by the lock acquirement itself without new Redis round trips: each lock request adds the lock name (`ZADD GT`
-    with `max(queue ttl, lock ttl)`: the request queue and the lock obtained by the same attempt), sets the request queue TTL and
-    drops the expired lock names (`ZREMRANGEBYSCORE`) in the queueing pipeline (4 more commands per attempt), each extension
-    (`#extend_lock_ttl`, `:extendable_work_through` reentrant locks) increases the score by the extension (`ZADD XX INCR`);
+    with the queue ttl), sets the request queue TTL and drops the expired lock names (`ZREMRANGEBYSCORE`) in the queueing pipeline
+    (4 more commands per attempt), each lock obtaining (write and read) adds the lock name with the lock ttl in the same
+    transaction (1 more command), each extension (`#extend_lock_ttl`, `:extendable_work_through` reentrant locks) increases
+    the score by the extension (`ZADD XX INCR`);
+  - `#unlock` and `#clear_locks` drop the lock names from the index in the same transaction with the lock keys;
   - `config['lock_index_grace_period']` (`60_000` ms by default) and `lock_index_grace_period:` option of `#lock`/`#lock!`/
     `#lock_series`/`#lock_series!`: the lock name stays in the index for this period after the expiration of all its keys
     (the client clock skew and network latency tolerance);
 - `#reindex_locks`: adds the lock keys without the lock index entry (keys of older RQL versions) to the lock index (one `SCAN` pass,
   lock queues without TTL get the queue ttl); **invoke it once after all your processes are upgraded**;
 ### Changed
-- Swarm (`#flush_zombies`, the zombie flusher, `#zombie_locks`/`#zombie_acquirers`/`#zombies_info`): locks and lock queues are found
-  via the lock index (one `ZSCAN` pass over the lock names, lock keys are derived from the lock names) instead of the full keyspace
-  `SCAN`: the cost depends on the number of locks only, keys of other applications are never visited; `zombie_lock_scan_size` is
-  the `ZSCAN` count and the batch size of locks, `zombie_queue_scan_size` - the batch size of lock queues (both processed during
-  the same pass); `#flush_zombies` drops the expired lock names from the index; locks of older RQL versions are not found until
-  `#reindex_locks`;
+- Lock-iterating operations find locks and lock queues via the lock index (one `ZSCAN` pass over the lock names, lock keys are
+  derived from the lock names) instead of the full keyspace `SCAN` (previously one `SCAN` pass, before that 2-5 passes: one per
+  key family): the cost depends on the number of locks only, keys of other applications are never visited; per-key commands are
+  sent in pipelined batches; locks of older RQL versions are not found until `#reindex_locks`:
+  - swarm (`#flush_zombies`, the zombie flusher, `#zombie_locks`/`#zombie_acquirers`/`#zombies_info`): `zombie_lock_scan_size` is
+    the `ZSCAN` count and the batch size of locks, `zombie_queue_scan_size` - the batch size of lock queues (both processed during
+    the same pass); zombie requests are dropped with one `ZREM` per lock queue (previously one `ZREM` per zombie acquirer and lock
+    queue); `#flush_zombies` drops the expired lock names from the index; `#zombie_locks`/`#zombie_acquirers`/`#zombies_info` do
+    not read the index when there are no zombie hosts;
+  - `#locks`/`#locks_info`, `#queues`/`#queues_info`, `#keys`: `scan_size` is the `ZSCAN` count and the batch size of locks;
+    `#keys` returns the existing keys of the lock key families of the indexed locks (other `rql:lock*` keys are not listed);
+  - `#clear_locks`: the keys of each batch of locks are deleted with one `DEL` in one transaction with the removal of their lock
+    names from the lock index (previously all keys were expired at the end, lock queues first); `batch_size` is the number of locks;
+  - `#clear_locks_of`/`#clear_current_locks`: `clear_locks_of__lock_scan_size` is the `ZSCAN` count and the batch size of locks,
+    `clear_locks_of__queue_scan_size` - the number of lock queues processed in one round trip;
+  - `#clear_dead_requests`: `scan_size` is the `ZSCAN` count and the number of locks (both lock queues of each lock) processed in one
+    round trip; the expired lock names are dropped from the index;
 - Lock request queues have TTL: the queue lives as long as its latest lock request (`PEXPIRE NX` + `GT` with the queue ttl on each
   lock request), queues of dead acquirers expire by themselves (previously they stayed until `#clear_dead_requests` or the next
   lock request);
 - `#extend_lock_ttl` (write locks): the lock ttl extension (`EVAL`) and the lock index update are sent in one transaction;
-- `#flush_zombies` (and the zombie flusher of the swarm): zombie lock requests are dropped with one `ZREM` per lock queue
-  (previously one `ZREM` per zombie acquirer and lock queue);
 - `#queue_info` / `#queues_info`: lock queues are read without `EXISTS` checks (Redis does not keep empty sorted sets);
 - Lock acquirement attempt: read lock requests do not fetch the longest read lock (it is used by write lock requests only),
   write lock requests do not build the read lock data key, disabled try-lock logs get a shared frozen hash instead of a new one;
 - Lock acquirement attempt: the lock request queueing (`ZADD NX`, expired requests pruning, queue heads) is one pipelined
   round trip instead of three; with `:wait_for_lock`/`:dead_locking` conflict strategies (without `fail_fast`) it is sent
   in the lock state round trip: `#lock` with a block takes 4 Redis round trips instead of 7, a failed attempt - 3 instead of 6;
-- SCAN-based operations (`#clear_locks`, `#clear_locks_of`/`#clear_current_locks`, `#clear_dead_requests`, `#locks`/`#locks_info`,
-  `#queues`/`#queues_info`, `#flush_zombies`, `#zombie_locks`/`#zombie_acquirers`/`#zombies_info`) make one `SCAN` pass instead
-  of 2-5 passes (one per key family) and send per-key commands in pipelined batches instead of one round trip per key:
-  - `#clear_locks` deletes the found keys during the scan with one `DEL` per batch (previously all keys were expired at the end,
-    lock queues first);
-  - `#clear_locks_of`/`#clear_current_locks` (`clear_locks_of__queue_scan_size`) and `#flush_zombies` (`zombie_queue_scan_size`):
-    the queue scan size is the number of lock queues processed in one round trip (queues are found by the same pass as locks);
-  - `#zombie_locks`/`#zombie_acquirers`/`#zombies_info` do not scan the keyspace when there are no zombie hosts;
 - Read lock data (`rql:lock_reader:<lock_name>:<acquirer_id>`) does not store `acq_id`/`hst_id` (both are derived from the acquirer id):
   ~40% less memory per read lock (`MEMORY USAGE` 280 -> 168 bytes without `:meta`); `#lock_info`/`#locks_info` report them as before
   (the first fields of each reader; read lock data of older versions is supported);
 - `#unlock`: one Redis round trip when there are no read locks (the readers registry is read in the release transaction;
-  the read lock data is dropped with one more `DEL` only when read locks existed);
+  the read lock data is dropped with one more `DEL` only when read locks existed); the lock name is dropped from the lock index
+  in the release transaction;
 - `#lock_series` (PoC): write locks of the series are released (compare-and-delete) in one transaction for the whole series
   (three round trips per series instead of three round trips per lock);
 - `#flush_zombies` (and the zombie flusher of the swarm): requests of zombie hosts are dropped from the lock queues by the host

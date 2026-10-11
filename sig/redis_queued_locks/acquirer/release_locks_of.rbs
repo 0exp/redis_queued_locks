@@ -57,6 +57,7 @@ module RedisQueuedLocks
         Array[String] lock_queues,
         String refused_acquirer_id
       ) -> Integer
+      private def self.each_lock_name_batch: (RC::client redis_client, Integer scan_size) { (Array[String] lock_names) -> void } -> void
     end
   end
 end

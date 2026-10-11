@@ -6,7 +6,6 @@ module RedisQueuedLocks
     READ_LOCK_QUEUE_PATTERN: String
     LOCK_READERS_PATTERN: String
     READ_LOCK_PATTERN: String
-    ALL_LOCK_QUEUES_PATTERN: String
     SWARM_KEY: String
     LOCK_INDEX_KEY: String
     REDIS_TIMESHIFT_ERROR: Integer

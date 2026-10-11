@@ -26,40 +26,86 @@ module RedisQueuedLocks::Acquirer::Locks
     # @version 1.20.0
     def locks(redis_client, scan_size:, with_info:)
       redis_client.with do |rconn|
-        lock_keys = scan_locks(rconn, scan_size)
+        lock_keys = index_locks(rconn, scan_size)
         with_info ? extract_locks_info(rconn, lock_keys, scan_size) : lock_keys
       end
     end
 
     private
 
-    # Write locks and read locks in one SCAN pass.
+    # Write locks and read locks of the lock index: one ZSCAN pass over the lock names
+    # (`RedisQueuedLocks::Resource::LOCK_INDEX_KEY`, the keyspace is never scanned) with one round
+    # trip per batch of `scan_size` lock names (`EXISTS` of the write lock and of the readers
+    # registry of each lock name).
     #
     # @param redis_client [RedisClient]
-    # @param scan_size [Integer]
+    # @param scan_size [Integer] ZSCAN count and the number of lock names in one batch.
     # @return [Set<String>]
-    #   - (RW) read locks are represented by their lock keys (`rql:lock:<lock_name>`) too;
+    #   - (RW) read locks are represented by their lock keys (`rql:lock:<lock_name>`) too
+    #     (readers registries can contain expired read locks only);
     #
     # @api private
     # @since 1.0.0
     # @version 1.20.0
-    def scan_locks(redis_client, scan_size)
+    def index_locks(redis_client, scan_size)
       Set.new.tap do |lock_keys|
         # @type var lock_keys: Set[String]
-        redis_client.scan(
-          'MATCH',
-          RedisQueuedLocks::Resource::KEY_PATTERN,
-          count: scan_size
-        ) do |key|
-          case RedisQueuedLocks::Resource.lock_key_family(key)
-          when :lock
-            lock_keys.add(key)
-          when :lock_readers
-            # NOTE: (RW) read locks (readers registries can contain expired read locks only)
-            lock_keys.add(RedisQueuedLocks::Resource.lock_key_from_readers(key))
+        each_lock_name_batch(redis_client, scan_size) do |lock_names|
+          # NOTE: (pipeline layout) one reply per lock name in the batch order: the number of
+          #   the existing keys of the lock (the write lock and the readers registry);
+          # @type var lock_keys_count: Array[Integer]
+          lock_keys_count = redis_client.pipelined do |pipeline|
+            lock_names.each do |lock_name|
+              pipeline.call(
+                'EXISTS',
+                RedisQueuedLocks::Resource.prepare_lock_key(lock_name),
+                RedisQueuedLocks::Resource.prepare_lock_readers(lock_name)
+              )
+            end
+          end
+
+          lock_names.each_with_index do |lock_name, index|
+            next if lock_keys_count[index] == 0
+
+            lock_keys.add(RedisQueuedLocks::Resource.prepare_lock_key(lock_name))
           end
         end
       end
+    end
+
+    # Iterates over the lock names of the lock index (one ZSCAN pass) in batches of `scan_size`
+    # lock names (batches are collected across ZSCAN pages). Expired lock names (not dropped from
+    # the index yet) are skipped: all their keys are expired.
+    #
+    # NOTE: each operation module iterates over the lock index by itself (duplicated on purpose:
+    #   operation modules are independent of each other, see `extract_locks_info`);
+    #
+    # @param redis_client [RedisClient]
+    # @param scan_size [Integer] ZSCAN count and the number of lock names in one batch.
+    # @yield [lock_names]
+    # @yieldparam lock_names [Array<String>] The batch of lock names (reused between batches).
+    # @return [void]
+    #
+    # @api private
+    # @since 1.20.0
+    def each_lock_name_batch(redis_client, scan_size)
+      lock_index_time = RedisQueuedLocks::Resource.lock_index_time
+      # @type var lock_names: Array[String]
+      lock_names = []
+
+      redis_client.zscan(
+        RedisQueuedLocks::Resource::LOCK_INDEX_KEY, count: scan_size
+      ) do |lock_name, lock_index_score|
+        next if lock_index_score.to_f < lock_index_time
+
+        lock_names << lock_name
+        next if lock_names.size < scan_size
+
+        yield(lock_names)
+        lock_names.clear
+      end
+
+      yield(lock_names) unless lock_names.empty?
     end
 
     # NOTE:

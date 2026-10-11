@@ -53,7 +53,7 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 | `extend_lock_ttl` | `acquirer/extend_lock_ttl.rb` (`read_write_mode: :read` extends own read lock, `+ all_read_locks: true` all live read locks) |
 | `locked?` / `queued?` | `acquirer/is_locked.rb` / `acquirer/is_queued.rb` |
 | `lock_info` / `queue_info` | `acquirer/lock_info.rb` / `acquirer/queue_info.rb` |
-| `locks`, `locks_info`, `queues`, `queues_info`, `keys` | `acquirer/locks.rb`, `queues.rb`, `keys.rb` (SCAN-based) |
+| `locks`, `locks_info`, `queues`, `queues_info`, `keys` | `acquirer/locks.rb`, `queues.rb`, `keys.rb` (lock-index-based) |
 | `clear_locks` | `acquirer/release_all_locks.rb` |
 | `clear_locks_of`, `clear_current_locks` | `acquirer/release_locks_of.rb` |
 | `clear_dead_requests` | `acquirer/clear_dead_requests.rb` |
@@ -67,7 +67,7 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 
 | Mixin | Role |
 |---|---|
-| `TryToLock` (`try_to_lock.rb`) | One attempt: `multi(watch:)` (write: lock key + readers registry, read: lock key only), one pipelined read of the lock state (`HGET acq_id`, `TIME`, own reader score, longest reader: write requests only), the lock request queueing in one pipelined round trip (`queue_lock_request`: `ZADD NX` into the queue of the requested mode (timestamp score), prune both queues, both queue heads, then the lock index commands: request queue `PEXPIRE NX`+`GT` (queue ttl), `ZADD GT` of the lock name into the lock index with `max(queue ttl, lock ttl)` (covers the lock obtained later by the same attempt), `ZREMRANGEBYSCORE` of expired lock names), take the lock if allowed (see Read/Write locks; the `:extendable_work_through` extension `MULTI` ends with the lock index `ZADD XX INCR`). Eager queueing (`:wait_for_lock`/`:dead_locking` without `fail_fast`) sends the queueing commands in the lock state round trip: `lock {}` = 4 round trips (`WATCH`, state + queueing, `MULTI/EXEC`, release), a failed attempt = 3. Pre-check (`precheck_lock`, retries and `fail_fast` attempts): the lock state (+ the queueing for retries) without `WATCH` in one round trip; an attempt that can not obtain the lock fails there (same results and log events: `lock_obstacle`/`log_lock_obstacle`), otherwise the attempt continues with `WATCH`/`MULTI` (a failed retry = 1 round trip, a successful one = 4; `fail_fast` on an obtained lock = 1); same-process conflicts are never decided by the pre-check. Handles reentrant conflicts (incl. read/write ones); write TTL extension via inline Lua (`PTTL` + `PEXPIRE`). |
+| `TryToLock` (`try_to_lock.rb`) | One attempt: `multi(watch:)` (write: lock key + readers registry, read: lock key only), one pipelined read of the lock state (`HGET acq_id`, `TIME`, own reader score, longest reader: write requests only), the lock request queueing in one pipelined round trip (`queue_lock_request`: `ZADD NX` into the queue of the requested mode (timestamp score), prune both queues, both queue heads, then the lock index commands: request queue `PEXPIRE NX`+`GT` (queue ttl), `ZADD GT` of the lock name into the lock index (queue ttl), `ZREMRANGEBYSCORE` of expired lock names), take the lock if allowed (see Read/Write locks; the obtaining `MULTI` ends with the lock index `ZADD GT` (lock ttl), the `:extendable_work_through` extension `MULTI` with `ZADD XX INCR`). Eager queueing (`:wait_for_lock`/`:dead_locking` without `fail_fast`) sends the queueing commands in the lock state round trip: `lock {}` = 4 round trips (`WATCH`, state + queueing, `MULTI/EXEC`, release), a failed attempt = 3. Pre-check (`precheck_lock`, retries and `fail_fast` attempts): the lock state (+ the queueing for retries) without `WATCH` in one round trip; an attempt that can not obtain the lock fails there (same results and log events: `lock_obstacle`/`log_lock_obstacle`), otherwise the attempt continues with `WATCH`/`MULTI` (a failed retry = 1 round trip, a successful one = 4; `fail_fast` on an obtained lock = 1); same-process conflicts are never decided by the pre-check. Handles reentrant conflicts (incl. read/write ones); write TTL extension via inline Lua (`PTTL` + `PEXPIRE`). |
 | `WithAcqTimeout` | Global acquisition timeout (`timeout`). |
 | `DelayExecution` | Retry delay + jitter between attempts. |
 | `DequeueFromLockQueue` | Removes the acquirer from the queue of the requested mode on timeout/failure. |
@@ -114,7 +114,7 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
   try success result carries internal `rw_mode` (held mode), not exposed in the public `lock` result.
 - Validation (`AcquireLock`): `read_write_mode` must be `:read`/`:write`; read `ttl` must be a positive
   Integer (`RedisQueuedLocks::ArgumentError`).
-- RW-aware operations: `unlock` (write lock + readers + reader data + both queues, same result shape; one release
+- RW-aware operations: `unlock` (write lock + readers + reader data + both queues + the lock index entry, same result shape; one release
   `MULTI` that also reads the readers registry, then one `DEL` of the released readers' data only when readers existed:
   1 round trip without readers; trade-off: a released reader that obtains a new read lock in between loses its new data),
   `clear_locks`, `clear_locks_of`/`clear_current_locks` (host derived from acq id via
@@ -164,8 +164,8 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 
 - Lock request queues have TTL: `PEXPIRE NX` + `GT` with the queue ttl on each queueing (the queue lives as long as its latest request).
 
-- SCAN-based operations (`clear_locks`, `clear_locks_of`, `clear_dead_requests`, `locks`/`locks_info`, `queues`/`queues_info`, `keys`, `reindex_locks`) make one SCAN pass (`KEY_PATTERN`, or `ALL_LOCK_QUEUES_PATTERN` for queue-only operations), classify keys with `Resource.lock_key_family` and send per-key commands in pipelined batches collected across SCAN pages (batch size = the operation's scan/batch size); `clear_locks` deletes keys with one `DEL` per batch during the scan. Their move to the lock index is in the README Roadmap (Major).
-- Lock-index-based operations (`flush_zombies` and the zombie flusher, `zombie_locks`/`zombie_acquirers`/`zombies_info`) make one `ZSCAN` pass over `rql:index:locks` (lock names) and derive the lock keys (`prepare_lock_key`, `prepare_lock_readers`, both queues) with the same pipelined batches; the full keyspace is never scanned.
+- Lock-index-based operations (all lock-iterating operations: `locks`/`locks_info`, `queues`/`queues_info`, `keys`, `clear_locks`, `clear_locks_of`/`clear_current_locks`, `clear_dead_requests`, `flush_zombies` and the zombie flusher, `zombie_locks`/`zombie_acquirers`/`zombies_info`) make one `ZSCAN` pass over `rql:index:locks` (lock names; names with an expired score are skipped) in batches of `scan_size`/`batch_size` lock names collected across ZSCAN pages, derive the lock keys from the names (`prepare_lock_key`, `prepare_lock_readers`, both queues, reader data via registry members) and send per-key commands in pipelined batches; the full keyspace is never scanned. Each module has its own copy of the iteration (`each_lock_name_batch`, duplicated on purpose: module independence). Info queries check key existence (`EXISTS`); `clear_locks` deletes the keys of a batch with one `DEL` in a `MULTI` with the `ZREM` of the batch names; `clear_locks`/`clear_dead_requests`/`flush_zombies` prune expired names first.
+- SCAN-based operation: `reindex_locks` only (one SCAN pass over `KEY_PATTERN`, keys classified by `Resource.lock_key_family`; the migration of keys without index entries).
 - Acquirer ID: `rql:acq:<pid>/<thread>/<fiber>/<ractor>/<identity>`
 - Host ID: `rql:hst:<pid>/<thread>/<ractor>/<identity>` (no fiber)
 
@@ -174,22 +174,28 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 - ZSET: member = lock name, score = upper bound of the lifetime of all keys of the lock (write lock, readers registry, both queues;
   reader data is found via the registry) in client time: `Resource.lock_index_time` (epoch ms, `CLOCK_REALTIME`) + key ttl +
   `lock_index_grace_period` (config `lock_index_grace_period`, 60_000 ms; tolerance of client clock skew + network latency).
-- Invariant: the index is a superset of the existing lock names (stale names are harmless, a missing name hides a lock from the swarm).
-  - every attempt indexes the keys it can create in its queueing pipeline (`queue_lock_request`, after the queue `ZADD NX`):
-    `ZADD GT <now + max(queue ttl, lock ttl) + grace> <name>`; the lock (write lock / registry / reader data) is created later
-    by the obtaining `MULTI` of the same attempt (the grace period covers the attempt duration), so the `MULTI` itself does not
-    touch the index;
+- Invariant: the index is a superset of the existing lock names (stale names are harmless, a missing name hides a lock from
+  lock-iterating operations).
+  - every command that creates a lock key is followed by `ZADD GT <now + ttl + grace> <name>` in the same pipeline/transaction,
+    after the key command: the request queue in the queueing pipeline (`queue_lock_request`, queue ttl), the lock (write lock /
+    registry + reader data) at the end of the obtaining `MULTI` (lock ttl);
+  - the obtaining `MULTI` must index the lock itself (atomically): `unlock`/`clear_locks` can drop the name between the queueing and
+    the obtaining (`EXPIRE`/`DEL` of an absent lock key does not abort the attempt's `WATCH`); spec `the lock obtaining transaction
+    indexes the lock` drops the entry right before the obtaining `MULTI`;
   - every extension of a lock key: `ZADD XX INCR <ms> <name>` in the same transaction (reentrant `:extendable_work_through`, `extend_lock_ttl`
     write (`MULTI { EVAL; ZADD }`), own read, all read locks); `XX`: names without an entry (older versions) are not indexed with a wrong score;
   - the score is never decreased (`GT`; ttl decreases and releases do not touch the index);
   - lock request queues have TTL (`PEXPIRE NX` + `GT` = queue ttl on each queueing): the lifetime of every indexed key is bounded;
-  - pruning: `ZREMRANGEBYSCORE <index> -inf <now - 1>` in every queueing pipeline (amortized, no background jobs) and in `flush_zombies`;
-    `zombie_*` info skips names with an expired score.
+  - pruning: `ZREMRANGEBYSCORE <index> -inf <now - 1>` in every queueing pipeline (amortized, no background jobs) and in `flush_zombies`,
+    `clear_locks`, `clear_dead_requests`; info operations skip names with an expired score;
+  - removal: only together with the deletion of all indexed keys of the name in one `MULTI` (`unlock`: `ZREM` in the release transaction;
+    `clear_locks`: `DEL` of the batch keys + `ZREM` of the batch names); never remove a name while some of its keys can stay (`clear_locks_of`,
+    `yield_expire` releases, `flush_zombies` keep the names).
 - Migration: keys of older RQL versions have no entries: `reindex_locks` (one SCAN pass: `PEXPIRE NX` queue ttl for queues, `PTTL` of
   locks/registries/queues, `ZADD GT <now + pttl + grace>`; `-1` => `+inf`; idempotent) once after all processes are upgraded.
-- Limitations: completeness needs `grace > clock skew + attempt duration`; one hot key (fine for standalone/Sentinel; Cluster unsupported anyway);
-  hot path cost: 4 more commands per attempt in the existing queueing pipeline (local benchmark: ~+14 us and +53 allocations per `lock {}`).
-  non-swarm SCAN operations still scan the keyspace (README Roadmap, Major).
+- Limitations: completeness needs `grace > clock skew + network latency`; one hot key (fine for standalone/Sentinel; Cluster unsupported anyway);
+  hot path cost: 4 more commands per attempt in the existing queueing pipeline + 1 in the obtaining `MULTI` (no new round trips);
+  index size ~ distinct lock names per second x (max(queue ttl, lock ttl) + grace): lock-iterating operations visit dead names of this window too.
 
 ### Instrumentation events
 

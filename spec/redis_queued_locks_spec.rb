@@ -3251,6 +3251,9 @@ RSpec.describe RedisQueuedLocks do
         redis.call(
           'ZADD', 'rql:lock_read_queue:rw.clear.queue', Time.now.to_f, client.current_acquirer_id
         )
+        # NOTE: the queue is written directly (not by RQL acquirers): it is added to the lock
+        #   index by `#reindex_locks` (lock-iterating operations find locks via the lock index);
+        client.reindex_locks
         expect(client.locked?('rw.clear')).to eq(true)
         expect(client.clear_current_locks).to match({
           ok: true,
@@ -3263,6 +3266,9 @@ RSpec.describe RedisQueuedLocks do
       aggregate_failures 'clear_locks' do
         client.lock('rw.clear', read_write_mode: :read, ttl: 10_000)
         redis.call('ZADD', 'rql:lock_read_queue:rw.clear', Time.now.to_f, 'rql:acq:1/2/3/4/waiting')
+        # NOTE: the queue is written directly (not by RQL acquirers): it is added to the lock
+        #   index by `#reindex_locks` (lock-iterating operations find locks via the lock index);
+        client.reindex_locks
         expect(client.clear_locks).to match({
           ok: true,
           # NOTE: readers registry, read lock data and read lock queue
@@ -3276,6 +3282,9 @@ RSpec.describe RedisQueuedLocks do
         redis.call(
           'ZADD', 'rql:lock_read_queue:rw.dead', Time.now.to_f - 60, 'rql:acq:1/2/3/4/dead'
         )
+        # NOTE: the queue is written directly (not by RQL acquirers): it is added to the lock
+        #   index by `#reindex_locks` (lock-iterating operations find locks via the lock index);
+        client.reindex_locks
         expect(client.clear_dead_requests(dead_ttl: 1_000)).to match({
           ok: true,
           result: match({ processed_queues: contain_exactly('rql:lock_read_queue:rw.dead') })
@@ -3288,6 +3297,9 @@ RSpec.describe RedisQueuedLocks do
       client = RedisQueuedLocks::Client.new(redis)
       reader = 'rql:acq:1/2/3/4/reader'
       redis.call('ZADD', 'rql:lock_read_queue:rw.read.queue', Time.now.to_f, reader)
+      # NOTE: the queue is written directly (not by RQL acquirers): it is added to the lock
+      #   index by `#reindex_locks` (lock-iterating operations find queues via the lock index);
+      client.reindex_locks
 
       aggregate_failures 'the queue of write lock requests does not exist' do
         expect(client.queue_info('rw.read.queue')).to match({
@@ -3656,7 +3668,7 @@ RSpec.describe RedisQueuedLocks do
       recorded_redis.close
     end
 
-    specify 'scan-based operations: one SCAN pass with small batches' do
+    specify 'lock-index-based operations: one lock index pass with small batches' do
       client = RedisQueuedLocks::Client.new(redis)
       acquirer_id = client.current_acquirer_id
       host_id = client.current_host_id
@@ -3679,6 +3691,9 @@ RSpec.describe RedisQueuedLocks do
           'ZADD', lock_queue, now - 60, dead_acquirer, now, live_acquirer, now, acquirer_id
         )
       end
+      # NOTE: the queues are written directly (not by RQL acquirers): they are added to the lock
+      #   index by `#reindex_locks` (lock-iterating operations find locks via the lock index);
+      client.reindex_locks
       # NOTE: a key matched by `KEY_PATTERN` (`rql:lock*`) out of the lock key families
       redis.call('SET', 'rql:lockX', 'value')
 
@@ -3721,7 +3736,7 @@ RSpec.describe RedisQueuedLocks do
       end
 
       aggregate_failures 'clear_dead_requests' do
-        # NOTE: 6 queues: a full batch and the rest
+        # NOTE: 9 lock names (6 queues): full batches of lock names and the rest
         expect(client.clear_dead_requests(dead_ttl: 30_000, scan_size: 4)).to match({
           ok: true,
           result: match({ processed_queues: contain_exactly(*queues) })
@@ -3755,8 +3770,11 @@ RSpec.describe RedisQueuedLocks do
           # NOTE: write lock, readers registry, read lock data, 6 lock queues
           result: match({ rel_key_cnt: 9, rel_time: be_a(Numeric) })
         })
-        # NOTE: keys out of the lock key families are not deleted
-        expect(client.keys).to contain_exactly('rql:lockX')
+        # NOTE: keys out of the lock key families are not visited (they are not lock keys)
+        expect(client.keys).to be_empty
+        expect(redis.call('EXISTS', 'rql:lockX')).to eq(1)
+        # NOTE: the released lock names are dropped from the lock index
+        expect(redis.call('ZCARD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY)).to eq(0)
       end
 
       redis.call('DEL', 'rql:lockX')
@@ -4655,6 +4673,167 @@ RSpec.describe RedisQueuedLocks do
 
       client.clear_locks
       redis.call('DEL', 'rql:lockX', 'foreign')
+    end
+
+    specify 'the lock obtaining transaction indexes the lock (a dropped entry is restored)' do
+      # NOTE: the lock index entry of the lock name is dropped right before the obtaining
+      #   transaction (like a concurrent `#unlock`/`#clear_locks` between the lock request queueing
+      #   and the obtaining): the obtained lock should be indexed by its own transaction;
+      side_redis = RedisClient.config(db: 0).new_client
+      race_lock_names = %w[idx.race.write idx.race.read]
+      dropper = Module.new do
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          # NOTE: the lock of the obtaining transaction (write lock data or read lock data key)
+          hset_key = (commands.first == ['MULTI']) ? commands.assoc('HSET')&.at(1) : nil
+          dropped_lock_name = race_lock_names.find do |lock_name|
+            hset_key == "rql:lock:#{lock_name}" ||
+              hset_key&.start_with?("rql:lock_reader:#{lock_name}:")
+          end
+          if dropped_lock_name
+            side_redis.call('ZREM', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, dropped_lock_name)
+          end
+          super(commands, redis_config, &block)
+        end
+      end
+      dropping_redis = RedisClient.config(db: 0, middlewares: [dropper]).new_pool(timeout: 5)
+      client = RedisQueuedLocks::Client.new(dropping_redis)
+
+      client.lock('idx.race.write', ttl: 100_000, queue_ttl: 5)
+      client.lock('idx.race.read', read_write_mode: :read, ttl: 100_000, queue_ttl: 5)
+
+      expect(index_score_ahead.call('idx.race.write')).to upper_bound.call(100_000)
+      expect(index_score_ahead.call('idx.race.read')).to upper_bound.call(100_000)
+
+      client.clear_locks
+      dropping_redis.close
+      side_redis.close
+    end
+
+    specify '#unlock and #clear_locks drop the lock names from the lock index' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+      end
+      lock_names = -> { redis.call('ZRANGE', lock_index, '0', '-1') }
+
+      aggregate_failures '#unlock' do
+        client.lock('idx.unlock.write', ttl: 100_000)
+        client.lock('idx.unlock.read', read_write_mode: :read, ttl: 100_000)
+        client.unlock('idx.unlock.write')
+        client.unlock('idx.unlock.read')
+        expect(lock_names.call).to eq([])
+      end
+
+      aggregate_failures '#unlock: a waiting lock request indexes the lock name again' do
+        # NOTE: each thread is a separate acquirer (thread references are kept till the end)
+        holder = Thread.new { client.lock('idx.unlock.wait', ttl: 100_000) }
+        holder.join
+        waiter = Thread.new do
+          client.lock('idx.unlock.wait', ttl: 1_000, timeout: 10, retry_count: nil)
+        end
+        sleep(0.3) # NOTE: give a timespot to queue the lock request (retries refresh it)
+        client.unlock('idx.unlock.wait')
+        expect(waiter.value).to match(
+          { ok: true, result: hash_including(process: :lock_obtaining) }
+        )
+        expect(lock_names.call).to eq(['idx.unlock.wait'])
+        client.unlock('idx.unlock.wait')
+      end
+
+      aggregate_failures '#clear_locks (with expired lock names)' do
+        client.lock('idx.clear.0', ttl: 100_000)
+        client.lock('idx.clear.1', read_write_mode: :read, ttl: 100_000)
+        redis.call(
+          'ZADD', lock_index, RedisQueuedLocks::Resource.lock_index_time - 1_000, 'idx.expired'
+        )
+        expect(client.clear_locks(batch_size: 1)).to match({
+          ok: true,
+          # NOTE: write lock, readers registry, read lock data
+          result: match({ rel_key_cnt: 3, rel_time: be_a(Numeric) })
+        })
+        expect(lock_names.call).to eq([])
+        expect(client.keys).to be_empty
+      end
+    end
+
+    specify 'lock-iterating operations use the lock index (no keyspace SCAN)' do
+      # NOTE: commands are observed via a separate pool (the same db) with a recording middleware
+      commands = []
+      recorder = Module.new do
+        define_method(:call) do |command, redis_config, &block|
+          commands << command.first
+          super(command, redis_config, &block)
+        end
+        define_method(:call_pipelined) do |pipeline_commands, redis_config, &block|
+          commands.concat(pipeline_commands.map(&:first))
+          super(pipeline_commands, redis_config, &block)
+        end
+      end
+      recorded_redis = RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5)
+      client = RedisQueuedLocks::Client.new(recorded_redis)
+      acquirer_id = client.current_acquirer_id
+      host_id = client.current_host_id
+      # NOTE: keys of other applications (lock-iterating operations never visit them)
+      redis.pipelined do |pipeline|
+        100.times { |index| pipeline.call('SET', "foreign:#{index}", 'value') }
+      end
+
+      client.lock('idx.ops.write', ttl: 100_000)
+      client.lock('idx.ops.read', read_write_mode: :read, ttl: 100_000)
+      # NOTE: a lock request of another acquirer (queued by RQL: indexed)
+      requester = Thread.new { client.lock('idx.ops.write', ttl: 1_000, retry_count: 1) }
+      requester.join
+      redis.call('ZADD', 'rql:lock_queue:idx.ops.queue', Time.now.to_f, 'rql:acq:1/2/3/4/live')
+      # NOTE: a lock written directly (like a lock of an older RQL version): not indexed
+      redis.call(
+        'HSET', 'rql:lock:idx.ops.legacy', 'acq_id', acquirer_id, 'hst_id', host_id
+      )
+      redis.call('PEXPIRE', 'rql:lock:idx.ops.legacy', 100_000)
+      read_lock_key = "rql:lock_reader:idx.ops.read:#{acquirer_id}"
+
+      aggregate_failures 'info operations' do
+        commands.clear
+        expect(client.locks).to contain_exactly('rql:lock:idx.ops.write', 'rql:lock:idx.ops.read')
+        expect(client.locks_info.map { |lock| lock[:lock] }).to contain_exactly(
+          'rql:lock:idx.ops.write', 'rql:lock:idx.ops.read'
+        )
+        # NOTE: the request of the requester is dequeued after its retries (no lock queues)
+        expect(client.queues).to eq(Set.new)
+        expect(client.queues_info).to eq(Set.new)
+        expect(client.keys).to contain_exactly(
+          'rql:lock:idx.ops.write', 'rql:lock_readers:idx.ops.read', read_lock_key
+        )
+        expect(commands).to include('ZSCAN')
+        expect(commands).not_to include('SCAN')
+      end
+
+      aggregate_failures 'keys without the lock index entry are found after #reindex_locks' do
+        client.reindex_locks
+        expect(client.locks).to contain_exactly(
+          'rql:lock:idx.ops.write', 'rql:lock:idx.ops.read', 'rql:lock:idx.ops.legacy'
+        )
+        expect(client.queues).to contain_exactly('rql:lock_queue:idx.ops.queue')
+      end
+
+      aggregate_failures 'cleanup operations' do
+        commands.clear
+        expect(client.clear_dead_requests(dead_ttl: 1)).to match({
+          ok: true,
+          result: match({ processed_queues: contain_exactly('rql:lock_queue:idx.ops.queue') })
+        })
+        expect(client.clear_current_locks).to match({
+          ok: true,
+          # NOTE: write lock, legacy write lock, read lock (the request was dropped as dead)
+          result: match({ rel_key_cnt: 3, tch_queue_cnt: 0, rel_time: be_a(Numeric) })
+        })
+        expect(client.clear_locks).to match({ ok: true, result: hash_including(rel_key_cnt: 0) })
+        expect(commands).to include('ZSCAN')
+        expect(commands).not_to include('SCAN')
+        expect(client.keys).to be_empty
+        expect(redis.call('EXISTS', 'foreign:0', 'foreign:99')).to eq(2)
+      end
+
+      recorded_redis.close
     end
 
     specify 'lock index grace period validation' do
