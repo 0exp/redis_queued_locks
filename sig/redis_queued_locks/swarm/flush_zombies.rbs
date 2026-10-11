@@ -19,6 +19,12 @@ module RedisQueuedLocks
         Set[String] zombie_locks,
         Set[String] zombie_acquirers
       ) -> void
+      private def self.flush_zombie_requests: (
+        RC::client redis_client,
+        Array[String] lock_queues,
+        Set[String] zombie_hosts,
+        Set[String] zombie_acquirers
+      ) -> void
 
       def enabled?: () -> bool
       def spawn_swarm_element!: (Ractor::Port[SwarmElement::Isolated::resultsPortMessage] swarm_element_results_port) -> Ractor

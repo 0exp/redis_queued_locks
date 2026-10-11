@@ -99,22 +99,12 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
         end
 
         # Step 4: drop zombie requests from the lock queues (write and read)
-        #   - one ZREM per queue drops the requests of all zombie acquirers at once;
-        #   - one round trip per batch of `queue_scan_size` queues;
-        #   - queues are not processed when zombie hosts hold no locks (no zombie acquirers);
-        if zombie_acquirers.any?
-          # NOTE:
-          #   the list of zombie acquirers is built once for all queues: each splat of a Set
-          #   builds a temporary array (`Set#to_a`) for every ZREM call;
-          zombie_acquirer_ids = zombie_acquirers.to_a
-
-          lock_queues.each_slice(queue_scan_size) do |lock_queues_batch|
-            rconn.pipelined do |pipeline|
-              lock_queues_batch.each do |lock_queue|
-                pipeline.call('ZREM', lock_queue, *zombie_acquirer_ids)
-              end
-            end
-          end
+        #   - requests of zombie hosts: the host is derived from the acquirer id of the request,
+        #     so the requests of zombie acquirers that hold no locks are dropped too (and their
+        #     acquirers are reported as zombie acquirers);
+        #   - two round trips per batch of `queue_scan_size` queues (requests, then ZREM);
+        lock_queues.each_slice(queue_scan_size) do |lock_queues_batch|
+          flush_zombie_requests(rconn, lock_queues_batch, zombie_hosts, zombie_acquirers)
         end
 
         # Step 5: drop zombies from the swarm
@@ -217,6 +207,40 @@ class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElem
           )
           zombie_locks << lock_readers_key
           zombie_acquirers.merge(zombie_readers)
+        end
+      end
+    end
+
+    # Drops the requests of zombie hosts from the given batch of lock queues (write and read)
+    # in two round trips: queued acquirers, then one `ZREM` of the zombie requests per queue
+    # (the host of a request is derived from its acquirer id).
+    #
+    # @param redis_client [RedisClient]
+    # @param lock_queues [Array<String>]
+    # @param zombie_hosts [Set<String>]
+    # @param zombie_acquirers [Set<String>] Collects acquirers of the dropped zombie requests.
+    # @return [void]
+    #
+    # @api private
+    # @since 1.20.0
+    def flush_zombie_requests(redis_client, lock_queues, zombie_hosts, zombie_acquirers)
+      # NOTE: (pipeline layout) one reply (queued acquirers) per queue in the batch order
+      # @type var queued_acquirers: Array[Array[String]]
+      queued_acquirers = redis_client.pipelined do |pipeline|
+        lock_queues.each { |lock_queue| pipeline.call('ZRANGE', lock_queue, '0', '-1') }
+      end
+
+      redis_client.pipelined do |pipeline|
+        lock_queues.each_with_index do |lock_queue, index|
+          zombie_requests = queued_acquirers[index].select do |acquirer_id|
+            zombie_hosts.include?(
+              RedisQueuedLocks::Resource.host_identifier_from_acquirer(acquirer_id)
+            )
+          end
+          next if zombie_requests.empty?
+
+          pipeline.call('ZREM', lock_queue, *zombie_requests)
+          zombie_acquirers.merge(zombie_requests)
         end
       end
     end

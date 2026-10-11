@@ -1,7 +1,7 @@
 ## [Unreleased]
 ### Changed
 - `#flush_zombies` (and the zombie flusher of the swarm): zombie lock requests are dropped with one `ZREM` per lock queue
-  (previously one `ZREM` per zombie acquirer and lock queue); lock queues are not scanned when zombie hosts hold no locks;
+  (previously one `ZREM` per zombie acquirer and lock queue);
 - `#queue_info` / `#queues_info`: lock queues are read without `EXISTS` checks (Redis does not keep empty sorted sets);
 - Lock acquirement attempt: read lock requests do not fetch the longest read lock (it is used by write lock requests only),
   write lock requests do not build the read lock data key, disabled try-lock logs get a shared frozen hash instead of a new one;
@@ -23,6 +23,9 @@
   the read lock data is dropped with one more `DEL` only when read locks existed);
 - `#lock_series` (PoC): write locks of the series are released (compare-and-delete) in one transaction for the whole series
   (three round trips per series instead of three round trips per lock);
+- `#flush_zombies` (and the zombie flusher of the swarm): requests of zombie hosts are dropped from the lock queues by the host
+  of the request (derived from its acquirer id): requests of dead hosts that hold no locks are dropped too (previously they stayed
+  until the queue ttl) and their acquirers are reported in `deleted_zombie_acquirers`;
 
 ## [1.19.0] - 2026-10-11
 ### Added

@@ -3372,33 +3372,38 @@ RSpec.describe RedisQueuedLocks do
       end
       zombie_writers = writer_fibers.map(&:resume)
       zombie_reader = reader_fiber.resume
+      # NOTE: an acquirer of the zombie host that holds no locks (requests only)
+      zombie_requester = client.current_acquirer_id(fiber_id: 123_456_789)
       live_acquirer = 'rql:acq:1/2/3/4/live'
 
       # NOTE: zombie and live requests in the queues of another lock (both modes)
       now = Time.now.to_f
       redis.call(
         'ZADD', 'rql:lock_queue:rw.zombie.queue',
-        now, zombie_writers[0], now, zombie_writers[1], now, live_acquirer
+        now, zombie_writers[0], now, zombie_writers[1], now, zombie_requester, now, live_acquirer
       )
       redis.call(
         'ZADD', 'rql:lock_read_queue:rw.zombie.queue',
-        now, zombie_writers[1], now, zombie_reader, now, live_acquirer
+        now, zombie_writers[1], now, zombie_reader, now, zombie_requester, now, live_acquirer
       )
 
       client.probe_hosts
       sleep(1.5) # NOTE: zombie_ttl is reached (no more host probes)
 
+      # NOTE: zombie acquirers of the zombie info are the acquirers of zombie locks
+      expect(client.zombie_acquirers).to contain_exactly(*zombie_writers, zombie_reader)
       expect(client.flush_zombies).to match({
         ok: true,
         deleted_zombie_hosts: include(client.current_host_id),
-        deleted_zombie_acquirers: include(*zombie_writers, zombie_reader),
+        # NOTE: requests of the zombie host are dropped even without locks (and reported)
+        deleted_zombie_acquirers: contain_exactly(*zombie_writers, zombie_reader, zombie_requester),
         deleted_zombie_locks: include(
           'rql:lock:rw.zombie.write.0',
           'rql:lock:rw.zombie.write.1',
           'rql:lock_readers:rw.zombie.read'
         )
       })
-      # NOTE: only the requests of zombie acquirers are dropped
+      # NOTE: only the requests of zombie acquirers (of zombie hosts) are dropped
       expect(client.queue_info('rw.zombie.queue')).to match({
         'lock_queue' => 'rql:lock_queue:rw.zombie.queue',
         'queue' => contain_exactly(
