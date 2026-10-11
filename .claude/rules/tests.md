@@ -26,6 +26,8 @@ paths:
 - Lock index specifics live in `describe 'lock index'` (outside the shared examples: run once, every client enables the lock index explicitly with `config['lock_index_enabled'] = true`; `let(:index_score_ahead)` = index score minus the current client ms, `let(:upper_bound)` = `be_between(lifetime + grace - 1_000, lifetime + grace)`); `the lock obtaining transaction indexes the lock` drops the index entry right before the obtaining `MULTI` with a middleware (keep it when touching the obtaining transaction); `the disabled lock index (default): no lock index commands, keyspace lookups` records all commands of the default mode (no `rql:index:locks` argument, no `ZSCAN`, queues without TTL); `enabling the lock index: ...` covers the migration (`#reindex_locks` after enabling).
 
 ## Claude rules
+The suite is pending a total rework (overview "Conventions"): these rules guide new examples, but their violations in `*_spec.rb` are not code review findings until the rework; the review checks only that the changed library behavior is covered and that changed expectations are correct (`.claude/skills/rql-code-review`, §3).
+
 1. Run specs with a local Redis available: `bundle exec rake rspec` (single example: `bundle exec rspec spec/redis_queued_locks_spec.rb:<line>`).
 2. Add new examples to `spec/redis_queued_locks_spec.rb` with `specify '<feature>'`, inside an existing `describe` when one fits; don't create new spec files unless asked (the suite is pending a rework).
 3. Use only `expect` syntax; no `should`, no monkey-patched DSL, no `focus` left behind.
