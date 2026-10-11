@@ -60,7 +60,7 @@ paths:
 6. Use uppercase string Redis commands and string numeric args; handle `PTTL`/`TTL` sentinel values explicitly.
 7. Iterate keys with `scan('MATCH', Resource::*_PATTERN, count:)`, never `KEYS`; batch deletes by scan size.
 8. Measure durations with `clock_gettime` and report ms with `/ 1_000.0).ceil(2)`; use `Time.now.to_f` only for event timestamps.
-9. Wrap every `instrumenter.notify` / logger call in `run_non_critical` (or a visitor) and gate it with `Instrument.should_instrument?` / `Logging.should_log?`; observability must never break locking.
+9. Wrap every `instrumenter.notify` / logger call in `run_non_critical` (or a visitor) and gate it with `Instrument.should_instrument?` / `Logging.should_log?`; observability must never break locking. Payload changes of inline `notify` calls are documented in README `### Instrumentation Events` in the same change (see `visitors.md` rule 14).
 10. In `AcquireLock`, add behavior as a new step or mixin rather than growing `acquire_lock`; keep the `# Step N.x` comment numbering, update `acq_process` keys consistently, and add a matching `LogVisitor`/`InstrVisitor` method for each new lifecycle event.
 11. When normalizing lock hash fields, follow the `Float()` / `Integer()` conversion pattern; if a new lock field is added, update every copy of the formatting: write locks in `LockInfo.lock_info` and `Locks.extract_locks_info`, readers in `LockInfo.read_lock_info` and `Locks.read_lock_info` (reader data uses the same fields).
 12. Read/write checklist for any change in this directory:

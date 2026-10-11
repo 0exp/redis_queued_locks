@@ -166,7 +166,8 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 `explicit_all_locks_release`, `release_locks_of`, `explicit_read_lock_release`.
 Lock events (`lock_obtained`, `reentrant_lock_obtained`, `extendable_reentrant_lock_obtained`,
 `lock_hold_and_release`, `reentrant_lock_hold_completes`) carry `rw_mode` (requested mode) in the payload;
-lock log lines carry `rw_mode => '...'`. RW try-lock log events: `exit__write_request_ahead`,
+lock series events (`lock_series_obtained`, `lock_series_hold_and_release`) carry the mode of the series;
+lock log lines (incl. lock series logs) carry `rw_mode => '...'`. RW try-lock log events: `exit__write_request_ahead`,
 `exit__read_request_ahead`, `exit__read_lock_still_obtained`, `single_process_lock_conflict__lock_upgrade`.
 
 ### Errors (`errors.rb`)
@@ -276,5 +277,5 @@ Known quirk: `sig/redis_queued_locks/acquier.rbs` is misspelled (should be `acqu
 - New operation: new `Acquirer::*` module, thin `Client` method (+ `!` variant if it should raise), RBS, spec.
 - New config option: `setting` (+ `validate`) in `config.rb`, read via `config['key']`, document defaults.
 - Development gems go in `Gemfile` (`Gemspec/DevelopmentDependencies: Gemfile`), not the gemspec.
-- This overview and `.claude/rules/*.md` are updated in the same change as the code (keys, options, results, events, algorithm steps, limitations); README and CHANGELOG `[Unreleased]` for user-visible behavior.
+- This overview and `.claude/rules/*.md` are updated in the same change as the code (keys, options, results, events, algorithm steps, limitations); README and CHANGELOG `[Unreleased]` for user-visible behavior (log keys and instrumentation payloads: README `## Logging` / `### Instrumentation Events`).
 - Temporary debt: rspec-retry, disabled coverage minimum, runtime type-check job that can't fail.

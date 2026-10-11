@@ -132,7 +132,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
 
       RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.start_lock_series_obtaining( # steep:ignore
         logger, log_sampled, lock_keys_for_instrumentation,
-        queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy
+        queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy,
+        read_write_mode
       )
 
       acq_start_time = RedisQueuedLocks::Utilities.clock_gettime
@@ -217,16 +218,16 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
       if (successfully_acquired_locks.size == lock_names.size && (successfully_acquired_locks.all? { |res| res[:ok] }))
         acq_end_time = RedisQueuedLocks::Utilities.clock_gettime
         acq_time = ((acq_end_time - acq_start_time) / 1_000.0).ceil(2)
-        ts = Time.now.to_s
+        ts = Time.now.to_f
 
         RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.lock_series_obtained( # steep:ignore
           logger, log_sampled, lock_keys_for_instrumentation,
           queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation,
-          acq_time, access_strategy
+          acq_time, access_strategy, read_write_mode
         )
 
         RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor.lock_series_obtained( # steep:ignore
-          instrumenter, instr_sampled, lock_keys_for_instrumentation,
+          instrumenter, instr_sampled, lock_keys_for_instrumentation, read_write_mode,
           ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, ts, acq_time, instrument
         )
 
@@ -281,13 +282,15 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
 
           RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.expire_lock_series( # steep:ignore
             logger, log_sampled, lock_keys_for_instrumentation,
-            queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy
+            queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy,
+            read_write_mode
           ) if is_lock_manually_released
 
           RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor.lock_series_hold_and_release( # steep:ignore
             instrumenter,
             instr_sampled,
             lock_keys_for_instrumentation,
+            read_write_mode,
             ttl,
             acquirer_id_for_instrumentation,
             host_id_for_instrumentation,

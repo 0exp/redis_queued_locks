@@ -3739,6 +3739,54 @@ RSpec.describe RedisQueuedLocks do
         )
       end
       client.unlock('rw.logs')
+
+      test_logger.logs.clear
+      client.lock('rw.logs.reentrant', ttl: 5_000) do
+        client.lock('rw.logs.reentrant', ttl: 5_000, conflict_strategy: :extendable_work_through) do
+          :ok
+        end
+      end
+
+      aggregate_failures 'extendable reentrant lock logs (the same host key as other logs)' do
+        expect(test_logger.logs).to include(
+          a_string_including(
+            '[redis_queued_locks.extendable_reentrant_lock_obtained]',
+            "hst_id => '#{client.current_host_id}'",
+            "rw_mode => 'write'"
+          )
+        )
+        expect(test_logger.logs.grep(/host_id =>/)).to be_empty
+      end
+
+      test_logger.logs.clear
+      test_notifier.notifications.clear
+      series_lock_keys = ['rql:lock:rw.logs.series.a', 'rql:lock:rw.logs.series.b']
+      client.lock_series(
+        'rw.logs.series.a', 'rw.logs.series.b', read_write_mode: :read, ttl: 5_000
+      ) { :ok }
+
+      aggregate_failures 'lock series logs and instrumentation (rw_mode of the series)' do
+        expect(test_logger.logs).to include(
+          a_string_including(
+            '[redis_queued_locks.start_lock_series_obtaining]',
+            "lock_keys => '#{series_lock_keys.inspect}' queue_ttl =>",
+            "rw_mode => 'read'"
+          ),
+          a_string_including('[redis_queued_locks.lock_series_obtained]', "rw_mode => 'read'"),
+          a_string_including('[redis_queued_locks.expire_lock_series]', "rw_mode => 'read'")
+        )
+        expect(test_notifier.notifications).to include(
+          match({
+            event: 'redis_queued_locks.lock_series_obtained',
+            payload: hash_including(lock_keys: series_lock_keys, rw_mode: :read, ts: be_a(Float))
+          }),
+          match({
+            event: 'redis_queued_locks.lock_series_hold_and_release',
+            payload: hash_including(lock_keys: series_lock_keys, rw_mode: :read, ts: be_a(Float))
+          })
+        )
+      end
+      expect(client.keys).to be_empty
     end
   end
 end

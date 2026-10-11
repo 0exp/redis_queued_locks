@@ -17,10 +17,12 @@
   - `#unlock`, `#clear_locks`, `#clear_locks_of`, `#clear_current_locks`, `#clear_dead_requests`, `#flush_zombies`,
     `#zombie_locks`, `#zombie_acquirers`, `#zombies_info`, `#locked?`, `#queued?`, `#lock_info`, `#queue_info`,
     `#locks`, `#locks_info`, `#queues`, `#queues_info` support read locks and read lock requests;
-  - logs: `rw_mode` in the lock logs; new try-lock log events: `exit__write_request_ahead`, `exit__read_request_ahead`,
+  - logs: `rw_mode` in the lock logs and in the lock series logs (`start_lock_series_obtaining`, `lock_series_obtained`,
+    `expire_lock_series`: the mode of the series); new try-lock log events: `exit__write_request_ahead`, `exit__read_request_ahead`,
     `exit__read_lock_still_obtained`, `single_process_lock_conflict__lock_upgrade`;
   - instrumentation: `rw_mode` in `lock_obtained`, `reentrant_lock_obtained`, `extendable_reentrant_lock_obtained`,
-    `lock_hold_and_release`, `reentrant_lock_hold_completes` payloads;
+    `lock_hold_and_release`, `reentrant_lock_hold_completes` payloads and in the lock series payloads
+    (`lock_series_obtained`, `lock_series_hold_and_release`: the mode of the series);
   - `:meta` for read locks (stored in the read lock data of each reader, returned by `#lock_info`/`#locks_info`);
   - `#lock_series` with `read_write_mode: :read` (PoC): a series of read locks; only read locks obtained by the series
     are released (reentrant read locks of the outer logic are kept);
@@ -37,6 +39,8 @@
   - **all processes should use the RQL version with read/write locks** before read locks are used
     (write locks of older RQL versions do not check read locks);
 ### Changed
+- `lock_series_obtained` instrumentation event (`#lock_series`, PoC): `:ts` is an epoch timestamp (`Float`)
+  like in all other instrumentation events (previously a `Time#to_s` string);
 - **Breaking**: `#extend_lock_ttl` success result is `{ ok: true, result: { extended_locks_count: Integer } }`
   instead of `{ ok: true, result: :ttl_extended }` (the number of locks whose TTL is extended: `1` for the write lock
   and for the own read lock, the number of extended read locks for `all_read_locks: true`);
@@ -46,6 +50,8 @@
   (previously `HGETALL` was called on every unsuccessful attempt);
 ### Fixed
 - `dequeue_from_lock_queue` log: unclosed quote in the `acs_strat` value;
+- `extendable_reentrant_lock_obtained` log: the host identifier is logged as `hst_id` (was `host_id`), like in all other logs;
+- `start_lock_series_obtaining` log: missing space between the `lock_keys` and `queue_ttl` values;
 - `lock_series` PoC:
   - locks obtained by the failed series are released when the series fails without an exception
     (`raise_errors: false`); previously they lived till their TTL;

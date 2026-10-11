@@ -6,12 +6,15 @@
 module RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor # steep:ignore
   class << self
     # NOTE: Lock Series PoC
+    # @param rw_mode [Symbol] The mode of the lock series (`:read` or `:write`).
     # @api private
     # @since 1.16.1
+    # @version 1.18.0
     def lock_series_obtained( # steep:ignore
       instrumenter,
       instr_sampled,
       lock_keys,
+      rw_mode,
       ttl,
       acq_id,
       hst_id,
@@ -21,17 +24,20 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor # steep:ignore
     )
       return unless instr_sampled
       instrumenter.notify('redis_queued_locks.lock_series_obtained', {
-        lock_keys:, ttl:, acq_id:, hst_id:, ts:, acq_time:, instrument:
+        lock_keys:, rw_mode:, ttl:, acq_id:, hst_id:, ts:, acq_time:, instrument:
       }) rescue nil
     end
 
     # NOTE: Lock Series PoC
+    # @param rw_mode [Symbol] The mode of the lock series (`:read` or `:write`).
     # @api private
     # @since 1.16.1
+    # @version 1.18.0
     def lock_series_hold_and_release( # steep:ignore
       instrumenter,
       instr_sampled,
       lock_keys,
+      rw_mode,
       ttl,
       acq_id,
       hst_id,
@@ -42,7 +48,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor # steep:ignore
     )
       return unless instr_sampled
       instrumenter.notify('redis_queued_locks.lock_series_hold_and_release', {
-        lock_keys:, hold_time:, ttl:, acq_id:, hst_id:, ts:, acq_time:, instrument:
+        lock_keys:, rw_mode:, hold_time:, ttl:, acq_id:, hst_id:, ts:, acq_time:, instrument:
       }) # rescue nil
     end
   end

@@ -146,7 +146,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
         "lock_key => '#{lock_key}' " \
         "queue_ttl => #{queue_ttl} " \
         "acq_id => '#{acquirer_id}' " \
-        "host_id => '#{host_id}' " \
+        "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
         "acq_time => #{acq_time} (ms)"
