@@ -47,11 +47,41 @@ module RedisQueuedLocks::Resource
   # @since 1.18.0
   READ_LOCK_PATTERN = 'rql:lock_reader:*'
 
+  # Write and read lock queues in one SCAN pass (the keyspace lookup: the disabled lock index).
+  # NOTE:
+  #   - the pattern matches other keys too when the lock name contains `queue:` (for example,
+  #     `rql:lock_readers:my_queue:a`), so callers check the key family (`lock_key_family`);
+  # @return [String]
+  #
+  # @api private
+  # @since 1.20.0
+  ALL_LOCK_QUEUES_PATTERN = 'rql:lock_*queue:*'
+
   # @return [String]
   #
   # @api private
   # @since 1.9.0
   SWARM_KEY = 'rql:swarm:hsts'
+
+  # Lock index: a sorted set of lock names (members) where the score is the upper bound of the
+  # lifetime of all keys of the lock (client time, epoch milliseconds + the index grace period).
+  # It replaces the full keyspace SCAN for the operations that iterate over locks (lock names are
+  # taken from the index, lock keys are derived from the lock names).
+  # NOTE:
+  #   - it is used and maintained only with the enabled lock index (`config['lock_index_enabled']`,
+  #     disabled by default: lock-iterating operations scan the keyspace (`KEY_PATTERN`) then);
+  #   - the key is not matched by `KEY_PATTERN` (`rql:index:` vs `rql:lock`) and can not collide
+  #     with lock keys (`rql:lock:<name>`, `rql:lock_<kind>:<name>`);
+  #   - the index is a superset of the existing locks: a lock name is added (or its score is
+  #     increased) by every command that creates or extends a lock key (in the same pipeline or
+  #     transaction, after the key command) and it is removed only when its score is reached
+  #     (`ZREMRANGEBYSCORE`: all the keys of the lock are expired by that time) or in the same
+  #     transaction with all the keys of the lock (`#unlock`, `#clear_locks`);
+  # @return [String]
+  #
+  # @api private
+  # @since 1.20.0
+  LOCK_INDEX_KEY = 'rql:index:locks'
 
   # @return [Integer] Redis time error (in milliseconds).
   #
@@ -59,6 +89,7 @@ module RedisQueuedLocks::Resource
   # @since 1.3.0
   REDIS_TIMESHIFT_ERROR = 2
 
+  # rubocop:disable Metrics/ClassLength
   class << self
     # Returns 16-byte unique identifier. It is used for uniquely
     # identify current process between different nodes/pods of your application
@@ -143,8 +174,9 @@ module RedisQueuedLocks::Resource
     end
 
     # Read lock data of the concrete acquirer: a hash with the same structure as the write lock
-    # (acquirer, host, timestamp, ttl, meta, reentrant lock data). It is a data carrier only:
-    # the readers registry is the source of truth for the read lock existence.
+    # (timestamp, ttl, meta, reentrant lock data; acquirer and host are derived from the acquirer
+    # id and are not stored). It is a data carrier only: the readers registry is the source of
+    # truth for the read lock existence.
     #
     # @param lock_name [String]
     # @param acquirer_id [String]
@@ -177,6 +209,70 @@ module RedisQueuedLocks::Resource
         # NOTE: unreachable: the logic always passes a consistent lock queue (read or write)
         nil
       end
+    end
+
+    # Family of the given RQL key: one SCAN pass over `KEY_PATTERN` (or `ALL_LOCK_QUEUES_PATTERN`)
+    # returns keys of several families, so callers keep the keys of the families they need.
+    #
+    # @param key [String]
+    # @return [Symbol,NilClass]
+    #   - `:lock` - write lock (`rql:lock:*`);
+    #   - `:lock_queue` - write lock requests (`rql:lock_queue:*`);
+    #   - `:lock_readers` - readers registry (`rql:lock_readers:*`);
+    #   - `:read_lock_queue` - read lock requests (`rql:lock_read_queue:*`);
+    #   - `:read_lock` - read lock data (`rql:lock_reader:*`);
+    #   - `nil` - any other key (for example, `rql:lockX` matched by `KEY_PATTERN`);
+    #
+    # @api private
+    # @since 1.20.0
+    def lock_key_family(key)
+      # NOTE:
+      #   - `start_with?` instead of regexp `when`-matchers: no MatchData allocations;
+      #   - prefixes are unambiguous: `rql:lock_reader:` is not a prefix of `rql:lock_readers:`;
+      case
+      when key.start_with?('rql:lock:') then :lock
+      when key.start_with?('rql:lock_queue:') then :lock_queue
+      when key.start_with?('rql:lock_readers:') then :lock_readers
+      when key.start_with?('rql:lock_read_queue:') then :read_lock_queue
+      when key.start_with?('rql:lock_reader:') then :read_lock
+      end
+    end
+
+    # Lock name of the given RQL key (the member of the lock index).
+    #
+    # @param key [String]
+    # @param key_family [Symbol,NilClass] Family of the key (see `lock_key_family`).
+    # @return [String,NilClass]
+    #   - the lock name for the write lock, the readers registry and the lock queues (both modes);
+    #   - `nil` for the read lock data (`:read_lock`: the lock name can not be separated from
+    #     the acquirer id unambiguously) and for any other key;
+    #
+    # @api private
+    # @since 1.20.0
+    def lock_name_from_key(key, key_family)
+      case key_family
+      when :lock then key.delete_prefix('rql:lock:')
+      when :lock_queue then key.delete_prefix('rql:lock_queue:')
+      when :lock_readers then key.delete_prefix('rql:lock_readers:')
+      when :read_lock_queue then key.delete_prefix('rql:lock_read_queue:')
+      end
+    end
+
+    # Client time for the lock index scores (see `LOCK_INDEX_KEY`).
+    #
+    # @return [Integer] Epoch, in milliseconds.
+    #
+    # @api private
+    # @since 1.20.0
+    def lock_index_time
+      # NOTE:
+      #   - an Integer of milliseconds without Time/Float objects;
+      #   - CLOCK_REALTIME (epoch), not CLOCK_MONOTONIC: the lock index scores are absolute times
+      #     stored in the shared Redis and compared by other hosts (pruning, expired names),
+      #     while monotonic clocks have a per-host origin (boot time) and are not comparable
+      #     between hosts; the wall clock skew between hosts is covered by
+      #     `lock_index_grace_period`;
+      ::Process.clock_gettime(::Process::CLOCK_REALTIME, :millisecond)
     end
 
     # @param lock_readers_key [String]
@@ -347,5 +443,6 @@ module RedisQueuedLocks::Resource
       # steep:ignore:end
     end
   end
+  # rubocop:enable Metrics/ClassLength
 end
 # rubocop:enable Metrics/ModuleLength

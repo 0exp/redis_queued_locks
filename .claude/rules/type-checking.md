@@ -25,6 +25,7 @@ paths:
   - `x != nil` does not narrow `String?`/`Float?` in `elsif` branches or `&&` chains on locals typed from tuples: use truthiness (`elsif x`) or total conversions (`x.to_f > now`, `ttl.to_i`);
   - `pipelined`/`call` return `untyped`: annotate destructured pipeline results with a tuple (`# @type var lock_state: [String?, Array[String], Float?, Array[[String, Float]]]`);
   - `LockSeriesPoC` has no RBS: new calls/definitions there need `# steep:ignore` (like the existing ones).
+  - splatting a `Set` (`call(*set)`) is rejected (`Ruby::ArgumentTypeMismatch`: splat arguments must be arrays), and no honest inline annotation fixes it; at runtime Ruby converts a splatted `Set` with `Set#to_a` on every call.
 - Steep 2 narrows on `==` with literals (`x == :sym` makes `x` the literal type `:sym`) and rejects `# @type var` annotations that widen a narrowed variable; RBS 4's `Kernel#Array` has a `(nil) -> []` overload that `untyped` arguments resolve to, so `Array(rconn.call(...)).first` needs a `#: T` assertion.
 - Runtime checking: CI runs specs with `RUBYOPT=-rrbs/test/setup RBS_TEST_TARGET='RedisQueuedLocks::*'`, so signatures must match real runtime values, not just Steep's view.
 
@@ -33,7 +34,7 @@ paths:
 2. Create new `.rbs` files at the mirrored path with nested module blocks and `use RedisQueuedLocks as RQL` / `use RedisClient as RC` aliases when needed.
 3. Reuse shared types (`RQL::loggerObj`, `RQL::instrObj`, `samplerObj`, `RC::client`) instead of `untyped`; use `untyped` only for truly dynamic values (e.g. user `meta`, `instrument`).
 4. Name public API result hashes with a `type xxxResult = { ok: bool, result: ... }` alias next to the method. Type internal swarm element replies with plain types (`bool`, `String`, a flat record such as `{ alive: bool, state: String }`, optional `?` for `nil`) instead of `{ ok:, result: }` records.
-5. Prefer fixing types or adding `# @type var` / `#: T` annotations over `# steep:ignore`; add `# steep:ignore` only where Steep reports a diagnostic. Strict mode fails the build on `Ruby::RedundantIgnoreComment`, so never add a speculative ignore and remove ones that become redundant.
+5. Prefer fixing types or adding `# @type var` / `#: T` annotations over `# steep:ignore`; add `# steep:ignore` only where Steep reports a diagnostic. Strict mode fails the build on `Ruby::RedundantIgnoreComment`, so never add a speculative ignore and remove ones that become redundant. Never shape runtime code around Steep limitations (conversions, copies or allocations made only to satisfy Steep): annotate it, or use a targeted `# steep:ignore` with a `NOTE: (steep)` comment when no honest annotation exists. Keep a conversion only when it is cheaper at runtime and say so in its comment (e.g. a `Set` splatted in a loop: build the array once instead of a `Set#to_a` per call).
 6. Don't loosen `Steep::Diagnostic::Ruby.strict` or add `ignore` entries to the `Steepfile`.
 7. New third-party gem used in `lib/`: add it to `rbs_collection.yaml` (and `sig/manifest.yml` for stdlib) or write a minimal stub in `sig/vendor/`.
 8. Verify with `bundle exec rbs collection install && bundle exec rake steep:check`; for signature/runtime mismatches run the specs under RBS runtime testing (command in `.github/workflows/typecheck-runtime.yml`).

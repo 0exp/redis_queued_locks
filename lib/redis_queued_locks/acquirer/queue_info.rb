@@ -2,14 +2,13 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.18.0
+# @version 1.20.0
 module RedisQueuedLocks::Acquirer::QueueInfo
   class << self
     # Returns an information about the required lock queue by the lock name. The result
     # represnts the ordered lock request queue that is ordered by score (Redis sets) and shows
-    # lock acquirers and their position in queue. Async nature with redis communcation can lead
-    # the sitaution when the queue becomes empty during the queue data extraction. So sometimes
-    # you can receive the lock queue info with empty queue.
+    # lock acquirers and their position in queue. The write lock queue is empty when only
+    # the queue of read lock requests exists.
     #
     # @param redis_client [RedisClient]
     # @param lock_name [String]
@@ -33,28 +32,24 @@ module RedisQueuedLocks::Acquirer::QueueInfo
     #
     # @api private
     # @since 1.0.0
-    # @version 1.18.0
-    # rubocop:disable Metrics/MethodLength
+    # @version 1.20.0
     def queue_info(redis_client, lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
       read_lock_key_queue = RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
 
+      # NOTE:
+      #   redis deletes empty sorted sets, so an empty ZRANGE result means that the queue
+      #   does not exist (no need for EXISTS checks);
       result = redis_client.pipelined do |pipeline|
-        pipeline.call('EXISTS', lock_key_queue)
         pipeline.call('ZRANGE', lock_key_queue, '0', '-1', 'WITHSCORES')
-        pipeline.call('EXISTS', read_lock_key_queue)
         pipeline.call('ZRANGE', read_lock_key_queue, '0', '-1', 'WITHSCORES')
       end
 
-      # rubocop:disable Layout/LineLength
-      # @type var result: [Integer,Array[[String,Integer|Float]],Integer,Array[[String,Integer|Float]]]
-      # rubocop:enable Layout/LineLength
-      exists_cmd_res = result[0]
-      zrange_cmd_res = result[1]
-      read_exists_cmd_res = result[2]
-      read_zrange_cmd_res = result[3]
+      # @type var result: [Array[[String,Integer|Float]],Array[[String,Integer|Float]]]
+      zrange_cmd_res = result[0]
+      read_zrange_cmd_res = result[1]
 
-      if exists_cmd_res == 1 || read_exists_cmd_res == 1
+      if !zrange_cmd_res.empty? || !read_zrange_cmd_res.empty?
         # NOTE: queue existed during the piepline invocation
         # @type var queue_info: RedisQueuedLocks::Acquirer::QueueInfo::queueInfo
         queue_info = {
@@ -64,7 +59,7 @@ module RedisQueuedLocks::Acquirer::QueueInfo
           end
         }
         # NOTE: (RW) the queue of read lock requests
-        if read_exists_cmd_res == 1
+        unless read_zrange_cmd_res.empty?
           queue_info['read_lock_queue'] = read_lock_key_queue
           queue_info['read_queue'] = read_zrange_cmd_res.map do |val|
             { 'acq_id' => val[0], 'score' => val[1], 'rw_mode' => 'read' }
@@ -76,6 +71,5 @@ module RedisQueuedLocks::Acquirer::QueueInfo
         nil
       end
     end
-    # rubocop:enable Metrics/MethodLength
   end
 end

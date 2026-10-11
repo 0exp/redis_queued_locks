@@ -94,6 +94,9 @@ class RedisQueuedLocks::Swarm
     )
   end
 
+  # NOTE: zombie locks are found via the lock index or via the keyspace SCAN
+  #   (`config['lock_index_enabled']`, the client-wide mode);
+  #
   # @option zombie_ttl [Integer]
   # @option lock_scan_size [Integer]
   # @option queue_scan_size [Integer]
@@ -101,6 +104,7 @@ class RedisQueuedLocks::Swarm
   #
   # @api public
   # @since 1.9.0
+  # @version 1.20.0
   def flush_zombies(
     zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: rql_client.config['swarm.flush_zombies.zombie_lock_scan_size'],
@@ -110,7 +114,8 @@ class RedisQueuedLocks::Swarm
       rql_client.redis_client,
       zombie_ttl,
       lock_scan_size,
-      queue_scan_size
+      queue_scan_size,
+      rql_client.config['lock_index_enabled']
     )
   end
 
@@ -120,6 +125,7 @@ class RedisQueuedLocks::Swarm
   #
   # @api public
   # @since 1.9.0
+  # @version 1.20.0
   def zombie_locks(
     zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: rql_client.config['swarm.flush_zombies.zombie_lock_scan_size']
@@ -127,7 +133,8 @@ class RedisQueuedLocks::Swarm
     RedisQueuedLocks::Swarm::ZombieInfo.zombie_locks(
       rql_client.redis_client,
       zombie_ttl,
-      lock_scan_size
+      lock_scan_size,
+      rql_client.config['lock_index_enabled']
     )
   end
 
@@ -137,6 +144,7 @@ class RedisQueuedLocks::Swarm
   #
   # @api ppublic
   # @since 1.9.0
+  # @version 1.20.0
   def zombie_acquirers(
     zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: rql_client.config['swarm.flush_zombies.zombie_lock_scan_size']
@@ -144,7 +152,8 @@ class RedisQueuedLocks::Swarm
     RedisQueuedLocks::Swarm::ZombieInfo.zombie_acquirers(
       rql_client.redis_client,
       zombie_ttl,
-      lock_scan_size
+      lock_scan_size,
+      rql_client.config['lock_index_enabled']
     )
   end
 
@@ -163,6 +172,7 @@ class RedisQueuedLocks::Swarm
   #
   # @api public
   # @since 1.9.0
+  # @version 1.20.0
   def zombies_info(
     zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: rql_client.config['swarm.flush_zombies.zombie_lock_scan_size']
@@ -170,7 +180,8 @@ class RedisQueuedLocks::Swarm
     RedisQueuedLocks::Swarm::ZombieInfo.zombies_info(
       rql_client.redis_client,
       zombie_ttl,
-      lock_scan_size
+      lock_scan_size,
+      rql_client.config['lock_index_enabled']
     )
   end
 

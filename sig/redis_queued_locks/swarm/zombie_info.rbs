@@ -4,25 +4,76 @@ module RedisQueuedLocks
   class Swarm
     module ZombieInfo
       type zombieInfo = { zombie_hosts: Set[String], zombie_acquirers: Set[String], zombie_locks: Set[String] }
-      def self.zombies_info: (RC::client redis_client, Integer zombie_ttl, Integer lock_scan_size) -> zombieInfo
+      def self.zombies_info: (
+        RC::client redis_client,
+        Integer zombie_ttl,
+        Integer lock_scan_size,
+        bool lock_index_enabled
+      ) -> zombieInfo
 
       type zombieLocks = Set[String]
-      def self.zombie_locks: (RC::client redis_client, Integer zombie_ttl, Integer lock_scan_size) -> zombieLocks
+      def self.zombie_locks: (
+        RC::client redis_client,
+        Integer zombie_ttl,
+        Integer lock_scan_size,
+        bool lock_index_enabled
+      ) -> zombieLocks
 
       type zombieHosts = Set[String]
       def self.zombie_hosts: (RC::client redis_client, Integer zombie_ttl) -> zombieHosts
 
       type zombieAcquirers = Set[String]
-      def self.zombie_acquirers: (RC::client redis_client, Integer zombie_ttl, Integer lock_scan_size) -> zombieAcquirers
+      def self.zombie_acquirers: (
+        RC::client redis_client,
+        Integer zombie_ttl,
+        Integer lock_scan_size,
+        bool lock_index_enabled
+      ) -> zombieAcquirers
 
       private def self.extract_zombie_hosts: (RC::client rconn, Integer zombie_ttl) -> zombieHosts
-      private def self.extract_zombie_locks: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieLocks
-      private def self.extract_zombie_acquirers: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieAcquirers
-      private def self.extract_all: (RC::client rconn, Integer zombie_ttl, Integer lock_scan_size) -> zombieInfo
-      private def self.each_zombie_read_lock: (
+      private def self.extract_zombie_locks: (
+        RC::client rconn,
+        Integer zombie_ttl,
+        Integer lock_scan_size,
+        bool lock_index_enabled
+      ) -> zombieLocks
+      private def self.extract_zombie_acquirers: (
+        RC::client rconn,
+        Integer zombie_ttl,
+        Integer lock_scan_size,
+        bool lock_index_enabled
+      ) -> zombieAcquirers
+      private def self.extract_all: (
+        RC::client rconn,
+        Integer zombie_ttl,
+        Integer lock_scan_size,
+        bool lock_index_enabled
+      ) -> zombieInfo
+      private def self.each_zombie_lock: (
+        RC::client rconn,
+        Set[String] zombie_hosts,
+        Integer lock_scan_size,
+        bool lock_index_enabled
+      ) { (String lock_key, String acquirer_id) -> void } -> void
+      private def self.each_keyspace_zombie_lock: (
         RC::client rconn,
         Set[String] zombie_hosts,
         Integer lock_scan_size
+      ) { (String lock_key, String acquirer_id) -> void } -> void
+      private def self.each_lock_index_zombie_lock: (
+        RC::client rconn,
+        Set[String] zombie_hosts,
+        Integer lock_scan_size
+      ) { (String lock_key, String acquirer_id) -> void } -> void
+      private def self.each_zombie_write_lock: (
+        RC::client rconn,
+        Array[String] lock_keys,
+        Set[String] zombie_hosts
+      ) { (String lock_key, String acquirer_id) -> void } -> void
+      private def self.each_zombie_read_lock: (
+        RC::client rconn,
+        Array[String] lock_readers_keys,
+        Set[String] zombie_hosts
       ) { (String lock_readers_key, String acquirer_id) -> void } -> void
     end
   end

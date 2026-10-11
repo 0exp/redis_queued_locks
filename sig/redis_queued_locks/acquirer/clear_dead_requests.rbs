@@ -9,6 +9,7 @@ module RedisQueuedLocks
         RC::client redis_client,
         Integer scan_size,
         Integer dead_ttl,
+        bool lock_index_enabled,
         RQL::loggerObj logger,
         RQL::instrObj instrumenter,
         untyped? instrument,
@@ -22,7 +23,15 @@ module RedisQueuedLocks
         bool instr_sample_this
       ) -> clearResult
 
-      private def self.each_lock_queue: (RC::client redis_client, Integer scan_size) { (String lock_queue) -> untyped } -> Enumerator[String]
+      private def self.each_lock_queue: (RC::client redis_client, Integer scan_size) { (String lock_queue) -> void } -> void
+      private def self.drop_dead_requests: (RC::client redis_client, Array[String] lock_queues, Float dead_score) -> void
+      private def self.drop_dead_requests_of_locks: (
+        RC::client redis_client,
+        Array[String] lock_names,
+        Float dead_score,
+        Set[String] processed_queues
+      ) -> void
+      private def self.each_lock_name_batch: (RC::client redis_client, Integer scan_size) { (Array[String] lock_names) -> void } -> void
     end
   end
 end

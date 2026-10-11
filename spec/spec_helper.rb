@@ -21,4 +21,21 @@ RSpec.configure do |config|
   config.disable_monkey_patching!
   config.expect_with(:rspec) { |c| c.syntax = :expect }
   Thread.abort_on_exception = true
+
+  # NOTE: (lock index) examples with the `lock_index_enabled` metadata run with this value as
+  #   the default value of `config['lock_index_enabled']` (for all RQL clients created by
+  #   the example: the integration spec runs with both lock lookup modes); explicitly configured
+  #   values win; the library default is restored after the example;
+  library_lock_index_enabled = RedisQueuedLocks::Config.new['lock_index_enabled']
+  config.around do |example|
+    lock_index_enabled = example.metadata[:lock_index_enabled]
+    next example.run if lock_index_enabled == nil
+
+    begin
+      RedisQueuedLocks::Config.setting('lock_index_enabled', lock_index_enabled)
+      example.run
+    ensure
+      RedisQueuedLocks::Config.setting('lock_index_enabled', library_lock_index_enabled)
+    end
+  end
 end

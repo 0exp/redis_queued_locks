@@ -1,0 +1,31 @@
+use RedisClient as RC
+
+module RedisQueuedLocks
+  module Acquirer
+    module ReindexLocks
+      type reindexResult = { ok: bool, result: { idx_key_cnt: Integer } }
+      def self.reindex_locks: (
+        RC::client redis_client,
+        Integer scan_size,
+        Integer queue_ttl,
+        Integer lock_index_grace_period
+      ) -> reindexResult
+
+      private def self.index_lock_keys: (
+        RC::client redis_client,
+        Array[String] lock_keys,
+        Array[String] lock_queues,
+        Integer queue_pttl,
+        Integer lock_index_grace_period
+      ) -> Integer
+
+      private def self.index_lock_key: (
+        RedisClient::Pipeline pipeline,
+        String key,
+        Integer key_ttl,
+        Integer lock_index_time,
+        Integer lock_index_grace_period
+      ) -> Integer
+    end
+  end
+end

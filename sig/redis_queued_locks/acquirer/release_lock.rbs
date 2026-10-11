@@ -19,6 +19,7 @@ module RedisQueuedLocks
       def self.release_lock: (
         RC::client redis,
         String lock_name,
+        bool lock_index_enabled,
         RQL::instrObj instrumenter,
         RQL::loggerObj logger,
         bool log_sampling_enabled,
@@ -38,7 +39,8 @@ module RedisQueuedLocks
         String lock_key,
         String lock_key_queue,
         String read_lock_key_queue,
-        String lock_readers_key
+        String lock_readers_key,
+        bool lock_index_enabled
       ) -> fullReleaseResult
     end
   end

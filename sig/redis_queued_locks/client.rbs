@@ -36,6 +36,7 @@ module RedisQueuedLocks
       String lock_name,
       ?ttl: Integer,
       ?queue_ttl: Integer,
+      ?lock_index_grace_period: Integer,
       ?timeout: Integer?,
       ?timed: bool,
       ?retry_count: Integer?,
@@ -67,6 +68,7 @@ module RedisQueuedLocks
       String lock_name,
       ?ttl: Integer,
       ?queue_ttl: Integer,
+      ?lock_index_grace_period: Integer,
       ?timeout: Integer?,
       ?timed: bool,
       ?retry_count: Integer?,
@@ -252,5 +254,11 @@ module RedisQueuedLocks
       ?instr_sampler: RQL::Instrument::samplerObj,
       ?instr_sample_this: bool
     ) -> RQL::Acquirer::ClearDeadRequests::clearResult
+
+    def reindex_locks: (
+      ?scan_size: Integer,
+      ?queue_ttl: Integer,
+      ?lock_index_grace_period: Integer
+    ) -> RQL::Acquirer::ReindexLocks::reindexResult
   end
 end

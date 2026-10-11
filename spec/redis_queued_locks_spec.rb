@@ -4,7 +4,7 @@
 #   - these specs will be TOTALLY reworked (this is a reason of using rspec-retry);
 #   - this code is not ideal and final,
 #     it is written only for behavior testing and funcionality checking;
-RSpec.describe RedisQueuedLocks do
+RSpec.shared_context 'redis_queued_locks redis' do
   let(:redis) do
     RedisClient.config(db: 0).new_pool(
       # NOTE:
@@ -28,7 +28,12 @@ RSpec.describe RedisQueuedLocks do
     redis.call('DEL', RedisQueuedLocks::Resource::SWARM_KEY)
     redis.call('FLUSHDB')
   end
+end
 
+# NOTE: the behavior of the library: it runs with both lock lookup modes (the keyspace SCAN and
+#   the lock index: `config['lock_index_enabled']` is switched by the `lock_index_enabled` metadata
+#   of the including context, see `spec_helper`);
+RSpec.shared_examples 'redis_queued_locks' do
   # NOTE: Lock Series PoC
   describe 'Lock Series PoC' do
     specify '#lock_series' do
@@ -2787,6 +2792,9 @@ RSpec.describe RedisQueuedLocks do
         config['logger'] = RedisQueuedLocks::Logging::VoidLogger
         config['log_lock_try'] = false
         config['dead_request_ttl'] = 1 * 24 * 60 * 60 * 1000
+        config['lock_index_enabled'] = false
+        config['lock_index_enabled'] = true
+        config['lock_index_grace_period'] = 60_000
         config['is_timed_by_default'] = false
         config['default_conflict_strategy'] = :wait_for_lock
         config['default_access_strategy'] = :queued
@@ -3250,6 +3258,9 @@ RSpec.describe RedisQueuedLocks do
         redis.call(
           'ZADD', 'rql:lock_read_queue:rw.clear.queue', Time.now.to_f, client.current_acquirer_id
         )
+        # NOTE: the queue is written directly (not by RQL acquirers): the keyspace SCAN finds it,
+        #   the lock index gets it by `#reindex_locks` (the lock index is the only lookup then);
+        client.reindex_locks if client.config['lock_index_enabled']
         expect(client.locked?('rw.clear')).to eq(true)
         expect(client.clear_current_locks).to match({
           ok: true,
@@ -3262,6 +3273,9 @@ RSpec.describe RedisQueuedLocks do
       aggregate_failures 'clear_locks' do
         client.lock('rw.clear', read_write_mode: :read, ttl: 10_000)
         redis.call('ZADD', 'rql:lock_read_queue:rw.clear', Time.now.to_f, 'rql:acq:1/2/3/4/waiting')
+        # NOTE: the queue is written directly (not by RQL acquirers): the keyspace SCAN finds it,
+        #   the lock index gets it by `#reindex_locks` (the lock index is the only lookup then);
+        client.reindex_locks if client.config['lock_index_enabled']
         expect(client.clear_locks).to match({
           ok: true,
           # NOTE: readers registry, read lock data and read lock queue
@@ -3275,11 +3289,48 @@ RSpec.describe RedisQueuedLocks do
         redis.call(
           'ZADD', 'rql:lock_read_queue:rw.dead', Time.now.to_f - 60, 'rql:acq:1/2/3/4/dead'
         )
+        # NOTE: the queue is written directly (not by RQL acquirers): the keyspace SCAN finds it,
+        #   the lock index gets it by `#reindex_locks` (the lock index is the only lookup then);
+        client.reindex_locks if client.config['lock_index_enabled']
         expect(client.clear_dead_requests(dead_ttl: 1_000)).to match({
           ok: true,
           result: match({ processed_queues: contain_exactly('rql:lock_read_queue:rw.dead') })
         })
         expect(client.queued?('rw.dead')).to eq(false)
+      end
+    end
+
+    specify 'queue info with read lock requests only' do
+      client = RedisQueuedLocks::Client.new(redis)
+      reader = 'rql:acq:1/2/3/4/reader'
+      redis.call('ZADD', 'rql:lock_read_queue:rw.read.queue', Time.now.to_f, reader)
+      # NOTE: the queue is written directly (not by RQL acquirers): the keyspace SCAN finds it,
+      #   the lock index gets it by `#reindex_locks` (the lock index is the only lookup then);
+      client.reindex_locks if client.config['lock_index_enabled']
+
+      aggregate_failures 'the queue of write lock requests does not exist' do
+        expect(client.queue_info('rw.read.queue')).to match({
+          'lock_queue' => 'rql:lock_queue:rw.read.queue',
+          'queue' => [],
+          'read_lock_queue' => 'rql:lock_read_queue:rw.read.queue',
+          'read_queue' => contain_exactly(
+            { 'acq_id' => reader, 'score' => be_a(Numeric), 'rw_mode' => 'read' }
+          )
+        })
+        expect(client.queues_info).to contain_exactly(
+          match({
+            queue: 'rql:lock_read_queue:rw.read.queue',
+            requests: contain_exactly(
+              { 'acq_id' => reader, 'score' => be_a(Numeric), 'rw_mode' => 'read' }
+            )
+          })
+        )
+      end
+
+      aggregate_failures 'no lock queues' do
+        redis.call('ZREM', 'rql:lock_read_queue:rw.read.queue', reader)
+        expect(client.queue_info('rw.read.queue')).to eq(nil)
+        expect(client.queues_info).to eq(Set.new)
       end
     end
 
@@ -3317,6 +3368,503 @@ RSpec.describe RedisQueuedLocks do
       })
       expect(client.locked?('rw.zombie')).to eq(false)
       expect(client.zombie_locks).to eq(Set.new)
+    end
+
+    specify 'zombie lock requests (write and read lock queues)' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['swarm.auto_swarm'] = false
+        # NOTE: we will manually probe hosts and flush zombies
+        config['swarm.probe_hosts.enabled_for_swarm'] = false
+        config['swarm.flush_zombies.enabled_for_swarm'] = false
+        config['swarm.flush_zombies.zombie_ttl'] = 1_000
+      end
+
+      # NOTE: each fiber is a separate acquirer of the current (zombie) host
+      writer_fibers = Array.new(2) do |index|
+        Fiber.new do
+          client.lock("rw.zombie.write.#{index}", ttl: 500_000)
+          client.current_acquirer_id
+        end
+      end
+      reader_fiber = Fiber.new do
+        client.lock('rw.zombie.read', read_write_mode: :read, ttl: 500_000)
+        client.current_acquirer_id
+      end
+      zombie_writers = writer_fibers.map(&:resume)
+      zombie_reader = reader_fiber.resume
+      # NOTE: an acquirer of the zombie host that holds no locks (requests only)
+      zombie_requester = client.current_acquirer_id(fiber_id: 123_456_789)
+      live_acquirer = 'rql:acq:1/2/3/4/live'
+
+      # NOTE: zombie and live requests in the queues of another lock (both modes)
+      now = Time.now.to_f
+      redis.call(
+        'ZADD', 'rql:lock_queue:rw.zombie.queue',
+        now, zombie_writers[0], now, zombie_writers[1], now, zombie_requester, now, live_acquirer
+      )
+      redis.call(
+        'ZADD', 'rql:lock_read_queue:rw.zombie.queue',
+        now, zombie_writers[1], now, zombie_reader, now, zombie_requester, now, live_acquirer
+      )
+      # NOTE: the queues are written directly (not by RQL acquirers, like keys of older RQL
+      #   versions): the keyspace SCAN finds them, the lock index gets them by `#reindex_locks`
+      #   (the swarm finds locks and queues via the lock index only then);
+      client.reindex_locks if client.config['lock_index_enabled']
+
+      client.probe_hosts
+      sleep(1.5) # NOTE: zombie_ttl is reached (no more host probes)
+
+      # NOTE: zombie acquirers of the zombie info are the acquirers of zombie locks
+      expect(client.zombie_acquirers).to contain_exactly(*zombie_writers, zombie_reader)
+      expect(client.flush_zombies).to match({
+        ok: true,
+        deleted_zombie_hosts: include(client.current_host_id),
+        # NOTE: requests of the zombie host are dropped even without locks (and reported)
+        deleted_zombie_acquirers: contain_exactly(*zombie_writers, zombie_reader, zombie_requester),
+        deleted_zombie_locks: include(
+          'rql:lock:rw.zombie.write.0',
+          'rql:lock:rw.zombie.write.1',
+          'rql:lock_readers:rw.zombie.read'
+        )
+      })
+      # NOTE: only the requests of zombie acquirers (of zombie hosts) are dropped
+      expect(client.queue_info('rw.zombie.queue')).to match({
+        'lock_queue' => 'rql:lock_queue:rw.zombie.queue',
+        'queue' => contain_exactly(
+          { 'acq_id' => live_acquirer, 'score' => be_a(Numeric), 'rw_mode' => 'write' }
+        ),
+        'read_lock_queue' => 'rql:lock_read_queue:rw.zombie.queue',
+        'read_queue' => contain_exactly(
+          { 'acq_id' => live_acquirer, 'score' => be_a(Numeric), 'rw_mode' => 'read' }
+        )
+      })
+      expect(client.zombie_locks).to eq(Set.new)
+
+      client.clear_locks
+    end
+
+    specify 'lock state pipeline layout' do
+      # NOTE: (see "pipeline layout" in `TryToLock#try_to_lock`)
+      #   - try-lock replies of the lock state pipeline are read by their positions;
+      #   - read lock requests do not send the write-only commands (the write-only tail), so
+      #     the read lock request pipeline should be the beginning of the write lock request
+      #     pipeline and the write-only tail should be the last part of it;
+      #   - eager queueing (`:wait_for_lock`) sends the lock request queueing commands right after
+      #     the head of the lock state pipeline; without eager queueing (`:work_through`) they are
+      #     sent in a separate pipeline;
+      #   - the enabled lock index adds the lock index commands to the end of the queueing commands
+      #     (their replies are not read);
+      #   - pipelines are observed via a separate pool (the same db) with a recording middleware;
+      try_to_lock = RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
+      pipelines = []
+      recorder = Module.new do
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          pipelines << commands.map(&:dup)
+          super(commands, redis_config, &block)
+        end
+      end
+      recorded_redis = RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5)
+      client = RedisQueuedLocks::Client.new(recorded_redis)
+      queue = 'rql:lock_queue:rw.pipeline'
+      read_queue = 'rql:lock_read_queue:rw.pipeline'
+      lock_index_enabled = client.config['lock_index_enabled']
+      queueing_size = lock_index_enabled ? 9 : 5
+
+      # NOTE: the lock state pipeline (the only one with TIME) and the pipeline with
+      #   the lock request queueing (ZADD NX) of an uncontended lock
+      lock_pipelines = lambda do |read_write_mode, conflict_strategy|
+        pipelines.clear
+        client.lock('rw.pipeline', read_write_mode:, conflict_strategy:, ttl: 10_000) {}
+        [
+          pipelines.find { |commands| commands.include?(['TIME']) },
+          pipelines.find do |commands|
+            commands.any? { |command| command[0..2] in ['ZADD', _, 'NX'] }
+          end
+        ]
+      end
+      expect_queueing = lambda do |queueing, request_queue, opposite_request_queue|
+        expect(queueing.map(&:first)).to eq(
+          %w[ZADD ZREMRANGEBYSCORE ZREMRANGEBYSCORE ZRANGE ZRANGE] +
+          # NOTE: the request queue TTL and the lock index (the enabled lock index only: new
+          #   commands go to the end)
+          (lock_index_enabled ? %w[PEXPIRE PEXPIRE ZADD ZREMRANGEBYSCORE] : [])
+        )
+        expect(queueing[try_to_lock::QUEUE_HEAD_REPLY]).to eq(['ZRANGE', request_queue, '0', '0'])
+        expect(queueing[try_to_lock::OPPOSITE_QUEUE_HEAD_REPLY]).to eq(
+          ['ZRANGE', opposite_request_queue, '0', '0', 'WITHSCORES']
+        )
+        next unless lock_index_enabled
+
+        expect(queueing[5]).to eq(['PEXPIRE', request_queue, '15000', 'NX'])
+        expect(queueing[6]).to eq(['PEXPIRE', request_queue, '15000', 'GT'])
+        expect(queueing[7]).to match(
+          ['ZADD', 'rql:index:locks', 'GT', match(/\A\d+\z/), 'rw.pipeline']
+        )
+        expect(queueing[8]).to match(
+          ['ZREMRANGEBYSCORE', 'rql:index:locks', '-inf', match(/\A\d+\z/)]
+        )
+      end
+
+      %i[wait_for_lock work_through].each do |conflict_strategy|
+        write_state, write_queueing = lock_pipelines.call(:write, conflict_strategy)
+        read_state, read_queueing = lock_pipelines.call(:read, conflict_strategy)
+
+        aggregate_failures "the write-only tail (#{conflict_strategy})" do
+          # NOTE: command names only (queueing commands have mode-specific keys)
+          expect(write_state.first(read_state.size).map(&:first)).to eq(read_state.map(&:first))
+          expect(write_state.drop(read_state.size)).to eq([
+            ['ZRANGE', 'rql:lock_readers:rw.pipeline', '-1', '-1', 'WITHSCORES']
+          ])
+        end
+
+        aggregate_failures "lock request queueing (#{conflict_strategy})" do
+          if conflict_strategy == :wait_for_lock
+            # NOTE: eager queueing: right after the head of the lock state pipeline
+            queueing_at = try_to_lock::LOCK_STATE_QUEUE_REPLIES_AT
+            expect(write_queueing).to equal(write_state)
+            expect(read_queueing).to equal(read_state)
+            expect_queueing.call(write_state[queueing_at, queueing_size], queue, read_queue)
+            expect_queueing.call(read_state[queueing_at, queueing_size], read_queue, queue)
+          else
+            # NOTE: a separate pipeline
+            expect(write_queueing).not_to equal(write_state)
+            expect(read_queueing).not_to equal(read_state)
+            expect_queueing.call(write_queueing, queue, read_queue)
+            expect_queueing.call(read_queueing, read_queue, queue)
+          end
+        end
+      end
+      expect(client.keys).to be_empty
+
+      recorded_redis.close
+    end
+
+    specify 'unlock round trips' do
+      # NOTE: round trips are observed via a separate pool (the same db) with a recording middleware
+      round_trips = []
+      recorder = Module.new do
+        define_method(:call) do |command, redis_config, &block|
+          round_trips << [command.first]
+          super(command, redis_config, &block)
+        end
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          round_trips << commands.map(&:first)
+          super(commands, redis_config, &block)
+        end
+      end
+      recorded_redis = RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5)
+      client = RedisQueuedLocks::Client.new(recorded_redis)
+      readers_client = RedisQueuedLocks::Client.new(redis)
+
+      aggregate_failures 'without read locks: one round trip (the release transaction)' do
+        client.lock('rw.unlock', ttl: 10_000)
+        round_trips.clear
+        expect(client.unlock('rw.unlock')).to match({
+          ok: true,
+          result: hash_including(queue_res: :nothing_to_release, lock_res: :released)
+        })
+        expect(round_trips.size).to eq(1)
+        expect(round_trips.first).to include('MULTI', 'ZRANGE', 'EXEC')
+      end
+
+      aggregate_failures 'with read locks: the read lock data is dropped in one more round trip' do
+        # NOTE: each thread is a separate acquirer (thread references are kept till the end)
+        readers = Array.new(2) do
+          Thread.new do
+            readers_client.lock('rw.unlock', read_write_mode: :read, ttl: 10_000)
+          end
+        end
+        readers.each(&:join)
+        read_lock_keys = readers.map do |reader|
+          RedisQueuedLocks::Resource.prepare_read_lock_key(
+            'rw.unlock', reader.value[:result][:acq_id]
+          )
+        end
+        expect(redis.call('EXISTS', *read_lock_keys)).to eq(2)
+
+        round_trips.clear
+        expect(client.unlock('rw.unlock')).to match({
+          ok: true,
+          result: hash_including(lock_res: :released)
+        })
+        expect(round_trips.size).to eq(2)
+        expect(round_trips.last).to eq(['DEL'])
+        expect(redis.call('EXISTS', *read_lock_keys)).to eq(0)
+        expect(client.locked?('rw.unlock')).to eq(false)
+      end
+
+      expect(client.keys).to be_empty
+      recorded_redis.close
+    end
+
+    specify 'pre-check of retries and fail_fast attempts (round trips)' do
+      # NOTE: round trips are observed via a separate pool (the same db, one connection) with
+      #   a recording middleware;
+      round_trips = []
+      recorder = Module.new do
+        define_method(:call) do |command, redis_config, &block|
+          round_trips << [command.first]
+          super(command, redis_config, &block)
+        end
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          round_trips << commands.map(&:first)
+          super(commands, redis_config, &block)
+        end
+      end
+      recorded_redis =
+        RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5, size: 1)
+      test_logger = Class.new do
+        attr_reader :logs
+
+        def initialize
+          @logs = []
+        end
+
+        def debug(progname = nil, &block)
+          logs << "#{progname} : #{yield if block_given?}"
+        end
+      end.new
+      client = RedisQueuedLocks::Client.new(recorded_redis) do |config|
+        config['retry_delay'] = 1
+        config['retry_jitter'] = 1
+      end
+      holder_client = RedisQueuedLocks::Client.new(redis)
+
+      # NOTE: the lock is obtained by another acquirer (the thread reference is kept till the end)
+      holder = Thread.new { holder_client.lock('rw.precheck', ttl: 10_000) }
+      holder.join
+      client.locked?('rw.precheck') # NOTE: establish the recorded connection
+
+      aggregate_failures 'retries: one round trip for each failed retry (no WATCH)' do
+        round_trips.clear
+        expect(client.lock('rw.precheck', ttl: 1_000, retry_count: 3)).to match({
+          ok: false,
+          result: :retry_limit_reached
+        })
+        # NOTE:
+        #   the first attempt (WATCH, lock state with the queueing, MULTI/EXEC),
+        #   two pre-checked retries, the dequeue (ZREM)
+        expect(round_trips.size).to eq(6)
+        expect(round_trips.count { |commands| commands.include?('WATCH') }).to eq(1)
+      end
+
+      aggregate_failures 'retries: the pre-checked retries log the same events as the attempts' do
+        client.lock(
+          'rw.precheck', ttl: 1_000, retry_count: 3, logger: test_logger, log_lock_try: true
+        )
+        %w[acq_added_to_queue remove_expired_acqs get_first_from_queue exit__lock_still_obtained]
+          .each do |event|
+            expect(test_logger.logs.count { |log| log.include?("try_lock.#{event}]") }).to eq(3)
+          end
+      end
+
+      aggregate_failures 'fail_fast on the obtained lock: one round trip' do
+        round_trips.clear
+        expect(client.lock('rw.precheck', fail_fast: true)).to match({
+          ok: false,
+          result: :fail_fast_no_try
+        })
+        expect(round_trips.size).to eq(1)
+      end
+
+      aggregate_failures 'fail_fast on the free lock: the pre-check and the attempt' do
+        holder_client.unlock('rw.precheck')
+        round_trips.clear
+        expect(client.lock('rw.precheck', fail_fast: true, ttl: 1_000)).to match({
+          ok: true,
+          result: hash_including(process: :lock_obtaining)
+        })
+        # NOTE: pre-check, WATCH, lock state, lock request queueing, MULTI/EXEC
+        expect(round_trips.size).to eq(5)
+      end
+
+      client.clear_locks
+      recorded_redis.close
+    end
+
+    specify 'lock-iterating operations: one pass (keyspace or lock index) with small batches' do
+      client = RedisQueuedLocks::Client.new(redis)
+      acquirer_id = client.current_acquirer_id
+      host_id = client.current_host_id
+      dead_acquirer = 'rql:acq:1/2/3/4/dead'
+      live_acquirer = 'rql:acq:1/2/3/4/live'
+      write_locks = %w[scan.w.0 scan.w.1 scan.w.2]
+      # NOTE: the readers registry (and read lock data) of a lock with `queue:` in its name
+      #   matches the lock queues pattern (`rql:lock_*queue:*`) too
+      read_locks = %w[scan.r.0 scan.r.1 scan.my_queue:r]
+      write_locks.each { |lock_name| client.lock(lock_name, ttl: 60_000) }
+      read_locks.each { |lock_name| client.lock(lock_name, read_write_mode: :read, ttl: 60_000) }
+      lock_keys = (write_locks + read_locks).map { |lock_name| "rql:lock:#{lock_name}" }
+
+      now = Time.now.to_f
+      queues = %w[scan.q.0 scan.q.1 scan.q.2].flat_map do |lock_name|
+        ["rql:lock_queue:#{lock_name}", "rql:lock_read_queue:#{lock_name}"]
+      end
+      queues.each do |lock_queue|
+        redis.call(
+          'ZADD', lock_queue, now - 60, dead_acquirer, now, live_acquirer, now, acquirer_id
+        )
+      end
+      # NOTE: the queues are written directly (not by RQL acquirers): the keyspace SCAN finds
+      #   them, the lock index gets them by `#reindex_locks` (the lock index is the only lookup
+      #   then);
+      client.reindex_locks if client.config['lock_index_enabled']
+      # NOTE: a key matched by `KEY_PATTERN` (`rql:lock*`) out of the lock key families
+      redis.call('SET', 'rql:lockX', 'value')
+
+      aggregate_failures 'locks and queues' do
+        expect(client.locks(scan_size: 2)).to contain_exactly(*lock_keys)
+        expect(client.queues(scan_size: 2)).to contain_exactly(*queues)
+        expect(client.locks_info(scan_size: 2)).to contain_exactly(
+          *write_locks.map do |lock_name|
+            match({
+              lock: "rql:lock:#{lock_name}",
+              status: :alive,
+              info: hash_including('acq_id' => acquirer_id, 'rw_mode' => 'write')
+            })
+          end,
+          *read_locks.map do |lock_name|
+            match({
+              lock: "rql:lock:#{lock_name}",
+              status: :alive,
+              info: hash_including(
+                'rw_mode' => 'read',
+                'readers' => contain_exactly(
+                  hash_including('acq_id' => acquirer_id, 'ts' => be_a(Float), 'ini_ttl' => 60_000)
+                )
+              )
+            })
+          end
+        )
+        expect(client.queues_info(scan_size: 2)).to contain_exactly(
+          *queues.map do |lock_queue|
+            match({
+              queue: lock_queue,
+              requests: contain_exactly(
+                hash_including('acq_id' => dead_acquirer),
+                hash_including('acq_id' => live_acquirer),
+                hash_including('acq_id' => acquirer_id)
+              )
+            })
+          end
+        )
+      end
+
+      aggregate_failures 'clear_dead_requests' do
+        # NOTE: 6 queues (keyspace) or 9 lock names (6 queues, lock index): full batches and
+        #   the rest
+        expect(client.clear_dead_requests(dead_ttl: 30_000, scan_size: 4)).to match({
+          ok: true,
+          result: match({ processed_queues: contain_exactly(*queues) })
+        })
+        queues.each do |lock_queue|
+          expect(redis.call('ZRANGE', lock_queue, '0', '-1')).to contain_exactly(
+            live_acquirer, acquirer_id
+          )
+        end
+      end
+
+      aggregate_failures 'clear_locks_of' do
+        expect(
+          client.clear_locks_of(host_id:, acquirer_id:, lock_scan_size: 2, queue_scan_size: 4)
+        ).to match({
+          ok: true,
+          # NOTE: 3 write locks + 3 read locks; requests in 6 queues
+          result: match({ rel_key_cnt: 6, tch_queue_cnt: 6, rel_time: be_a(Numeric) })
+        })
+        expect(client.locks).to be_empty
+        queues.each do |lock_queue|
+          expect(redis.call('ZRANGE', lock_queue, '0', '-1')).to eq([live_acquirer])
+        end
+      end
+
+      aggregate_failures 'clear_locks' do
+        client.lock('scan.w.0', ttl: 60_000)
+        client.lock('scan.r.0', read_write_mode: :read, ttl: 60_000)
+        expect(client.clear_locks(batch_size: 2)).to match({
+          ok: true,
+          # NOTE: write lock, readers registry, read lock data, 6 lock queues
+          result: match({ rel_key_cnt: 9, rel_time: be_a(Numeric) })
+        })
+        if client.config['lock_index_enabled']
+          # NOTE: keys out of the lock key families are not visited (they are not lock keys)
+          expect(client.keys).to be_empty
+          expect(redis.call('EXISTS', 'rql:lockX')).to eq(1)
+          # NOTE: the released lock names are dropped from the lock index
+          expect(redis.call('ZCARD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY)).to eq(0)
+        else
+          # NOTE: keys out of the lock key families are not deleted (`#keys` lists all `rql:lock*`)
+          expect(client.keys).to contain_exactly('rql:lockX')
+        end
+      end
+
+      redis.call('DEL', 'rql:lockX')
+    end
+
+    specify 'zombie locks and requests with small batches' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['swarm.auto_swarm'] = false
+        # NOTE: we will manually probe hosts and flush zombies
+        config['swarm.probe_hosts.enabled_for_swarm'] = false
+        config['swarm.flush_zombies.enabled_for_swarm'] = false
+        config['swarm.flush_zombies.zombie_ttl'] = 1_000
+      end
+
+      # NOTE: each fiber is a separate acquirer of the current (zombie) host
+      zombie_fibers = Array.new(3) do |index|
+        Fiber.new do
+          client.lock("zombie.batch.w.#{index}", ttl: 500_000)
+          client.lock("zombie.batch.r.#{index}", read_write_mode: :read, ttl: 500_000)
+          client.current_acquirer_id
+        end
+      end
+      zombie_acquirers = zombie_fibers.map(&:resume)
+      zombie_locks = Array.new(3) do |index|
+        ["rql:lock:zombie.batch.w.#{index}", "rql:lock_readers:zombie.batch.r.#{index}"]
+      end.flatten
+      live_acquirer = 'rql:acq:1/2/3/4/live'
+
+      now = Time.now.to_f
+      queues = %w[zombie.batch.q.0 zombie.batch.q.1 zombie.batch.q.2].flat_map do |lock_name|
+        ["rql:lock_queue:#{lock_name}", "rql:lock_read_queue:#{lock_name}"]
+      end
+      queues.each do |lock_queue|
+        redis.call(
+          'ZADD', lock_queue,
+          now, zombie_acquirers[0], now, zombie_acquirers[2], now, live_acquirer
+        )
+      end
+      # NOTE: the queues are written directly (not by RQL acquirers, like keys of older RQL
+      #   versions): the keyspace SCAN finds them, the lock index gets them by `#reindex_locks`
+      #   (the swarm finds locks and queues via the lock index only then);
+      client.reindex_locks(scan_size: 2) if client.config['lock_index_enabled']
+
+      client.probe_hosts
+      sleep(1.5) # NOTE: zombie_ttl is reached (no more host probes)
+
+      expect(client.zombies_info(lock_scan_size: 2)).to match({
+        zombie_hosts: include(client.current_host_id),
+        zombie_acquirers: contain_exactly(*zombie_acquirers),
+        zombie_locks: contain_exactly(*zombie_locks)
+      })
+      expect(client.flush_zombies(lock_scan_size: 2, queue_scan_size: 2)).to match({
+        ok: true,
+        deleted_zombie_hosts: include(client.current_host_id),
+        deleted_zombie_acquirers: contain_exactly(*zombie_acquirers),
+        deleted_zombie_locks: contain_exactly(*zombie_locks)
+      })
+      expect(client.locks).to be_empty
+      queues.each do |lock_queue|
+        expect(redis.call('ZRANGE', lock_queue, '0', '-1')).to eq([live_acquirer])
+      end
+      # NOTE: no zombie hosts after the flush => no zombie locks (and no SCAN)
+      expect(client.zombies_info(lock_scan_size: 2)).to match({
+        zombie_hosts: Set.new,
+        zombie_acquirers: Set.new,
+        zombie_locks: Set.new
+      })
+
+      client.clear_locks
     end
 
     specify 'read lock meta and read lock data' do
@@ -3366,6 +3914,21 @@ RSpec.describe RedisQueuedLocks do
           )
         }))
         expect(client.keys).to include(*read_lock_keys)
+
+        # NOTE:
+        #   acquirer and host ids are not stored in the read lock data (both are derived from
+        #   the acquirer id), the info reports them as the first fields (like the write lock info)
+        read_lock_keys.each_with_index do |read_lock_key, index|
+          expect(redis.call('HGETALL', read_lock_key)).to match({
+            'ts' => be_a(String),
+            'ini_ttl' => '10000',
+            'reader' => index.to_s,
+            'num' => index.to_s
+          })
+        end
+        expect(client.lock_info('rw.meta')['readers'].map { |reader| reader.keys.first(2) }).to eq(
+          [%w[acq_id hst_id], %w[acq_id hst_id]]
+        )
 
         # NOTE: #unlock drops the read lock data too
         client.unlock('rw.meta')
@@ -3671,6 +4234,7 @@ RSpec.describe RedisQueuedLocks do
       expect do
         RedisQueuedLocks::Acquirer::ExtendLockTTL.extend_lock_ttl(
           redis, 'rw.args', 1_000, :reed, false, client.current_acquirer_id,
+          client.config['lock_index_enabled'],
           client.config['logger'], client.config['instrumenter'], nil,
           false, 15, RedisQueuedLocks::Logging::Sampler, false,
           false, 15, RedisQueuedLocks::Instrument::Sampler, false
@@ -3679,6 +4243,7 @@ RSpec.describe RedisQueuedLocks do
       expect do
         RedisQueuedLocks::Acquirer::ExtendLockTTL.extend_lock_ttl(
           redis, 'rw.args', 1_000, :read, nil, client.current_acquirer_id,
+          client.config['lock_index_enabled'],
           client.config['logger'], client.config['instrumenter'], nil,
           false, 15, RedisQueuedLocks::Logging::Sampler, false,
           false, 15, RedisQueuedLocks::Instrument::Sampler, false
@@ -3688,6 +4253,7 @@ RSpec.describe RedisQueuedLocks do
       expect(
         RedisQueuedLocks::Acquirer::ExtendLockTTL.extend_lock_ttl(
           redis, 'rw.args', 1_000, :write, nil, client.current_acquirer_id,
+          client.config['lock_index_enabled'],
           client.config['logger'], client.config['instrumenter'], nil,
           false, 15, RedisQueuedLocks::Logging::Sampler, false,
           false, 15, RedisQueuedLocks::Instrument::Sampler, false
@@ -3821,6 +4387,638 @@ RSpec.describe RedisQueuedLocks do
         )
       end
       expect(client.keys).to be_empty
+    end
+  end
+end
+
+RSpec.describe RedisQueuedLocks do
+  include_context 'redis_queued_locks redis'
+
+  context 'with the disabled lock index (keyspace SCAN)', lock_index_enabled: false do
+    include_examples 'redis_queued_locks'
+  end
+
+  context 'with the enabled lock index (lock index ZSCAN)', lock_index_enabled: true do
+    include_examples 'redis_queued_locks'
+  end
+
+  # NOTE: the lock index specifics (the lock index mode is configured by each example)
+  describe 'lock index' do
+    let(:lock_index) { RedisQueuedLocks::Resource::LOCK_INDEX_KEY }
+    # NOTE: the lock index score of the lock name relative to the current client time (in ms)
+    let(:index_score_ahead) do
+      lambda do |lock_name|
+        score = redis.call('ZSCORE', lock_index, lock_name)
+        score && (score.to_i - RedisQueuedLocks::Resource.lock_index_time)
+      end
+    end
+    # NOTE: the default `config['lock_index_grace_period']`
+    let(:grace_period) { 60_000 }
+    # NOTE: the lock index score (ahead of the current time) of the given key lifetime
+    let(:upper_bound) do
+      -> (lifetime) { be_between(lifetime + grace_period - 1_000, lifetime + grace_period) }
+    end
+
+    specify 'lock names are indexed with the upper bound of the lock key lifetime' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['lock_index_enabled'] = true
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+      end
+
+      aggregate_failures 'write lock: the lock ttl (longer than the queue ttl of the request)' do
+        client.lock('idx.write', ttl: 100_000, queue_ttl: 5)
+        expect(index_score_ahead.call('idx.write')).to upper_bound.call(100_000)
+      end
+
+      aggregate_failures 'read lock: the read lock ttl (longer than the request queue ttl)' do
+        client.lock('idx.read', read_write_mode: :read, ttl: 100_000, queue_ttl: 5)
+        expect(index_score_ahead.call('idx.read')).to upper_bound.call(100_000)
+      end
+
+      aggregate_failures 'lock request: the request queue lives as long as the latest request' do
+        # NOTE: each thread is a separate acquirer (thread references are kept till the end)
+        holder = Thread.new { client.lock('idx.queue', ttl: 10_000) }
+        holder.join
+        waiter = Thread.new do
+          client.lock('idx.queue', ttl: 1_000, queue_ttl: 120, timeout: 10, retry_count: nil)
+        end
+        sleep(0.3) # NOTE: give a timespot to queue the lock request (retries refresh it)
+        expect(redis.call('PTTL', 'rql:lock_queue:idx.queue')).to be_between(119_000, 120_000)
+        expect(index_score_ahead.call('idx.queue')).to upper_bound.call(120_000)
+        client.unlock('idx.queue')
+        expect(waiter.value).to match(
+          { ok: true, result: hash_including(process: :lock_obtaining) }
+        )
+      end
+
+      aggregate_failures 'grace period: per-call option and config' do
+        client.lock('idx.grace', ttl: 100_000, queue_ttl: 5, lock_index_grace_period: 1_000)
+        expect(index_score_ahead.call('idx.grace')).to be_between(100_000, 101_000)
+        config_client = RedisQueuedLocks::Client.new(redis) do |config|
+          config['lock_index_enabled'] = true
+          config['lock_index_grace_period'] = 5_000
+        end
+        config_client.lock('idx.grace.config', ttl: 100_000, queue_ttl: 5)
+        expect(index_score_ahead.call('idx.grace.config')).to be_between(104_000, 105_000)
+      end
+
+      aggregate_failures 'lock series: each lock of the series' do
+        client.lock_series('idx.series.a', 'idx.series.b', ttl: 100_000, queue_ttl: 5)
+        # NOTE: the series lock ttl: (ttl + retry_delay + retry_jitter) * (locks left in the series)
+        expect(index_score_ahead.call('idx.series.a')).to upper_bound.call(200_030)
+        expect(index_score_ahead.call('idx.series.b')).to upper_bound.call(100_015)
+      end
+
+      aggregate_failures 'the lock index is not an RQL lock key' do
+        expect(client.keys).not_to include(lock_index)
+        expect(client.locks).not_to include(lock_index)
+      end
+
+      client.clear_locks
+    end
+
+    specify 'lock extensions increase the lock index score' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['lock_index_enabled'] = true
+      end
+      score = -> (lock_name) { redis.call('ZSCORE', lock_index, lock_name)&.to_i }
+
+      aggregate_failures '#extend_lock_ttl (write lock)' do
+        client.lock('idx.ext.write', ttl: 100_000, queue_ttl: 5)
+        initial_score = score.call('idx.ext.write')
+        expect(client.extend_lock_ttl('idx.ext.write', 30_000)).to match({
+          ok: true, result: { extended_locks_count: 1 }
+        })
+        expect(score.call('idx.ext.write')).to eq(initial_score + 30_000)
+      end
+
+      aggregate_failures '#extend_lock_ttl (read locks)' do
+        client.lock('idx.ext.read', read_write_mode: :read, ttl: 100_000, queue_ttl: 5)
+        initial_score = score.call('idx.ext.read')
+        expect(client.extend_lock_ttl('idx.ext.read', 30_000, read_write_mode: :read)).to match({
+          ok: true, result: { extended_locks_count: 1 }
+        })
+        expect(score.call('idx.ext.read')).to eq(initial_score + 30_000)
+        expect(
+          client.extend_lock_ttl(
+            'idx.ext.read', 20_000, read_write_mode: :read, all_read_locks: true
+          )
+        ).to match({ ok: true, result: { extended_locks_count: 1 } })
+        expect(score.call('idx.ext.read')).to eq(initial_score + 50_000)
+      end
+
+      aggregate_failures 'reentrant locks (:extendable_work_through)' do
+        %i[write read].each do |read_write_mode|
+          lock_name = "idx.ext.reentrant.#{read_write_mode}"
+          client.lock(lock_name, read_write_mode:, ttl: 100_000, queue_ttl: 5) do
+            initial_score = score.call(lock_name)
+            client.lock(
+              lock_name,
+              read_write_mode:, ttl: 40_000, conflict_strategy: :extendable_work_through
+            ) do
+              expect(score.call(lock_name)).to eq(initial_score + 40_000)
+            end
+          end
+        end
+      end
+
+      aggregate_failures 'locks without the lock index entry are not indexed by extensions' do
+        # NOTE: a lock written directly (like a lock of an older RQL version)
+        redis.call(
+          'HSET', 'rql:lock:idx.ext.legacy',
+          'acq_id', 'rql:acq:1/2/3/4/legacy', 'hst_id', 'rql:hst:1/2/4/legacy'
+        )
+        redis.call('PEXPIRE', 'rql:lock:idx.ext.legacy', 100_000)
+        expect(client.extend_lock_ttl('idx.ext.legacy', 30_000)).to match({
+          ok: true, result: { extended_locks_count: 1 }
+        })
+        expect(score.call('idx.ext.legacy')).to eq(nil)
+        expect(client.extend_lock_ttl('idx.ext.no_lock', 30_000)).to match({
+          ok: false, result: :async_expire_or_no_lock
+        })
+        expect(score.call('idx.ext.no_lock')).to eq(nil)
+      end
+
+      client.clear_locks
+    end
+
+    specify 'expired lock names are dropped from the lock index' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['lock_index_enabled'] = true
+      end
+      expired_score = RedisQueuedLocks::Resource.lock_index_time - 1_000
+      redis.call('ZADD', lock_index, expired_score, 'idx.expired.0', expired_score, 'idx.expired.1')
+
+      aggregate_failures 'each lock request queueing drops the expired lock names' do
+        client.lock('idx.alive', ttl: 10_000)
+        expect(redis.call('ZRANGE', lock_index, '0', '-1')).to eq(['idx.alive'])
+      end
+
+      aggregate_failures 'zombie flushing drops the expired lock names' do
+        redis.call('ZADD', lock_index, expired_score, 'idx.expired.2')
+        # NOTE: zombie flushing works only when zombie hosts exist
+        redis.call(
+          'HSET', RedisQueuedLocks::Resource::SWARM_KEY, 'rql:hst:1/2/3/zombie', Time.now.to_f - 60
+        )
+        expect(client.flush_zombies).to match(
+          hash_including(ok: true, deleted_zombie_hosts: include('rql:hst:1/2/3/zombie'))
+        )
+        expect(redis.call('ZRANGE', lock_index, '0', '-1')).to eq(['idx.alive'])
+      end
+
+      aggregate_failures 'the lock name lives in the index till the end of the grace period' do
+        # NOTE: the lifetime of the lock keys: 1 second (the queue ttl of the lock request)
+        client.lock('idx.short', ttl: 100, queue_ttl: 1, lock_index_grace_period: 1_000)
+        sleep(1.1) # NOTE: the lock keys are expired, the grace period is not over yet
+        # NOTE: lock requests of other locks (each queueing drops the expired lock names)
+        client.lock('idx.prune.0', ttl: 10_000)
+        expect(redis.call('ZRANGE', lock_index, '0', '-1')).to include('idx.short')
+        sleep(1.2) # NOTE: the grace period is over
+        client.lock('idx.prune.1', ttl: 10_000)
+        expect(redis.call('ZRANGE', lock_index, '0', '-1')).not_to include('idx.short')
+      end
+
+      client.clear_locks
+    end
+
+    specify 'zombie locks are found via the lock index (no keyspace SCAN)' do
+      # NOTE: commands are observed via a separate pool (the same db) with a recording middleware
+      commands = []
+      recorder = Module.new do
+        define_method(:call) do |command, redis_config, &block|
+          commands << command.first
+          super(command, redis_config, &block)
+        end
+        define_method(:call_pipelined) do |pipeline_commands, redis_config, &block|
+          commands.concat(pipeline_commands.map(&:first))
+          super(pipeline_commands, redis_config, &block)
+        end
+      end
+      recorded_redis = RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5)
+      client = RedisQueuedLocks::Client.new(recorded_redis) do |config|
+        config['lock_index_enabled'] = true
+        config['swarm.auto_swarm'] = false
+        # NOTE: we will manually flush zombies
+        config['swarm.probe_hosts.enabled_for_swarm'] = false
+        config['swarm.flush_zombies.enabled_for_swarm'] = false
+        config['swarm.flush_zombies.zombie_ttl'] = 1_000
+      end
+      zombie_host = client.current_host_id
+      zombie_acquirer = client.current_acquirer_id
+      # NOTE: keys of other applications (the swarm never visits them)
+      redis.pipelined do |pipeline|
+        100.times { |index| pipeline.call('SET', "foreign:#{index}", 'value') }
+      end
+
+      client.lock('idx.zombie.write', ttl: 500_000)
+      client.lock('idx.zombie.read', read_write_mode: :read, ttl: 500_000)
+      # NOTE: a lock written directly (like a lock of an older RQL version): not indexed
+      redis.call(
+        'HSET', 'rql:lock:idx.zombie.legacy', 'acq_id', zombie_acquirer, 'hst_id', zombie_host
+      )
+      redis.call('PEXPIRE', 'rql:lock:idx.zombie.legacy', 500_000)
+      # NOTE: the current host is a zombie host (the last probe is older than zombie_ttl)
+      redis.call('HSET', RedisQueuedLocks::Resource::SWARM_KEY, zombie_host, Time.now.to_f - 60)
+
+      aggregate_failures 'zombie info and zombie flushing iterate over the lock index' do
+        commands.clear
+        expect(client.zombie_locks).to contain_exactly(
+          'rql:lock:idx.zombie.write', 'rql:lock_readers:idx.zombie.read'
+        )
+        expect(client.flush_zombies).to match({
+          ok: true,
+          deleted_zombie_hosts: contain_exactly(zombie_host),
+          deleted_zombie_acquirers: contain_exactly(zombie_acquirer),
+          deleted_zombie_locks: contain_exactly(
+            'rql:lock:idx.zombie.write', 'rql:lock_readers:idx.zombie.read'
+          )
+        })
+        expect(commands).to include('ZSCAN')
+        expect(commands).not_to include('SCAN')
+        expect(client.locked?('idx.zombie.write')).to eq(false)
+        expect(client.locked?('idx.zombie.read')).to eq(false)
+        # NOTE: the lock without the lock index entry is not found
+        expect(client.locked?('idx.zombie.legacy')).to eq(true)
+        expect(redis.call('EXISTS', 'foreign:0', 'foreign:99')).to eq(2)
+      end
+
+      aggregate_failures 'locks without the lock index entry are found after #reindex_locks' do
+        expect(client.reindex_locks).to match({ ok: true, result: { idx_key_cnt: 1 } })
+        redis.call('HSET', RedisQueuedLocks::Resource::SWARM_KEY, zombie_host, Time.now.to_f - 60)
+        expect(client.flush_zombies).to match(
+          hash_including(deleted_zombie_locks: contain_exactly('rql:lock:idx.zombie.legacy'))
+        )
+        expect(client.locked?('idx.zombie.legacy')).to eq(false)
+      end
+
+      recorded_redis.close
+    end
+
+    specify '#reindex_locks: keys without the lock index entry (older RQL versions)' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['lock_index_enabled'] = true
+      end
+      legacy_acquirer = 'rql:acq:1/2/3/4/legacy'
+      read_lock_key = "rql:lock_reader:idx.legacy.read:#{legacy_acquirer}"
+      now = Time.now.to_f
+      # NOTE: RQL keys written directly (without the lock index entries)
+      redis.call(
+        'HSET', 'rql:lock:idx.legacy.write',
+        'acq_id', legacy_acquirer, 'hst_id', 'rql:hst:1/2/4/legacy'
+      )
+      redis.call('PEXPIRE', 'rql:lock:idx.legacy.write', 100_000)
+      redis.call(
+        'ZADD', 'rql:lock_readers:idx.legacy.read', (now * 1_000) + 200_000, legacy_acquirer
+      )
+      redis.call('PEXPIRE', 'rql:lock_readers:idx.legacy.read', 200_000)
+      redis.call('HSET', read_lock_key, 'ts', now, 'ini_ttl', 200_000)
+      redis.call('PEXPIRE', read_lock_key, 200_000)
+      redis.call('ZADD', 'rql:lock_queue:idx.legacy.queue', now, legacy_acquirer)
+      redis.call('ZADD', 'rql:lock_read_queue:idx.legacy.queue', now, legacy_acquirer)
+      # NOTE: an indexed lock with a bigger index score (the score is never decreased)
+      client.lock('idx.indexed', ttl: 300_000, queue_ttl: 5)
+      far_score = RedisQueuedLocks::Resource.lock_index_time + 1_000_000
+      redis.call('ZADD', lock_index, 'XX', far_score, 'idx.indexed')
+      # NOTE: a key out of the lock key families and a key of another application
+      redis.call('SET', 'rql:lockX', 'value')
+      redis.call('SET', 'foreign', 'value')
+
+      # NOTE: 5 keys (write lock, readers registry, 2 lock queues, indexed lock): a remainder batch
+      expect(client.reindex_locks(scan_size: 2, queue_ttl: 30)).to match({
+        ok: true, result: { idx_key_cnt: 5 }
+      })
+
+      aggregate_failures 'lock names with the upper bound of the key lifetime' do
+        expect(index_score_ahead.call('idx.legacy.write')).to upper_bound.call(100_000)
+        expect(index_score_ahead.call('idx.legacy.read')).to upper_bound.call(200_000)
+        expect(index_score_ahead.call('idx.legacy.queue')).to upper_bound.call(30_000)
+        expect(redis.call('ZSCORE', lock_index, 'idx.indexed').to_i).to eq(far_score)
+        expect(redis.call('ZRANGE', lock_index, '0', '-1')).to contain_exactly(
+          'idx.legacy.write', 'idx.legacy.read', 'idx.legacy.queue', 'idx.indexed'
+        )
+      end
+
+      aggregate_failures 'lock queues without TTL get the queue ttl' do
+        expect(redis.call('PTTL', 'rql:lock_queue:idx.legacy.queue')).to be_between(29_000, 30_000)
+        expect(redis.call('PTTL', 'rql:lock_read_queue:idx.legacy.queue')).to be_between(
+          29_000, 30_000
+        )
+      end
+
+      aggregate_failures 'idempotent' do
+        expect(client.reindex_locks).to match({ ok: true, result: { idx_key_cnt: 5 } })
+        expect(redis.call('ZCARD', lock_index)).to eq(4)
+      end
+
+      aggregate_failures 'keys out of the lock key families are not touched' do
+        expect(redis.call('PTTL', 'rql:lockX')).to eq(-1)
+        expect(redis.call('PTTL', 'foreign')).to eq(-1)
+        expect(redis.call('PTTL', read_lock_key)).to be_between(199_000, 200_000)
+      end
+
+      client.clear_locks
+      redis.call('DEL', 'rql:lockX', 'foreign')
+    end
+
+    specify 'the lock obtaining transaction indexes the lock (a dropped entry is restored)' do
+      # NOTE: the lock index entry of the lock name is dropped right before the obtaining
+      #   transaction (like a concurrent `#unlock`/`#clear_locks` between the lock request queueing
+      #   and the obtaining): the obtained lock should be indexed by its own transaction;
+      side_redis = RedisClient.config(db: 0).new_client
+      race_lock_names = %w[idx.race.write idx.race.read]
+      dropper = Module.new do
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          # NOTE: the lock of the obtaining transaction (write lock data or read lock data key)
+          hset_key = (commands.first == ['MULTI']) ? commands.assoc('HSET')&.at(1) : nil
+          dropped_lock_name = race_lock_names.find do |lock_name|
+            hset_key == "rql:lock:#{lock_name}" ||
+              hset_key&.start_with?("rql:lock_reader:#{lock_name}:")
+          end
+          if dropped_lock_name
+            side_redis.call('ZREM', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, dropped_lock_name)
+          end
+          super(commands, redis_config, &block)
+        end
+      end
+      dropping_redis = RedisClient.config(db: 0, middlewares: [dropper]).new_pool(timeout: 5)
+      client = RedisQueuedLocks::Client.new(dropping_redis) do |config|
+        config['lock_index_enabled'] = true
+      end
+
+      client.lock('idx.race.write', ttl: 100_000, queue_ttl: 5)
+      client.lock('idx.race.read', read_write_mode: :read, ttl: 100_000, queue_ttl: 5)
+
+      expect(index_score_ahead.call('idx.race.write')).to upper_bound.call(100_000)
+      expect(index_score_ahead.call('idx.race.read')).to upper_bound.call(100_000)
+
+      client.clear_locks
+      dropping_redis.close
+      side_redis.close
+    end
+
+    specify '#unlock and #clear_locks drop the lock names from the lock index' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['lock_index_enabled'] = true
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+      end
+      lock_names = -> { redis.call('ZRANGE', lock_index, '0', '-1') }
+
+      aggregate_failures '#unlock' do
+        client.lock('idx.unlock.write', ttl: 100_000)
+        client.lock('idx.unlock.read', read_write_mode: :read, ttl: 100_000)
+        client.unlock('idx.unlock.write')
+        client.unlock('idx.unlock.read')
+        expect(lock_names.call).to eq([])
+      end
+
+      aggregate_failures '#unlock: a waiting lock request indexes the lock name again' do
+        # NOTE: each thread is a separate acquirer (thread references are kept till the end)
+        holder = Thread.new { client.lock('idx.unlock.wait', ttl: 100_000) }
+        holder.join
+        waiter = Thread.new do
+          client.lock('idx.unlock.wait', ttl: 1_000, timeout: 10, retry_count: nil)
+        end
+        sleep(0.3) # NOTE: give a timespot to queue the lock request (retries refresh it)
+        client.unlock('idx.unlock.wait')
+        expect(waiter.value).to match(
+          { ok: true, result: hash_including(process: :lock_obtaining) }
+        )
+        expect(lock_names.call).to eq(['idx.unlock.wait'])
+        client.unlock('idx.unlock.wait')
+      end
+
+      aggregate_failures '#clear_locks (with expired lock names)' do
+        client.lock('idx.clear.0', ttl: 100_000)
+        client.lock('idx.clear.1', read_write_mode: :read, ttl: 100_000)
+        redis.call(
+          'ZADD', lock_index, RedisQueuedLocks::Resource.lock_index_time - 1_000, 'idx.expired'
+        )
+        expect(client.clear_locks(batch_size: 1)).to match({
+          ok: true,
+          # NOTE: write lock, readers registry, read lock data
+          result: match({ rel_key_cnt: 3, rel_time: be_a(Numeric) })
+        })
+        expect(lock_names.call).to eq([])
+        expect(client.keys).to be_empty
+      end
+    end
+
+    specify 'lock-iterating operations use the lock index (no keyspace SCAN)' do
+      # NOTE: commands are observed via a separate pool (the same db) with a recording middleware
+      commands = []
+      recorder = Module.new do
+        define_method(:call) do |command, redis_config, &block|
+          commands << command.first
+          super(command, redis_config, &block)
+        end
+        define_method(:call_pipelined) do |pipeline_commands, redis_config, &block|
+          commands.concat(pipeline_commands.map(&:first))
+          super(pipeline_commands, redis_config, &block)
+        end
+      end
+      recorded_redis = RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5)
+      client = RedisQueuedLocks::Client.new(recorded_redis) do |config|
+        config['lock_index_enabled'] = true
+      end
+      acquirer_id = client.current_acquirer_id
+      host_id = client.current_host_id
+      # NOTE: keys of other applications (lock-iterating operations never visit them)
+      redis.pipelined do |pipeline|
+        100.times { |index| pipeline.call('SET', "foreign:#{index}", 'value') }
+      end
+
+      client.lock('idx.ops.write', ttl: 100_000)
+      client.lock('idx.ops.read', read_write_mode: :read, ttl: 100_000)
+      # NOTE: a lock request of another acquirer (queued by RQL: indexed)
+      requester = Thread.new { client.lock('idx.ops.write', ttl: 1_000, retry_count: 1) }
+      requester.join
+      redis.call('ZADD', 'rql:lock_queue:idx.ops.queue', Time.now.to_f, 'rql:acq:1/2/3/4/live')
+      # NOTE: a lock written directly (like a lock of an older RQL version): not indexed
+      redis.call(
+        'HSET', 'rql:lock:idx.ops.legacy', 'acq_id', acquirer_id, 'hst_id', host_id
+      )
+      redis.call('PEXPIRE', 'rql:lock:idx.ops.legacy', 100_000)
+      read_lock_key = "rql:lock_reader:idx.ops.read:#{acquirer_id}"
+
+      aggregate_failures 'info operations' do
+        commands.clear
+        expect(client.locks).to contain_exactly('rql:lock:idx.ops.write', 'rql:lock:idx.ops.read')
+        expect(client.locks_info.map { |lock| lock[:lock] }).to contain_exactly(
+          'rql:lock:idx.ops.write', 'rql:lock:idx.ops.read'
+        )
+        # NOTE: the request of the requester is dequeued after its retries (no lock queues)
+        expect(client.queues).to eq(Set.new)
+        expect(client.queues_info).to eq(Set.new)
+        expect(client.keys).to contain_exactly(
+          'rql:lock:idx.ops.write', 'rql:lock_readers:idx.ops.read', read_lock_key
+        )
+        expect(commands).to include('ZSCAN')
+        expect(commands).not_to include('SCAN')
+      end
+
+      aggregate_failures 'keys without the lock index entry are found after #reindex_locks' do
+        client.reindex_locks
+        expect(client.locks).to contain_exactly(
+          'rql:lock:idx.ops.write', 'rql:lock:idx.ops.read', 'rql:lock:idx.ops.legacy'
+        )
+        expect(client.queues).to contain_exactly('rql:lock_queue:idx.ops.queue')
+      end
+
+      aggregate_failures 'cleanup operations' do
+        commands.clear
+        expect(client.clear_dead_requests(dead_ttl: 1)).to match({
+          ok: true,
+          result: match({ processed_queues: contain_exactly('rql:lock_queue:idx.ops.queue') })
+        })
+        expect(client.clear_current_locks).to match({
+          ok: true,
+          # NOTE: write lock, legacy write lock, read lock (the request was dropped as dead)
+          result: match({ rel_key_cnt: 3, tch_queue_cnt: 0, rel_time: be_a(Numeric) })
+        })
+        expect(client.clear_locks).to match({ ok: true, result: hash_including(rel_key_cnt: 0) })
+        expect(commands).to include('ZSCAN')
+        expect(commands).not_to include('SCAN')
+        expect(client.keys).to be_empty
+        expect(redis.call('EXISTS', 'foreign:0', 'foreign:99')).to eq(2)
+      end
+
+      recorded_redis.close
+    end
+
+    specify 'the disabled lock index (default): no lock index commands, keyspace lookups' do
+      # NOTE: commands are observed via a separate pool (the same db) with a recording middleware
+      commands = []
+      recorder = Module.new do
+        define_method(:call) do |command, redis_config, &block|
+          commands << command.map(&:to_s)
+          super(command, redis_config, &block)
+        end
+        define_method(:call_pipelined) do |pipeline_commands, redis_config, &block|
+          commands.concat(pipeline_commands.map { |command| command.map(&:to_s) })
+          super(pipeline_commands, redis_config, &block)
+        end
+      end
+      recorded_redis = RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5)
+      # NOTE: the library default (the example has no `lock_index_enabled` metadata)
+      expect(RedisQueuedLocks::Config.new['lock_index_enabled']).to eq(false)
+      client = RedisQueuedLocks::Client.new(recorded_redis) do |config|
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+        config['swarm.flush_zombies.zombie_ttl'] = 1_000
+      end
+      host_id = client.current_host_id
+      acquirer_id = client.current_acquirer_id
+
+      aggregate_failures 'lock acquirement, extension and release' do
+        client.lock('noidx.write', ttl: 100_000)
+        client.lock('noidx.read', read_write_mode: :read, ttl: 100_000)
+        # NOTE: reentrant lock extensions (write: four extension commands without the lock index)
+        %i[write read].each do |read_write_mode|
+          expect(
+            client.lock(
+              "noidx.#{read_write_mode}",
+              read_write_mode:, ttl: 1_000, conflict_strategy: :extendable_work_through
+            )
+          ).to match(
+            { ok: true, result: hash_including(process: :extendable_conflict_work_through) }
+          )
+        end
+        expect(client.extend_lock_ttl('noidx.write', 10_000)).to match({
+          ok: true, result: { extended_locks_count: 1 }
+        })
+        expect(
+          client.extend_lock_ttl('noidx.read', 10_000, read_write_mode: :read)
+        ).to match({ ok: true, result: { extended_locks_count: 1 } })
+        # NOTE: a waiting lock request (each thread is a separate acquirer, references are kept)
+        holder = Thread.new { client.lock('noidx.queue', ttl: 10_000) }
+        holder.join
+        waiter = Thread.new do
+          client.lock('noidx.queue', ttl: 1_000, timeout: 10, retry_count: nil)
+        end
+        sleep(0.3) # NOTE: give a timespot to queue the lock request
+        # NOTE: lock request queues have no TTL
+        expect(redis.call('PTTL', 'rql:lock_queue:noidx.queue')).to eq(-1)
+        client.unlock('noidx.queue')
+        expect(waiter.value).to match(
+          { ok: true, result: hash_including(process: :lock_obtaining) }
+        )
+      end
+
+      aggregate_failures 'lock-iterating operations scan the keyspace' do
+        # NOTE: a lock written directly (like a lock of an older RQL version): found without
+        #   `#reindex_locks`
+        redis.call('HSET', 'rql:lock:noidx.legacy', 'acq_id', acquirer_id, 'hst_id', host_id)
+        redis.call('PEXPIRE', 'rql:lock:noidx.legacy', 100_000)
+        commands.clear
+        expect(client.locks).to contain_exactly(
+          'rql:lock:noidx.write', 'rql:lock:noidx.read', 'rql:lock:noidx.queue',
+          'rql:lock:noidx.legacy'
+        )
+        expect(client.queues).to eq(Set.new)
+        expect(client.keys).to include('rql:lock:noidx.legacy', 'rql:lock_readers:noidx.read')
+        # NOTE: the current host is a zombie host (the last probe is older than zombie_ttl)
+        redis.call('HSET', RedisQueuedLocks::Resource::SWARM_KEY, host_id, Time.now.to_f - 60)
+        expect(client.zombie_locks).to contain_exactly(
+          'rql:lock:noidx.write', 'rql:lock_readers:noidx.read', 'rql:lock:noidx.legacy'
+        )
+        expect(client.flush_zombies).to match(
+          hash_including(
+            ok: true,
+            deleted_zombie_locks: contain_exactly(
+              'rql:lock:noidx.write', 'rql:lock_readers:noidx.read', 'rql:lock:noidx.legacy'
+            )
+          )
+        )
+        expect(client.clear_dead_requests).to match(
+          { ok: true, result: { processed_queues: Set.new } }
+        )
+        expect(client.clear_locks).to match({ ok: true, result: hash_including(rel_key_cnt: 1) })
+        expect(commands.map(&:first)).to include('SCAN')
+        expect(commands.map(&:first)).not_to include('ZSCAN')
+      end
+
+      aggregate_failures 'the lock index is never touched' do
+        expect(commands.flatten).not_to include(RedisQueuedLocks::Resource::LOCK_INDEX_KEY)
+        expect(redis.call('EXISTS', RedisQueuedLocks::Resource::LOCK_INDEX_KEY)).to eq(0)
+        expect(client.keys).to be_empty
+      end
+
+      recorded_redis.close
+    end
+
+    specify 'enabling the lock index: locks of the disabled lock index after #reindex_locks' do
+      disabled_client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['lock_index_enabled'] = false
+      end
+      enabled_client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['lock_index_enabled'] = true
+      end
+      disabled_client.lock('idx.migration', ttl: 100_000)
+
+      aggregate_failures 'locks of the disabled lock index are not indexed' do
+        expect(disabled_client.locks).to contain_exactly('rql:lock:idx.migration')
+        expect(enabled_client.locks).to be_empty
+      end
+
+      aggregate_failures 'locks of the disabled lock index are indexed by #reindex_locks' do
+        expect(enabled_client.reindex_locks).to match({ ok: true, result: { idx_key_cnt: 1 } })
+        expect(index_score_ahead.call('idx.migration')).to upper_bound.call(100_000)
+        expect(enabled_client.locks).to contain_exactly('rql:lock:idx.migration')
+      end
+
+      enabled_client.clear_locks
+      expect(disabled_client.keys).to be_empty
+    end
+
+    specify 'lock index config validation' do
+      expect do
+        RedisQueuedLocks::Client.new(redis) { |config| config['lock_index_enabled'] = 'true' }
+      end.to raise_error(RedisQueuedLocks::ConfigValidationError)
+      expect do
+        RedisQueuedLocks::Client.new(redis) { |config| config['lock_index_grace_period'] = -1 }
+      end.to raise_error(RedisQueuedLocks::ConfigValidationError)
     end
   end
 end

@@ -10,6 +10,7 @@ module RedisQueuedLocks
       def self.release_all_locks: (
         RC::client redis,
         Integer batch_size,
+        bool lock_index_enabled,
         RQL::loggerObj logger,
         RQL::instrObj instrumenter,
         untyped instrument,
@@ -24,7 +25,13 @@ module RedisQueuedLocks
       ) -> releaseResult
 
       type fullRelesaeResult = { ok: bool, result: { rel_key_cnt: Integer } }
-      private def self.fully_release_all_locks: (RC::client redis, Integer batch_size) -> fullRelesaeResult
+      private def self.fully_release_all_locks: (
+        RC::client redis,
+        Integer batch_size,
+        bool lock_index_enabled
+      ) -> fullRelesaeResult
+      private def self.release_locks: (RC::client redis_client, Array[String] lock_names) -> Integer
+      private def self.each_lock_name_batch: (RC::client redis_client, Integer scan_size) { (Array[String] lock_names) -> void } -> void
     end
   end
 end

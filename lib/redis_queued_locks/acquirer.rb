@@ -18,4 +18,5 @@ module RedisQueuedLocks::Acquirer
   require_relative 'acquirer/keys'
   require_relative 'acquirer/extend_lock_ttl'
   require_relative 'acquirer/clear_dead_requests'
+  require_relative 'acquirer/reindex_locks'
 end
