@@ -1,8 +1,10 @@
 ## [Unreleased]
+
+## [1.19.0] - 2026-10-11
 ### Added
-- `#unlock_read` (aka `#release_read_lock`): `acquirer_id:` option (`nil` by default: the current acquirer)
-  to release the read lock of a different acquirer (`identity:` is ignored when `acquirer_id:` is passed:
-  the acquirer id already contains its own identity);
+- `#unlock_read` (aka `#release_read_lock`): An ability to release the lock of another acquirer
+  - `acquirer_id:` option (`nil` by default: the current acquirer) to release the read lock of a different acquirer
+    (`identity:` is ignored when `acquirer_id:` is passed: the acquirer id already contains its own identity);
 
 ## [1.18.0] - 2026-10-11
 ### Added
