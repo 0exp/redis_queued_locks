@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [1.19.0] - 2026-10-11
+### Added
+- `#unlock_read` (aka `#release_read_lock`): an ability to unlock the read lock of any acquirer
+  - `acquirer_id:` option (`nil` by default: the current acquirer) to release the read lock of a different acquirer
+    (`identity:` is ignored when `acquirer_id:` is passed: the acquirer id already contains its own identity);
+
 ## [1.18.0] - 2026-10-11
 ### Added
 - Brand new feature - **Read/Write locks**: `read_write_mode:` attribute of `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (`:write` by default):

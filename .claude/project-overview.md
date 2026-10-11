@@ -49,7 +49,7 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 | `lock` / `lock!` | `acquirer/acquire_lock.rb` + `acquirer/acquire_lock/*` |
 | `lock_series` / `lock_series!` | `acquirer/lock_series_poc.rb` (proof of concept; one `read_write_mode` for the whole series) |
 | `unlock` | `acquirer/release_lock.rb` |
-| `unlock_read` / `release_read_lock` | `acquirer/release_read_lock.rb` (own read lock only) |
+| `unlock_read` / `release_read_lock` | `acquirer/release_read_lock.rb` (own read lock or `acquirer_id:` read lock only) |
 | `extend_lock_ttl` | `acquirer/extend_lock_ttl.rb` (`read_write_mode: :read` extends own read lock, `+ all_read_locks: true` all live read locks) |
 | `locked?` / `queued?` | `acquirer/is_locked.rb` / `acquirer/is_queued.rb` |
 | `lock_info` / `queue_info` | `acquirer/lock_info.rb` / `acquirer/queue_info.rb` |
@@ -128,7 +128,8 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
   after the block and on any failure (exception or `raise_errors: false`), once per failed series.
 - Own read lock operations (current acquirer via `current_acquirer_id(identity:)`): `unlock_read` /
   `release_read_lock` (`ZREM` + `DEL` reader data, event `explicit_read_lock_release`, result
-  `{ rel_time:, rel_key:, rel_acq_id:, lock_res: }`) and `extend_lock_ttl(..., read_write_mode: :read)`
+  `{ rel_time:, rel_key:, rel_acq_id:, lock_res: }`; `acquirer_id:` (default `nil` => current acquirer;
+  when passed, `identity:` is ignored: the acquirer id already contains its identity) releases the read lock of a different acquirer) and `extend_lock_ttl(..., read_write_mode: :read)`
   (`multi(watch: [lock_key])`: extends only a live read lock while no write lock exists, never revives
   an expired one; registry and reader data TTLs via `PEXPIRE NX`+`GT`). `unlock` releases everything.
 - `extend_lock_ttl(..., read_write_mode: :read, all_read_locks: true)` (`false` by default, ignored for
