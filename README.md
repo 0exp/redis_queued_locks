@@ -2535,7 +2535,6 @@ rql.lock('report', read_write_mode: :read) { read_report }
 
 # writer waits for all readers (and readers wait for the writer)
 rql.lock('report', read_write_mode: :write) { rebuild_report }
-rql.lock('report') { rebuild_report } # (write mode is the default mode)
 
 # write mode is default:
 rql.lock('report') { rebuild_report } # read_write_mode: :write by default
