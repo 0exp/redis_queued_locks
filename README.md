@@ -2526,7 +2526,7 @@ rql.possible_host_ids
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - `read_write_mode:` attribute of `#lock` and `#lock!`:
-  - `:write` (default) - exclusive lock (the classic RQL lock): waits for the write lock and for all read locks;
+  - `:write` (**default**) - exclusive lock (the classic RQL lock): waits for the write lock and for all read locks;
   - `:read` - shared lock: waits for the write lock only (read locks of different acquirers work in parallel);
 
 ```ruby
@@ -2536,6 +2536,9 @@ rql.lock('report', read_write_mode: :read) { read_report }
 # writer waits for all readers (and readers wait for the writer)
 rql.lock('report', read_write_mode: :write) { rebuild_report }
 rql.lock('report') { rebuild_report } # (write mode is the default mode)
+
+# write mode is default:
+rql.lock('report') { rebuild_report } # read_write_mode: :write by default
 ```
 
 - lock request ordering (`access_strategy`):
