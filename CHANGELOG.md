@@ -29,6 +29,9 @@
   instrumentation event raised the errors of the logger/instrumenter: a failing logger broke the series call (after
   obtaining all the locks of the series the locks were not released till their ttl), a failing instrumenter replaced
   the block result with its error; the logger/instrumenter errors are swallowed now (like in all other events);
+- `#locks_info` (and `#locks(with_info: true)`): the info of write locks had no `"lock_key"` field (the info of read locks and
+  `#lock_info` have it), so the info shape depended on the lock mode; the write lock info has `"lock_key"` now (the same
+  fields as `#lock_info`);
 - README/YARD documentation that did not match the code:
   - config keys: `config['instr_sampling_enabled']` in the configuration example (was `nstr_sampling_enabled`),
     `config['log_sampling_enabled']` (was `log_samplign_enabled`), `*_sampling_enabled` (was `*_sampling_enalbed`);

@@ -2915,8 +2915,13 @@ RSpec.shared_examples 'redis_queued_locks' do
       :alive
     )
     expect(locks_info_a.map { |val| val[:info].keys }).to contain_exactly(
-      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl rw_mode kek a]),
-      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl rw_mode pek b])
+      contain_exactly(*%w[acq_id hst_id ts ini_ttl lock_key rem_ttl rw_mode kek a]),
+      contain_exactly(*%w[acq_id hst_id ts ini_ttl lock_key rem_ttl rw_mode pek b])
+    )
+    # NOTE: the write lock info has the lock key like the read lock info and `#lock_info`
+    expect(locks_info_a.map { |val| val[:info]['lock_key'] }).to contain_exactly(
+      'rql:lock:locklock-pekpek-123',
+      'rql:lock:locklock-pekpek-567'
     )
     expect(locks_info_b.size).to eq(2)
     expect(locks_info_b.map { |val| val[:lock] }).to contain_exactly(
@@ -2928,8 +2933,13 @@ RSpec.shared_examples 'redis_queued_locks' do
       :alive
     )
     expect(locks_info_b.map { |val| val[:info].keys }).to contain_exactly(
-      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl rw_mode kek a]),
-      contain_exactly(*%w[acq_id hst_id ts ini_ttl rem_ttl rw_mode pek b])
+      contain_exactly(*%w[acq_id hst_id ts ini_ttl lock_key rem_ttl rw_mode kek a]),
+      contain_exactly(*%w[acq_id hst_id ts ini_ttl lock_key rem_ttl rw_mode pek b])
+    )
+    # NOTE: the write lock info has the lock key like the read lock info and `#lock_info`
+    expect(locks_info_b.map { |val| val[:info]['lock_key'] }).to contain_exactly(
+      'rql:lock:locklock-pekpek-123',
+      'rql:lock:locklock-pekpek-567'
     )
 
     # TODO: more time for work => better spec
@@ -3956,7 +3966,9 @@ RSpec.shared_examples 'redis_queued_locks' do
             match({
               lock: "rql:lock:#{lock_name}",
               status: :alive,
-              info: hash_including('acq_id' => acquirer_id, 'rw_mode' => 'write')
+              info: hash_including(
+                'acq_id' => acquirer_id, 'lock_key' => "rql:lock:#{lock_name}", 'rw_mode' => 'write'
+              )
             })
           end,
           *read_locks.map do |lock_name|

@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.20.0
+# @version 1.21.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::Locks
   # The number of replies of one lock in the lock state pipeline of a batch of locks
@@ -25,7 +25,7 @@ module RedisQueuedLocks::Acquirer::Locks
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
     def locks(redis_client, scan_size:, with_info:, lock_index_enabled:)
       redis_client.with do |rconn|
         lock_keys =
@@ -153,7 +153,7 @@ module RedisQueuedLocks::Acquirer::Locks
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
     # rubocop:disable Metrics/MethodLength
     def extract_locks_info(redis_client, lock_keys, scan_size)
       Set.new.tap do |seeded_locks|
@@ -239,6 +239,7 @@ module RedisQueuedLocks::Acquirer::Locks
                 pttl_cmd_res = batch_state[replies_at + 1] # NOTE: PTTL result (integer)
 
                 hget_cmd_res.tap do |lock_data|
+                  lock_data['lock_key'] = lock_key
                   lock_data['rw_mode'] = 'write'
                   lock_data['ts'] = Float(lock_data['ts'])
                   lock_data['ini_ttl'] = Integer(lock_data['ini_ttl'])

@@ -129,8 +129,8 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   (zombie readers reported as their registry key), `locked?`, `queued?`, `lock_info` (read info:
   `'rw_mode' => 'read'`, `'rem_ttl'`, `'readers' => [reader data + rem_ttl]` when no write lock),
   `queue_info` (`'read_lock_queue'`/`'read_queue'` when present), `locks`/`locks_info`, `queues`/`queues_info`;
-  write lock info in `lock_info`/`locks_info` has `'rw_mode' => 'write'` (computed on formatting, not stored),
-  so `'rw_mode'` is a reserved `meta` key (validated in `AcquireLock` and `LockSeriesPoC`);
+  write lock info in `lock_info`/`locks_info` has `'lock_key'` and `'rw_mode' => 'write'` (computed on formatting,
+  not stored), so `'rw_mode'` is a reserved `meta` key (validated in `AcquireLock` and `LockSeriesPoC`);
   every request in `queue_info`/`queues_info` is `{ 'acq_id', 'score', 'rw_mode' => 'write'|'read' }`
   (`queues_info` derives the mode from the queue key via `Resource.lock_queue_rw_mode`).
 - `lock_series` (both modes): one mode per series; `release_lock_series` releases only locks the series

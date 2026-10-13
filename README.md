@@ -1927,6 +1927,8 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
     "hst_id"=>"rql:hst:41478/4320/4360/848818f09d8c3420",
     "ts"=>1711607112.670343,
     "ini_ttl"=>15000,
+    "lock_key"=>"rql:lock:some-lock-123",
+    "rw_mode"=>"write",
     "rem_ttl"=>13998}},
   {:lock=>"rql:lock:some-lock-456",
    :status=>:released,
