@@ -56,46 +56,38 @@ module RedisQueuedLocks::Acquirer::LockInfo
         pipeline.call('ZRANGE', lock_readers_key, '0', '-1', 'WITHSCORES')
       end
 
-      if result == nil
-        # NOTE:
-        #   - nil result means that during transaction invocation the lock is changed (CAS):
-        #     - lock is expired;
-        #     - lock is released;
-        #     - lock is expired + re-obtained;
-        nil
+      # NOTE: (pipeline layout) the replies of the pipeline commands (`pipelined` always returns
+      #   an array of the replies):
+      #   - result[0] (HGETALL) (Hash<String,String>)
+      #     => (will be mutated further with different value types)
+      #   - result[1] (PTTL) (Integer)
+      #     => (without any mutation, integer is atomic)
+      #   - result[2] (TIME) (Array<String>) (redis time)
+      #   - result[3] (ZRANGE) (Array<[String,Float]>) (read locks)
+
+      # rubocop:disable Layout/LineLength
+      # @type var result: [Hash[String,String|Float|Integer], Integer, Array[String], Array[[String, Float]]]
+      # rubocop:enable Layout/LineLength
+      hget_cmd_res = result[0]
+      pttl_cmd_res = result[1]
+
+      if hget_cmd_res == {} || pttl_cmd_res == -2 # NOTE: key does not exist
+        # NOTE: (RW) there is no write lock => check read locks
+        read_lock_info(redis_client, lock_name, lock_key, result[2], result[3])
       else
-        # NOTE: the result of MULTI-command is an array of results of each internal command
-        #   - result[0] (HGETALL) (Hash<String,String>)
-        #     => (will be mutated further with different value types)
-        #   - result[1] (PTTL) (Integer)
-        #     => (without any mutation, integer is atomic)
-        #   - result[2] (TIME) (Array<String>) (redis time)
-        #   - result[3] (ZRANGE) (Array<[String,Float]>) (read locks)
-
-        # rubocop:disable Layout/LineLength
-        # @type var result: [Hash[String,String|Float|Integer], Integer, Array[String], Array[[String, Float]]]
-        # rubocop:enable Layout/LineLength
-        hget_cmd_res = result[0]
-        pttl_cmd_res = result[1]
-
-        if hget_cmd_res == {} || pttl_cmd_res == -2 # NOTE: key does not exist
-          # NOTE: (RW) there is no write lock => check read locks
-          read_lock_info(redis_client, lock_name, lock_key, result[2], result[3])
-        else
-          hget_cmd_res.tap do |lock_data|
-            lock_data['lock_key'] = lock_key
-            lock_data['rw_mode'] = 'write'
-            lock_data['ts'] = Float(lock_data['ts'])
-            lock_data['ini_ttl'] = Integer(lock_data['ini_ttl'])
-            lock_data['rem_ttl'] = ((pttl_cmd_res == -1) ? Float::INFINITY : pttl_cmd_res)
-            lock_data['spc_cnt'] = Integer(lock_data['spc_cnt']) if lock_data['spc_cnt']
-            lock_data['l_spc_ts'] = Float(lock_data['l_spc_ts']) if lock_data['l_spc_ts']
-            lock_data['spc_ext_ttl'] = Integer(lock_data['spc_ext_ttl']) if lock_data['spc_ext_ttl']
-            lock_data['l_spc_ext_ini_ttl'] =
-              Integer(lock_data['l_spc_ext_ini_ttl']) if lock_data.key?('l_spc_ext_ini_ttl')
-            lock_data['l_spc_ext_ts'] =
-              Float(lock_data['l_spc_ext_ts']) if lock_data['l_spc_ext_ts']
-          end
+        hget_cmd_res.tap do |lock_data|
+          lock_data['lock_key'] = lock_key
+          lock_data['rw_mode'] = 'write'
+          lock_data['ts'] = Float(lock_data['ts'])
+          lock_data['ini_ttl'] = Integer(lock_data['ini_ttl'])
+          lock_data['rem_ttl'] = ((pttl_cmd_res == -1) ? Float::INFINITY : pttl_cmd_res)
+          lock_data['spc_cnt'] = Integer(lock_data['spc_cnt']) if lock_data['spc_cnt']
+          lock_data['l_spc_ts'] = Float(lock_data['l_spc_ts']) if lock_data['l_spc_ts']
+          lock_data['spc_ext_ttl'] = Integer(lock_data['spc_ext_ttl']) if lock_data['spc_ext_ttl']
+          lock_data['l_spc_ext_ini_ttl'] =
+            Integer(lock_data['l_spc_ext_ini_ttl']) if lock_data.key?('l_spc_ext_ini_ttl')
+          lock_data['l_spc_ext_ts'] =
+            Float(lock_data['l_spc_ext_ts']) if lock_data['l_spc_ext_ts']
         end
       end
     end
