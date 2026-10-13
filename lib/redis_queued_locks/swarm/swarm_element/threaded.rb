@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.9.0
+# @version 1.17.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0
@@ -78,7 +79,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @return [void]
   #
   # @api private
-  # @since 19.0.0
+  # @since 1.9.0
   def reswarm_if_dead!
     return unless enabled?
 
@@ -154,7 +155,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
 
   # Swarm element lifecycle have the following flow:
   # => 1) init (swarm!): create a thread, main loop is not started;
-  # => 2) start (swarm_loop__start): run the main lopp inside the created thread;
+  # => 2) start (swarm_loop__start): run the main loop inside the created thread;
   # => 3) stop (swarm_loop__stop): stop the main loop inside the created thread;
   # => 4) terminate (swarm_element__termiante): kill the created thread;
   # In addition you should implement `#spawn_main_loop!` method that will be the main logic

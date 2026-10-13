@@ -154,7 +154,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   #
   # @api private
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   # rubocop:disable Metrics/MethodLength
   def try_to_lock(
     redis,
@@ -648,6 +648,17 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           end
         end
       end
+    rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
+           RedisQueuedLocks::TimedLockIntermediateTimeoutError,
+           ::Timeout::ExitException
+      # NOTE: (timeouts) the timeout can interrupt the attempt inside the WATCH block:
+      #   redis-client sends `UNWATCH` only on `StandardError` (the internal timeouts and the
+      #   `Timeout.timeout` of the user without an exception class are `::Exception`s), and the
+      #   connection would return to the pool with the active WATCH (an EXEC of the next
+      #   transaction on it is aborted when a watched key is changed);
+      #   - the closed connection drops the WATCH state and is reconnected on the next use;
+      rconn.close
+      raise
     end
 
     # Step 7: Analyze the aquirement attempt:

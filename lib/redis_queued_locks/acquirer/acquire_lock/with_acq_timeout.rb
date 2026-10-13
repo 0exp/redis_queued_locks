@@ -6,7 +6,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
   # @param redis [RedisClient]
   #   Redis connection manager required for additional data extraction for error message.
   # @param timeout [NilClass,Integer]
-  #   Time period after which the logic will fail with timeout error.
+  #   Time period after which the logic will fail with timeout error (`nil` and `0`: no timeout).
   # @param lock_key [String]
   #   Lock name in RQL notation (rql:lock:some-lock-name).
   # @param lock_name [String]
@@ -26,7 +26,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
   #
   # @api private
   # @since 1.0.0
-  # @version 1.11.0
+  # @version 1.21.0
   def with_acq_timeout(
     redis,
     timeout,

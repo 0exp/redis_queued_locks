@@ -3,12 +3,6 @@
 # @api public
 # @since 1.6.0
 module RedisQueuedLocks::Instrument::Sampler
-  # @return [Range]
-  #
-  # @api private
-  # @since 1.6.0
-  SAMPLING_PERCENT_RANGE = (0..100)
-
   class << self
     # Super simple probalistic function based on the `weight` of <true>/<false> values.
     # Requires the <percent> parameter as the required percent of <true> values sampled.
@@ -20,8 +14,11 @@ module RedisQueuedLocks::Instrument::Sampler
     #
     # @api public
     # @since 1.6.0
+    # @version 1.21.0
     def sampling_happened?(sampling_percent)
-      sampling_percent >= SecureRandom.rand(SAMPLING_PERCENT_RANGE)
+      # NOTE: one of 100 equally probable values (0..99): `sampling_percent` of them are lower
+      #   (0% => never, 100% => always);
+      SecureRandom.rand(100) < sampling_percent
     end
   end
 end

@@ -3,6 +3,7 @@
 # NOTE: Lock Series PoC
 # @api private
 # @since 1.16.1
+# @version 1.18.0
 module RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor # steep:ignore
   class << self
     # NOTE: Lock Series PoC
@@ -32,7 +33,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor # steep:ignore
     # @param rw_mode [Symbol] The mode of the lock series (`:read` or `:write`).
     # @api private
     # @since 1.16.1
-    # @version 1.18.0
+    # @version 1.21.0
     def lock_series_hold_and_release( # steep:ignore
       instrumenter,
       instr_sampled,
@@ -49,7 +50,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor # steep:ignore
       return unless instr_sampled
       instrumenter.notify('redis_queued_locks.lock_series_hold_and_release', {
         lock_keys:, rw_mode:, hold_time:, ttl:, acq_id:, hst_id:, ts:, acq_time:, instrument:
-      }) # rescue nil
+      }) rescue nil
     end
   end
 end

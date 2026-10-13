@@ -2,7 +2,10 @@
 
 # @api private
 # @since 1.7.0
+# @version 1.21.0
+# rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::InstrVisitor
+  # rubocop:disable Metrics/ClassLength
   class << self
     # @param instrumenter [#notify]
     # @param instr_sampled [Boolean]
@@ -172,5 +175,44 @@ module RedisQueuedLocks::Acquirer::AcquireLock::InstrVisitor
         hold_time:, ttl:, acq_id:, hst_id:, ts:, lock_key:, rw_mode:, acq_time:, instrument:
       }) rescue nil
     end
+
+    # The lock is not obtained (the failure result of `#lock`/`#lock!`: the timeout, the retry
+    # limit, `fail_fast`, the dead lock or the lock upgrade conflict).
+    #
+    # @param instrumenter [#notify]
+    # @param instr_sampled [Boolean]
+    # @param lock_key [String]
+    # @param rw_mode [Symbol]
+    # @param ttl [Integer]
+    # @param acq_id [String]
+    # @param hst_id [String]
+    # @param ts [Numeric]
+    # @param acq_time [Numeric]
+    # @param result [Symbol] The failure result (`:timeout_reached`, `:retry_limit_reached`, ...).
+    # @param instrument [NilClass,Any]
+    # @return [void]
+    #
+    # @api private
+    # @since 1.21.0
+    def lock_obtaining_failed(
+      instrumenter,
+      instr_sampled,
+      lock_key,
+      rw_mode,
+      ttl,
+      acq_id,
+      hst_id,
+      ts,
+      acq_time,
+      result,
+      instrument
+    )
+      return unless instr_sampled
+      instrumenter.notify('redis_queued_locks.lock_obtaining_failed', {
+        lock_key:, rw_mode:, ttl:, acq_id:, hst_id:, ts:, acq_time:, result:, instrument:
+      }) rescue nil
+    end
   end
+  # rubocop:enable Metrics/ClassLength
 end
+# rubocop:enable Metrics/ModuleLength

@@ -39,7 +39,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     #   - works in tandem with <config['log_sampling_percent']> and <config['log_sampler']>;
     # @param log_sampling_percent [Integer]
     #   - the percent of cases that should be logged;
-    #   - take an effect when <config['log_sampling_enalbed']> is true;
+    #   - take an effect when <config['log_sampling_enabled']> is true;
     #   - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
     # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     #   - percent-based log sampler that decides should be RQL case logged or not;
@@ -60,7 +60,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     #   - works in tandem with <config['instr_sampling_percent']> and <config['instr_sampler']>;
     # @param instr_sampling_percent [Integer]
     #   - the percent of cases that should be instrumented;
-    #   - take an effect when <config['instr_sampling_enalbed']> is true;
+    #   - take an effect when <config['instr_sampling_enabled']> is true;
     #   - works in tandem with <config['instr_sampling_enabled']>
     #     and <config['instr_sampler']> configs;
     # @param instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
@@ -81,7 +81,8 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
+    # rubocop:disable Metrics/MethodLength
     def release_all_locks(
       redis,
       batch_size,
@@ -98,6 +99,15 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
       instr_sampler,
       instr_sample_this
     )
+      # NOTE: (arguments) the same ranges as the config keys: zero/negative sizes fail SCAN/ZSCAN
+      #   (`COUNT 0`) and the batching (`each_slice(0)`);
+      if !batch_size.is_a?(::Integer) || batch_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:batch_size` argument should be a positive Integer, got #{batch_size.inspect}."
+        )
+      end
+
       rel_start_time = clock_gettime
       # steep:ignore:start
       fully_release_all_locks(redis, batch_size, lock_index_enabled) => { ok:, result: }
@@ -110,6 +120,12 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
       rel_end_time = clock_gettime
       rel_time = ((rel_end_time - rel_start_time) / 1_000.0).ceil(2)
 
+      log_sampled = RedisQueuedLocks::Logging.should_log?(
+        log_sampling_enabled,
+        log_sample_this,
+        log_sampling_percent,
+        log_sampler
+      )
       instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
         instr_sampling_enabled,
         instr_sample_this,
@@ -118,10 +134,20 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
       )
 
       run_non_critical do
+        logger.debug do
+          "[redis_queued_locks.explicit_all_locks_release] " \
+          "at => #{time_at} " \
+          "rel_time => #{rel_time} " \
+          "rel_key_cnt => #{result[:rel_key_cnt]}"
+        end
+      end if log_sampled
+
+      run_non_critical do
         instrumenter.notify('redis_queued_locks.explicit_all_locks_release', {
           at: time_at,
           rel_time: rel_time,
-          rel_key_cnt: result[:rel_key_cnt]
+          rel_key_cnt: result[:rel_key_cnt],
+          instrument: instrument
         })
       end if instr_sampled
 
@@ -130,6 +156,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
         result: { rel_key_cnt: result[:rel_key_cnt], rel_time: rel_time }
       }
     end
+    # rubocop:enable Metrics/MethodLength
 
     private
 

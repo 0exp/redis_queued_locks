@@ -2,8 +2,13 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.20.0
+# @version 1.21.0
+# rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::ClearDeadRequests
+  # @since 1.21.0
+  extend RedisQueuedLocks::Utilities
+
+  # rubocop:disable Metrics/ClassLength
   class << self
     # Drops dead lock requests (requests older than `dead_ttl`) from the lock queues (write and
     # read):
@@ -13,6 +18,8 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
     #     over the lock names (the keyspace is never scanned), one round trip per batch of
     #     `scan_size` lock names (both lock queues of each lock name); expired lock names are
     #     dropped from the lock index first;
+    #   - the operation is reported with one log and one instrumentation event
+    #     (`redis_queued_locks.clear_dead_requests`) with the time of the whole operation;
     #
     # @param redis_client [RedisClient]
     # @param scan_size [Integer]
@@ -36,7 +43,8 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
+    # rubocop:disable Metrics/MethodLength
     def clear_dead_requests(
       redis_client,
       scan_size,
@@ -54,10 +62,82 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
       instr_sampler,
       instr_sample_this
     )
+      # NOTE: (arguments) the same ranges as the config keys: zero/negative sizes fail SCAN/ZSCAN
+      #   (`COUNT 0`) and the batching, a non-positive dead ttl drops all lock requests;
+      if !scan_size.is_a?(::Integer) || scan_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:scan_size` argument should be a positive Integer, got #{scan_size.inspect}."
+        )
+      end
+      if !dead_ttl.is_a?(::Integer) || dead_ttl <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:dead_ttl` argument should be a positive Integer, got #{dead_ttl.inspect}."
+        )
+      end
+
+      rel_start_time = clock_gettime
+      processed_queues = fully_clear_dead_requests(
+        redis_client, scan_size, dead_ttl, lock_index_enabled
+      )
+      time_at = Time.now.to_f
+      rel_end_time = clock_gettime
+      rel_time = ((rel_end_time - rel_start_time) / 1_000.0).ceil(2)
+
+      log_sampled = RedisQueuedLocks::Logging.should_log?(
+        log_sampling_enabled,
+        log_sample_this,
+        log_sampling_percent,
+        log_sampler
+      )
+      instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
+        instr_sampling_enabled,
+        instr_sample_this,
+        instr_sampling_percent,
+        instr_sampler
+      )
+
+      run_non_critical do
+        logger.debug do
+          "[redis_queued_locks.clear_dead_requests] " \
+          "dead_ttl => #{dead_ttl} " \
+          "prc_queue_cnt => #{processed_queues.size} " \
+          "rel_time => #{rel_time} " \
+          "at => #{time_at}"
+        end
+      end if log_sampled
+
+      run_non_critical do
+        instrumenter.notify('redis_queued_locks.clear_dead_requests', {
+          dead_ttl: dead_ttl,
+          prc_queue_cnt: processed_queues.size,
+          rel_time: rel_time,
+          at: time_at,
+          instrument: instrument
+        })
+      end if instr_sampled
+
+      { ok: true, result: { processed_queues: } }
+    end
+    # rubocop:enable Metrics/MethodLength
+
+    private
+
+    # Drops dead lock requests from the lock queues (see `clear_dead_requests`).
+    #
+    # @param redis_client [RedisClient]
+    # @param scan_size [Integer]
+    # @param dead_ttl [Integer] In milliseconds
+    # @param lock_index_enabled [Boolean]
+    # @return [Set<String>] The processed lock queues (write and read lock request queues).
+    #
+    # @api private
+    # @since 1.21.0
+    def fully_clear_dead_requests(redis_client, scan_size, dead_ttl, lock_index_enabled)
       dead_score = RedisQueuedLocks::Resource.acquirer_dead_score(dead_ttl / 1_000.0)
 
-      # @type var result: Set[String]
-      result = Set.new.tap do |processed_queues|
+      Set.new.tap do |processed_queues|
         # @type var processed_queues: Set[String]
         redis_client.with do |rconn|
           if lock_index_enabled
@@ -92,11 +172,7 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
           end
         end
       end
-
-      { ok: true, result: { processed_queues: result } }
     end
-
-    private
 
     # Write and read lock queues in one SCAN pass (the disabled lock index).
     #
@@ -210,4 +286,6 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
       yield(lock_names) unless lock_names.empty?
     end
   end
+  # rubocop:enable Metrics/ClassLength
 end
+# rubocop:enable Metrics/ModuleLength

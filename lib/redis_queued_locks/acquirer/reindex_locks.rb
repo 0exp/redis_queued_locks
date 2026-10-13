@@ -2,7 +2,13 @@
 
 # @api private
 # @since 1.20.0
+# @version 1.21.0
+# rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::ReindexLocks
+  # @since 1.21.0
+  extend RedisQueuedLocks::Utilities
+
+  # rubocop:disable Metrics/ClassLength
   class << self
     # Adds the lock keys without the lock index entry (keys of older RQL versions created before
     # the lock index) to the lock index (`RedisQueuedLocks::Resource::LOCK_INDEX_KEY`):
@@ -16,18 +22,125 @@ module RedisQueuedLocks::Acquirer::ReindexLocks
     #   - keys without TTL (unreachable for RQL keys) are indexed forever (`+inf` score);
     #   - the index score is never decreased (`ZADD GT`): the operation is idempotent and can be
     #     invoked at any time (keys of the current RQL version are indexed already);
+    #   - the operation is reported with one log and one instrumentation event
+    #     (`redis_queued_locks.reindex_locks`) with the time of the whole operation;
     #
     # @param redis_client [RedisClient]
     # @param scan_size [Integer]
     # @param queue_ttl [Integer] TTL of the lock queues without TTL (in seconds).
     # @param lock_index_grace_period [Integer]
     #   The lock index score margin over the key lifetime (in milliseconds).
+    # @param logger [::Logger,#debug]
+    # @param instrumenter [#notify]
+    # @param instrument [NilClass,Any]
+    # @param log_sampling_enabled [Boolean]
+    # @param log_sampling_percent [Integer]
+    # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+    # @param log_sample_this [Boolean]
+    # @param instr_sampling_enabled [Boolean]
+    # @param instr_sampling_percent [Integer]
+    # @param instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+    # @param instr_sample_this [Boolean]
     # @return [Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
     #   Format: { ok: true, result: { idx_key_cnt: Integer } } (the number of indexed keys)
     #
     # @api private
     # @since 1.20.0
-    def reindex_locks(redis_client, scan_size, queue_ttl, lock_index_grace_period)
+    # @version 1.21.0
+    # rubocop:disable Metrics/MethodLength
+    def reindex_locks(
+      redis_client,
+      scan_size,
+      queue_ttl,
+      lock_index_grace_period,
+      logger,
+      instrumenter,
+      instrument,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler,
+      log_sample_this,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler,
+      instr_sample_this
+    )
+      # NOTE: (arguments) the same ranges as the config keys: zero/negative sizes fail SCAN
+      #   (`COUNT 0`), a non-positive queue ttl expires the lock queues without TTL at once;
+      if !scan_size.is_a?(::Integer) || scan_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:scan_size` argument should be a positive Integer, got #{scan_size.inspect}."
+        )
+      end
+      if !queue_ttl.is_a?(::Integer) || queue_ttl <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:queue_ttl` argument should be a positive Integer, got #{queue_ttl.inspect}."
+        )
+      end
+      if !lock_index_grace_period.is_a?(::Integer) || lock_index_grace_period < 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:lock_index_grace_period` argument should be a non-negative Integer, " \
+          "got #{lock_index_grace_period.inspect}."
+        )
+      end
+
+      idx_start_time = clock_gettime
+      idx_key_cnt = fully_reindex_locks(redis_client, scan_size, queue_ttl, lock_index_grace_period)
+      time_at = Time.now.to_f
+      idx_end_time = clock_gettime
+      idx_time = ((idx_end_time - idx_start_time) / 1_000.0).ceil(2)
+
+      log_sampled = RedisQueuedLocks::Logging.should_log?(
+        log_sampling_enabled,
+        log_sample_this,
+        log_sampling_percent,
+        log_sampler
+      )
+      instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
+        instr_sampling_enabled,
+        instr_sample_this,
+        instr_sampling_percent,
+        instr_sampler
+      )
+
+      run_non_critical do
+        logger.debug do
+          "[redis_queued_locks.reindex_locks] " \
+          "idx_key_cnt => #{idx_key_cnt} " \
+          "idx_time => #{idx_time} " \
+          "at => #{time_at}"
+        end
+      end if log_sampled
+
+      run_non_critical do
+        instrumenter.notify('redis_queued_locks.reindex_locks', {
+          idx_key_cnt: idx_key_cnt,
+          idx_time: idx_time,
+          at: time_at,
+          instrument: instrument
+        })
+      end if instr_sampled
+
+      { ok: true, result: { idx_key_cnt: } }
+    end
+    # rubocop:enable Metrics/MethodLength
+
+    private
+
+    # Adds the lock keys without the lock index entry to the lock index (see `reindex_locks`).
+    #
+    # @param redis_client [RedisClient]
+    # @param scan_size [Integer]
+    # @param queue_ttl [Integer] TTL of the lock queues without TTL (in seconds).
+    # @param lock_index_grace_period [Integer]
+    # @return [Integer] The number of indexed keys.
+    #
+    # @api private
+    # @since 1.21.0
+    def fully_reindex_locks(redis_client, scan_size, queue_ttl, lock_index_grace_period)
       # NOTE: `ceil` - queue ttl can be passed as a Float (in seconds), PEXPIRE requires Integer
       queue_pttl = (queue_ttl * 1_000).ceil
       idx_key_cnt = 0
@@ -61,10 +174,8 @@ module RedisQueuedLocks::Acquirer::ReindexLocks
         end
       end
 
-      { ok: true, result: { idx_key_cnt: } }
+      idx_key_cnt
     end
-
-    private
 
     # Adds the given batch of lock keys to the lock index (two round trips: key TTLs, then
     # the index entries).
@@ -137,4 +248,6 @@ module RedisQueuedLocks::Acquirer::ReindexLocks
       1
     end
   end
+  # rubocop:enable Metrics/ClassLength
 end
+# rubocop:enable Metrics/ModuleLength

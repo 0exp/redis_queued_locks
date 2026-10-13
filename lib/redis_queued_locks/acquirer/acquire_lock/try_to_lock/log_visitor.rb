@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.7.0
+# @version 1.18.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
   # rubocop:disable Metrics/ClassLength

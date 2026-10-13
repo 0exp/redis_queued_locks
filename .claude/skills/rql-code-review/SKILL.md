@@ -88,8 +88,11 @@ locks", key layout, "Lock index", lock lookup modes, events, errors, conventions
   `lock_series_poc*` has no RBS.
 - Next version for `@since`/`@version`: the version the unreleased work already uses (`git diff <base> -- lib |
   grep -oE '^\+.*@(since|version) [0-9.]+'`, the CHANGELOG `[Unreleased]` code), otherwise the next minor of
-  `RedisQueuedLocks::VERSION` (`version.rb`). Don't take the maximum over `lib/`: the typo `@since 19.0.0` wins it.
-  A value older than `VERSION` on new code, or a behavior change without a `@version` bump, is a Minor finding.
+  `RedisQueuedLocks::VERSION` (`version.rb`); don't take the maximum over `lib/` (old tags can be wrong).
+  A value older than `VERSION` on new code, a method behavior/signature change without the method `@version` bump, or a
+  class/module header `@version` that does not match its latest interface change (`logic.md#2`: signatures,
+  added/removed methods, `extend`/`include`/`prepend`, the superclass; behavior changes never bump the header) is a
+  Minor finding.
 
 ## 3. Spec files are exempt (until the suite rework)
 
@@ -214,9 +217,12 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   key / acquirer id in the message.
 - Keys only via `Resource.prepare_*`, `*_PATTERN`, `SWARM_KEY`, `LOCK_INDEX_KEY` (`logic.md#5`): flag every new
   `'rql:...'` literal outside `resource.rb`.
-- Config: `setting` + `validate` in `config.rb` (booleans `val == true || val == false`, Integers with ranges), dotted
+- Config: `setting` + `validate` in `config.rb` (booleans `val == true || val == false`, Integers with ranges; per-call
+  numeric options validated with the same ranges in the operation module, `logic.md#7`), dotted
   keys for groups, unit in a trailing `# NOTE:` comment, read as `config['key']` (`logic.md#7`). Errors:
-  `class XError < Error; end` in `errors.rb`. Runtime dependencies: `redis-client` only; dev gems in `Gemfile`.
+  `class XError < Error; end` in `errors.rb`, each under the global base of its branch (`Error`, `ArgumentError`,
+  `Exception`: super exceptional cases only, with the reason in the comment; `logic.md#15`). Runtime dependencies:
+  `redis-client` only; dev gems in `Gemfile`.
 - `AcquireLock`: new behavior as a new step or mixin with `# Step N.x` numbering and consistent `acq_process` keys
   (`acquirer.md#10`); `lock_series_poc.rb` is experimental: don't accept new features built on it without the
   user's request.
@@ -236,8 +242,13 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   status shapes `{ running:, state: }` with `'non_initialized'` and their RBS (`#10`).
 
 ### G. Logging and instrumentation (`visitors.md`)
-- Logs/events of `AcquireLock` and its mixins and of `LockSeriesPoC` go through visitor methods (`#1`); release
-  modules call `instrumenter.notify` inline inside `run_non_critical`, gated by `instr_sampled` (`acquirer.md#9`).
+- Logs/events of `AcquireLock` and its mixins and of `LockSeriesPoC` go through visitor methods (`#1`); mutation
+  modules write one log line and one event inline inside `run_non_critical`, gated by `log_sampled`/`instr_sampled`
+  (`acquirer.md#9`).
+- Observability coverage (`logic.md#16`): a new or changed logic that creates/changes/deletes keys without logs and
+  instrumentation, a mutation event/log that times an internal part instead of the whole root operation, a mutation
+  payload without `instrument`, a `Client` mutation method without the observability keywords, or instrumented lock
+  info queries are findings; the swarm elements are known debt.
 - Visitor shape: `class << self`, method name = event name (`__` between phase and detail), same name in the
   Log and Instr visitors, first line `return unless log_sampled` (`&& log_lock_try` for `TryToLock` steps), one
   `logger.debug do ... end rescue nil` with `"[redis_queued_locks.<event>] "` and `key => 'value'` pairs, or
@@ -264,8 +275,9 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - `# frozen_string_literal: true`; compact constant paths (`module RedisQueuedLocks::Acquirer::Keys`); namespace
   files only `require_relative` (`logic.md#1`).
 - YARD on every class, module, constant, attr and method: `@param`/`@option`/`@return` (`Format: { ... }` for hash
-  results), blank `#`, `@api public|private`, `@since <next>`; behavior changes bump `@version <next>` on the
-  method and on the module/class header (`logic.md#2`).
+  results), blank `#`, `@api public|private`, `@since <next>`; behavior/signature changes bump `@version <next>` on
+  the method; the module/class header `@version` changes only with the interface (signatures, added/removed methods,
+  `extend`/`include`/`prepend`, the superclass), never for behavior changes inside the methods (`logic.md#2`).
 - Comments: `# NOTE:` with `#   - item;` lists, `# Step N.x` in algorithms, `(RW)`/`(lock index)`/`(keyspace)`
   tags, `NOTE: (pipeline layout)`/`(transaction layout)` for positional replies.
 - Redis: uppercase String commands, String numeric args (`'0'`, `'-1'`, `'-inf'`, `'+inf'`), `redis.with do |rconn|`
@@ -297,12 +309,14 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   read→write upgrade as an error unless `:wait_for_lock`; nested reads through `conflict_strategy`; no fairness
   between modes with `:random`; best-effort cross-host FIFO; no Lua in the RW path; one mode per lock series;
   `lock_index_enabled` as a config-only mode; the lock index defaulting to `false`.
+- Unused `Resource` methods marked `# NOTE: (debug)` (manual runtime checks, `logic.md#17`); report a debug method
+  only when it is wrong for a key family it can get.
 - Known limitations kept by the user: `YieldExpire` write release (`EXPIRE 0`) and ttl decrease without an owner
   check; `HMGET`→`DEL` without `WATCH` in `ReleaseLocksOf`/`FlushZombies`; `unlock` dropping the data of a reader
   re-acquired between its two round trips; `zombie_acquirers` vs `flush_zombies` acquirer sets.
 - Known debt: `WithAcqTimeout` → `LockInfo`/`QueueInfo`; rspec-retry, disabled coverage minimum, non-blocking runtime
-  type checks; `acquier.rbs` and the `yield_with_expire` RBS path; typos `swarm_element__termiante`,
-  `@api ppublic`/`pulic`/`pub;ic`, `@since 19.0.0`; `sleep(0.1)` readiness waits and missing logging in the swarm;
+  type checks; `acquier.rbs` and the `yield_with_expire` RBS path; the `swarm_element__termiante` typo;
+  `sleep(0.1)` readiness waits and missing logging in the swarm;
   one flusher per process; `EVAL` without `SCRIPT LOAD`; `# rubocop:disable all` around lock series.
 - "Recommendations (proposed, not yet project policy)" in the rule files: never violations; mention one only as an
   optional suggestion for touched code.

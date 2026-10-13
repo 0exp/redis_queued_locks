@@ -44,7 +44,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     #   - works in tandem with <config['log_sampling_percent']> and <config['log_sampler']>;
     # @param log_sampling_percent [Integer]
     #   - the percent of cases that should be logged;
-    #   - take an effect when <config['log_sampling_enalbed']> is true;
+    #   - take an effect when <config['log_sampling_enabled']> is true;
     #   - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
     # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     #   - percent-based log sampler that decides should be RQL case logged or not;
@@ -65,7 +65,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     #   - works in tandem with <config['instr_sampling_percent']> and <config['instr_sampler']>;
     # @param instr_sampling_percent [Integer]
     #   - the percent of cases that should be instrumented;
-    #   - take an effect when <config['instr_sampling_enalbed']> is true;
+    #   - take an effect when <config['instr_sampling_enabled']> is true;
     #   - works in tandem with <config['instr_sampling_enabled']>
     #     and <config['instr_sampler']> configs;
     # @param instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
@@ -93,7 +93,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     #
     # @api private
     # @since 1.14.0
-    # @version 1.20.0
+    # @version 1.21.0
     # rubocop:disable Metrics/MethodLength
     def release_locks_of(
       refused_host_id,
@@ -114,6 +114,22 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
       instr_sampler,
       instr_sample_this
     )
+      # NOTE: (arguments) the same ranges as the config keys: zero/negative sizes fail SCAN/ZSCAN
+      #   (`COUNT 0`) and the batching (`each_slice(0)`);
+      if !lock_scan_size.is_a?(::Integer) || lock_scan_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:lock_scan_size` argument should be a positive Integer, got #{lock_scan_size.inspect}."
+        )
+      end
+      if !queue_scan_size.is_a?(::Integer) || queue_scan_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:queue_scan_size` argument should be a positive Integer, " \
+          "got #{queue_scan_size.inspect}."
+        )
+      end
+
       rel_start_time = clock_gettime
 
       # steep:ignore:start
@@ -134,6 +150,12 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
       rel_end_time = clock_gettime
       rel_time = ((rel_end_time - rel_start_time) / 1_000.0).ceil(2)
 
+      log_sampled = RedisQueuedLocks::Logging.should_log?(
+        log_sampling_enabled,
+        log_sample_this,
+        log_sampling_percent,
+        log_sampler
+      )
       instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
         instr_sampling_enabled,
         instr_sample_this,
@@ -142,13 +164,26 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
       )
 
       run_non_critical do
+        logger.debug do
+          "[redis_queued_locks.release_locks_of] " \
+          "at => #{time_at} " \
+          "hst_id => '#{refused_host_id}' " \
+          "acq_id => '#{refused_acquirer_id}' " \
+          "rel_time => #{rel_time} " \
+          "rel_key_cnt => #{result[:rel_key_cnt]} " \
+          "tch_queue_cnt => #{result[:tch_queue_cnt]}"
+        end
+      end if log_sampled
+
+      run_non_critical do
         instrumenter.notify('redis_queued_locks.release_locks_of', {
           at: time_at,
           hst_id: refused_host_id,
           acq_id: refused_acquirer_id,
           rel_time: rel_time,
           rel_key_cnt: result[:rel_key_cnt],
-          tch_queue_cnt: result[:tch_queue_cnt]
+          tch_queue_cnt: result[:tch_queue_cnt],
+          instrument: instrument
         })
       end if instr_sampled
 

@@ -113,8 +113,19 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 - Try results (internal symbols): `:write_request_is_ahead`, `:read_request_is_ahead`,
   `:read_lock_is_still_acquired`, `:conflict_lock_upgrade`, `:read_lock_is_expired_during_extension`;
   try success result carries internal `rw_mode` (held mode), not exposed in the public `lock` result.
-- Validation (`AcquireLock`): `read_write_mode` must be `:read`/`:write`; read `ttl` must be a positive
-  Integer (`RedisQueuedLocks::ArgumentError`).
+- Validation (`AcquireLock`): `read_write_mode` must be `:read`/`:write`; `ttl` must be a positive
+  Integer in both modes (`RedisQueuedLocks::ArgumentError`; write: `PEXPIRE` with a non-positive ttl would
+  delete the lock key in the obtaining `MULTI`, read: the reader expiration is computed from it);
+  `LockSeriesPoC` checks the series `ttl` the same way before computing the lock ttls (they include
+  the retry delay and jitter); `config['default_lock_ttl']` must be positive too; `extend_lock_ttl`
+  `milliseconds` must be a positive Integer (a non-positive one would decrease/delete the lock);
+  `meta` keys must not be reserved lock data keys, String or Symbol (Symbol keys are written as
+  Strings: `Symbol#name`; the same check in `AcquireLock` and `LockSeriesPoC`); the other per-call
+  numeric options are validated with the ranges of their config keys (`logic.md#7`): `queue_ttl` > 0,
+  `timeout`/`retry_count` nil or >= 0, `retry_delay`/`retry_jitter`/`lock_index_grace_period` >= 0
+  (`AcquireLock`; `LockSeriesPoC` checks the retry delay/jitter before the lock ttl calculation),
+  scan/batch sizes, `dead_ttl`, reindexing `queue_ttl` > 0 (operation modules), `zombie_ttl` and the
+  zombie scan sizes > 0 (`Swarm` facade: `SwarmArgumentError`).
 - RW-aware operations: `unlock` (write lock + readers + reader data + both queues + the lock index entry (the enabled lock index), same result shape; one release
   `MULTI` that also reads the readers registry, then one `DEL` of the released readers' data only when readers existed:
   1 round trip without readers; trade-off: a released reader that obtains a new read lock in between loses its new data),
@@ -123,8 +134,8 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   (zombie readers reported as their registry key), `locked?`, `queued?`, `lock_info` (read info:
   `'rw_mode' => 'read'`, `'rem_ttl'`, `'readers' => [reader data + rem_ttl]` when no write lock),
   `queue_info` (`'read_lock_queue'`/`'read_queue'` when present), `locks`/`locks_info`, `queues`/`queues_info`;
-  write lock info in `lock_info`/`locks_info` has `'rw_mode' => 'write'` (computed on formatting, not stored),
-  so `'rw_mode'` is a reserved `meta` key (validated in `AcquireLock` and `LockSeriesPoC`);
+  write lock info in `lock_info`/`locks_info` has `'lock_key'` and `'rw_mode' => 'write'` (computed on formatting,
+  not stored), so `'rw_mode'` is a reserved `meta` key (validated in `AcquireLock` and `LockSeriesPoC`);
   every request in `queue_info`/`queues_info` is `{ 'acq_id', 'score', 'rw_mode' => 'write'|'read' }`
   (`queues_info` derives the mode from the queue key via `Resource.lock_queue_rw_mode`).
 - `lock_series` (both modes): one mode per series; `release_lock_series` releases only locks the series
@@ -212,8 +223,12 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 
 `redis_queued_locks.` + `lock_obtained`, `reentrant_lock_obtained`,
 `extendable_reentrant_lock_obtained`, `lock_hold_and_release`, `reentrant_lock_hold_completes`,
-`lock_series_obtained`, `lock_series_hold_and_release`, `explicit_lock_release`,
-`explicit_all_locks_release`, `release_locks_of`, `explicit_read_lock_release`.
+`lock_obtaining_failed`, `lock_series_obtained`, `lock_series_hold_and_release`, `explicit_lock_release`,
+`explicit_all_locks_release`, `release_locks_of`, `explicit_read_lock_release`, `extend_lock_ttl`, `clear_dead_requests`,
+`reindex_locks`. Observability rule (`logic.md#16`): logic that changes keys is logged and instrumented, the lock
+acquirement per meaningful outcome (visitors; `lock_obtaining_failed` with the failure `result` also before a raised
+acquirement error), each mutation operation with one log line + one event of the whole operation (the same name and data,
+`instrument` last in the payload, inline in the module); lock info queries are neither; the swarm is known debt.
 Lock events (`lock_obtained`, `reentrant_lock_obtained`, `extendable_reentrant_lock_obtained`,
 `lock_hold_and_release`, `reentrant_lock_hold_completes`) carry `rw_mode` (requested mode) in the payload;
 lock series events (`lock_series_obtained`, `lock_series_hold_and_release`) carry the mode of the series;
@@ -222,11 +237,18 @@ lock log lines (incl. lock series logs) carry `rw_mode => '...'`. RW try-lock lo
 
 ### Errors (`errors.rb`)
 
-Base `RedisQueuedLocks::Error < StandardError`, plus `ArgumentError`, `LockAlreadyObtainedError`,
-`LockAcquirementTimeoutError`, `LockAcquirementRetryLimitError`, `TimedLockTimeoutError`,
-`ConflictLockObtainError`, `SwarmError`, `SwarmArgumentError`, `ConfigError`
-(`ConfigNotFoundError`, `ConfigValidationError`). Internal `*IntermediateTimeoutError`s
-inherit from `Timeout::Error`.
+Global base errors per branch (`logic.md#15`): `RedisQueuedLocks::Error < StandardError` (the main
+hierarchy: `LockAlreadyObtainedError`, `LockAcquirementTimeoutError`, `LockAcquirementRetryLimitError`,
+`TimedLockTimeoutError`, `ConflictLockObtainError`, `SwarmError`, `ConfigError` (`ConfigNotFoundError`,
+`ConfigValidationError`)), `RedisQueuedLocks::ArgumentError < ::ArgumentError` (`SwarmArgumentError`),
+`RedisQueuedLocks::Exception < ::Exception` (`@api private`, super exceptional cases only: the internal
+`*IntermediateTimeoutError`s of `Timeout.timeout` for `timeout` and `timed`; like `Timeout::ExitException`,
+`rescue => e`/`rescue StandardError`/`rescue Timeout::Error`/`rescue nil` of the interrupted code (the user
+block, logger and instrumenter calls) can not swallow them; the library converts them to the public errors/results).
+redis-client sends `UNWATCH` on an interrupted `multi(watch:)` only for `StandardError`s, so every `with` block
+around a `multi(watch:)` (`TryToLock`, `ExtendLockTTL` read extensions, `LockSeriesPoC` write release) rescues
+both internal timeouts and `Timeout::ExitException` (the user's `Timeout.timeout` without an exception class), closes
+the connection (drops the WATCH state, reconnected on the next use) and re-raises.
 
 ---
 
@@ -277,7 +299,7 @@ lib/redis_queued_locks/
   resource.rb                      keys and identities
   data.rb, errors.rb, utilities.rb, utilities/lock.rb, debugger/, version.rb
 sig/                               RBS mirror of lib/ + sig/vendor stubs (redis_client, active_support, semantic_logger)
-spec/                              redis_queued_locks_spec.rb (~4.9k lines, integration: shared examples run with both lock lookup modes), spec_helper.rb, setup_simplecov.rb
+spec/                              redis_queued_locks_spec.rb (~5.6k lines, integration: shared examples run with both lock lookup modes), spec_helper.rb, setup_simplecov.rb
 .github/workflows/                 tests, lint, typecheck-static, typecheck-runtime
 bin/console, bin/setup             dev scripts
 Rakefile, Steepfile, rbs_collection.yaml
@@ -323,7 +345,7 @@ Known quirk: `sig/redis_queued_locks/acquier.rbs` is misspelled (should be `acqu
 ## 6. Conventions
 
 - `# frozen_string_literal: true` in every Ruby file.
-- YARD tags on every class/method: `@api public|private`, `@since`, `@version` (bump `@version` when changing behavior).
+- YARD tags on every class/method: `@api public|private`, `@since`, `@version` (methods: bump on a behavior/signature change; classes/modules: only on an interface change: signatures, added/removed methods, `extend`/`include`/`prepend` or the superclass; `logic.md#2`).
 - Every `lib/` change gets a matching `sig/` RBS update; use `# steep:ignore` only where Steep can't infer types.
 - New operation: new `Acquirer::*` module, thin `Client` method (+ `!` variant if it should raise), RBS, spec.
 - New config option: `setting` (+ `validate`) in `config.rb`, read via `config['key']`, document defaults.

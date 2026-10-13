@@ -141,7 +141,7 @@ module RedisQueuedLocks
       ?ractor_id: Integer|String,
       ?identity: String
     ) -> String
-    alias ccurrent_acq_id current_acquirer_id
+    alias current_acq_id current_acquirer_id
     alias acq_id current_acquirer_id
 
     def current_host_id: (
@@ -236,7 +236,7 @@ module RedisQueuedLocks
               | (?scan_size: Integer, ?with_info: true) -> RQL::Acquirer::Queues::queuesInfo
               | (?scan_size: Integer, ?with_info: false) -> RQL::Acquirer::Queues::queueList
 
-    def queues_info: (?scan_size: Integer) -> RQL::Acquirer::Queues::queues
+    def queues_info: (?scan_size: Integer) -> RQL::Acquirer::Queues::queuesInfo
     def keys: (?scan_size: Integer) -> RQL::Acquirer::Keys::keyList
 
     def clear_dead_requests: (
@@ -258,7 +258,18 @@ module RedisQueuedLocks
     def reindex_locks: (
       ?scan_size: Integer,
       ?queue_ttl: Integer,
-      ?lock_index_grace_period: Integer
+      ?lock_index_grace_period: Integer,
+      ?logger: RQL::loggerObj,
+      ?instrumenter: RQL::instrObj,
+      ?instrument: untyped?,
+      ?log_sampling_enabled: bool,
+      ?log_sampling_percent: Integer,
+      ?log_sampler: RQL::Logging::samplerObj,
+      ?log_sample_this: bool,
+      ?instr_sampling_enabled: bool,
+      ?instr_sampling_percent: Integer,
+      ?instr_sampler: RQL::Instrument::samplerObj,
+      ?instr_sample_this: bool
     ) -> RQL::Acquirer::ReindexLocks::reindexResult
   end
 end

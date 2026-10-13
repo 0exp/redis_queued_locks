@@ -25,8 +25,17 @@ module RedisQueuedLocks::Acquirer::Locks
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
     def locks(redis_client, scan_size:, with_info:, lock_index_enabled:)
+      # NOTE: (arguments) the same range as the config key: zero/negative sizes fail SCAN/ZSCAN
+      #   (`COUNT 0`) and the batching (`each_slice(0)`);
+      if !scan_size.is_a?(::Integer) || scan_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:scan_size` argument should be a positive Integer, got #{scan_size.inspect}."
+        )
+      end
+
       redis_client.with do |rconn|
         lock_keys =
           lock_index_enabled ? index_locks(rconn, scan_size) : scan_locks(rconn, scan_size)
@@ -153,7 +162,7 @@ module RedisQueuedLocks::Acquirer::Locks
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
     # rubocop:disable Metrics/MethodLength
     def extract_locks_info(redis_client, lock_keys, scan_size)
       Set.new.tap do |seeded_locks|
@@ -162,6 +171,13 @@ module RedisQueuedLocks::Acquirer::Locks
         # rubocop:enable Layout/LineLength
 
         lock_keys.each_slice(scan_size) do |lock_keys_batch|
+          # Step 0: lock names of the batch (once per lock: the readers registry keys and the read
+          #   lock data keys are built from them)
+          # @type var lock_names_batch: Array[String]
+          lock_names_batch = lock_keys_batch.map do |lock_key|
+            RedisQueuedLocks::Resource.lock_name_from_key(lock_key, :lock) #: String
+          end
+
           # Step 1: extract the state of the batch of locks in one round trip
           # NOTE: (pipeline layout) [0] TIME (read locks are checked in redis time), then
           #   `LOCK_STATE_REPLIES` replies per lock in the batch order (the replies of the lock
@@ -170,10 +186,9 @@ module RedisQueuedLocks::Acquirer::Locks
           # @type var batch_state: Array[untyped]
           batch_state = redis_client.pipelined do |pipeline|
             pipeline.call('TIME')
-            lock_keys_batch.each do |lock_key|
-              lock_readers_key = RedisQueuedLocks::Resource.prepare_lock_readers(
-                lock_key.delete_prefix('rql:lock:')
-              )
+            lock_keys_batch.each_with_index do |lock_key, index|
+              lock_readers_key =
+                RedisQueuedLocks::Resource.prepare_lock_readers(lock_names_batch[index])
               pipeline.call('HGETALL', lock_key)
               pipeline.call('PTTL', lock_key)
               pipeline.call('ZRANGE', lock_readers_key, '0', '-1', 'WITHSCORES')
@@ -199,12 +214,13 @@ module RedisQueuedLocks::Acquirer::Locks
           #   read lock data can be absent if it is dropped during the read lock life;
           # @type var read_locks_data: Array[Hash[String,String]]
           read_locks_data = redis_client.pipelined do |pipeline|
-            lock_keys_batch.each_with_index do |lock_key, index|
-              lock_name = lock_key.delete_prefix('rql:lock:')
+            lock_keys_batch.each_index do |index|
               live_read_locks[index]&.each do |(acquirer_id, _expiration)|
                 pipeline.call(
                   'HGETALL',
-                  RedisQueuedLocks::Resource.prepare_read_lock_key(lock_name, acquirer_id)
+                  RedisQueuedLocks::Resource.prepare_read_lock_key(
+                    lock_names_batch[index], acquirer_id
+                  )
                 )
               end
             end
@@ -232,6 +248,7 @@ module RedisQueuedLocks::Acquirer::Locks
                 pttl_cmd_res = batch_state[replies_at + 1] # NOTE: PTTL result (integer)
 
                 hget_cmd_res.tap do |lock_data|
+                  lock_data['lock_key'] = lock_key
                   lock_data['rw_mode'] = 'write'
                   lock_data['ts'] = Float(lock_data['ts'])
                   lock_data['ini_ttl'] = Integer(lock_data['ini_ttl'])

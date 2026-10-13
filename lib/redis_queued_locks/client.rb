@@ -2,7 +2,7 @@
 
 # @api public
 # @since 1.0.0
-# @version 1.20.0
+# @version 1.21.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @return [RedisClient]
@@ -79,6 +79,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
+  # @version 1.21.0
   def swarm_info(zombie_ttl: config['swarm.flush_zombies.zombie_ttl'])
     swarm.swarm_info(zombie_ttl:)
   end
@@ -107,6 +108,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
+  # @version 1.21.0
   def flush_zombies(
     zombie_ttl: config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: config['swarm.flush_zombies.zombie_lock_scan_size'],
@@ -121,6 +123,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
+  # @version 1.21.0
   def zombie_locks(
     zombie_ttl: config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: config['swarm.flush_zombies.zombie_lock_scan_size']
@@ -132,8 +135,9 @@ class RedisQueuedLocks::Client
   # @option lock_scan_size [Integer]
   # @return [Set<String>]
   #
-  # @api ppublic
+  # @api public
   # @since 1.9.0
+  # @version 1.21.0
   def zombie_acquirers(
     zombie_ttl: config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: config['swarm.flush_zombies.zombie_lock_scan_size']
@@ -146,6 +150,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
+  # @version 1.21.0
   def zombie_hosts(zombie_ttl: config['swarm.flush_zombies.zombie_ttl'])
     swarm.zombie_hosts(zombie_ttl:)
   end
@@ -159,7 +164,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
-  # @version 1.17.0
+  # @version 1.21.0
   def zombies_info(
     zombie_ttl: config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: config['swarm.flush_zombies.zombie_lock_scan_size']
@@ -171,7 +176,9 @@ class RedisQueuedLocks::Client
   # @param lock_name [String]
   #   Lock name to be obtained.
   # @option ttl [Integer]
-  #   Lock's time to live (in milliseconds).
+  #   - Lock's time to live (in milliseconds);
+  #   - a positive Integer;
+  #   - pre-configured in `config['default_lock_ttl']`;
   # @option queue_ttl [Integer]
   #   Lifetime of the acuier's lock request. In seconds.
   # @option lock_index_grace_period [Integer]
@@ -183,7 +190,8 @@ class RedisQueuedLocks::Client
   #     mode: the lock index is maintained by all lock acquirements of the client);
   #   - pre-configured in `config['lock_index_grace_period']`;
   # @option timeout [Integer,NilClass]
-  #   Time period whe should try to acquire the lock (in seconds). Nil means "without timeout".
+  #   Time period whe should try to acquire the lock (in seconds). Nil means "without timeout"
+  #   (`0` is the same as `nil`).
   # @option timed [Boolean]
   #   Limit the invocation time period of the passed block of code by the lock's TTL.
   # @option retry_count [Integer,NilClass]
@@ -294,7 +302,7 @@ class RedisQueuedLocks::Client
   #   - works in tandem with <config['log_sampling_percent'] and <config['log_sampler']>;
   # @option log_sampling_percent [Integer]
   #   - the percent of cases that should be logged;
-  #   - take an effect when <config['log_sampling_enalbed']> is true;
+  #   - take an effect when <config['log_sampling_enabled']> is true;
   #   - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
   # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
   #   - percent-based log sampler that decides should be RQL case logged or not;
@@ -315,7 +323,7 @@ class RedisQueuedLocks::Client
   #   - works in tandem with <config['instr_sampling_percent']> and <config['instr_sampler']>;
   # @option instr_sampling_percent [Integer]
   #   - the percent of cases that should be instrumented;
-  #   - take an effect when <config['instr_sampling_enalbed']> is true;
+  #   - take an effect when <config['instr_sampling_enabled']> is true;
   #   - works in tandem with <config['instr_sampling_enabled']>
   #     and <config['instr_sampler']> configs;
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
@@ -339,7 +347,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   # rubocop:disable Metrics/MethodLength
   def lock(
     lock_name,
@@ -418,7 +426,7 @@ class RedisQueuedLocks::Client
   # rubocop:disable all
   # @api public
   # @since 1.16.0
-  # @version 1.20.0
+  # @version 1.21.0
   def lock_series( # steep:ignore
     *lock_names,
     detailed_result: false,
@@ -498,7 +506,7 @@ class RedisQueuedLocks::Client
   # rubocop:disable all
   # @api public
   # @since 1.16.0
-  # @version 1.20.0
+  # @version 1.21.0
   def lock_series!( # steep:ignore
     *lock_names,
     detailed_result: false,
@@ -570,7 +578,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def lock!(
     lock_name,
     ttl: config['default_lock_ttl'],
@@ -665,7 +673,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def unlock(
     lock_name,
     logger: config['logger'],
@@ -684,8 +692,9 @@ class RedisQueuedLocks::Client
       redis_client,
       lock_name,
       config['lock_index_enabled'],
-      instrumenter,
       logger,
+      instrumenter,
+      instrument,
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,
@@ -742,7 +751,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.18.0
-  # @version 1.19.0
+  # @version 1.21.0
   def unlock_read(
     lock_name,
     acquirer_id: nil,
@@ -763,8 +772,8 @@ class RedisQueuedLocks::Client
       redis_client,
       lock_name,
       acquirer_id || current_acquirer_id(identity:),
-      instrumenter,
       logger,
+      instrumenter,
       instrument,
       log_sampling_enabled,
       log_sampling_percent,
@@ -902,19 +911,14 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Resource.possible_host_identifiers(identity)
   end
 
-  # This method is non-atomic cuz redis does not provide an atomic function for TTL/PTTL extension.
-  # So the methid is spliited into the two commands:
-  #   (1) read current pttl
-  #   (2) set new ttl that is calculated as "current pttl + additional milliseconds"
-  # What can happen during these steps
-  # - lock is expired between commands or before the first command;
-  # - lock is expired before the second command;
-  # - lock is expired AND newly acquired by another process (so you will extend the
-  #   totally new lock with fresh PTTL);
+  # The write lock TTL is extended atomically by one Lua script (`PTTL` + `PEXPIRE` with
+  # "current pttl + additional milliseconds") without the lock owner check: when your lock is
+  # expired and newly obtained by another acquirer, the lock of that acquirer is extended.
   # Use it at your own risk and consider async nature when calling this method.
   #
   # @param lock_name [String]
-  # @param milliseconds [Integer] How many milliseconds should be added.
+  # @param milliseconds [Integer]
+  #   How many milliseconds should be added: a positive Integer.
   # @option read_write_mode [Symbol]
   #   - `:write` (default) - extends the write lock (the method description above);
   #   - `:read` - extends the read lock of the current acquirer only (an expired read lock or
@@ -944,7 +948,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def extend_lock_ttl(
     lock_name,
     milliseconds,
@@ -1008,7 +1012,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def clear_locks(
     batch_size: config['lock_release_batch_size'],
     logger: config['logger'],
@@ -1097,12 +1101,12 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.14.0
-  # @version 1.20.0
+  # @version 1.21.0
   def clear_locks_of(
     host_id:,
     acquirer_id:,
     lock_scan_size: config['clear_locks_of__lock_scan_size'],
-    queue_scan_size: config['clear_locks_of__queue_scan_size'], # steep:ingore
+    queue_scan_size: config['clear_locks_of__queue_scan_size'],
     logger: config['logger'],
     instrumenter: config['instrumenter'],
     instrument: nil,
@@ -1140,7 +1144,8 @@ class RedisQueuedLocks::Client
   # Release all locks of the current acquirer/host and
   # remove the current acquirer/host from all queues;
   #
-  # @option batch_size [Integer]
+  # @option lock_scan_size [Integer]
+  # @option queue_scan_size [Integer]
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify] See `config['instrumenter']` docs for details.
   # @option instrument [NilClass,Any]
@@ -1159,9 +1164,10 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.14.0
+  # @version 1.21.0
   def clear_current_locks(
     lock_scan_size: config['clear_locks_of__lock_scan_size'],
-    queue_scan_size: config['clear_locks_of__queue_scan_size'], # steep:ingore
+    queue_scan_size: config['clear_locks_of__queue_scan_size'],
     logger: config['logger'],
     instrumenter: config['instrumenter'],
     instrument: nil,
@@ -1216,7 +1222,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def locks(scan_size: config['key_extraction_batch_size'], with_info: false)
     RedisQueuedLocks::Acquirer::Locks.locks(
       redis_client, scan_size:, with_info:, lock_index_enabled: config['lock_index_enabled']
@@ -1230,8 +1236,9 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  def locks_info(scan_size: config['key_extraction_batch_size']) # steep:ignore
-    locks(scan_size:, with_info: true)
+  # @version 1.21.0
+  def locks_info(scan_size: config['key_extraction_batch_size'])
+    locks(scan_size:, with_info: true) #: RedisQueuedLocks::Acquirer::Locks::locksInfo
   end
 
   # @option scan_size [Integer]
@@ -1253,7 +1260,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def queues(scan_size: config['key_extraction_batch_size'], with_info: false)
     RedisQueuedLocks::Acquirer::Queues.queues(
       redis_client, scan_size:, with_info:, lock_index_enabled: config['lock_index_enabled']
@@ -1267,8 +1274,9 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
+  # @version 1.21.0
   def queues_info(scan_size: config['key_extraction_batch_size'])
-    queues(scan_size:, with_info: true)
+    queues(scan_size:, with_info: true) #: RedisQueuedLocks::Acquirer::Queues::queuesInfo
   end
 
   # @option scan_size [Integer]
@@ -1279,7 +1287,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def keys(scan_size: config['key_extraction_batch_size'])
     RedisQueuedLocks::Acquirer::Keys.keys(
       redis_client, scan_size:, lock_index_enabled: config['lock_index_enabled']
@@ -1310,7 +1318,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def clear_dead_requests(
     dead_ttl: config['dead_request_ttl'],
     scan_size: config['lock_release_batch_size'],
@@ -1365,21 +1373,55 @@ class RedisQueuedLocks::Client
   # @option lock_index_grace_period [Integer]
   #   - the lock index score margin over the key lifetime (in milliseconds);
   #   - `config['lock_index_grace_period']` is used by default;
+  # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify]
+  # @option instrument [NilClass,Any]
+  # @option log_sampling_enabled [Boolean]
+  # @option log_sampling_percent [Integer]
+  # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
   # @return [Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
   #   Format: { ok: true, result: { idx_key_cnt: Integer } } (the number of indexed keys)
   #
   # @api public
   # @since 1.20.0
+  # @version 1.21.0
   def reindex_locks(
     scan_size: config['lock_release_batch_size'],
     queue_ttl: config['default_queue_ttl'],
-    lock_index_grace_period: config['lock_index_grace_period']
+    lock_index_grace_period: config['lock_index_grace_period'],
+    logger: config['logger'],
+    instrumenter: config['instrumenter'],
+    instrument: nil,
+    log_sampling_enabled: config['log_sampling_enabled'],
+    log_sampling_percent: config['log_sampling_percent'],
+    log_sampler: config['log_sampler'],
+    log_sample_this: false,
+    instr_sampling_enabled: config['instr_sampling_enabled'],
+    instr_sampling_percent: config['instr_sampling_percent'],
+    instr_sampler: config['instr_sampler'],
+    instr_sample_this: false
   )
     RedisQueuedLocks::Acquirer::ReindexLocks.reindex_locks(
       redis_client,
       scan_size,
       queue_ttl,
-      lock_index_grace_period
+      lock_index_grace_period,
+      logger,
+      instrumenter,
+      instrument,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler,
+      log_sample_this,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler,
+      instr_sample_this
     )
   end
 end

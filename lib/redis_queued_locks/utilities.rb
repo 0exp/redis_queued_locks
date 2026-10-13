@@ -39,7 +39,7 @@ module RedisQueuedLocks::Utilities
   # @return [Boolean]
   #
   # @api public
-  # @since ?.?.?
+  # @since 1.16.0
   RUBY_OVER_4 = Gem::Version.new(RUBY_VERSION) >= Gem::Version.new('4.0.0')
 
   # @yield

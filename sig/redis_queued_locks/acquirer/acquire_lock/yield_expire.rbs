@@ -19,7 +19,7 @@ module RedisQueuedLocks
           Symbol access_strategy,
           bool timed,
           Integer|Float ttl_shift,
-          Integer? ttl,
+          Integer ttl,
           Integer queue_ttl,
           Hash[String|Symbol,untyped]? meta,
           bool log_sampled,
@@ -33,7 +33,7 @@ module RedisQueuedLocks
         def yield_with_timeout: (
           Float timeout,
           String lock_key,
-          Integer? lock_ttl,
+          Integer lock_ttl,
           String acquirer_id,
           String host_id,
           Hash[String|Symbol,untyped]? meta,

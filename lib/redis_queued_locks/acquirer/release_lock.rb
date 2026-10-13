@@ -2,10 +2,13 @@
 
 # @api private
 # @since 1.0.0
+# @version 1.21.0
+# rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::ReleaseLock
   # @since 1.0.0
   extend RedisQueuedLocks::Utilities
 
+  # rubocop:disable Metrics/ClassLength
   class << self
     # Release the concrete lock:
     # - 1. clear lock queue: al; related processes released
@@ -22,18 +25,21 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     #   The lock name that should be released.
     # @param lock_index_enabled [Boolean]
     #   Drop the lock name from the lock index (the enabled lock index).
-    # @param instrumenter [#notify]
-    #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
     # @param logger [::Logger,#debug]
     #   - Logger object used from `configuration` layer (see config['logger']);
     #   - See RedisQueuedLocks::Logging::VoidLogger for example;
+    # @param instrumenter [#notify]
+    #   See RedisQueuedLocks::Instrument::ActiveSupport for example.
+    # @param instrument [NilClass,Any]
+    #    - Custom instrumentation data wich will be passed to the instrumenter's payload
+    #      with :instrument key;
     # @param log_sampling_enabled [Boolean]
     #   - enables <log sampling>: only the configured percent of RQL cases will be logged;
     #   - disabled by default;
     #   - works in tandem with <config['log_sampling_percent']> and <config['log_sampler']>;
     # @param log_sampling_percent [Integer]
     #   - the percent of cases that should be logged;
-    #   - take an effect when <config['log_sampling_enalbed']> is true;
+    #   - take an effect when <config['log_sampling_enabled']> is true;
     #   - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
     # @param log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     #   - percent-based log sampler that decides should be RQL case logged or not;
@@ -54,7 +60,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     #   - works in tandem with <config['instr_sampling_percent']> and <config['instr_sampler']>;
     # @param instr_sampling_percent [Integer]
     #   - the percent of cases that should be instrumented;
-    #   - take an effect when <config['instr_sampling_enalbed']> is true;
+    #   - take an effect when <config['instr_sampling_enabled']> is true;
     #   - works in tandem with <config['instr_sampling_enabled']>
     #     and <config['instr_sampler']> configs;
     # @param instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
@@ -75,14 +81,15 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
     # rubocop:disable Metrics/MethodLength
     def release_lock(
       redis,
       lock_name,
       lock_index_enabled,
-      instrumenter,
       logger,
+      instrumenter,
+      instrument,
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,
@@ -112,6 +119,12 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
       rel_end_time = clock_gettime
       rel_time = ((rel_end_time - rel_start_time) / 1_000.0).ceil(2)
 
+      log_sampled = RedisQueuedLocks::Logging.should_log?(
+        log_sampling_enabled,
+        log_sample_this,
+        log_sampling_percent,
+        log_sampler
+      )
       instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
         instr_sampling_enabled,
         instr_sample_this,
@@ -120,11 +133,22 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
       )
 
       run_non_critical do
+        logger.debug do
+          "[redis_queued_locks.explicit_lock_release] " \
+          "lock_key => '#{lock_key}' " \
+          "lock_key_queue => '#{lock_key_queue}' " \
+          "rel_time => #{rel_time} " \
+          "at => #{time_at}"
+        end
+      end if log_sampled
+
+      run_non_critical do
         instrumenter.notify('redis_queued_locks.explicit_lock_release', {
           lock_key: lock_key,
           lock_key_queue: lock_key_queue,
           rel_time: rel_time,
-          at: time_at
+          at: time_at,
+          instrument: instrument
         })
       end if instr_sampled
 
@@ -229,4 +253,6 @@ module RedisQueuedLocks::Acquirer::ReleaseLock
     end
     # rubocop:enable Metrics/MethodLength
   end
+  # rubocop:enable Metrics/ClassLength
 end
+# rubocop:enable Metrics/ModuleLength

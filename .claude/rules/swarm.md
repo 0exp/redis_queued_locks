@@ -29,7 +29,7 @@ The swarm removes **zombie locks**: locks and queue entries left by dead workers
 | `ProbeHosts` | `swarm/probe_hosts.rb` | `< Threaded` | periodic host liveness probes |
 | `FlushZombies` | `swarm/flush_zombies.rb` | `< Isolated` | periodic zombie flushing |
 | `Acquirers`, `ZombieInfo` | `swarm/acquirers.rb`, `swarm/zombie_info.rb` | stateless `class << self` modules | read-only queries (`HGETALL` swarm hash, keyspace `SCAN`s or lock index `ZSCAN`s) |
-| `RedisClientBuilder` | `swarm/redis_client_builder.rb` | stateless module | `build(pooled:, sentinel:, config:, pool_config:)` returns a fresh `RedisClient` or `RedisClient::Pooled` |
+| `RedisClientBuilder` | `swarm/redis_client_builder.rb` | stateless module | `build(pooled:, sentinel:, config:, pool_config:)` returns a fresh `RedisClient` or `RedisClient::Pooled`; never mutates the passed hashes (client config values: can be frozen or shared with the flusher Ractor) |
 
 `Client` methods `swarmize!`, `deswarmize!`, `swarm_status`/`swarm_state`, `swarm_info`, `probe_hosts`, `flush_zombies`, `zombie_locks`, `zombie_acquirers`, `zombie_hosts`, `zombies_info`/`zombies` only fill defaults from `config['swarm.*']` and delegate to `Swarm`. `Client#initialize` calls `swarm.swarm!` when `swarm.auto_swarm` is set.
 
@@ -114,7 +114,7 @@ Public element API (called by `Swarm`/`Supervisor` only):
 16. Swarm specs (in `describe 'swarm'`) deal with real timing: set short periods via config, kill elements with `try_kill!`, wait longer than `liveness_probing_period`, and match states loosely (`eq('running').or(eq('blocking'))`, `'sleep'`/`'run'`).
 
 ## Known quirks (don't copy; fix only in a dedicated change)
-- Typos: `swarm_element__termiante`, `@since 19.0.0` on `Threaded#reswarm_if_dead!`, `@api ppublic` on `Swarm#zombie_acquirers`, "lopp"/"teh" in comments.
+- Typo in a method name: `swarm_element__termiante` (rename it only in a dedicated change).
 - `swarm_loop__stop` is not used by the swarm itself, only by specs.
 - Killing an element while its main loop is still connecting to Redis makes Ruby's `Socket.tcp` helper threads print `terminated with exception ... IO#write` reports. This is harmless noise from the stdlib.
 - `sleep(0.1)` "give a timespot" waits in `swarm!`/`deswarm!`/`observe!` instead of real readiness signalling.

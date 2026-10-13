@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.7.0
+# @version 1.18.0
 module RedisQueuedLocks::Acquirer::AcquireLock::DequeueFromLockQueue::LogVisitor
   class << self
     # @param logger [::Logger,#debug]

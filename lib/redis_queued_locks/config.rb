@@ -2,7 +2,6 @@
 
 # @api private
 # @since 1.13.0
-# @version 1.20.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Config
   require_relative 'config/dsl'
@@ -57,36 +56,36 @@ class RedisQueuedLocks::Config
   setting('swarm.flush_zombies.redis_config.pool_config', {})
 
   validate('swarm.auto_swarm') { |val| val == true || val == false }
-  validate('swarm.supervisor.liveness_probing_period') { |val| val.is_a?(Integer) }
+  validate('swarm.supervisor.liveness_probing_period') { |val| val.is_a?(Integer) && val > 0 }
 
   validate('swarm.probe_hosts.enabled_for_swarm') { |val| val == true || val == false }
   validate('swarm.probe_hosts.redis_config.sentinel') { |val| val == true || val == false }
   validate('swarm.probe_hosts.redis_config.pooled') { |val| val == true || val == false }
   validate('swarm.probe_hosts.redis_config.config') { |val| val.is_a?(Hash) }
   validate('swarm.probe_hosts.redis_config.pool_config') { |val| val.is_a?(Hash) }
-  validate('swarm.probe_hosts.probe_period') { |val| val.is_a?(Integer) }
+  validate('swarm.probe_hosts.probe_period') { |val| val.is_a?(Integer) && val > 0 }
 
   validate('swarm.flush_zombies.enabled_for_swarm') { |val| val == true || val == false }
   validate('swarm.flush_zombies.redis_config.sentinel') { |val| val == true || val == false }
   validate('swarm.flush_zombies.redis_config.pooled') { |val| val == true || val == false }
   validate('swarm.flush_zombies.redis_config.config') { |val| val.is_a?(Hash) }
   validate('swarm.flush_zombies.redis_config.pool_config') { |val| val.is_a?(Hash) }
-  validate('swarm.flush_zombies.zombie_ttl') { |val| val.is_a?(Integer) }
-  validate('swarm.flush_zombies.zombie_lock_scan_size') { |val| val.is_a?(Integer) }
-  validate('swarm.flush_zombies.zombie_queue_scan_size') { |val| val.is_a?(Integer) }
-  validate('swarm.flush_zombies.zombie_flush_period') { |val| val.is_a?(Integer) }
+  validate('swarm.flush_zombies.zombie_ttl') { |val| val.is_a?(Integer) && val > 0 }
+  validate('swarm.flush_zombies.zombie_lock_scan_size') { |val| val.is_a?(Integer) && val > 0 }
+  validate('swarm.flush_zombies.zombie_queue_scan_size') { |val| val.is_a?(Integer) && val > 0 }
+  validate('swarm.flush_zombies.zombie_flush_period') { |val| val.is_a?(Integer) && val > 0 }
 
   validate('retry_count') { |val| val == nil || (val.is_a?(Integer) && val >= 0) }
   validate('retry_delay') { |val| val.is_a?(Integer) && val >= 0 }
   validate('retry_jitter') { |val| val.is_a?(Integer) && val >= 0 }
   validate('try_to_lock_timeout') { |val| val == nil || (val.is_a?(Integer) && val >= 0) }
-  validate('default_lock_ttl') { |val| val.is_a?(Integer) }
-  validate('default_queue_ttl') { |val| val.is_a?(Integer) }
+  validate('default_lock_ttl') { |val| val.is_a?(Integer) && val > 0 }
+  validate('default_queue_ttl') { |val| val.is_a?(Integer) && val > 0 }
   validate('detailed_acq_timeout_error') { |val| val == true || val == false }
-  validate('lock_release_batch_size') { |val| val.is_a?(Integer) }
-  validate('clear_locks_of__lock_scan_size') { |val| val.is_a?(Integer) }
-  validate('clear_locks_of__queue_scan_size') { |val| val.is_a?(Integer) }
-  validate('key_extraction_batch_size') { |val| val.is_a?(Integer) }
+  validate('lock_release_batch_size') { |val| val.is_a?(Integer) && val > 0 }
+  validate('clear_locks_of__lock_scan_size') { |val| val.is_a?(Integer) && val > 0 }
+  validate('clear_locks_of__queue_scan_size') { |val| val.is_a?(Integer) && val > 0 }
+  validate('key_extraction_batch_size') { |val| val.is_a?(Integer) && val > 0 }
   validate('instrumenter') { |val| RedisQueuedLocks::Instrument.valid_interface?(val) }
   validate('uniq_identifier') { |val| val.is_a?(Proc) }
   validate('logger') { |val| RedisQueuedLocks::Logging.valid_interface?(val) }

@@ -1,4 +1,128 @@
 ## [Unreleased]
+### Added
+- Logging and instrumentation of all operations that change Redis keys (the swarm is not covered yet):
+  - the lock acquirement: the new `redis_queued_locks.lock_obtaining_failed` instrumentation event and log
+    (`#lock`/`#lock!` and each lock of `#lock_series`/`#lock_series!`: the lock is not obtained, the failure `result`
+    (`:timeout_reached`, `:retry_limit_reached`, `:fail_fast_no_try`, `:fail_fast_after_try`, `:conflict_dead_lock`,
+    `:conflict_lock_upgrade`) is in the payload; with `raise_errors: true` it is reported before the error is raised);
+  - each lock mutation operation is reported with one log line and one instrumentation event with the time of the whole
+    operation (the same name and data; the payload ends with `instrument`): the new `redis_queued_locks.extend_lock_ttl`
+    (`#extend_lock_ttl`), `redis_queued_locks.clear_dead_requests` (`#clear_dead_requests`), `redis_queued_locks.reindex_locks`
+    (`#reindex_locks`) events, and the new log lines of the existing `explicit_lock_release` (`#unlock`),
+    `explicit_read_lock_release` (`#unlock_read`), `explicit_all_locks_release` (`#clear_locks`), `release_locks_of`
+    (`#clear_locks_of`/`#clear_current_locks`) events (the `logger:` option of these methods was not used);
+  - `#reindex_locks`: `logger:`, `instrumenter:`, `instrument:` and the log/instrumentation sampling options;
+### Changed
+- stricter validation (the details are in "Fixed"): invalid values raise `RedisQueuedLocks::ArgumentError`
+  (`RedisQueuedLocks::SwarmArgumentError` for the swarm methods, `RedisQueuedLocks::ConfigValidationError` for the config)
+  instead of the previous silent misbehavior:
+  - `ttl` of `#lock`/`#lock!`/`#lock_series`/`#lock_series!` should be a positive `Integer` in both modes (`ttl: 0` was
+    accepted in the write mode);
+  - `#extend_lock_ttl`: `milliseconds` should be a positive `Integer` (`extend_lock_ttl(name, 0)` was a successful no-op);
+  - the per-call numeric options should be `Integer`s in the ranges of their config keys: `Float` values (e.g.
+    `timeout: 0.5`, `retry_delay: 10.0`) are rejected now;
+  - the config: positive TTLs, periods and batch/scan sizes;
+  - `:meta`: reserved lock data keys are rejected as Symbol keys too;
+- the internal timeout errors of `timed: true` and `timeout` inherit from `RedisQueuedLocks::Exception < ::Exception`
+  (were `Timeout::Error`s): a `rescue Timeout::Error` (or `rescue => e`) inside the block does not catch the lock timeout
+  anymore; the public errors/results are the same;
+- `#locks_info`: the info of write locks has the `"lock_key"` field (like `#lock_info`);
+- instrumentation payloads: `explicit_lock_release`, `explicit_all_locks_release` and `release_locks_of` have `instrument`;
+### Fixed
+- the `instrument:` option of `#unlock`, `#clear_locks`, `#clear_locks_of`/`#clear_current_locks` (README: "passed to
+  the instrumenter's payload") was not passed to the payload (`#unlock` did not even forward it); the payloads of
+  `explicit_lock_release`, `explicit_all_locks_release` and `release_locks_of` have `instrument` now; `#extend_lock_ttl` and
+  `#clear_dead_requests` had no instrumentation events at all (see "Added");
+- `#lock`/`#lock!` with a non-positive `ttl` in the write mode: the lock was reported as obtained, but `PEXPIRE` with
+  a non-positive ttl deleted the lock key in the obtaining transaction, so other acquirers could obtain the same lock
+  at the same time (no mutual exclusion); `ttl` should be a positive `Integer` in both modes now
+  (`RedisQueuedLocks::ArgumentError`, previously validated for read locks only); `ttl: nil` was never supported
+  (the YARD docs described it as "without timeout");
+- `#lock_series`/`#lock_series!` (PoC) with a non-positive `ttl` (both modes): the locks of the series were obtained with
+  the ttl made of the retry delay and jitter only; the series `ttl` should be a positive `Integer` now
+  (`RedisQueuedLocks::ArgumentError`);
+- `config['default_lock_ttl']` should be a positive `Integer` (`RedisQueuedLocks::ConfigValidationError`);
+- the config validation accepted zero and negative TTLs, periods and batch/scan sizes: `config['default_queue_ttl'] = 0`
+  dropped the own lock request in the queueing pipeline (endless `:dead_score_reached`), zero batch/scan sizes failed
+  `SCAN`/`ZSCAN` (`COUNT 0`: `ERR syntax error`) and `each_slice(0)`, zero/negative swarm periods killed the swarm main loops
+  and the supervisor (`sleep` with a negative value) or made them busy loops, a non-positive `zombie_ttl` made all hosts
+  zombies; these keys should be positive `Integer`s now (`RedisQueuedLocks::ConfigValidationError`): `default_queue_ttl`,
+  `lock_release_batch_size`, `clear_locks_of__lock_scan_size`, `clear_locks_of__queue_scan_size`, `key_extraction_batch_size`,
+  `swarm.supervisor.liveness_probing_period`, `swarm.probe_hosts.probe_period`, `swarm.flush_zombies.zombie_ttl`,
+  `swarm.flush_zombies.zombie_flush_period`, `swarm.flush_zombies.zombie_lock_scan_size`,
+  `swarm.flush_zombies.zombie_queue_scan_size`;
+- `#extend_lock_ttl` with a non-positive `milliseconds` decreased the lock TTL (or deleted the lock) and reported a successful
+  extension: `milliseconds` should be a positive `Integer` now (`RedisQueuedLocks::ArgumentError`);
+- `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (both modes): reserved lock data keys were rejected in `:meta` only as
+  String keys, while Symbol keys (`meta: { acq_id: '...' }`) passed the validation and overwrote the lock data fields
+  (`acq_id`, `hst_id`, `ts`, `ini_ttl`, `spc_*`, ...: reentrant locks, owner checks of lock releases and lock info were
+  broken while the lock lived); Symbol keys are validated too now (`RedisQueuedLocks::ArgumentError`);
+- `timed: true` and `timeout`: the internal timeout errors inherited from `Timeout::Error` (a `StandardError`), so `rescue => e`,
+  `rescue StandardError`, `rescue Timeout::Error` and `rescue nil` of the interrupted code swallowed them: a `timed` block with
+  such a `rescue` continued after the lock TTL (another acquirer could obtain the expired lock, and the write lock release
+  after the block deleted the lock of that acquirer), and the acquirement timeout that interrupted a logger/instrumenter
+  call (`rescue nil` of the log/instrumentation events) was lost (with `retry_count: nil` the acquirement waited without
+  the timeout); the internal timeouts inherit from the new private base `RedisQueuedLocks::Exception < ::Exception` now
+  (like `Timeout::ExitException`): only `rescue Exception` catches them, `ensure` still runs, the public errors/results
+  are the same (`RedisQueuedLocks::TimedLockTimeoutError`, `RedisQueuedLocks::LockAcquirementTimeoutError`,
+  `:timeout_reached`); a connection interrupted inside a `WATCH` block is closed (redis-client sends `UNWATCH` only on
+  `StandardError`s: the next transaction on the connection would be aborted);
+- `#lock_series`/`#lock_series!` (PoC): the log events and the `redis_queued_locks.lock_series_hold_and_release`
+  instrumentation event raised the errors of the logger/instrumenter: a failing logger broke the series call (after
+  obtaining all the locks of the series the locks were not released till their ttl), a failing instrumenter replaced
+  the block result with its error; the logger/instrumenter errors are swallowed now (like in all other events);
+- `#locks_info` (and `#locks(with_info: true)`): the info of write locks had no `"lock_key"` field (the info of read locks and
+  `#lock_info` have it), so the info shape depended on the lock mode; the write lock info has `"lock_key"` now (the same
+  fields as `#lock_info`);
+- `RedisQueuedLocks::Logging::Sampler` and `RedisQueuedLocks::Instrument::Sampler` (the default log/instrumentation samplers)
+  sampled `sampling_percent` of 101 values (`SecureRandom.rand(0..100)`): `0%` sampled ~1% of the cases (instead of none),
+  `15%` sampled ~15.8%; they sample exactly `sampling_percent` of 100 values now (`0%` - never, `100%` - always);
+  the private `SAMPLING_PERCENT_RANGE` constants are removed;
+- swarm: the Redis client builder of the swarm elements mutated the `swarm.*.redis_config.config`/`pool_config` hashes of
+  the client config (`transform_keys!`): with frozen hashes each start of the host probing and zombie flushing main loops
+  failed with `FrozenError` (the hosts were not probed, zombie locks were not flushed); the hashes are not mutated now;
+- RBS: the `RedisQueuedLocks::Client#current_acq_id` alias was declared as `ccurrent_acq_id` (a typo: the public method was
+  missing in the signatures); `RedisQueuedLocks::Client#queues_info` returned the `queues` union (`queueList | queuesInfo`)
+  instead of `queuesInfo`;
+- `RedisQueuedLocks::Resource.lock_key_from_queue` (a private debug helper for manual checks in a console, not used by
+  the library) returned a wrong key for the read lock request queues (`rql:lock:ueue:<name>`); it supports the write and
+  read lock request queues now and returns `nil` for other keys;
+- a connection interrupted inside a `WATCH` block by a `Timeout.timeout` of your code without an exception class
+  (`Timeout::ExitException`, e.g. `Timeout.timeout(5) { rql.lock("x") { ... } }`) returned to the connection pool with
+  the active `WATCH` (redis-client sends `UNWATCH` only on `StandardError`s): the next transaction on the connection could
+  be aborted (e.g. a lock release); the connection is closed now (like with the internal timeouts);
+- the per-call numeric options were not validated (zero/negative values broke the operations like the same config values
+  before the config validation fix): they are validated with the same ranges as their config keys now
+  (`RedisQueuedLocks::ArgumentError`; `RedisQueuedLocks::SwarmArgumentError` for the swarm methods), before any Redis
+  command; the values should be `Integer`s (like the config values: `Float` values such as `timeout: 0.5` or
+  `retry_delay: 10.0` are rejected now):
+  - `#lock`/`#lock!`/`#lock_series`/`#lock_series!`: `queue_ttl` > 0, `timeout` and `retry_count` - `nil` or >= 0,
+    `retry_delay`, `retry_jitter` and `lock_index_grace_period` >= 0;
+  - `#locks`, `#locks_info`, `#queues`, `#queues_info`, `#keys`, `#clear_dead_requests`, `#reindex_locks`: `scan_size` > 0;
+    `#clear_locks`: `batch_size` > 0; `#clear_locks_of`/`#clear_current_locks`: `lock_scan_size`, `queue_scan_size` > 0;
+    `#clear_dead_requests`: `dead_ttl` > 0; `#reindex_locks`: `queue_ttl` > 0, `lock_index_grace_period` >= 0;
+  - `#swarm_info`, `#flush_zombies`, `#zombie_locks`, `#zombie_acquirers`, `#zombie_hosts`, `#zombies_info`: `zombie_ttl`
+    and the scan sizes > 0;
+- README/YARD documentation that did not match the code:
+  - config keys: `config['instr_sampling_enabled']` in the configuration example (was `nstr_sampling_enabled`),
+    `config['log_sampling_enabled']` (was `log_samplign_enabled`), `*_sampling_enabled` (was `*_sampling_enalbed`);
+  - `#lock` results: `:retry_limit_reached` (was `:retry_count_reached`), `:conflict_lock_upgrade` is listed, `:unknown`
+    is not returned, `:dead_locking` is not a `:process` value (it fails with `:conflict_dead_lock`), the result has `hst_id`;
+  - `#lock_info`: `"ini_ttl"` (was `"init_ttl"`), `"spc_cnt"` (was `"spc_count"`), host ids `rql:hst:...` in the examples;
+  - `#unlock`: `rel_time` is in milliseconds (was "in seconds");
+  - `#clear_dead_requests` returns `{ ok: true, result: { processed_queues: Set<String> } }` (write and read request queues);
+  - `#extend_lock_ttl`: the write lock TTL is extended atomically by one Lua script, without the lock owner check
+    (was "non-atomic, two commands");
+  - the log lists of the `### Configuration` section: `rw_mode`, the key order, the read/write and lock series logs
+    (the same as in the `## Logging` section);
+  - the `#lock!` link of the Usage list and the `#lock` link of `#lock_info`, the Usage list and the table of contents: `unlock_read`, `clear_locks_of`,
+    `clear_current_locks`, `reindex_locks`;
+  - YARD: the `#clear_current_locks` options (`lock_scan_size`, `queue_scan_size` instead of the missing `batch_size`), the tag
+    typos (`@sine`, `@since ?.?.?`, `@since 19.0.0`, `@api ppublic`/`pulic`/`pub;ic`); the inert `# steep:ingore` comments
+    are removed;
+  - YARD: the `@version` tags of the classes/modules (versions >= 1.17.0) follow the interface changes only (method
+    signatures, added/removed methods, `extend`/`include`/`prepend`, the superclass), not the behavior changes inside
+    the methods;
 
 ## [1.20.0] - 2026-10-12
 ### Added

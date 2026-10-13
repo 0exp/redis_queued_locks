@@ -4,6 +4,8 @@ use RedisClient as RC
 module RedisQueuedLocks
   module Acquirer
     module ExtendLockTTL
+      extend RQL::Utilities
+
       EXTEND_LOCK_PTTL: String
 
       type extendResult = { ok: bool, result: { extended_locks_count: Integer } | Symbol }
@@ -18,14 +20,25 @@ module RedisQueuedLocks
         RQL::loggerObj logger,
         RQL::instrObj instrumenter,
         untyped? instrument,
-        bool log_samling_enabled,
+        bool log_sampling_enabled,
         Integer log_sampling_percent,
         RQL::Logging::samplerObj log_sampler,
-        bool sample_this,
+        bool log_sample_this,
         bool instr_sampling_enabled,
         Integer instr_sampling_percent,
         RQL::Instrument::samplerObj instr_sampler,
         bool instr_sample_this
+      ) -> extendResult
+
+      private def self.fully_extend_lock_ttl: (
+        RC::client redis_client,
+        String lock_name,
+        String lock_key,
+        Integer milliseconds,
+        Symbol read_write_mode,
+        bool all_read_locks,
+        String acquirer_id,
+        bool lock_index_enabled
       ) -> extendResult
 
       private def self.extend_read_lock_ttl: (

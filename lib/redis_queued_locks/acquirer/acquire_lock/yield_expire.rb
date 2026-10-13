@@ -30,7 +30,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @param access_strategy [Symbol] Lock obtaining strategy.
   # @param timed [Boolean] Should the lock be wrapped by Timeout with with lock's ttl
   # @param ttl_shift [Numeric] Lock's TTL shifting. Should affect block's ttl. In millisecodns.
-  # @param ttl [Integer,NilClass] Lock's time to live (in ms). Nil means "without timeout".
+  # @param ttl [Integer] Lock's time to live (in ms). A positive Integer.
   # @param queue_ttl [Integer] Lock request lifetime.
   # @param meta [NilClass,Hash<String|Symbol,Any>] Custom metadata wich is passed to the lock data;
   # @param log_sampled [Boolean] Should the logic be logged or not.
@@ -45,7 +45,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   #
   # @api private
   # @since 1.3.0
-  # @version 1.18.0
+  # @version 1.21.0
   # rubocop:disable Metrics/MethodLength
   def yield_expire(
     redis,
@@ -71,7 +71,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
     initial_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)
 
     if block_given?
-      if timed && ttl != nil
+      if timed
         # NOTE:
         #   - steep is ignored cuz steep can not recognize `::Integer - ::Integer|::Float`
         #     operation here for some mystical reason (it tryes to find overloadd `-` method for
@@ -150,7 +150,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
 
   # @param timeout [Float]
   # @param lock_key [String]
-  # @param lock_ttl [Integer,NilClass]
+  # @param lock_ttl [Integer]
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param meta [NilClass,Hash<Symbol|String,Any>]
@@ -161,7 +161,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   #
   # @api private
   # @since 1.3.0
-  # @version 1.12.0
+  # @version 1.21.0
   def yield_with_timeout(timeout, lock_key, lock_ttl, acquirer_id, host_id, meta, &block)
     ::Timeout.timeout(timeout, RedisQueuedLocks::TimedLockIntermediateTimeoutError, &block)
   rescue RedisQueuedLocks::TimedLockIntermediateTimeoutError

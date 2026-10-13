@@ -42,8 +42,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   A current fiber that want to acquire a lock.
     # @option ractor_id [Integer,String]
     #   The current ractor that want to acquire a lock.
-    # @option ttl [Integer,NilClass]
-    #   Lock's time to live (in milliseconds). Nil means "without timeout".
+    # @option ttl [Integer]
+    #   Lock's time to live (in milliseconds). A positive Integer (both modes).
     # @option queue_ttl [Integer]
     #   Lifetime of the acuier's lock request. In seconds.
     # @option lock_index_enabled [Boolean]
@@ -57,7 +57,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   - pre-configured in `config['lock_index_grace_period']`;
     #   - used only with the enabled lock index (`lock_index_enabled`);
     # @option timeout [Integer,NilClass]
-    #   Time period whe should try to acquire the lock (in seconds).
+    #   Time period whe should try to acquire the lock (in seconds). Nil means "without timeout"
+    #   (`0` is the same as `nil`: `Timeout.timeout(0)` sets no timeout).
     # @option timed [Boolean]
     #   Limit the invocation time period of the passed block of code by the lock's TTL.
     # @option retry_count [Integer,NilClass]
@@ -131,7 +132,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   - works in tandem with <config['log_sampling_percent'] and <config['log_sampler']>;
     # @option log_sampling_percent [Integer]
     #   - the percent of cases that should be logged;
-    #   - take an effect when <config['log_sampling_enalbed']> is true;
+    #   - take an effect when <config['log_sampling_enabled']> is true;
     #   - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
     # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     #   - percent-based log sampler that decides should be RQL case logged or not;
@@ -152,7 +153,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   - works in tandem with <config['instr_sampling_percent']> and <config['instr_sampler']>;
     # @option instr_sampling_percent [Integer]
     #   - the percent of cases that should be instrumented;
-    #   - take an effect when <config['instr_sampling_enalbed']> is true;
+    #   - take an effect when <config['instr_sampling_enabled']> is true;
     #   - works in tandem with <config['instr_sampling_enabled']>
     #     and <config['instr_sampler']> configs;
     # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
@@ -176,7 +177,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
     def acquire_lock(
       redis,
       lock_name,
@@ -235,29 +236,79 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         )
       end
 
-      # Step 0.1 (RW): prevent read lock incompatabilities
-      #   - read lock expiration time is calculated from the lock ttl;
-      if read_write_mode == :read && (!ttl.is_a?(::Integer) || ttl <= 0)
+      # Step 0.1: prevent :ttl incompatibilities (both modes)
+      #   - write lock: `PEXPIRE` with a non-positive ttl deletes the just obtained lock key in the
+      #     obtaining transaction (the lock is "obtained" without the mutual exclusion);
+      #   - read lock: the read lock expiration time is calculated from the lock ttl;
+      if !ttl.is_a?(::Integer) || ttl <= 0
         raise(
           RedisQueuedLocks::ArgumentError,
-          "`:ttl` argument should be a positive Integer for read locks, got #{ttl.inspect}."
+          "`:ttl` argument should be a positive Integer, got #{ttl.inspect}."
+        )
+      end
+
+      # Step 0.1: prevent :queue_ttl, :timeout, :retry_* and :lock_index_grace_period
+      #   incompatibilities (the same ranges as their config keys):
+      #   - a non-positive queue ttl drops the own lock request in the queueing pipeline (the lock
+      #     request is always dead);
+      #   - a negative timeout/retry delay/retry jitter fails `Timeout.timeout`/`sleep` in the
+      #     middle of the acquirement (`0` timeout is the same as `nil`: no timeout);
+      if !queue_ttl.is_a?(::Integer) || queue_ttl <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:queue_ttl` argument should be a positive Integer, got #{queue_ttl.inspect}."
+        )
+      end
+      if timeout != nil && (!timeout.is_a?(::Integer) || timeout < 0)
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:timeout` argument should be nil or a non-negative Integer, got #{timeout.inspect}."
+        )
+      end
+      if retry_count != nil && (!retry_count.is_a?(::Integer) || retry_count < 0)
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:retry_count` argument should be nil or a non-negative Integer, " \
+          "got #{retry_count.inspect}."
+        )
+      end
+      if !retry_delay.is_a?(::Integer) || retry_delay < 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:retry_delay` argument should be a non-negative Integer, got #{retry_delay.inspect}."
+        )
+      end
+      if !retry_jitter.is_a?(::Integer) || retry_jitter < 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:retry_jitter` argument should be a non-negative Integer, got #{retry_jitter.inspect}."
+        )
+      end
+      if !lock_index_grace_period.is_a?(::Integer) || lock_index_grace_period < 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:lock_index_grace_period` argument should be a non-negative Integer, " \
+          "got #{lock_index_grace_period.inspect}."
         )
       end
 
       # Step 0.2: prevent :meta incompatabiltiies (structure)
+      #   - Symbol keys are written to the lock data as Strings (`Symbol#name`, as redis-client
+      #     does it) and would overwrite the reserved lock data fields too;
       if meta.is_a?(::Hash) && (meta.any? do |key, _value|
-        key == 'acq_id' ||
-        key == 'hst_id' ||
-        key == 'ts' ||
-        key == 'ini_ttl' ||
-        key == 'lock_key' ||
-        key == 'rem_ttl' ||
-        key == 'spc_ext_ttl' ||
-        key == 'spc_cnt' ||
-        key == 'l_spc_ext_ini_ttl' ||
-        key == 'l_spc_ext_ts' ||
-        key == 'l_spc_ts' ||
-        key == 'rw_mode'
+        meta_key = key.is_a?(::Symbol) ? key.name : key
+        meta_key == 'acq_id' ||
+        meta_key == 'hst_id' ||
+        meta_key == 'ts' ||
+        meta_key == 'ini_ttl' ||
+        meta_key == 'lock_key' ||
+        meta_key == 'rem_ttl' ||
+        meta_key == 'spc_ext_ttl' ||
+        meta_key == 'spc_cnt' ||
+        meta_key == 'l_spc_ext_ini_ttl' ||
+        meta_key == 'l_spc_ext_ts' ||
+        meta_key == 'l_spc_ts' ||
+        meta_key == 'rw_mode'
       end)
         raise(
           RedisQueuedLocks::ArgumentError,
@@ -346,6 +397,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       )
 
       # Step 2: try to lock with timeout
+      # NOTE: the acquirement start time is defined out of the timeout block: the failed
+      #   acquirement reports the acquirement time too (Steps 3.b and 3.c);
+      acq_start_time = clock_gettime
       with_acq_timeout(
         redis,
         timeout,
@@ -355,8 +409,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         detailed_acq_timeout_error,
         on_timeout: acq_dequeue
       ) do
-        acq_start_time = clock_gettime
-
         # Step 2.1: cyclically try to obtain the lock
         while acq_process[:should_try]
 
@@ -650,8 +702,43 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           acq_process[:result] = :timeout_reached
         end
         # Step 3.b: lock is not acquired (acquirer is dequeued by timeout callback)
+        acq_time = ((clock_gettime - acq_start_time) / 1_000.0).ceil(2)
+        LogVisitor.lock_obtaining_failed(
+          logger, log_sampled, lock_key, queue_ttl, acquirer_id, host_id,
+          acq_time, access_strategy, read_write_mode, acq_process[:result]
+        )
+        InstrVisitor.lock_obtaining_failed(
+          instrumenter, instr_sampled, lock_key, read_write_mode, lock_ttl, acquirer_id, host_id,
+          Time.now.to_f, acq_time, acq_process[:result], instrument
+        )
         { ok: false, result: acq_process[:result] } #: { ok: bool, result: Symbol }
       end
+    rescue RedisQueuedLocks::LockAlreadyObtainedError,
+           RedisQueuedLocks::ConflictLockObtainError,
+           RedisQueuedLocks::LockAcquirementRetryLimitError,
+           RedisQueuedLocks::LockAcquirementTimeoutError => error
+      # Step 3.c: (raise_errors) the failed acquirement is reported before the error is raised
+      #   (like Step 3.b); errors of the block of code under the obtained lock are not reported;
+      # NOTE: (steep) the locals of the method body are nilable in the method-level `rescue` for
+      #   Steep, but these errors are raised by the acquirement only (after Step 1: the locals
+      #   are assigned);
+      # steep:ignore:start
+      unless acq_process[:acquired]
+        if error.is_a?(RedisQueuedLocks::LockAcquirementTimeoutError)
+          acq_process[:result] = :timeout_reached
+        end
+        acq_time = ((clock_gettime - acq_start_time) / 1_000.0).ceil(2)
+        LogVisitor.lock_obtaining_failed(
+          logger, log_sampled, lock_key, queue_ttl, acquirer_id, host_id,
+          acq_time, access_strategy, read_write_mode, acq_process[:result]
+        )
+        InstrVisitor.lock_obtaining_failed(
+          instrumenter, instr_sampled, lock_key, read_write_mode, lock_ttl, acquirer_id, host_id,
+          Time.now.to_f, acq_time, acq_process[:result], instrument
+        )
+      end
+      # steep:ignore:end
+      raise
     end
   end
 end

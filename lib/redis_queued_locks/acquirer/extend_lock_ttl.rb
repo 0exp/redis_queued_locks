@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.20.0
+# @version 1.21.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::ExtendLockTTL
   # @return [String]
@@ -14,11 +14,18 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     return redis.call("PEXPIRE", KEYS[1], new_lock_pttl);
   LUA_SCRIPT
 
+  # @since 1.21.0
+  extend RedisQueuedLocks::Utilities
+
   # rubocop:disable Metrics/ClassLength
   class << self
+    # Extends the lock TTL and reports the operation (one log and one instrumentation event
+    # `redis_queued_locks.extend_lock_ttl` with the time of the whole operation).
+    #
     # @param redis_client [RedisClient]
     # @param lock_name [String]
     # @param milliseconds [Integer]
+    #   How many milliseconds should be added: a positive Integer.
     # @param read_write_mode [Symbol]
     #   - `:write` - extends the write lock (of any acquirer);
     #   - `:read` - extends the read lock of the given acquirer (other read locks are not affected)
@@ -45,7 +52,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
     # rubocop:disable Metrics/MethodLength
     def extend_lock_ttl(
       redis_client,
@@ -75,16 +82,105 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
         )
       end
 
+      # NOTE: a non-positive value would decrease the lock ttl or delete the lock;
+      if !milliseconds.is_a?(::Integer) || milliseconds <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`milliseconds` argument should be a positive Integer, got #{milliseconds.inspect}."
+        )
+      end
+
+      if read_write_mode == :read && all_read_locks != true && all_read_locks != false
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:all_read_locks` argument should be a boolean, got #{all_read_locks.inspect}."
+        )
+      end
+
       lock_key = RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
 
-      if read_write_mode == :read
-        if all_read_locks != true && all_read_locks != false
-          raise(
-            RedisQueuedLocks::ArgumentError,
-            "`:all_read_locks` argument should be a boolean, got #{all_read_locks.inspect}."
-          )
-        end
+      ext_start_time = clock_gettime
+      result = fully_extend_lock_ttl(
+        redis_client, lock_name, lock_key, milliseconds, read_write_mode, all_read_locks,
+        acquirer_id, lock_index_enabled
+      )
+      time_at = Time.now.to_f
+      ext_end_time = clock_gettime
+      ext_time = ((ext_end_time - ext_start_time) / 1_000.0).ceil(2)
+      ext_result = result[:result]
+      extended_locks_count = ext_result.is_a?(::Hash) ? ext_result[:extended_locks_count] : 0
 
+      log_sampled = RedisQueuedLocks::Logging.should_log?(
+        log_sampling_enabled,
+        log_sample_this,
+        log_sampling_percent,
+        log_sampler
+      )
+      instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
+        instr_sampling_enabled,
+        instr_sample_this,
+        instr_sampling_percent,
+        instr_sampler
+      )
+
+      run_non_critical do
+        logger.debug do
+          "[redis_queued_locks.extend_lock_ttl] " \
+          "lock_key => '#{lock_key}' " \
+          "rw_mode => '#{read_write_mode}' " \
+          "all_read_locks => #{all_read_locks} " \
+          "ext_ttl => #{milliseconds} " \
+          "extended_locks_count => #{extended_locks_count} " \
+          "ext_time => #{ext_time} " \
+          "at => #{time_at}"
+        end
+      end if log_sampled
+
+      run_non_critical do
+        instrumenter.notify('redis_queued_locks.extend_lock_ttl', {
+          lock_key: lock_key,
+          rw_mode: read_write_mode,
+          all_read_locks: all_read_locks,
+          ext_ttl: milliseconds,
+          extended_locks_count: extended_locks_count,
+          ext_time: ext_time,
+          at: time_at,
+          instrument: instrument
+        })
+      end if instr_sampled
+
+      result
+    end
+    # rubocop:enable Metrics/MethodLength
+
+    private
+
+    # Extends the write lock, the read lock of the acquirer or all read locks of the lock.
+    #
+    # @param redis_client [RedisClient]
+    # @param lock_name [String]
+    # @param lock_key [String]
+    # @param milliseconds [Integer]
+    # @param read_write_mode [Symbol]
+    # @param all_read_locks [Boolean]
+    # @param acquirer_id [String]
+    # @param lock_index_enabled [Boolean]
+    # @return [Hash<Symbol,Boolean|Symbol|Hash<Symbol,Integer>>]
+    #
+    # @api private
+    # @since 1.21.0
+    # rubocop:disable Metrics/MethodLength
+    def fully_extend_lock_ttl(
+      redis_client,
+      lock_name,
+      lock_key,
+      milliseconds,
+      read_write_mode,
+      all_read_locks,
+      acquirer_id,
+      lock_index_enabled
+    )
+      if read_write_mode == :read
         # NOTE: (RW) all live read locks of the lock
         if all_read_locks
           return extend_all_read_locks_ttl(
@@ -131,8 +227,6 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     end
     # rubocop:enable Metrics/MethodLength
 
-    private
-
     # Extends the live read lock of the acquirer:
     #   - the read lock expiration (readers registry score), the registry TTL and the read lock
     #     data TTL are extended;
@@ -149,7 +243,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     #
     # @api private
     # @since 1.18.0
-    # @version 1.20.0
+    # @version 1.21.0
     # rubocop:disable Metrics/MethodLength
     def extend_read_lock_ttl(
       redis_client,
@@ -191,6 +285,14 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
             end
           end
         end
+      rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
+             RedisQueuedLocks::TimedLockIntermediateTimeoutError,
+             ::Timeout::ExitException
+        # NOTE: (timeouts) an interrupted WATCH block (the internal timeouts and the user's
+        #   `Timeout.timeout` without an exception class): the closed connection drops the WATCH
+        #   state (redis-client sends `UNWATCH` only on `StandardError`);
+        rconn.close
+        raise
       end
 
       # NOTE:
@@ -223,7 +325,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     #
     # @api private
     # @since 1.18.0
-    # @version 1.20.0
+    # @version 1.21.0
     # rubocop:disable Metrics/MethodLength
     def extend_all_read_locks_ttl(
       redis_client,
@@ -278,6 +380,14 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
             end
           end
         end
+      rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
+             RedisQueuedLocks::TimedLockIntermediateTimeoutError,
+             ::Timeout::ExitException
+        # NOTE: (timeouts) an interrupted WATCH block (the internal timeouts and the user's
+        #   `Timeout.timeout` without an exception class): the closed connection drops the WATCH
+        #   state (redis-client sends `UNWATCH` only on `StandardError`);
+        rconn.close
+        raise
       end
 
       # NOTE:

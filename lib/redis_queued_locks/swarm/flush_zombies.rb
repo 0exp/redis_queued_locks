@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.9.0
+# @version 1.20.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Swarm::FlushZombies < RedisQueuedLocks::Swarm::SwarmElement::Isolated
   class << self

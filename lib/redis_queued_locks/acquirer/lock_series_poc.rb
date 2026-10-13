@@ -4,17 +4,18 @@
 # rubocop:disable all
 # @api private
 # @since 1.16.0
+# @version 1.20.0
 module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
   require_relative 'lock_series_poc/log_visitor'
   require_relative 'lock_series_poc/instr_visitor'
 
-  # @sine 1.16.0
+  # @since 1.16.0
   extend RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
 
   class << self
     # @api private
     # @since 1.16.0
-    # @version 1.20.0
+    # @version 1.21.0
     def lock_series_poc( # steep:ignore
       redis,
       lock_names,
@@ -66,25 +67,56 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
         )
       end
 
+      # NOTE: Symbol keys are written to the lock data as Strings (the same check as in
+      #   RedisQueuedLocks::Acquirer::AcquireLock);
       if meta.is_a?(::Hash) && (meta.any? do |key, _value|
-        key == 'acq_id' ||
-        key == 'hst_id' ||
-        key == 'ts' ||
-        key == 'ini_ttl' ||
-        key == 'lock_key' ||
-        key == 'rem_ttl' ||
-        key == 'spc_ext_ttl' ||
-        key == 'spc_cnt' ||
-        key == 'l_spc_ext_ini_ttl' ||
-        key == 'l_spc_ext_ts' ||
-        key == 'l_spc_ts' ||
-        key == 'rw_mode'
+        meta_key = key.is_a?(::Symbol) ? key.name : key
+        meta_key == 'acq_id' ||
+        meta_key == 'hst_id' ||
+        meta_key == 'ts' ||
+        meta_key == 'ini_ttl' ||
+        meta_key == 'lock_key' ||
+        meta_key == 'rem_ttl' ||
+        meta_key == 'spc_ext_ttl' ||
+        meta_key == 'spc_cnt' ||
+        meta_key == 'l_spc_ext_ini_ttl' ||
+        meta_key == 'l_spc_ext_ts' ||
+        meta_key == 'l_spc_ts' ||
+        meta_key == 'rw_mode'
       end)
         raise(
           RedisQueuedLocks::ArgumentError,
           '`:meta` keys can not overlap reserved lock data keys ' \
           '"acq_id", "hst_id", "ts", "ini_ttl", "lock_key", "rem_ttl", "spc_cnt", ' \
           '"spc_ext_ttl", "l_spc_ext_ini_ttl", "l_spc_ext_ts", "l_spc_ts", "rw_mode"'
+        )
+      end
+
+      # NOTE: the series ttl is validated before the lock ttl calculation: each lock ttl of
+      #   the series includes the retry delay and jitter (a non-positive series ttl can produce
+      #   a positive lock ttl), the series ttl limits the `timed` block (the same check as in
+      #   RedisQueuedLocks::Acquirer::AcquireLock);
+      if !ttl.is_a?(::Integer) || ttl <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:ttl` argument should be a positive Integer, got #{ttl.inspect}."
+        )
+      end
+
+      # NOTE: the retry delay and jitter are parts of the lock ttls of the series (validated before
+      #   the lock ttl calculation; other options are validated by
+      #   RedisQueuedLocks::Acquirer::AcquireLock on the first lock of the series, before any lock
+      #   is obtained);
+      if !retry_delay.is_a?(::Integer) || retry_delay < 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:retry_delay` argument should be a non-negative Integer, got #{retry_delay.inspect}."
+        )
+      end
+      if !retry_jitter.is_a?(::Integer) || retry_jitter < 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:retry_jitter` argument should be a non-negative Integer, got #{retry_jitter.inspect}."
         )
       end
 
@@ -374,7 +406,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
     #
     # @api private
     # @since 1.18.0
-    # @version 1.20.0
+    # @version 1.21.0
     def release_write_lock_series(redis, lock_names, acquirer_id) # steep:ignore
       return if lock_names.empty?
 
@@ -397,6 +429,14 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
           # NOTE: `nil` => the transaction is aborted (a watched lock is changed) => retry
           break unless released.nil?
         end
+      rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
+             RedisQueuedLocks::TimedLockIntermediateTimeoutError,
+             ::Timeout::ExitException
+        # NOTE: (timeouts) an interrupted WATCH block (the internal timeouts and the user's
+        #   `Timeout.timeout` without an exception class): the closed connection drops the WATCH
+        #   state (redis-client sends `UNWATCH` only on `StandardError`);
+        conn.close
+        raise
       end
     end
 

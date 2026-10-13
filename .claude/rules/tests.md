@@ -7,8 +7,11 @@ paths:
 # Test rules (`spec/`)
 
 ## Observed conventions
-- All behavior specs live in one integration file, `spec/redis_queued_locks_spec.rb` (~3.4k lines), under `RSpec.describe RedisQueuedLocks`; groups: `describe 'Lock Series PoC'`, `describe 'swarm'`, `describe 'read/write locks'`, plus top-level `specify` blocks. The file header says it will be reworked; rspec-retry (5 retries) masks flakiness meanwhile.
-- Known flaky example: `all in + notifications` (timing-dependent `sleep(1)`; passes in isolation).
+- All behavior specs live in one integration file, `spec/redis_queued_locks_spec.rb` (~5.6k lines), under `RSpec.describe RedisQueuedLocks`; groups: `describe 'Lock Series PoC'`, `describe 'swarm'`, `describe 'read/write locks'`, plus top-level `specify` blocks (all of them in the shared examples), and `describe 'lock index'` (outside the shared examples, see below). The file header says it will be reworked; rspec-retry (5 retries) masks flakiness meanwhile.
+- Known flaky examples (timing-dependent: they pass in isolation, rspec-retry usually hides them; check them with `RSPEC_RETRY_RETRY_COUNT=1` before blaming a change):
+  - `all in + notifications`: `sleep(1)` before the lock/queue info checks; in full runs it can fail all retries in a row in the keyspace lookup mode (`locks_info.size` is 1 instead of 2): order-dependent (reproducible with `--seed 6170`, also without retried swarm examples), the example that leaks the state is not found yet (`rspec --bisect` of the suite is too slow);
+  - `:queued access strategy`: the 4th attempt of `trd2` (~9 s, `retry_delay: 3_000`) races the expiration of the `trd1` lock (obtained at ~7 s with ttl 2 s), and the default `try_to_lock_timeout` (10 s) leaves no later attempt;
+  - `(auto-swarming!): zombie locks (with hosts and acquirers)` and `manual zombie flushing (with statuses)`: swarm timings (`sleep`-based waits for the probes and the zombie flusher).
 - `.rspec` auto-requires `spec_helper`; `spec_helper.rb` loads SimpleCov first (`setup_simplecov.rb`), then `rspec/retry`, `pry`, the gem.
 - RSpec config: random order (`Kernel.srand config.seed`), `disable_monkey_patching!`, `expect` syntax only, `filter_run_when_matching :focus`, `Thread.abort_on_exception = true`.
 - Tests hit a real Redis (db 0) via `let(:redis) { RedisClient.config(db: 0).new_pool(timeout: 5, size: 50, ...) }` with long timeouts (RBS runtime-check runs are slow); `all in + notifications` also flushes db 1. Check the local Redis dbs before running the suite on a machine with other data.
@@ -36,7 +39,7 @@ The suite is pending a total rework (overview "Conventions"): these rules guide 
 6. Clean up everything an example starts: release locks, `deswarmize!` swarm clients, join/kill threads.
 7. Keep `sleep`-based waits minimal and comment why (`# give a timespot to ...`); prefer polling with a bounded timeout when adding new async checks.
 8. Do not add new rspec-retry reliance or lower retry settings; do not enable `minimum_coverage` without being asked.
-9. Specs are also run under RBS runtime checks, so pass correctly typed arguments to public API calls (type violations are logged in CI); e.g. test invalid read lock ttl with `ttl: 0`, not `ttl: nil` (`Client#lock` types `ttl` as `Integer`).
+9. Specs are also run under RBS runtime checks, so pass correctly typed arguments to public API calls (type violations are logged in CI); e.g. test an invalid lock ttl with `ttl: 0`, not `ttl: nil` (`Client#lock` types `ttl` as `Integer`).
 10. Check new or changed examples for flakiness without retries: `RSPEC_RETRY_RETRY_COUNT=1 bundle exec rspec spec/redis_queued_locks_spec.rb -e '<group>'`, several runs in a row; also watch for `RSpec::Retry: 2nd try` lines in normal runs.
 11. Threads in specs: `Thread.abort_on_exception = true`, so never raise expected errors inside threads (call non-raising `lock` there and assert results in the main thread); keep references to helper threads until the end of the example (acquirer ids contain `Thread#object_id`, which can be reused after GC).
 12. Timing assertions on TTLs allow the redis time shift error: extendable reentrant locks return the extension minus the time spent in the inner block and `Resource::REDIS_TIMESHIFT_ERROR` (2 ms), so the remaining TTL can slightly exceed the initial one.

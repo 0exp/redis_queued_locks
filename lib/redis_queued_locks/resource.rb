@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.0.0
+# @version 1.20.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Resource
   # @return [String]
@@ -366,14 +367,23 @@ module RedisQueuedLocks::Resource
       (acquirer_position + queue_ttl) < Time.now.to_f
     end
 
-    # @param lock_queue [String]
-    # @return [String]
+    # NOTE: (debug) not used by the library: a manual runtime check (in a console) of the lock that
+    #   a queue belongs to (e.g. `Resource.lock_key_from_queue(client.queues.first)`);
+    #
+    # @param lock_queue [String] `rql:lock_queue:<name>` or `rql:lock_read_queue:<name>`.
+    # @return [String,NilClass]
+    #   - `rql:lock:<name>` for the write lock request queue and for the read lock request queue;
+    #   - `nil` for any other key;
     #
     # @api private
     # @since 1.0.0
+    # @version 1.21.0
     def lock_key_from_queue(lock_queue)
-      # NOTE: 15 is a start position of the lock name
-      "rql:lock:#{lock_queue[15..]}"
+      key_family = lock_key_family(lock_queue)
+      return unless key_family == :lock_queue || key_family == :read_lock_queue
+
+      lock_name = lock_name_from_key(lock_queue, key_family) #: String
+      prepare_lock_key(lock_name)
     end
 
     # @return [Integer]

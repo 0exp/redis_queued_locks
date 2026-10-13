@@ -2,7 +2,6 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.18.0
 module RedisQueuedLocks::Acquirer::IsLocked
   class << self
     # @param redis_client [RedisClient]
