@@ -18,14 +18,27 @@
 - `timed: true` and `timeout`: the internal timeout errors inherited from `Timeout::Error` (a `StandardError`), so `rescue => e`,
   `rescue StandardError`, `rescue Timeout::Error` and `rescue nil` of the interrupted code swallowed them: a `timed` block with
   such a `rescue` continued after the lock TTL (another acquirer could obtain the expired lock, and the write lock release
-  after the block deleted the lock of that acquirer), and
-  the acquirement timeout that interrupted a logger/instrumenter call (`rescue nil` of the log/instrumentation events) was lost
-  (with `retry_count: nil` the acquirement waited without the timeout); the internal timeouts inherit from the new private
-  base `RedisQueuedLocks::Exception < ::Exception` now (like `Timeout::ExitException`): only `rescue Exception` catches them,
-  `ensure` still runs, the public errors/results are
-  the same (`RedisQueuedLocks::TimedLockTimeoutError`, `RedisQueuedLocks::LockAcquirementTimeoutError`, `:timeout_reached`);
-  a connection interrupted inside a `WATCH` block is closed (redis-client sends `UNWATCH` only on `StandardError`s: the next
-  transaction on the connection would be aborted);
+  after the block deleted the lock of that acquirer), and the acquirement timeout that interrupted a logger/instrumenter
+  call (`rescue nil` of the log/instrumentation events) was lost (with `retry_count: nil` the acquirement waited without
+  the timeout); the internal timeouts inherit from the new private base `RedisQueuedLocks::Exception < ::Exception` now
+  (like `Timeout::ExitException`): only `rescue Exception` catches them, `ensure` still runs, the public errors/results
+  are the same (`RedisQueuedLocks::TimedLockTimeoutError`, `RedisQueuedLocks::LockAcquirementTimeoutError`,
+  `:timeout_reached`); a connection interrupted inside a `WATCH` block is closed (redis-client sends `UNWATCH` only on
+  `StandardError`s: the next transaction on the connection would be aborted);
+- README/YARD documentation that did not match the code:
+  - config keys: `config['instr_sampling_enabled']` in the configuration example (was `nstr_sampling_enabled`),
+    `config['log_sampling_enabled']` (was `log_samplign_enabled`), `*_sampling_enabled` (was `*_sampling_enalbed`);
+  - `#lock` results: `:retry_limit_reached` (was `:retry_count_reached`), `:conflict_lock_upgrade` is listed, `:unknown`
+    is not returned, `:dead_locking` is not a `:process` value (it fails with `:conflict_dead_lock`), the result has `hst_id`;
+  - `#lock_info`: `"ini_ttl"` (was `"init_ttl"`), `"spc_cnt"` (was `"spc_count"`), host ids `rql:hst:...` in the examples;
+  - `#unlock`: `rel_time` is in milliseconds (was "in seconds");
+  - `#clear_dead_requests` returns `{ ok: true, result: { processed_queues: Set<String> } }` (write and read request queues);
+  - `#extend_lock_ttl`: the write lock TTL is extended atomically by one Lua script, without the lock owner check
+    (was "non-atomic, two commands");
+  - the log lists of the `### Configuration` section: `rw_mode`, the key order, the read/write and lock series logs
+    (the same as in the `## Logging` section);
+  - the `#lock!` link of the Usage list and the `#lock` link of `#lock_info`, the Usage list and the table of contents: `unlock_read`, `clear_locks_of`,
+    `clear_current_locks`, `reindex_locks`;
 
 ## [1.20.0] - 2026-10-12
 ### Added

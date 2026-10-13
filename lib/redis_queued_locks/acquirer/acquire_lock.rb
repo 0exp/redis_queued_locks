@@ -131,7 +131,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   - works in tandem with <config['log_sampling_percent'] and <config['log_sampler']>;
     # @option log_sampling_percent [Integer]
     #   - the percent of cases that should be logged;
-    #   - take an effect when <config['log_sampling_enalbed']> is true;
+    #   - take an effect when <config['log_sampling_enabled']> is true;
     #   - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
     # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
     #   - percent-based log sampler that decides should be RQL case logged or not;
@@ -152,7 +152,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   - works in tandem with <config['instr_sampling_percent']> and <config['instr_sampler']>;
     # @option instr_sampling_percent [Integer]
     #   - the percent of cases that should be instrumented;
-    #   - take an effect when <config['instr_sampling_enalbed']> is true;
+    #   - take an effect when <config['instr_sampling_enabled']> is true;
     #   - works in tandem with <config['instr_sampling_enabled']>
     #     and <config['instr_sampler']> configs;
     # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]

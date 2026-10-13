@@ -296,7 +296,7 @@ class RedisQueuedLocks::Client
   #   - works in tandem with <config['log_sampling_percent'] and <config['log_sampler']>;
   # @option log_sampling_percent [Integer]
   #   - the percent of cases that should be logged;
-  #   - take an effect when <config['log_sampling_enalbed']> is true;
+  #   - take an effect when <config['log_sampling_enabled']> is true;
   #   - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
   # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
   #   - percent-based log sampler that decides should be RQL case logged or not;
@@ -317,7 +317,7 @@ class RedisQueuedLocks::Client
   #   - works in tandem with <config['instr_sampling_percent']> and <config['instr_sampler']>;
   # @option instr_sampling_percent [Integer]
   #   - the percent of cases that should be instrumented;
-  #   - take an effect when <config['instr_sampling_enalbed']> is true;
+  #   - take an effect when <config['instr_sampling_enabled']> is true;
   #   - works in tandem with <config['instr_sampling_enabled']>
   #     and <config['instr_sampler']> configs;
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
@@ -904,15 +904,9 @@ class RedisQueuedLocks::Client
     RedisQueuedLocks::Resource.possible_host_identifiers(identity)
   end
 
-  # This method is non-atomic cuz redis does not provide an atomic function for TTL/PTTL extension.
-  # So the methid is spliited into the two commands:
-  #   (1) read current pttl
-  #   (2) set new ttl that is calculated as "current pttl + additional milliseconds"
-  # What can happen during these steps
-  # - lock is expired between commands or before the first command;
-  # - lock is expired before the second command;
-  # - lock is expired AND newly acquired by another process (so you will extend the
-  #   totally new lock with fresh PTTL);
+  # The write lock TTL is extended atomically by one Lua script (`PTTL` + `PEXPIRE` with
+  # "current pttl + additional milliseconds") without the lock owner check: when your lock is
+  # expired and newly obtained by another acquirer, the lock of that acquirer is extended.
   # Use it at your own risk and consider async nature when calling this method.
   #
   # @param lock_name [String]

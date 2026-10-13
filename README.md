@@ -47,6 +47,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [locks_info](#locks_info---get-list-of-locks-with-their-info)
   - [queues_info](#queues_info---get-list-of-queues-with-their-info)
   - [clear_dead_requests](#clear_dead_requests)
+  - [reindex_locks](#reindex_locks)
   - [current_acquirer_id](#current_acquirer_id)
   - [current_host_id](#current_host_id)
   - [possible_host_ids](#possible_host_ids)
@@ -328,15 +329,20 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - should implement `debug(progname = nil, &block)` (minimal requirement) or be an instance of Ruby's `::Logger` class/subclass;
   # - supports `SemanticLogger::Logger` (see "semantic_logger" gem)
   # - at this moment the only debug logs are realised in following cases:
-  #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-  #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-  #   - "[redis_queued_locks.dead_score_reached__reset_acquirer_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-  #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
-  #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
-  #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acq_time", "acs_strat");
-  #   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-  #   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-  #   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.dead_score_reached__reset_acquirer_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+  #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+  #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+  #   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.expire_lock]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.decrease_lock]" (logs "lock_key", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.start_lock_series_obtaining]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.lock_series_obtained]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+  #   - "[redis_queued_locks.expire_lock_series]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "rw_mode" is the requested lock mode ('write'/'read'), the held lock mode for "expire_lock" and "decrease_lock",
+  #     the mode of the series for lock series logs;
   # - by default uses VoidLogger that does nothing;
   config['logger'] = RedisQueuedLocks::Logging::VoidLogger
 
@@ -344,19 +350,25 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - adds additional debug logs;
   # - enables additional logs for each internal try-retry lock acquiring (a lot of logs can be generated depending on your retry configurations);
   # - it adds following debug logs in addition to the existing:
-  #   - "[redis_queued_locks.try_lock.start]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-  #   - "[redis_queued_locks.try_lock.rconn_fetched]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-  #   - "[redis_queued_locks.try_lock.same_process_conflict_detected]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-  #   - "[redis_queued_locks.try_lock.same_process_conflict_analyzed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status");
-  #   - "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status", "last_ext_ttl", "last_ext_ts");
-  #   - "[redis_queued_locks.try_lock.reentrant_lock__work_through]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "spc_status", last_spc_ts);
-  #   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat")";
-  #   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-  #   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue");
-  #   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
-  #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "<current_lock_data>");
-  #   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
-  #   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat");
+  #   - "[redis_queued_locks.try_lock.start]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.try_lock.rconn_fetched]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.try_lock.same_process_conflict_detected]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.try_lock.same_process_conflict_analyzed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status");
+  #   - "[redis_queued_locks.try_lock.reentrant_lock__extend_and_work_through]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_ext_ttl", "last_ext_ts");
+  #   - "[redis_queued_locks.try_lock.reentrant_lock__work_through]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_spc_ts");
+  #   - "[redis_queued_locks.try_lock.single_process_lock_conflict__dead_lock]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_spc_ts");
+  #   - "[redis_queued_locks.try_lock.single_process_lock_conflict__lock_upgrade]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_spc_ts");
+  #   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue");
+  #   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue", "<current_lock_data>");
+  #   - "[redis_queued_locks.try_lock.exit__lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue", "locked_by_acq_id", "<current_lock_data>");
+  #   - "[redis_queued_locks.try_lock.exit__write_request_ahead]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "ahead_acq_id");
+  #   - "[redis_queued_locks.try_lock.exit__read_request_ahead]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "ahead_acq_id");
+  #   - "[redis_queued_locks.try_lock.exit__read_lock_still_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue");
+  #   - "[redis_queued_locks.try_lock.obtain__free_to_acquire]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "rw_mode" is the requested lock mode ('write'/'read');
   config['log_lock_try'] = false
 
   # (default: false)
@@ -367,7 +379,7 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
 
   # (default: 15)
   # - the percent of cases that should be logged;
-  # - take an effect when <config['log_sampling_enalbed']> is true;
+  # - take an effect when <config['log_sampling_enabled']> is true;
   # - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
   config['log_sampling_percent'] = 15
 
@@ -384,11 +396,11 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - enables <instrumentaion sampling>: only the configured percent of RQL cases will be instrumented;
   # - disabled by default;
   # - works in tandem with <config['instr_sampling_percent'] and <config['instr_sampler']>;
-  config['nstr_sampling_enabled'] = false
+  config['instr_sampling_enabled'] = false
 
   # (default: 15)
   # - the percent of cases that should be instrumented;
-  # - take an effect when <config['instr_sampling_enalbed']> is true;
+  # - take an effect when <config['instr_sampling_enabled']> is true;
   # - works in tandem with <config['instr_sampling_enabled']> and <config['instr_sampler']> configs;
   config['instr_sampling_percent'] = 15
 
@@ -410,15 +422,18 @@ end
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - [lock](#lock---obtain-a-lock)
-- [lock!](#lock---exeptional-lock-obtaining)
+- [lock!](#lock---exceptional-lock-obtaining)
 - [lock_series](#lock_series---poc-acquire-a-series-of-locks) (PoC)
 - [lock_series!](#lock_series---poc-exceptional-lock_series) (PoC)
 - [lock_info](#lock_info)
 - [queue_info](#queue_info)
 - [locked?](#locked)
 - [queued?](#queued)
-- [unlock](#unlock---release-a-lock)
-- [clear_locks](#clear_locks---release-all-locks-and-lock-queues)
+- [unlock](#unlock---release-a-lock) (aka `release_lock`)
+- [unlock_read](#unlock_read---release-the-read-lock-of-the-current-acquirer) (aka `release_read_lock`)
+- [clear_locks](#clear_locks---release-all-locks-and-lock-queues) (aka `release_locks`)
+- [clear_locks_of](#clear_locks_of) (aka `release_locks_of`)
+- [clear_current_locks](#clear_current_locks) (aka `release_current_locks`)
 - [extend_lock_ttl](#extend_lock_ttl)
 - [locks](#locks---get-list-of-obtained-locks)
 - [queues](#queues---get-list-of-lock-request-queues)
@@ -609,7 +624,7 @@ def lock(
   - pre-configured in `config['log_sampling_enabled']`;
 - `log_sampling_percent` - (optional) `[Integer]`
   - the percent of cases that should be logged;
-  - take an effect when `log_sampling_enalbed` is true;
+  - take an effect when `log_sampling_enabled` is true;
   - works in tandem with `log_sampling_enabled` and `log_sampler` options;
   - pre-configured in `config['log_sampling_percent']`;
 - `log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
@@ -631,7 +646,7 @@ def lock(
   - pre-configured in `config['instr_sampling_enabled']`;
 - `instr_sampling_percent` - (optional) `[Integer]`
   - the percent of cases that should be instrumented;
-  - take an effect when `instr_sampling_enalbed` is true;
+  - take an effect when `instr_sampling_enabled` is true;
   - works in tandem with `instr_sampling_enabled` and `instr_sampler` options;
   - pre-configured in `config['instr_sampling_percent']`;
 - `instr_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]`
@@ -669,6 +684,7 @@ Return value:
     result: {
       lock_key: "rql:lock:my_lock",
       acq_id: "rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
+      hst_id: "rql:hst:26672/2280/2320/70ea5dbf10ea1056",
       ts: 1711909612.653696,
       ttl: 10000,
       process: :lock_obtaining
@@ -682,7 +698,8 @@ Return value:
     - `:lock_obtaining` - classic lock obtaining proces. Default behavior (`conflict_strategy: :wait_for_lock`);
     - `:extendable_conflict_work_through` - reentrant lock acquiring process with lock's TTL extension. Suitable for `conflict_strategy: :extendable_work_through`;
     - `:conflict_work_through` - reentrant lock acquiring process without lock's TTL extension. Suitable for `conflict_strategy: :work_through`;
-    - `:dead_locking` - current process tries to acquire a lock that is already acquired by them. Suitalbe for `conflict_startegy: :dead_locking`;
+    - (`conflict_strategy: :dead_locking` does not obtain the lock already obtained by the current acquirer:
+      it fails with `{ ok: false, result: :conflict_dead_lock }`);
     - For more details see [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks) readme section;
   - For successful lock obtaining:
     ```ruby
@@ -694,7 +711,7 @@ Return value:
         hst_id: String, # host identifier ("process_id/thread_id/ractor_id/identity")
         ts: Float, # time (epoch) when lock was obtained (float, Time#to_f)
         ttl: Integer, # lock's time to live in milliseconds (integer)
-        process: Symbol # which logical process has acquired the lock (:lock_obtaining, :extendable_conflict_work_through, :conflict_work_through, :conflict_dead_lock)
+        process: Symbol # which logical process has acquired the lock (:lock_obtaining, :extendable_conflict_work_through, :conflict_work_through)
       }
     }
     ```
@@ -706,21 +723,21 @@ Return value:
       result: {
         lock_key: "rql:lock:my_lock",
         acq_id: "rql:acq:26672/2280/2300/2320/70ea5dbf10ea1056",
-        acq_id: "rql:acq:26672/2280/2320/70ea5dbf10ea1056",
+        hst_id: "rql:hst:26672/2280/2320/70ea5dbf10ea1056",
         ts: 1711909612.653696,
         ttl: 10000,
-        process: :lock_obtaining # for custom conflict strategies may be: :conflict_dead_lock, :conflict_work_through, :extendable_conflict_work_through
+        process: :lock_obtaining # for reentrant locks (conflict strategies): :conflict_work_through, :extendable_conflict_work_through
       }
     }
     ```
   - For failed lock obtaining:
     ```ruby
-    { ok: false, result: :timeout_reached }
-    { ok: false, result: :retry_count_reached }
+    { ok: false, result: :timeout_reached } # see <timeout> option
+    { ok: false, result: :retry_limit_reached } # see <retry_count> option
     { ok: false, result: :conflict_dead_lock } # see <conflict_strategy> option for details (:dead_locking strategy)
+    { ok: false, result: :conflict_lock_upgrade } # read-to-write lock upgrade (see <read_write_mode> and <conflict_strategy> options)
     { ok: false, result: :fail_fast_no_try } # see <fail_fast> option
     { ok: false, result: :fail_fast_after_try } # see <fail_fast> option
-    { ok: false, result: :unknown }
     ```
 
 Examples:
@@ -781,8 +798,9 @@ rql.lock_info("my_lock")
 # =>
 {
   "lock_key" => "rql:lock:my_lock",
+  "rw_mode" => "write",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
-  "hst_id" => "rql:acq:123/456/678/374dd74324",
+  "hst_id" => "rql:hst:123/456/678/374dd74324",
   "ts" => 123456789,
   "ini_ttl" => 123456,
   "rem_ttl" => 123440,
@@ -1066,9 +1084,9 @@ client.lock_series!("x", "y", "z") { ...some_code... }
   - `"acq_id"` - `string` - acquirer identifier (process_id/thread_id/fiber_id/ractor_id/identity);
   - `"hst_id"` - `string` - host identifier (process_id/thread_id/ractor_id/identity);
   - `"ts"` - `numeric`/`epoch` - the time when lock was obtained;
-  - `"init_ttl"` - `integer` - (milliseconds) initial lock key ttl;
+  - `"ini_ttl"` - `integer` - (milliseconds) initial lock key ttl;
   - `"rem_ttl"` - `integer` - (milliseconds) remaining lock key ttl;
-  - `<custom metadata>`- `string`/`integer` - custom metadata passed to the `lock`/`lock!` methods via `meta:` keyword argument (see [lock]((#lock---obtain-a-lock)) method documentation);
+  - `<custom metadata>`- `string`/`integer` - custom metadata passed to the `lock`/`lock!` methods via `meta:` keyword argument (see [lock](#lock---obtain-a-lock) method documentation);
   - additional keys for **reentrant locks** and **extendable reentrant locks**:
     - for any type of reentrant locks:
       - `"spc_cnt"` - `integer` - how many times the lock was obtained as reentrant lock;
@@ -1088,7 +1106,7 @@ rql.lock_info("your_lock_name")
   "lock_key" => "rql:lock:your_lock_name",
   "rw_mode" => "write",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
-  "hst_id" => "rql:acq:123/456/678/374dd74324",
+  "hst_id" => "rql:hst:123/456/678/374dd74324",
   "ts" => 123456789.12345,
   "ini_ttl" => 5_000,
   "rem_ttl" => 4_999
@@ -1105,7 +1123,7 @@ rql.lock_info("your_lock_name")
   "lock_key" => "rql:lock:your_lock_name",
   "rw_mode" => "write",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
-  "hst_id" => "rql:acq:123/456/678/374dd74324",
+  "hst_id" => "rql:hst:123/456/678/374dd74324",
   "ts" => 123456789.12345,
   "ini_ttl" => 5_000,
   "rem_ttl" => 4_999,
@@ -1128,12 +1146,12 @@ rql.lock_info("your_lock_name")
   "lock_key" => "rql:lock:your_lock_name",
   "rw_mode" => "write",
   "acq_id" => "rql:acq:123/456/567/678/374dd74324",
-  "hst_id" => "rql:acq:123/456/678/374dd74324",
+  "hst_id" => "rql:hst:123/456/678/374dd74324",
   "ts" => 123456789.12345,
   "ini_ttl" => 5_000,
   "rem_ttl" => 9_444,
   # ==> keys for any type of reentrant lock:
-  "spc_count" => 2, # how many times the lock was obtained as reentrant lock
+  "spc_cnt" => 2, # how many times the lock was obtained as reentrant lock
   # ==> keys for extendable reentarnt locks with `:extendable_work_through` strategy:
   "spc_ext_ttl" => 5_000, # sum of TTL of the each <extendable> reentrant lock (3_000 + 2_000)
   "l_spc_ext_ini_ttl" => 2_000, # TTL of the last <extendable> reentrant lock
@@ -1325,7 +1343,7 @@ rql.queued?("your_lock_name") # => true/false
 Return:
 - `[Hash<Symbol,Boolean|Hash<Symbol,Numeric|String|Symbol>>]` (`{ ok: true/false, result: Hasn }`);
 - `:result` format;
-  - `:rel_time` - `Float` - time spent to process redis commands (in seconds);
+  - `:rel_time` - `Float` - time spent to process redis commands (in milliseconds);
   - `:rel_key` - `String` - released lock key (RedisQueudLocks-internal lock key name from Redis);
   - `:rel_queue` - `String` - released lock queue key (RedisQueuedLocks-internal queue key name from Redis);
   - `:queue_res` - `Symbol` - `:released` (or `:nothing_to_release` if the required queue does not exist);
@@ -1340,7 +1358,7 @@ rql.unlock("your_lock_name")
 {
   ok: true,
   result: {
-    rel_time: 0.02, # time spent to lock release (in seconds)
+    rel_time: 0.02, # time spent to lock release (in milliseconds)
     rel_key: "rql:lock:your_lock_name", # released lock key
     rel_queue: "rql:lock_queue:your_lock_name", # released lock key queue
     queue_res: :released, # or :nothing_to_release
@@ -1750,17 +1768,10 @@ rql.release_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acqu
     and for the read lock of the current acquirer, the number of extended read locks for `all_read_locks: true`;
 - returns `{ ok: false, result: :async_expire_or_no_lock }` when a lock not found or a lock is already expired during
   some steps of invocation (see **Important** section below);
-- **Important**:
-  - the method is non-atomic cuz redis does not provide an atomic function for TTL/PTTL extension;
-  - the method consists of two commands:
-    - (1) read current pttl;
-    - (2) set new ttl that is calculated as "current pttl + additional milliseconds";
-  - the method uses Redis'es **CAS** (check-and-set) behavior;
-  - what can happen during these steps:
-    - lock is expired between commands or before the first command;
-    - lock is expired before the second command;
-    - lock is expired AND newly acquired by another process (so you will extend the
-      totally new lock with fresh PTTL);
+- **Important** (`:write` mode):
+  - the write lock TTL is extended atomically by one Lua script (`PTTL` + `PEXPIRE` with "current pttl + additional milliseconds");
+  - the lock owner is not checked: the current write lock is extended, so when your lock is expired and newly obtained
+    by another acquirer, the lock of that acquirer is extended;
   - use it at your own risk and consider the async nature when calling this method;
 
 ```ruby
@@ -2024,7 +2035,8 @@ Accepts:
   - makes sense when instrumentation sampling is enabled;
   - `false` by default;
 
-Returns: `{ ok: true, processed_queues: Set<String> }` returns the list of processed lock queues;
+Returns: `{ ok: true, result: { processed_queues: Set<String> } }` returns the set of processed lock request queues
+(write and read lock request queues);
 
 ```ruby
 rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
@@ -2032,12 +2044,15 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
 # =>
 {
   ok: true,
-  processed_queues: [
-    "rql:lock_queue:some-lock-123",
-    "rql:lock_queue:some-lock-456",
-    "rql:lock_queue:your-other-lock",
-    ...
-  ]
+  result: {
+    processed_queues: #<Set: {
+      "rql:lock_queue:some-lock-123",
+      "rql:lock_queue:some-lock-456",
+      "rql:lock_read_queue:some-lock-456",
+      "rql:lock_queue:your-other-lock",
+      ...
+    }>
+  }
 }
 ```
 
@@ -2707,7 +2722,7 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 **NOTICE**: logging can be sampled via:
-- `config['log_samplign_enabled'] = true` (**false** by default);
+- `config['log_sampling_enabled'] = true` (**false** by default);
 - `config['log_sampler'] = RedisQueuedLocks::Logging::Sampler` (used by default);
 - see **RedisQueuedLocks::Logging::Sampler** implementation in source code for customization details;
 
@@ -2767,7 +2782,7 @@ config['log_sampling_enabled'] = false
 
 # (default: 15)
 # - the percent of cases that should be logged;
-# - take an effect when <config['log_sampling_enalbed']> is true;
+# - take an effect when <config['log_sampling_enabled']> is true;
 # - works in tandem with <config['log_sampling_enabled']> and <config['log_sampler']> configs;
 config['log_sampling_percent'] = 15
 
@@ -2834,7 +2849,7 @@ config['instr_sampling_enabled'] = false
 
 # (default: 15)
 # - the percent of cases that should be instrumented;
-# - take an effect when <config['instr_sampling_enalbed']> is true;
+# - take an effect when <config['instr_sampling_enabled']> is true;
 # - works in tandem with <config['instr_sampling_enabled']> and <config['instr_sampler']> configs;
 config['instr_sampling_percent'] = 15
 
