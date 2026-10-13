@@ -2,24 +2,29 @@
 
 # @api private
 # @since 1.9.0
+# @version 1.21.0
 module RedisQueuedLocks::Swarm::RedisClientBuilder
   class << self
     # @option pooled [Boolean]
     # @option sentinel [Boolean]
     # @option config [Hash]
+    # @option pool_config [Hash]
     # @return [RedisClient|RedisClient::Pooled]
     #
     # @api private
     # @since 1.9.0
+    # @version 1.21.0
     # rubocop:disable Style/RedundantAssignment
     def build(pooled: false, sentinel: false, config: {}, pool_config: {})
-      config.transform_keys!(&:to_sym)
-      pool_config.transform_keys!(&:to_sym)
+      # NOTE: the passed hashes are not mutated: they are the values of the client config (they
+      #   can be frozen and are shared with the zombie flusher Ractor when they are shareable);
+      redis_options = config.transform_keys(&:to_sym)
+      pool_options = pool_config.transform_keys(&:to_sym)
 
       redis_config =
-        sentinel ? sentinel_config(config) : non_sentinel_config(config)
+        sentinel ? sentinel_config(redis_options) : non_sentinel_config(redis_options)
       redis_client =
-        pooled ? pooled_client(redis_config, pool_config) : non_pooled_client(redis_config)
+        pooled ? pooled_client(redis_config, pool_options) : non_pooled_client(redis_config)
 
       redis_client
     end

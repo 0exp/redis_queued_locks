@@ -62,6 +62,9 @@
   sampled `sampling_percent` of 101 values (`SecureRandom.rand(0..100)`): `0%` sampled ~1% of the cases (instead of none),
   `15%` sampled ~15.8%; they sample exactly `sampling_percent` of 100 values now (`0%` - never, `100%` - always);
   the private `SAMPLING_PERCENT_RANGE` constants are removed;
+- swarm: the Redis client builder of the swarm elements mutated the `swarm.*.redis_config.config`/`pool_config` hashes of
+  the client config (`transform_keys!`): with frozen hashes each start of the host probing and zombie flushing main loops
+  failed with `FrozenError` (the hosts were not probed, zombie locks were not flushed); the hashes are not mutated now;
 - README/YARD documentation that did not match the code:
   - config keys: `config['instr_sampling_enabled']` in the configuration example (was `nstr_sampling_enabled`),
     `config['log_sampling_enabled']` (was `log_samplign_enabled`), `*_sampling_enabled` (was `*_sampling_enalbed`);

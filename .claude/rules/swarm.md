@@ -29,7 +29,7 @@ The swarm removes **zombie locks**: locks and queue entries left by dead workers
 | `ProbeHosts` | `swarm/probe_hosts.rb` | `< Threaded` | periodic host liveness probes |
 | `FlushZombies` | `swarm/flush_zombies.rb` | `< Isolated` | periodic zombie flushing |
 | `Acquirers`, `ZombieInfo` | `swarm/acquirers.rb`, `swarm/zombie_info.rb` | stateless `class << self` modules | read-only queries (`HGETALL` swarm hash, keyspace `SCAN`s or lock index `ZSCAN`s) |
-| `RedisClientBuilder` | `swarm/redis_client_builder.rb` | stateless module | `build(pooled:, sentinel:, config:, pool_config:)` returns a fresh `RedisClient` or `RedisClient::Pooled` |
+| `RedisClientBuilder` | `swarm/redis_client_builder.rb` | stateless module | `build(pooled:, sentinel:, config:, pool_config:)` returns a fresh `RedisClient` or `RedisClient::Pooled`; never mutates the passed hashes (client config values: can be frozen or shared with the flusher Ractor) |
 
 `Client` methods `swarmize!`, `deswarmize!`, `swarm_status`/`swarm_state`, `swarm_info`, `probe_hosts`, `flush_zombies`, `zombie_locks`, `zombie_acquirers`, `zombie_hosts`, `zombies_info`/`zombies` only fill defaults from `config['swarm.*']` and delegate to `Swarm`. `Client#initialize` calls `swarm.swarm!` when `swarm.auto_swarm` is set.
 

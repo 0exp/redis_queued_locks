@@ -452,6 +452,44 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
     end
 
+    specify 'swarm redis config: frozen config hashes are not mutated' do
+      aggregate_failures 'RedisClientBuilder' do
+        config = { 'db' => 0, 'timeout' => 5 }.freeze
+        pool_config = { 'size' => 1, 'timeout' => 5 }.freeze
+        [true, false].each do |pooled|
+          swarm_redis = RedisQueuedLocks::Swarm::RedisClientBuilder.build(
+            pooled:, config:, pool_config:
+          )
+          expect(swarm_redis.call('PING')).to eq('PONG')
+          swarm_redis.close
+        end
+        expect(config).to eq({ 'db' => 0, 'timeout' => 5 })
+        expect(pool_config).to eq({ 'size' => 1, 'timeout' => 5 })
+      end
+
+      aggregate_failures 'swarm elements with frozen redis configs' do
+        client = RedisQueuedLocks::Client.new(redis) do |config|
+          config['swarm.probe_hosts.probe_period'] = 1
+          config['swarm.supervisor.liveness_probing_period'] = 1
+          config['swarm.probe_hosts.redis_config.config'] = { 'db' => 0 }.freeze
+          config['swarm.probe_hosts.redis_config.pool_config'] = {}.freeze
+          config['swarm.flush_zombies.redis_config.config'] = { 'db' => 0 }.freeze
+          config['swarm.flush_zombies.redis_config.pool_config'] = {}.freeze
+        end
+        client.swarmize!
+        sleep(2) # NOTE: give a timespot to the main loops (probes, zombie flushing)
+
+        expect(redis.call('HGETALL', RedisQueuedLocks::Resource::SWARM_KEY)).to include(
+          client.current_host_id
+        )
+        expect(client.swarm_status).to match(hash_including(
+          probe_hosts: hash_including(main_loop: hash_including(running: true)),
+          flush_zombies: hash_including(main_loop: hash_including(running: true))
+        ))
+        client.deswarmize!
+      end
+    end
+
     specify 'swarm_status / swarm_info' do
       aggregate_failures 'non-auto-swarmed => swarm is not initialized' do
         client = RedisQueuedLocks::Client.new(redis) do |conf|
