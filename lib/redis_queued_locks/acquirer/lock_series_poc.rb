@@ -389,7 +389,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
     #
     # @api private
     # @since 1.18.0
-    # @version 1.20.0
+    # @version 1.21.0
     def release_write_lock_series(redis, lock_names, acquirer_id) # steep:ignore
       return if lock_names.empty?
 
@@ -412,6 +412,12 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
           # NOTE: `nil` => the transaction is aborted (a watched lock is changed) => retry
           break unless released.nil?
         end
+      rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
+             RedisQueuedLocks::TimedLockIntermediateTimeoutError
+        # NOTE: (internal timeouts) an interrupted WATCH block: the closed connection drops
+        #   the WATCH state (redis-client sends `UNWATCH` only on `StandardError`);
+        conn.close
+        raise
       end
     end
 

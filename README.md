@@ -505,8 +505,12 @@ def lock(
 - `timeout` - (optional) `[Integer,NilClass]`
   - Time period a client should try to acquire the lock (in seconds). Nil means "without timeout".
   - pre-configured in `config['try_to_lock_timeout']`;
+  - the timeout can not be swallowed by `rescue` of your logger/instrumenter (see `timed` below);
 - `timed` - (optiona) `[Boolean]`
   - Limit the invocation time period of the passed block of code by the lock's TTL.
+  - the block is interrupted by an internal `RedisQueuedLocks::Exception` (an `::Exception`, like `Timeout::ExitException` of Ruby's `Timeout`): `rescue => e`,
+    `rescue StandardError`, `rescue Timeout::Error` and `rescue nil` inside the block can not swallow it (only `rescue Exception`),
+    `ensure` of the block still runs;
   - pre-configured in `config['is_timed_by_default']`;
   - `false` by default;
 - `retry_count` - (optional) `[Integer,NilClass]`

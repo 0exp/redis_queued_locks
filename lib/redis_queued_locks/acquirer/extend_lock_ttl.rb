@@ -158,7 +158,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     #
     # @api private
     # @since 1.18.0
-    # @version 1.20.0
+    # @version 1.21.0
     # rubocop:disable Metrics/MethodLength
     def extend_read_lock_ttl(
       redis_client,
@@ -200,6 +200,12 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
             end
           end
         end
+      rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
+             RedisQueuedLocks::TimedLockIntermediateTimeoutError
+        # NOTE: (internal timeouts) an interrupted WATCH block: the closed connection drops
+        #   the WATCH state (redis-client sends `UNWATCH` only on `StandardError`);
+        rconn.close
+        raise
       end
 
       # NOTE:
@@ -232,7 +238,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     #
     # @api private
     # @since 1.18.0
-    # @version 1.20.0
+    # @version 1.21.0
     # rubocop:disable Metrics/MethodLength
     def extend_all_read_locks_ttl(
       redis_client,
@@ -287,6 +293,12 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
             end
           end
         end
+      rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
+             RedisQueuedLocks::TimedLockIntermediateTimeoutError
+        # NOTE: (internal timeouts) an interrupted WATCH block: the closed connection drops
+        #   the WATCH state (redis-client sends `UNWATCH` only on `StandardError`);
+        rconn.close
+        raise
       end
 
       # NOTE:

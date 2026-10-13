@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.0.0
+# @version 1.21.0
 module RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
   # @param redis [RedisClient]
   #   Redis connection manager required for additional data extraction for error message.
@@ -26,7 +27,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
   #
   # @api private
   # @since 1.0.0
-  # @version 1.11.0
+  # @version 1.21.0
   def with_acq_timeout(
     redis,
     timeout,

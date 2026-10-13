@@ -2346,6 +2346,101 @@ RSpec.shared_examples 'redis_queued_locks' do
     expect(client.locked?('some-timed-lock')).to eq(false)
   end
 
+  specify 'internal timeouts: the timed block can not swallow the timeout' do
+    client = RedisQueuedLocks::Client.new(redis)
+
+    # NOTE: the internal timeouts are not StandardErrors (the user block can not rescue them)
+    aggregate_failures 'timed lock: rescue inside the block' do
+      swallowed = []
+      reached = []
+      ensured = []
+
+      user_blocks = {
+        'rescue StandardError' => proc do
+          sleep(2)
+        rescue StandardError => error
+          swallowed << error
+        end,
+        'rescue Timeout::Error' => proc do
+          sleep(2)
+        rescue Timeout::Error => error
+          swallowed << error
+        end,
+        'rescue nil' => proc { sleep(2) rescue nil },
+        'ensure' => proc do
+          sleep(2)
+        ensure
+          ensured << :ensure
+        end
+      }
+
+      user_blocks.each do |case_name, user_block|
+        expect do
+          client.lock('internal.timeouts.timed', timed: true, ttl: 500) do
+            user_block.call
+            reached << case_name
+          end
+        end.to raise_error(RedisQueuedLocks::TimedLockTimeoutError)
+        expect(client.locked?('internal.timeouts.timed')).to eq(false)
+      end
+
+      expect(swallowed).to be_empty
+      expect(reached).to be_empty
+      expect(ensured).to eq([:ensure]) # NOTE: `ensure` of the block still works
+    end
+  end
+
+  specify 'internal timeouts: the logger can not swallow the acquirement timeout' do
+    aggregate_failures 'acquirement timeout: the logger is interrupted inside the WATCH block' do
+      # NOTE: one connection: the next transaction uses the connection of the interrupted attempt
+      single_connection_redis = RedisClient.config(db: 0).new_pool(
+        timeout: 5, size: 1, connect_timeout: 5, read_timeout: 5, write_timeout: 5
+      )
+      slow_logger = Class.new do
+        attr_reader :slowed
+
+        def initialize
+          @slowed = false
+        end
+
+        def debug(progname = nil, &block)
+          message = block ? yield : progname
+          # NOTE: the first attempt (with WATCH) logs the obtained lock inside the WATCH block:
+          #   the timeout interrupts the logger (`rescue nil` of the log visitor can not swallow it)
+          return if @slowed || !message.to_s.include?('try_lock.exit__lock_still_obtained')
+
+          @slowed = true
+          sleep(3)
+        end
+      end.new
+
+      holder = RedisQueuedLocks::Client.new(redis)
+      holder.lock('internal.timeouts.acq', ttl: 10_000)
+      acquirer = RedisQueuedLocks::Client.new(single_connection_redis) do |config|
+        config['logger'] = slow_logger
+        config['log_lock_try'] = true
+      end
+
+      # NOTE: a swallowed timeout => the retries continue => :retry_limit_reached
+      result = acquirer.lock(
+        'internal.timeouts.acq', ttl: 5_000, timeout: 1, retry_count: 3, retry_delay: 10
+      )
+      expect(slow_logger.slowed).to eq(true)
+      expect(result).to match({ ok: false, result: :timeout_reached })
+
+      # NOTE: a watched key is changed: a transaction on the connection with the active WATCH of
+      #   the interrupted attempt would be aborted (`nil`)
+      holder.unlock('internal.timeouts.acq')
+      transaction_result = single_connection_redis.multi do |transaction|
+        transaction.call('SET', 'internal.timeouts.probe', '1')
+      end
+      expect(transaction_result).to eq(['OK'])
+
+      single_connection_redis.call('DEL', 'internal.timeouts.probe')
+      single_connection_redis.close
+    end
+  end
+
   specify 'lock queues' do
     client = RedisQueuedLocks::Client.new(redis)
 

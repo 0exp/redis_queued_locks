@@ -216,7 +216,9 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   `'rql:...'` literal outside `resource.rb`.
 - Config: `setting` + `validate` in `config.rb` (booleans `val == true || val == false`, Integers with ranges), dotted
   keys for groups, unit in a trailing `# NOTE:` comment, read as `config['key']` (`logic.md#7`). Errors:
-  `class XError < Error; end` in `errors.rb`. Runtime dependencies: `redis-client` only; dev gems in `Gemfile`.
+  `class XError < Error; end` in `errors.rb`, each under the global base of its branch (`Error`, `ArgumentError`,
+  `Exception`: super exceptional cases only, with the reason in the comment; `logic.md#15`). Runtime dependencies:
+  `redis-client` only; dev gems in `Gemfile`.
 - `AcquireLock`: new behavior as a new step or mixin with `# Step N.x` numbering and consistent `acq_process` keys
   (`acquirer.md#10`); `lock_series_poc.rb` is experimental: don't accept new features built on it without the
   user's request.

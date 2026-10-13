@@ -161,7 +161,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   #
   # @api private
   # @since 1.3.0
-  # @version 1.12.0
+  # @version 1.21.0
   def yield_with_timeout(timeout, lock_key, lock_ttl, acquirer_id, host_id, meta, &block)
     ::Timeout.timeout(timeout, RedisQueuedLocks::TimedLockIntermediateTimeoutError, &block)
   rescue RedisQueuedLocks::TimedLockIntermediateTimeoutError

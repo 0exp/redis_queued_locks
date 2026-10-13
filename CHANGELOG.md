@@ -15,6 +15,17 @@
   String keys, while Symbol keys (`meta: { acq_id: '...' }`) passed the validation and overwrote the lock data fields
   (`acq_id`, `hst_id`, `ts`, `ini_ttl`, `spc_*`, ...: reentrant locks, owner checks of lock releases and lock info were
   broken while the lock lived); Symbol keys are validated too now (`RedisQueuedLocks::ArgumentError`);
+- `timed: true` and `timeout`: the internal timeout errors inherited from `Timeout::Error` (a `StandardError`), so `rescue => e`,
+  `rescue StandardError`, `rescue Timeout::Error` and `rescue nil` of the interrupted code swallowed them: a `timed` block with
+  such a `rescue` continued after the lock TTL (another acquirer could obtain the expired lock, and the write lock release
+  after the block deleted the lock of that acquirer), and
+  the acquirement timeout that interrupted a logger/instrumenter call (`rescue nil` of the log/instrumentation events) was lost
+  (with `retry_count: nil` the acquirement waited without the timeout); the internal timeouts inherit from the new private
+  base `RedisQueuedLocks::Exception < ::Exception` now (like `Timeout::ExitException`): only `rescue Exception` catches them,
+  `ensure` still runs, the public errors/results are
+  the same (`RedisQueuedLocks::TimedLockTimeoutError`, `RedisQueuedLocks::LockAcquirementTimeoutError`, `:timeout_reached`);
+  a connection interrupted inside a `WATCH` block is closed (redis-client sends `UNWATCH` only on `StandardError`s: the next
+  transaction on the connection would be aborted);
 
 ## [1.20.0] - 2026-10-12
 ### Added

@@ -5,10 +5,13 @@ module RedisQueuedLocks
   class ArgumentError < ::ArgumentError
   end
 
+  class Exception < ::Exception
+  end
+
   class LockAlreadyObtainedError < Error
   end
 
-  class LockAcquirementIntermediateTimeoutError < ::Timeout::Error
+  class LockAcquirementIntermediateTimeoutError < Exception
   end
 
   class LockAcquirementTimeoutError < Error
@@ -17,7 +20,7 @@ module RedisQueuedLocks
   class LockAcquirementRetryLimitError < Error
   end
 
-  class TimedLockIntermediateTimeoutError < ::Timeout::Error
+  class TimedLockIntermediateTimeoutError < Exception
   end
 
   class TimedLockTimeoutError < Error

@@ -228,11 +228,17 @@ lock log lines (incl. lock series logs) carry `rw_mode => '...'`. RW try-lock lo
 
 ### Errors (`errors.rb`)
 
-Base `RedisQueuedLocks::Error < StandardError`, plus `ArgumentError`, `LockAlreadyObtainedError`,
-`LockAcquirementTimeoutError`, `LockAcquirementRetryLimitError`, `TimedLockTimeoutError`,
-`ConflictLockObtainError`, `SwarmError`, `SwarmArgumentError`, `ConfigError`
-(`ConfigNotFoundError`, `ConfigValidationError`). Internal `*IntermediateTimeoutError`s
-inherit from `Timeout::Error`.
+Global base errors per branch (`logic.md#15`): `RedisQueuedLocks::Error < StandardError` (the main
+hierarchy: `LockAlreadyObtainedError`, `LockAcquirementTimeoutError`, `LockAcquirementRetryLimitError`,
+`TimedLockTimeoutError`, `ConflictLockObtainError`, `SwarmError`, `ConfigError` (`ConfigNotFoundError`,
+`ConfigValidationError`)), `RedisQueuedLocks::ArgumentError < ::ArgumentError` (`SwarmArgumentError`),
+`RedisQueuedLocks::Exception < ::Exception` (`@api private`, super exceptional cases only: the internal
+`*IntermediateTimeoutError`s of `Timeout.timeout` for `timeout` and `timed`; like `Timeout::ExitException`,
+`rescue => e`/`rescue StandardError`/`rescue Timeout::Error`/`rescue nil` of the interrupted code (the user
+block, logger and instrumenter calls) can not swallow them; the library converts them to the public errors/results).
+redis-client sends `UNWATCH` on an interrupted `multi(watch:)` only for `StandardError`s, so every `with` block
+around a `multi(watch:)` (`TryToLock`, `ExtendLockTTL` read extensions, `LockSeriesPoC` write release) rescues
+both internal timeouts, closes the connection (drops the WATCH state, reconnected on the next use) and re-raises.
 
 ---
 

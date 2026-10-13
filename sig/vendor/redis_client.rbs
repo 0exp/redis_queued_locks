@@ -6,6 +6,7 @@ class RedisClient
     def zscan: (String key, *untyped) { (String member, String score) -> untyped } -> untyped
     def multi: (?watch: Array[String]) { (Multi transact) -> untyped } -> untyped
     def with: (?untyped) { (::RedisClient|::RedisClient::Pooled rconn) -> untyped } -> untyped
+    def close: () -> void
   end
 
   include _Client
