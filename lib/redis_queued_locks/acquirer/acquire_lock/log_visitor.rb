@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.7.0
+# @version 1.21.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
   # rubocop:disable Metrics/ClassLength
@@ -228,6 +229,50 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
         "acq_time => #{acq_time} (ms)"
+      end rescue nil
+    end
+
+    # The lock is not obtained (the failure result of `#lock`/`#lock!`: the timeout, the retry
+    # limit, `fail_fast`, the dead lock or the lock upgrade conflict).
+    #
+    # @param logger [::Logger,#debug]
+    # @param log_sampled [Boolean]
+    # @param lock_key [String]
+    # @param queue_ttl [Integer]
+    # @param acquirer_id [String]
+    # @param host_id [String]
+    # @param acq_time [Numeric]
+    # @param access_strategy [Symbol]
+    # @param rw_mode [Symbol]
+    # @param result [Symbol] The failure result (`:timeout_reached`, `:retry_limit_reached`, ...).
+    # @return [void]
+    #
+    # @api private
+    # @since 1.21.0
+    def lock_obtaining_failed(
+      logger,
+      log_sampled,
+      lock_key,
+      queue_ttl,
+      acquirer_id,
+      host_id,
+      acq_time,
+      access_strategy,
+      rw_mode,
+      result
+    )
+      return unless log_sampled
+
+      logger.debug do
+        "[redis_queued_locks.lock_obtaining_failed] " \
+        "lock_key => '#{lock_key}' " \
+        "queue_ttl => #{queue_ttl} " \
+        "acq_id => '#{acquirer_id}' " \
+        "hst_id => '#{host_id}' " \
+        "acs_strat => '#{access_strategy}' " \
+        "rw_mode => '#{rw_mode}' " \
+        "acq_time => #{acq_time} (ms) " \
+        "result => '#{result}'"
       end rescue nil
     end
   end

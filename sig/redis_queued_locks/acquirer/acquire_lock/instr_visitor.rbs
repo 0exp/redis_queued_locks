@@ -70,6 +70,20 @@ module RedisQueuedLocks
           Integer|Float hold_time,
           untyped? instrument
         ) -> void
+
+        def self.lock_obtaining_failed: (
+          RQL::instrObj instrumenter,
+          bool instr_sampled,
+          String lock_key,
+          Symbol rw_mode,
+          Integer ttl,
+          String acq_id,
+          String hst_id,
+          Integer|Float ts,
+          Integer|Float acq_time,
+          Symbol result,
+          untyped? instrument
+        ) -> void
       end
     end
   end

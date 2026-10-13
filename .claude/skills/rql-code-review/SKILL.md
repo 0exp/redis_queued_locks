@@ -238,8 +238,13 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   status shapes `{ running:, state: }` with `'non_initialized'` and their RBS (`#10`).
 
 ### G. Logging and instrumentation (`visitors.md`)
-- Logs/events of `AcquireLock` and its mixins and of `LockSeriesPoC` go through visitor methods (`#1`); release
-  modules call `instrumenter.notify` inline inside `run_non_critical`, gated by `instr_sampled` (`acquirer.md#9`).
+- Logs/events of `AcquireLock` and its mixins and of `LockSeriesPoC` go through visitor methods (`#1`); mutation
+  modules write one log line and one event inline inside `run_non_critical`, gated by `log_sampled`/`instr_sampled`
+  (`acquirer.md#9`).
+- Observability coverage (`logic.md#16`): a new or changed logic that creates/changes/deletes keys without logs and
+  instrumentation, a mutation event/log that times an internal part instead of the whole root operation, a mutation
+  payload without `instrument`, a `Client` mutation method without the observability keywords, or instrumented lock
+  info queries are findings; the swarm elements are known debt.
 - Visitor shape: `class << self`, method name = event name (`__` between phase and detail), same name in the
   Log and Instr visitors, first line `return unless log_sampled` (`&& log_lock_try` for `TryToLock` steps), one
   `logger.debug do ... end rescue nil` with `"[redis_queued_locks.<event>] "` and `key => 'value'` pairs, or

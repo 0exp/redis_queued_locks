@@ -22,15 +22,16 @@ paths:
   - Read-only queries: few positional args `(redis_client, lock_name)`; collection queries use keywords `(redis_client, scan_size:, with_info:)`.
   - Mutating operations: long positional lists ending with the fixed observability tail
     `logger, instrumenter, instrument, log_sampling_enabled, log_sampling_percent, log_sampler, log_sample_this, instr_sampling_enabled, instr_sampling_percent, instr_sampler, instr_sample_this`
-    (order of `logger`/`instrumenter` varies between modules; check the existing signature).
+    (the same order in all mutating modules).
   - Only `AcquireLock.acquire_lock` and `LockSeriesPoC.lock_series_poc` use keyword args (`process_id:`, `thread_id:`, ...).
-- **Two-layer mutating operations** (`release_lock`, `release_read_lock`, `release_all_locks`, `release_locks_of`):
-  1. `rel_start_time = clock_gettime`
-  2. call a private `fully_*` helper returning `{ ok:, result: }` and destructure it: `fully_x(...) => { ok:, result: }`
+- **Two-layer mutating operations** (`release_lock`, `release_read_lock`, `release_all_locks`, `release_locks_of`, `extend_lock_ttl`, `clear_dead_requests`, `reindex_locks`; observability rule: `logic.md#16`):
+  1. argument validations (`RedisQueuedLocks::ArgumentError`) first, then `rel_start_time = clock_gettime` (`ext_`/`idx_` prefixes for the extension/reindexing)
+  2. call a private `fully_*` helper with the Redis work (returns `{ ok:, result: }`, destructured with `fully_x(...) => { ok:, result: }`, or the raw data: a `Set`/`Integer`)
   3. `time_at = Time.now.to_f`; `rel_time = ((rel_end_time - rel_start_time) / 1_000.0).ceil(2)` (microseconds → ms)
-  4. `instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(...)`
-  5. `run_non_critical { instrumenter.notify('redis_queued_locks.<event>', { at:, rel_time:, ... }) } if instr_sampled`
-  6. return `{ ok: true, result: { ..., rel_time: } }`
+  4. `log_sampled = RedisQueuedLocks::Logging.should_log?(...)`; `instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(...)`
+  5. `run_non_critical { logger.debug { "[redis_queued_locks.<event>] key => value ..." } } if log_sampled`
+  6. `run_non_critical { instrumenter.notify('redis_queued_locks.<event>', { ..., instrument: }) } if instr_sampled` (the same data as the log line, `instrument` last)
+  7. return `{ ok: true, result: { ..., rel_time: } }` (or the result of `fully_*`)
 - **Results**: always `{ ok: Boolean, result: ... }` for operations; `result` is a Symbol status (`:async_expire_or_no_lock`, `:released`, `:nothing_to_release`) or a Symbol-keyed Hash (`rel_key_cnt`, `tch_queue_cnt`, `rel_time`, `extended_locks_count`). Info queries return a String-keyed Hash / Set or `nil` when absent.
 - **Redis access**:
   - Keys only via `Resource.prepare_lock_key` / `prepare_lock_queue` / `prepare_read_lock_queue` / `prepare_lock_readers` / `prepare_read_lock_key(lock_name, acquirer_id)` and `Resource::*_PATTERN` (`KEY_PATTERN`, `LOCK_PATTERN`, `LOCK_QUEUE_PATTERN`, `READ_LOCK_QUEUE_PATTERN`, `LOCK_READERS_PATTERN`, `READ_LOCK_PATTERN`, `ALL_LOCK_QUEUES_PATTERN`) and `Resource::LOCK_INDEX_KEY`; `Resource.lock_key_family` classifies scanned keys (keyspace lookups, `ReindexLocks`); `Resource.lock_name_from_readers` / `lock_key_from_readers` map registry keys back.
@@ -97,4 +98,3 @@ Apply to new or touched code; don't refactor existing code for these unless aske
 1. Load Lua scripts once (`SCRIPT LOAD` + `EVALSHA`, falling back to `EVAL` on `NOSCRIPT`), as the TODO in `extend_lock_ttl.rb` asks.
 2. Measure lock-iterating operations by the lock index size (distinct lock names x (max(queue ttl, lock ttl) + grace)): most of the visited names are dead; prefer one cheap existence check per name (`EXISTS` with several keys) before reading the details when adding new iterating features.
 3. Treat `lock_series_poc.rb` as experimental: don't build new features on it without asking. Its locks are released only through `release_lock_series` (obtained-by-series locks only, owner-checked, on success and on every failure path).
-4. Unify the observability tail order (`logger, instrumenter` vs `instrumenter, logger` in `release_lock`) when those signatures are next changed.

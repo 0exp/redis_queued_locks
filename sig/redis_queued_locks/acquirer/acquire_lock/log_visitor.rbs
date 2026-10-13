@@ -72,6 +72,19 @@ module RedisQueuedLocks
           Symbol access_strategy,
           Symbol rw_mode
         ) -> void
+
+        def self.lock_obtaining_failed: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          String lock_key,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          Integer|Float acq_time,
+          Symbol access_strategy,
+          Symbol rw_mode,
+          Symbol result
+        ) -> void
       end
     end
   end

@@ -667,7 +667,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def unlock(
     lock_name,
     logger: config['logger'],
@@ -686,8 +686,9 @@ class RedisQueuedLocks::Client
       redis_client,
       lock_name,
       config['lock_index_enabled'],
-      instrumenter,
       logger,
+      instrumenter,
+      instrument,
       log_sampling_enabled,
       log_sampling_percent,
       log_sampler,
@@ -744,7 +745,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.18.0
-  # @version 1.19.0
+  # @version 1.21.0
   def unlock_read(
     lock_name,
     acquirer_id: nil,
@@ -765,8 +766,8 @@ class RedisQueuedLocks::Client
       redis_client,
       lock_name,
       acquirer_id || current_acquirer_id(identity:),
-      instrumenter,
       logger,
+      instrumenter,
       instrument,
       log_sampling_enabled,
       log_sampling_percent,
@@ -1005,7 +1006,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def clear_locks(
     batch_size: config['lock_release_batch_size'],
     logger: config['logger'],
@@ -1094,7 +1095,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.14.0
-  # @version 1.20.0
+  # @version 1.21.0
   def clear_locks_of(
     host_id:,
     acquirer_id:,
@@ -1156,6 +1157,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.14.0
+  # @version 1.21.0
   def clear_current_locks(
     lock_scan_size: config['clear_locks_of__lock_scan_size'],
     queue_scan_size: config['clear_locks_of__queue_scan_size'], # steep:ingore
@@ -1308,7 +1310,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def clear_dead_requests(
     dead_ttl: config['dead_request_ttl'],
     scan_size: config['lock_release_batch_size'],
@@ -1363,21 +1365,55 @@ class RedisQueuedLocks::Client
   # @option lock_index_grace_period [Integer]
   #   - the lock index score margin over the key lifetime (in milliseconds);
   #   - `config['lock_index_grace_period']` is used by default;
+  # @option logger [::Logger,#debug]
+  # @option instrumenter [#notify]
+  # @option instrument [NilClass,Any]
+  # @option log_sampling_enabled [Boolean]
+  # @option log_sampling_percent [Integer]
+  # @option log_sampler [#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]
+  # @option log_sample_this [Boolean]
+  # @option instr_sampling_enabled [Boolean]
+  # @option instr_sampling_percent [Integer]
+  # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
+  # @option instr_sample_this [Boolean]
   # @return [Hash<Symbol,Boolean|Hash<Symbol,Integer>>]
   #   Format: { ok: true, result: { idx_key_cnt: Integer } } (the number of indexed keys)
   #
   # @api public
   # @since 1.20.0
+  # @version 1.21.0
   def reindex_locks(
     scan_size: config['lock_release_batch_size'],
     queue_ttl: config['default_queue_ttl'],
-    lock_index_grace_period: config['lock_index_grace_period']
+    lock_index_grace_period: config['lock_index_grace_period'],
+    logger: config['logger'],
+    instrumenter: config['instrumenter'],
+    instrument: nil,
+    log_sampling_enabled: config['log_sampling_enabled'],
+    log_sampling_percent: config['log_sampling_percent'],
+    log_sampler: config['log_sampler'],
+    log_sample_this: false,
+    instr_sampling_enabled: config['instr_sampling_enabled'],
+    instr_sampling_percent: config['instr_sampling_percent'],
+    instr_sampler: config['instr_sampler'],
+    instr_sample_this: false
   )
     RedisQueuedLocks::Acquirer::ReindexLocks.reindex_locks(
       redis_client,
       scan_size,
       queue_ttl,
-      lock_index_grace_period
+      lock_index_grace_period,
+      logger,
+      instrumenter,
+      instrument,
+      log_sampling_enabled,
+      log_sampling_percent,
+      log_sampler,
+      log_sample_this,
+      instr_sampling_enabled,
+      instr_sampling_percent,
+      instr_sampler,
+      instr_sample_this
     )
   end
 end

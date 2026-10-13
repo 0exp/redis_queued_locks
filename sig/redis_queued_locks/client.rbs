@@ -258,7 +258,18 @@ module RedisQueuedLocks
     def reindex_locks: (
       ?scan_size: Integer,
       ?queue_ttl: Integer,
-      ?lock_index_grace_period: Integer
+      ?lock_index_grace_period: Integer,
+      ?logger: RQL::loggerObj,
+      ?instrumenter: RQL::instrObj,
+      ?instrument: untyped?,
+      ?log_sampling_enabled: bool,
+      ?log_sampling_percent: Integer,
+      ?log_sampler: RQL::Logging::samplerObj,
+      ?log_sample_this: bool,
+      ?instr_sampling_enabled: bool,
+      ?instr_sampling_percent: Integer,
+      ?instr_sampler: RQL::Instrument::samplerObj,
+      ?instr_sample_this: bool
     ) -> RQL::Acquirer::ReindexLocks::reindexResult
   end
 end

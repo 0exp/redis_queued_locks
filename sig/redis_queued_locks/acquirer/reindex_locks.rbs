@@ -1,15 +1,36 @@
+use RedisQueuedLocks as RQL
 use RedisClient as RC
 
 module RedisQueuedLocks
   module Acquirer
     module ReindexLocks
+      extend RQL::Utilities
+
       type reindexResult = { ok: bool, result: { idx_key_cnt: Integer } }
       def self.reindex_locks: (
         RC::client redis_client,
         Integer scan_size,
         Integer queue_ttl,
-        Integer lock_index_grace_period
+        Integer lock_index_grace_period,
+        RQL::loggerObj logger,
+        RQL::instrObj instrumenter,
+        untyped? instrument,
+        bool log_sampling_enabled,
+        Integer log_sampling_percent,
+        RQL::Logging::samplerObj log_sampler,
+        bool log_sample_this,
+        bool instr_sampling_enabled,
+        Integer instr_sampling_percent,
+        RQL::Instrument::samplerObj instr_sampler,
+        bool instr_sample_this
       ) -> reindexResult
+
+      private def self.fully_reindex_locks: (
+        RC::client redis_client,
+        Integer scan_size,
+        Integer queue_ttl,
+        Integer lock_index_grace_period
+      ) -> Integer
 
       private def self.index_lock_keys: (
         RC::client redis_client,

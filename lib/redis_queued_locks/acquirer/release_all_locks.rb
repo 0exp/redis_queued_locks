@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.20.0
+# @version 1.21.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::ReleaseAllLocks
   # @since 1.0.0
@@ -81,7 +81,8 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
+    # rubocop:disable Metrics/MethodLength
     def release_all_locks(
       redis,
       batch_size,
@@ -110,6 +111,12 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
       rel_end_time = clock_gettime
       rel_time = ((rel_end_time - rel_start_time) / 1_000.0).ceil(2)
 
+      log_sampled = RedisQueuedLocks::Logging.should_log?(
+        log_sampling_enabled,
+        log_sample_this,
+        log_sampling_percent,
+        log_sampler
+      )
       instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
         instr_sampling_enabled,
         instr_sample_this,
@@ -118,10 +125,20 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
       )
 
       run_non_critical do
+        logger.debug do
+          "[redis_queued_locks.explicit_all_locks_release] " \
+          "at => #{time_at} " \
+          "rel_time => #{rel_time} " \
+          "rel_key_cnt => #{result[:rel_key_cnt]}"
+        end
+      end if log_sampled
+
+      run_non_critical do
         instrumenter.notify('redis_queued_locks.explicit_all_locks_release', {
           at: time_at,
           rel_time: rel_time,
-          rel_key_cnt: result[:rel_key_cnt]
+          rel_key_cnt: result[:rel_key_cnt],
+          instrument: instrument
         })
       end if instr_sampled
 
@@ -130,6 +147,7 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
         result: { rel_key_cnt: result[:rel_key_cnt], rel_time: rel_time }
       }
     end
+    # rubocop:enable Metrics/MethodLength
 
     private
 

@@ -2249,6 +2249,229 @@ RSpec.shared_examples 'redis_queued_locks' do
     expect(test_notifier.notifications[1][:payload][:instrument]).to eq(nil)
   end
 
+  specify 'operations that change keys: one log and one instrumentation event per operation' do
+    test_notifier = Class.new do
+      attr_reader :notifications
+
+      def initialize
+        @notifications = []
+      end
+
+      def notify(event, payload = {})
+        notifications << { event:, payload: }
+      end
+    end.new
+    test_logger = Class.new do
+      attr_reader :logs
+
+      def initialize
+        @logs = []
+      end
+
+      def debug(progname = nil, &block)
+        logs << (block ? yield : progname)
+      end
+    end.new
+
+    client = RedisQueuedLocks::Client.new(redis) do |config|
+      config['instrumenter'] = test_notifier
+      config['logger'] = test_logger
+    end
+    reported = lambda do |event|
+      [
+        test_notifier.notifications.select { |notification| notification[:event] == event },
+        test_logger.logs.grep(/\A\[#{Regexp.escape(event)}\] /)
+      ]
+    end
+
+    client.lock('obs.write', ttl: 10_000)
+    client.lock('obs.read', ttl: 10_000, read_write_mode: :read)
+
+    aggregate_failures 'extend_lock_ttl' do
+      client.extend_lock_ttl('obs.write', 1_000, instrument: { op: :extend })
+      client.extend_lock_ttl('obs.missing', 1_000)
+      events, logs = reported.call('redis_queued_locks.extend_lock_ttl')
+      expect(events.map { |event| event[:payload] }).to contain_exactly(
+        match({
+          lock_key: 'rql:lock:obs.write', rw_mode: :write, all_read_locks: false, ext_ttl: 1_000,
+          extended_locks_count: 1, ext_time: be_a(Numeric), at: be_a(Float),
+          instrument: { op: :extend }
+        }),
+        match({
+          lock_key: 'rql:lock:obs.missing', rw_mode: :write, all_read_locks: false, ext_ttl: 1_000,
+          extended_locks_count: 0, ext_time: be_a(Numeric), at: be_a(Float), instrument: nil
+        })
+      )
+      expect(logs.size).to eq(2)
+      expect(logs.first).to include(
+        "lock_key => 'rql:lock:obs.write' rw_mode => 'write' all_read_locks => false " \
+        "ext_ttl => 1000 extended_locks_count => 1 ext_time => "
+      )
+    end
+
+    aggregate_failures 'unlock and unlock_read' do
+      client.unlock_read('obs.read', instrument: { op: :unlock_read })
+      client.unlock('obs.write', instrument: { op: :unlock })
+      events, logs = reported.call('redis_queued_locks.explicit_lock_release')
+      expect(events.map { |event| event[:payload] }).to contain_exactly(match({
+        lock_key: 'rql:lock:obs.write', lock_key_queue: 'rql:lock_queue:obs.write',
+        rel_time: be_a(Numeric), at: be_a(Float), instrument: { op: :unlock }
+      }))
+      expect(logs.size).to eq(1)
+      events, logs = reported.call('redis_queued_locks.explicit_read_lock_release')
+      expect(events.map { |event| event[:payload][:instrument] }).to eq([{ op: :unlock_read }])
+      expect(logs.size).to eq(1)
+    end
+
+    aggregate_failures 'clear_locks, clear_current_locks, clear_dead_requests, reindex_locks' do
+      client.lock('obs.a', ttl: 10_000)
+      client.clear_locks(instrument: { op: :clear_locks })
+      client.lock('obs.b', ttl: 10_000)
+      client.clear_current_locks(instrument: { op: :clear_current_locks })
+      client.clear_dead_requests(dead_ttl: 1, instrument: { op: :clear_dead_requests })
+      client.reindex_locks(instrument: { op: :reindex_locks })
+
+      {
+        'redis_queued_locks.explicit_all_locks_release' => {
+          at: be_a(Float), rel_time: be_a(Numeric), rel_key_cnt: be_a(Integer),
+          instrument: { op: :clear_locks }
+        },
+        'redis_queued_locks.release_locks_of' => {
+          at: be_a(Float), hst_id: client.current_host_id, acq_id: client.current_acquirer_id,
+          rel_time: be_a(Numeric), rel_key_cnt: 1, tch_queue_cnt: be_a(Integer),
+          instrument: { op: :clear_current_locks }
+        },
+        'redis_queued_locks.clear_dead_requests' => {
+          dead_ttl: 1, prc_queue_cnt: be_a(Integer), rel_time: be_a(Numeric), at: be_a(Float),
+          instrument: { op: :clear_dead_requests }
+        },
+        'redis_queued_locks.reindex_locks' => {
+          idx_key_cnt: be_a(Integer), idx_time: be_a(Numeric), at: be_a(Float),
+          instrument: { op: :reindex_locks }
+        }
+      }.each do |event_name, payload|
+        events, logs = reported.call(event_name)
+        expect(events.map { |event| event[:payload] }).to contain_exactly(match(payload))
+        expect(logs.size).to eq(1)
+      end
+    end
+
+    aggregate_failures 'lock info queries: no logs and no instrumentation' do
+      client.lock('obs.info', ttl: 10_000)
+      test_notifier.notifications.clear
+      test_logger.logs.clear
+
+      client.locked?('obs.info')
+      client.queued?('obs.info')
+      client.lock_info('obs.info')
+      client.queue_info('obs.info')
+      client.locks
+      client.locks_info
+      client.queues
+      client.queues_info
+      client.keys
+
+      expect(test_notifier.notifications).to be_empty
+      expect(test_logger.logs).to be_empty
+      client.unlock('obs.info')
+    end
+  end
+
+  specify 'lock_obtaining_failed: logs and instrumentation of the failed lock acquirement' do
+    test_notifier = Class.new do
+      attr_reader :notifications
+
+      def initialize
+        @notifications = []
+      end
+
+      def notify(event, payload = {})
+        notifications << { event:, payload: }
+      end
+    end.new
+    test_logger = Class.new do
+      attr_reader :logs
+
+      def initialize
+        @logs = []
+      end
+
+      def debug(progname = nil, &block)
+        logs << (block ? yield : progname)
+      end
+    end.new
+
+    holder = RedisQueuedLocks::Client.new(redis)
+    holder.lock('obs.busy', ttl: 30_000)
+    client = RedisQueuedLocks::Client.new(redis) do |config|
+      config['instrumenter'] = test_notifier
+      config['logger'] = test_logger
+      config['retry_delay'] = 10
+      config['retry_jitter'] = 0
+    end
+    failures = lambda do
+      test_notifier.notifications.filter_map do |notification|
+        notification[:payload] if notification[:event] == 'redis_queued_locks.lock_obtaining_failed'
+      end
+    end
+    failure_payload = lambda do |lock_key, rw_mode, ttl, result, instrument|
+      match({
+        lock_key:, rw_mode:, ttl:, acq_id: client.current_acquirer_id,
+        hst_id: client.current_host_id, ts: be_a(Float), acq_time: be_a(Numeric), result:,
+        instrument:
+      })
+    end
+
+    aggregate_failures 'the failure result (without exceptions)' do
+      client.lock('obs.busy', ttl: 5_000, fail_fast: true, instrument: { op: :fail_fast })
+      client.lock('obs.busy', ttl: 5_000, retry_count: 2, read_write_mode: :read)
+      expect(failures.call).to contain_exactly(
+        failure_payload.call(
+          'rql:lock:obs.busy', :write, 5_000, :fail_fast_no_try, { op: :fail_fast }
+        ),
+        failure_payload.call('rql:lock:obs.busy', :read, 5_000, :retry_limit_reached, nil)
+      )
+      failure_logs = test_logger.logs.grep(/\A\[redis_queued_locks\.lock_obtaining_failed\] /)
+      expect(failure_logs).to contain_exactly(
+        include("lock_key => 'rql:lock:obs.busy'").and(include("result => 'fail_fast_no_try'")),
+        include("rw_mode => 'read'").and(include("result => 'retry_limit_reached'"))
+      )
+    end
+
+    aggregate_failures 'raised errors: reported before the error is raised' do
+      test_notifier.notifications.clear
+      expect do
+        client.lock!('obs.busy', ttl: 5_000, retry_count: 1)
+      end.to raise_error(RedisQueuedLocks::LockAcquirementRetryLimitError)
+      expect do
+        client.lock!('obs.busy', ttl: 5_000, timeout: 1, retry_count: nil, retry_delay: 100)
+      end.to raise_error(RedisQueuedLocks::LockAcquirementTimeoutError)
+      expect(failures.call).to contain_exactly(
+        failure_payload.call('rql:lock:obs.busy', :write, 5_000, :retry_limit_reached, nil),
+        failure_payload.call('rql:lock:obs.busy', :write, 5_000, :timeout_reached, nil)
+      )
+    end
+
+    aggregate_failures 'errors of the block of code under the obtained lock are not reported' do
+      test_notifier.notifications.clear
+      expect do
+        client.lock('obs.free', ttl: 5_000) { raise RedisQueuedLocks::LockAlreadyObtainedError }
+      end.to raise_error(RedisQueuedLocks::LockAlreadyObtainedError)
+      expect(failures.call).to be_empty
+    end
+
+    aggregate_failures 'lock series: the lock of the series that is not obtained' do
+      test_notifier.notifications.clear
+      client.lock_series('obs.series', 'obs.busy', ttl: 5_000, fail_fast: true) { :never }
+      expect(failures.call).to contain_exactly(
+        failure_payload.call('rql:lock:obs.busy', :write, be_a(Integer), :fail_fast_no_try, nil)
+      )
+      expect(client.locked?('obs.series')).to eq(false)
+    end
+
+    holder.unlock('obs.busy')
+  end
+
   specify 'detailed lock acquirement timeout error' do
     redis = RedisClient.config.new_pool(
       # NOTE:
@@ -2822,7 +3045,8 @@ RSpec.shared_examples 'redis_queued_locks' do
         'acq_id' => be_a(String),
         'rel_time' => be_a(Numeric),
         'rel_key_cnt' => be_a(Integer),
-        'tch_queue_cnt' => be_a(Integer)
+        'tch_queue_cnt' => be_a(Integer),
+        'instrument' => nil
       })
       expect(test_notifier.last_in_memory_rlo_event).to match({
         at: be_a(Float),
@@ -2830,7 +3054,8 @@ RSpec.shared_examples 'redis_queued_locks' do
         acq_id: client.acq_id, # (String) last lock is released from the current thread
         rel_time: be_a(Numeric),
         rel_key_cnt: be_a(Integer),
-        tch_queue_cnt: be_a(Integer)
+        tch_queue_cnt: be_a(Integer),
+        instrument: nil
       })
     end
   end

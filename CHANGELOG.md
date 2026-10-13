@@ -1,5 +1,22 @@
 ## [Unreleased]
+### Added
+- Logging and instrumentation of all operations that change Redis keys (the swarm is not covered yet):
+  - the lock acquirement: the new `redis_queued_locks.lock_obtaining_failed` instrumentation event and log
+    (`#lock`/`#lock!` and each lock of `#lock_series`/`#lock_series!`: the lock is not obtained, the failure `result`
+    (`:timeout_reached`, `:retry_limit_reached`, `:fail_fast_no_try`, `:fail_fast_after_try`, `:conflict_dead_lock`,
+    `:conflict_lock_upgrade`) is in the payload; with `raise_errors: true` it is reported before the error is raised);
+  - each lock mutation operation is reported with one log line and one instrumentation event with the time of the whole
+    operation (the same name and data; the payload ends with `instrument`): the new `redis_queued_locks.extend_lock_ttl`
+    (`#extend_lock_ttl`), `redis_queued_locks.clear_dead_requests` (`#clear_dead_requests`), `redis_queued_locks.reindex_locks`
+    (`#reindex_locks`) events, and the new log lines of the existing `explicit_lock_release` (`#unlock`),
+    `explicit_read_lock_release` (`#unlock_read`), `explicit_all_locks_release` (`#clear_locks`), `release_locks_of`
+    (`#clear_locks_of`/`#clear_current_locks`) events (the `logger:` option of these methods was not used);
+  - `#reindex_locks`: `logger:`, `instrumenter:`, `instrument:` and the log/instrumentation sampling options;
 ### Fixed
+- the `instrument:` option of `#unlock`, `#clear_locks`, `#clear_locks_of`/`#clear_current_locks` (README: "passed to
+  the instrumenter's payload") was not passed to the payload (`#unlock` did not even forward it); the payloads of
+  `explicit_lock_release`, `explicit_all_locks_release` and `release_locks_of` have `instrument` now; `#extend_lock_ttl` and
+  `#clear_dead_requests` had no instrumentation events at all (see "Added");
 - `#lock`/`#lock!` with a non-positive `ttl` in the write mode: the lock was reported as obtained, but `PEXPIRE` with
   a non-positive ttl deleted the lock key in the obtaining transaction, so other acquirers could obtain the same lock
   at the same time (no mutual exclusion); `ttl` should be a positive `Integer` in both modes now

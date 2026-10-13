@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.14.0
-# @version 1.20.0
+# @version 1.21.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::ReleaseLocksOf
   # @since 1.14.0
@@ -93,7 +93,7 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
     #
     # @api private
     # @since 1.14.0
-    # @version 1.20.0
+    # @version 1.21.0
     # rubocop:disable Metrics/MethodLength
     def release_locks_of(
       refused_host_id,
@@ -134,6 +134,12 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
       rel_end_time = clock_gettime
       rel_time = ((rel_end_time - rel_start_time) / 1_000.0).ceil(2)
 
+      log_sampled = RedisQueuedLocks::Logging.should_log?(
+        log_sampling_enabled,
+        log_sample_this,
+        log_sampling_percent,
+        log_sampler
+      )
       instr_sampled = RedisQueuedLocks::Instrument.should_instrument?(
         instr_sampling_enabled,
         instr_sample_this,
@@ -142,13 +148,26 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
       )
 
       run_non_critical do
+        logger.debug do
+          "[redis_queued_locks.release_locks_of] " \
+          "at => #{time_at} " \
+          "hst_id => '#{refused_host_id}' " \
+          "acq_id => '#{refused_acquirer_id}' " \
+          "rel_time => #{rel_time} " \
+          "rel_key_cnt => #{result[:rel_key_cnt]} " \
+          "tch_queue_cnt => #{result[:tch_queue_cnt]}"
+        end
+      end if log_sampled
+
+      run_non_critical do
         instrumenter.notify('redis_queued_locks.release_locks_of', {
           at: time_at,
           hst_id: refused_host_id,
           acq_id: refused_acquirer_id,
           rel_time: rel_time,
           rel_key_cnt: result[:rel_key_cnt],
-          tch_queue_cnt: result[:tch_queue_cnt]
+          tch_queue_cnt: result[:tch_queue_cnt],
+          instrument: instrument
         })
       end if instr_sampled
 

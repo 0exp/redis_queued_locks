@@ -79,6 +79,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [Instrumentation Configuration](#instrumentation-configuration)
   - [Instrumentation Events](#instrumentation-events)
     - ["redis_queued_locks.lock_obtained"](#redis_queued_lockslock_obtained)
+    - ["redis_queued_locks.lock_obtaining_failed"](#redis_queued_lockslock_obtaining_failed)
     - ["redis_queued_locks.extendable_reentrant_lock_obtained"](#redis_queued_locksextendable_reentrant_lock_obtained)
     - ["redis_queued_locks.reentrant_lock_obtained"](#redis_queued_locksreentrant_lock_obtained)
     - ["redis_queued_locks.lock_hold_and_release"](#redis_queued_lockslock_hold_and_release)
@@ -89,6 +90,9 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
     - ["redis_queued_locks.explicit_read_lock_release"](#redis_queued_locksexplicit_read_lock_release)
     - ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
     - ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of)
+    - ["redis_queued_locks.extend_lock_ttl"](#redis_queued_locksextend_lock_ttl)
+    - ["redis_queued_locks.clear_dead_requests"](#redis_queued_locksclear_dead_requests)
+    - ["redis_queued_locks.reindex_locks"](#redis_queued_locksreindex_locks)
 - [Roadmap](#roadmap)
 - [Build and Develop](#build-and-develop)
 - [Contributing](#contributing)
@@ -333,6 +337,7 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
   #   - "[redis_queued_locks.dead_score_reached__reset_acquirer_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
   #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+  #   - "[redis_queued_locks.lock_obtaining_failed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time", "result");
   #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
   #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
   #   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
@@ -341,6 +346,13 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.start_lock_series_obtaining]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
   #   - "[redis_queued_locks.lock_series_obtained]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
   #   - "[redis_queued_locks.expire_lock_series]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.explicit_lock_release]" (logs "lock_key", "lock_key_queue", "rel_time", "at");
+  #   - "[redis_queued_locks.explicit_read_lock_release]" (logs "lock_key", "acq_id", "lock_res", "rel_time", "at");
+  #   - "[redis_queued_locks.explicit_all_locks_release]" (logs "at", "rel_time", "rel_key_cnt");
+  #   - "[redis_queued_locks.release_locks_of]" (logs "at", "hst_id", "acq_id", "rel_time", "rel_key_cnt", "tch_queue_cnt");
+  #   - "[redis_queued_locks.extend_lock_ttl]" (logs "lock_key", "rw_mode", "all_read_locks", "ext_ttl", "extended_locks_count", "ext_time", "at");
+  #   - "[redis_queued_locks.clear_dead_requests]" (logs "dead_ttl", "prc_queue_cnt", "rel_time", "at");
+  #   - "[redis_queued_locks.reindex_locks]" (logs "idx_key_cnt", "idx_time", "at");
   #   - "rw_mode" is the requested lock mode ('write'/'read'), the held lock mode for "expire_lock" and "decrease_lock",
   #     the mode of the series for lock series logs;
   # - by default uses VoidLogger that does nothing;
@@ -2085,6 +2097,41 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
   - `:lock_index_grace_period` - (optional) `[Integer]`
     - the lock index grace period (in milliseconds);
     - pre-configured in `config['lock_index_grace_period']`;
+  - `:logger` - (optional) `[::Logger,#debug]`
+    - custom logger object;
+    - pre-configured in `config['logger']`;
+  - `:instrumenter` - (optional) `[#notify]`
+    - custom instrumenter object;
+    - pre-configured in `config['instrumetner']`;
+  - `:instrument` - (optional) `[NilClass,Any]`;
+    - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
+    - `nil` by default (no additional data);
+  - `:log_sampling_enabled` - (optional) `[Boolean]`
+    - enables **log sampling**;
+    - pre-configured in `config['log_sampling_enabled']`;
+  - `:log_sampling_percent` - (optional) `[Integer]`
+    - **log sampling**:the percent of cases that should be logged;
+    - pre-configured in `config['log_sampling_percent']`;
+  - `:log_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Logging::Sampler>]`
+    - **log sampling**: percent-based log sampler that decides should be RQL case logged or not;
+    - pre-configured in `config['log_sampler']`;
+  - `log_sample_this` - (optional) `[Boolean]`
+    - marks the method that everything should be logged despite the enabled log sampling;
+    - makes sense when log sampling is enabled;
+    - `false` by default;
+  - `:instr_sampling_enabled` - (optional) `[Boolean]`
+    - enables **instrumentaion sampling**;
+    - pre-configured in `config['instr_sampling_enabled']`;
+  - `instr_sampling_percent` - (optional) `[Integer]`
+    - the percent of cases that should be instrumented;
+    - pre-configured in `config['instr_sampling_percent']`;
+  - `instr_sampler` - (optional) `[#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]`
+    - percent-based log sampler that decides should be RQL case instrumented or not;
+    - pre-configured in `config['instr_sampler']`;
+  - `instr_sample_this` - (optional) `[Boolean]`
+    - marks the method that everything should be instrumneted despite the enabled instrumentation sampling;
+    - makes sense when instrumentation sampling is enabled;
+    - `false` by default;
 - returns `{ ok: true, result: { idx_key_cnt: Integer } }` (the number of indexed keys);
 
 ```ruby
@@ -2671,6 +2718,7 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
 "[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 "[redis_queued_locks.dead_score_reached__reset_acquirer_position]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 "[redis_queued_locks.lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+"[redis_queued_locks.lock_obtaining_failed]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time", "result");
 "[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
 "[redis_queued_locks.reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
 "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
@@ -2709,6 +2757,19 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
 "[redis_queued_locks.expire_lock_series]" # (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 ```
 
+- operation logs (one log line per operation that changes Redis keys, with the time of the whole operation; the same data as
+  the instrumentation event of the operation without `instrument`):
+
+```ruby
+"[redis_queued_locks.explicit_lock_release]" # (logs "lock_key", "lock_key_queue", "rel_time", "at");
+"[redis_queued_locks.explicit_read_lock_release]" # (logs "lock_key", "acq_id", "lock_res", "rel_time", "at");
+"[redis_queued_locks.explicit_all_locks_release]" # (logs "at", "rel_time", "rel_key_cnt");
+"[redis_queued_locks.release_locks_of]" # (logs "at", "hst_id", "acq_id", "rel_time", "rel_key_cnt", "tch_queue_cnt");
+"[redis_queued_locks.extend_lock_ttl]" # (logs "lock_key", "rw_mode", "all_read_locks", "ext_ttl", "extended_locks_count", "ext_time", "at");
+"[redis_queued_locks.clear_dead_requests]" # (logs "dead_ttl", "prc_queue_cnt", "rel_time", "at");
+"[redis_queued_locks.reindex_locks]" # (logs "idx_key_cnt", "idx_time", "at");
+```
+
 - read/write try-lock logs (see [Read/Write Locks](#readwrite-locks)):
   - `single_process_lock_conflict__lock_upgrade` - write lock request of the acquirer that holds the read lock
     (read-to-write lock upgrade is not supported for `:work_through` and `:extendable_work_through` conflict strategies);
@@ -2738,6 +2799,7 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
 #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 #   - "[redis_queued_locks.dead_score_reached__reset_acquirer_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
+#   - "[redis_queued_locks.lock_obtaining_failed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time", "result");
 #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
 #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
 #   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
@@ -2746,6 +2808,13 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
 #   - "[redis_queued_locks.start_lock_series_obtaining]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 #   - "[redis_queued_locks.lock_series_obtained]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
 #   - "[redis_queued_locks.expire_lock_series]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.explicit_lock_release]" (logs "lock_key", "lock_key_queue", "rel_time", "at");
+#   - "[redis_queued_locks.explicit_read_lock_release]" (logs "lock_key", "acq_id", "lock_res", "rel_time", "at");
+#   - "[redis_queued_locks.explicit_all_locks_release]" (logs "at", "rel_time", "rel_key_cnt");
+#   - "[redis_queued_locks.release_locks_of]" (logs "at", "hst_id", "acq_id", "rel_time", "rel_key_cnt", "tch_queue_cnt");
+#   - "[redis_queued_locks.extend_lock_ttl]" (logs "lock_key", "rw_mode", "all_read_locks", "ext_ttl", "extended_locks_count", "ext_time", "at");
+#   - "[redis_queued_locks.clear_dead_requests]" (logs "dead_ttl", "prc_queue_cnt", "rel_time", "at");
+#   - "[redis_queued_locks.reindex_locks]" (logs "idx_key_cnt", "idx_time", "at");
 #   - "rw_mode" is the requested lock mode ('write'/'read'), the held lock mode for "expire_lock" and "decrease_lock",
 #     the mode of the series for lock series logs;
 # - by default uses VoidLogger that does nothing;
@@ -2874,6 +2943,7 @@ config['instr_sampler'] = RedisQueuedLocks::Instrument::Sampler
 List of instrumentation events
 
 - ["redis_queued_locks.lock_obtained"](#redis_queued_lockslock_obtained)
+- ["redis_queued_locks.lock_obtaining_failed"](#redis_queued_lockslock_obtaining_failed)
 - ["redis_queued_locks.extendable_reentrant_lock_obtained"](#redis_queued_locksextendable_reentrant_lock_obtained)
 - ["redis_queued_locks.reentrant_lock_obtained"](#redis_queued_locksreentrant_lock_obtained)
 - ["redis_queued_locks.lock_hold_and_release"](#redis_queued_lockslock_hold_and_release)
@@ -2884,6 +2954,17 @@ List of instrumentation events
 - ["redis_queued_locks.explicit_read_lock_release"](#redis_queued_locksexplicit_read_lock_release)
 - ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
 - ["redis_queued_locks.release_locks_of"](#redis_queued_locksrelease_locks_of)
+- ["redis_queued_locks.extend_lock_ttl"](#redis_queued_locksextend_lock_ttl)
+- ["redis_queued_locks.clear_dead_requests"](#redis_queued_locksclear_dead_requests)
+- ["redis_queued_locks.reindex_locks"](#redis_queued_locksreindex_locks)
+
+What is instrumented (each event has a log line with the same name, see [Logging](#logging)):
+- the lock acquirement (`#lock`/`#lock!`, `#lock_series`/`#lock_series!`): each meaningful outcome (the lock is obtained,
+  not obtained, held and released);
+- each operation that changes Redis keys (`#unlock`, `#unlock_read`, `#clear_locks`, `#clear_locks_of`/`#clear_current_locks`,
+  `#extend_lock_ttl`, `#clear_dead_requests`, `#reindex_locks`): one event with the time of the whole operation;
+- lock information queries (`#lock_info`, `#locks`, `#queues`, `#keys`, ...) are not instrumented;
+- the swarm (`#probe_hosts`, `#flush_zombies` and the swarm elements) is not instrumented yet;
 
 Detalized event semantics and payload structure:
 
@@ -2899,6 +2980,23 @@ Detalized event semantics and payload structure:
   - `:rw_mode` - `symbol` - requested lock mode: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
   - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend;
   - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
+
+##### `"redis_queued_locks.lock_obtaining_failed"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- a moment when the lock acquirement is failed (the lock is not obtained);
+- raised from `#lock`/`#lock!` (with `raise_errors: true` - before the error is raised) and from `#lock_series`/`#lock_series!`
+  (for the lock of the series that is not obtained);
+- payload:
+  - `:lock_key` - `string` - lock name;
+  - `:rw_mode` - `symbol` - requested lock mode: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+  - `:ttl` - `integer`/`milliseconds` - requested lock ttl;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:ts` - `numeric`/`epoch` - the time when the lock acquirement is failed;
+  - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
+  - `:result` - `symbol` - the failure result: `:timeout_reached`, `:retry_limit_reached`, `:fail_fast_no_try`,
+    `:fail_fast_after_try`, `:conflict_dead_lock`, `:conflict_lock_upgrade` (see [lock](#lock---obtain-a-lock));
   - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
 
 ##### `"redis_queued_locks.extendable_reentrant_lock_obtained"`
@@ -3003,6 +3101,7 @@ Detalized event semantics and payload structure:
   - `:rel_time` - `float`/`milliseconds` - time spent on lock releasing;
   - `:lock_key` - `string` - released lock (lock name);
   - `:lock_key_queue` - `string` - released lock queue (the queue of write lock requests);
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#unlock` method as `:instrument` attribute;
 
 ##### `"redis_queued_locks.explicit_read_lock_release"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
@@ -3025,6 +3124,7 @@ Detalized event semantics and payload structure:
   - `:at` - `float`/`epoch` - the time when the operation has ended;
   - `:rel_key_cnt` - `integer` - released redis keys count (write locks, readers registries, read lock data,
     write and read lock request queues);
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#clear_locks` method as `:instrument` attribute;
 
 ##### `"redis_queued_locks.release_locks_of"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
@@ -3037,6 +3137,42 @@ Detalized event semantics and payload structure:
   - `:hst_id` - `string` - refused host identifier;
   - `:rel_key_cnt` - `integer` - released locks count (write locks and read locks);
   - `:tch_queue_cnt` - `:integer` - the number of queues (write and read lock request queues) from which the concrete host/acquirer was removed;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#clear_locks_of`/`#clear_current_locks` method as `:instrument` attribute;
+
+##### `"redis_queued_locks.extend_lock_ttl"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the lock TTL extension (successful or not);
+- raised from `#extend_lock_ttl`;
+- payload:
+  - `:lock_key` - `string` - lock key (`rql:lock:<lock_name>`);
+  - `:rw_mode` - `symbol` - `:write` (the write lock) or `:read` (the read lock of the acquirer or all read locks);
+  - `:all_read_locks` - `boolean` - all read locks of the lock are extended (`:read` mode);
+  - `:ext_ttl` - `integer`/`milliseconds` - the extension (`milliseconds` argument);
+  - `:extended_locks_count` - `integer` - the number of extended locks (`0` when nothing is extended);
+  - `:ext_time` - `float`/`milliseconds` - time spent on the extension;
+  - `:at` - `float`/`epoch` - the time when the operation has ended;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#extend_lock_ttl` method as `:instrument` attribute;
+
+##### `"redis_queued_locks.clear_dead_requests"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the dropped dead lock requests;
+- raised from `#clear_dead_requests`;
+- payload:
+  - `:dead_ttl` - `integer`/`milliseconds` - lock requests older than `dead_ttl` are dropped;
+  - `:prc_queue_cnt` - `integer` - the number of processed lock request queues (write and read);
+  - `:rel_time` - `float`/`milliseconds` - time spent on the operation;
+  - `:at` - `float`/`epoch` - the time when the operation has ended;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#clear_dead_requests` method as `:instrument` attribute;
+
+##### `"redis_queued_locks.reindex_locks"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes about the lock keys added to the [Lock Index](#lock-index);
+- raised from `#reindex_locks`;
+- payload:
+  - `:idx_key_cnt` - `integer` - the number of indexed keys;
+  - `:idx_time` - `float`/`milliseconds` - time spent on the operation;
+  - `:at` - `float`/`epoch` - the time when the operation has ended;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#reindex_locks` method as `:instrument` attribute;
 
 ---
 

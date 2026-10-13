@@ -218,8 +218,12 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 
 `redis_queued_locks.` + `lock_obtained`, `reentrant_lock_obtained`,
 `extendable_reentrant_lock_obtained`, `lock_hold_and_release`, `reentrant_lock_hold_completes`,
-`lock_series_obtained`, `lock_series_hold_and_release`, `explicit_lock_release`,
-`explicit_all_locks_release`, `release_locks_of`, `explicit_read_lock_release`.
+`lock_obtaining_failed`, `lock_series_obtained`, `lock_series_hold_and_release`, `explicit_lock_release`,
+`explicit_all_locks_release`, `release_locks_of`, `explicit_read_lock_release`, `extend_lock_ttl`, `clear_dead_requests`,
+`reindex_locks`. Observability rule (`logic.md#16`): logic that changes keys is logged and instrumented, the lock
+acquirement per meaningful outcome (visitors; `lock_obtaining_failed` with the failure `result` also before a raised
+acquirement error), each mutation operation with one log line + one event of the whole operation (the same name and data,
+`instrument` last in the payload, inline in the module); lock info queries are neither; the swarm is known debt.
 Lock events (`lock_obtained`, `reentrant_lock_obtained`, `extendable_reentrant_lock_obtained`,
 `lock_hold_and_release`, `reentrant_lock_hold_completes`) carry `rw_mode` (requested mode) in the payload;
 lock series events (`lock_series_obtained`, `lock_series_hold_and_release`) carry the mode of the series;

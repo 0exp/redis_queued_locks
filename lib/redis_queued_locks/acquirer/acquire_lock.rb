@@ -351,6 +351,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       )
 
       # Step 2: try to lock with timeout
+      # NOTE: the acquirement start time is defined out of the timeout block: the failed
+      #   acquirement reports the acquirement time too (Steps 3.b and 3.c);
+      acq_start_time = clock_gettime
       with_acq_timeout(
         redis,
         timeout,
@@ -360,8 +363,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         detailed_acq_timeout_error,
         on_timeout: acq_dequeue
       ) do
-        acq_start_time = clock_gettime
-
         # Step 2.1: cyclically try to obtain the lock
         while acq_process[:should_try]
 
@@ -655,8 +656,43 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           acq_process[:result] = :timeout_reached
         end
         # Step 3.b: lock is not acquired (acquirer is dequeued by timeout callback)
+        acq_time = ((clock_gettime - acq_start_time) / 1_000.0).ceil(2)
+        LogVisitor.lock_obtaining_failed(
+          logger, log_sampled, lock_key, queue_ttl, acquirer_id, host_id,
+          acq_time, access_strategy, read_write_mode, acq_process[:result]
+        )
+        InstrVisitor.lock_obtaining_failed(
+          instrumenter, instr_sampled, lock_key, read_write_mode, lock_ttl, acquirer_id, host_id,
+          Time.now.to_f, acq_time, acq_process[:result], instrument
+        )
         { ok: false, result: acq_process[:result] } #: { ok: bool, result: Symbol }
       end
+    rescue RedisQueuedLocks::LockAlreadyObtainedError,
+           RedisQueuedLocks::ConflictLockObtainError,
+           RedisQueuedLocks::LockAcquirementRetryLimitError,
+           RedisQueuedLocks::LockAcquirementTimeoutError => error
+      # Step 3.c: (raise_errors) the failed acquirement is reported before the error is raised
+      #   (like Step 3.b); errors of the block of code under the obtained lock are not reported;
+      # NOTE: (steep) the locals of the method body are nilable in the method-level `rescue` for
+      #   Steep, but these errors are raised by the acquirement only (after Step 1: the locals
+      #   are assigned);
+      # steep:ignore:start
+      unless acq_process[:acquired]
+        if error.is_a?(RedisQueuedLocks::LockAcquirementTimeoutError)
+          acq_process[:result] = :timeout_reached
+        end
+        acq_time = ((clock_gettime - acq_start_time) / 1_000.0).ceil(2)
+        LogVisitor.lock_obtaining_failed(
+          logger, log_sampled, lock_key, queue_ttl, acquirer_id, host_id,
+          acq_time, access_strategy, read_write_mode, acq_process[:result]
+        )
+        InstrVisitor.lock_obtaining_failed(
+          instrumenter, instr_sampled, lock_key, read_write_mode, lock_ttl, acquirer_id, host_id,
+          Time.now.to_f, acq_time, acq_process[:result], instrument
+        )
+      end
+      # steep:ignore:end
+      raise
     end
   end
 end
