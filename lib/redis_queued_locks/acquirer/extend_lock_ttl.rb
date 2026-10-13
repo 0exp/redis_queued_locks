@@ -286,9 +286,11 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
           end
         end
       rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
-             RedisQueuedLocks::TimedLockIntermediateTimeoutError
-        # NOTE: (internal timeouts) an interrupted WATCH block: the closed connection drops
-        #   the WATCH state (redis-client sends `UNWATCH` only on `StandardError`);
+             RedisQueuedLocks::TimedLockIntermediateTimeoutError,
+             ::Timeout::ExitException
+        # NOTE: (timeouts) an interrupted WATCH block (the internal timeouts and the user's
+        #   `Timeout.timeout` without an exception class): the closed connection drops the WATCH
+        #   state (redis-client sends `UNWATCH` only on `StandardError`);
         rconn.close
         raise
       end
@@ -379,9 +381,11 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
           end
         end
       rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
-             RedisQueuedLocks::TimedLockIntermediateTimeoutError
-        # NOTE: (internal timeouts) an interrupted WATCH block: the closed connection drops
-        #   the WATCH state (redis-client sends `UNWATCH` only on `StandardError`);
+             RedisQueuedLocks::TimedLockIntermediateTimeoutError,
+             ::Timeout::ExitException
+        # NOTE: (timeouts) an interrupted WATCH block (the internal timeouts and the user's
+        #   `Timeout.timeout` without an exception class): the closed connection drops the WATCH
+        #   state (redis-client sends `UNWATCH` only on `StandardError`);
         rconn.close
         raise
       end

@@ -413,9 +413,11 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
           break unless released.nil?
         end
       rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
-             RedisQueuedLocks::TimedLockIntermediateTimeoutError
-        # NOTE: (internal timeouts) an interrupted WATCH block: the closed connection drops
-        #   the WATCH state (redis-client sends `UNWATCH` only on `StandardError`);
+             RedisQueuedLocks::TimedLockIntermediateTimeoutError,
+             ::Timeout::ExitException
+        # NOTE: (timeouts) an interrupted WATCH block (the internal timeouts and the user's
+        #   `Timeout.timeout` without an exception class): the closed connection drops the WATCH
+        #   state (redis-client sends `UNWATCH` only on `StandardError`);
         conn.close
         raise
       end

@@ -242,7 +242,8 @@ hierarchy: `LockAlreadyObtainedError`, `LockAcquirementTimeoutError`, `LockAcqui
 block, logger and instrumenter calls) can not swallow them; the library converts them to the public errors/results).
 redis-client sends `UNWATCH` on an interrupted `multi(watch:)` only for `StandardError`s, so every `with` block
 around a `multi(watch:)` (`TryToLock`, `ExtendLockTTL` read extensions, `LockSeriesPoC` write release) rescues
-both internal timeouts, closes the connection (drops the WATCH state, reconnected on the next use) and re-raises.
+both internal timeouts and `Timeout::ExitException` (the user's `Timeout.timeout` without an exception class), closes
+the connection (drops the WATCH state, reconnected on the next use) and re-raises.
 
 ---
 

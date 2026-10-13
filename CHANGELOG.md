@@ -71,6 +71,10 @@
 - `RedisQueuedLocks::Resource.lock_key_from_queue` (a private debug helper for manual checks in a console, not used by
   the library) returned a wrong key for the read lock request queues (`rql:lock:ueue:<name>`); it supports the write and
   read lock request queues now and returns `nil` for other keys;
+- a connection interrupted inside a `WATCH` block by a `Timeout.timeout` of your code without an exception class
+  (`Timeout::ExitException`, e.g. `Timeout.timeout(5) { rql.lock("x") { ... } }`) returned to the connection pool with
+  the active `WATCH` (redis-client sends `UNWATCH` only on `StandardError`s): the next transaction on the connection could
+  be aborted (e.g. a lock release); the connection is closed now (like with the internal timeouts);
 - README/YARD documentation that did not match the code:
   - config keys: `config['instr_sampling_enabled']` in the configuration example (was `nstr_sampling_enabled`),
     `config['log_sampling_enabled']` (was `log_samplign_enabled`), `*_sampling_enabled` (was `*_sampling_enalbed`);

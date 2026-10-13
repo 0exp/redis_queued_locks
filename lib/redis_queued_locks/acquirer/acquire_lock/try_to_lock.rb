@@ -649,11 +649,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         end
       end
     rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
-           RedisQueuedLocks::TimedLockIntermediateTimeoutError
-      # NOTE: (internal timeouts) the timeout can interrupt the attempt inside the WATCH block:
-      #   redis-client sends `UNWATCH` only on `StandardError` (the internal timeouts are
-      #   `::Exception`s), and the connection would return to the pool with the active WATCH
-      #   (an EXEC of the next transaction on it is aborted when a watched key is changed);
+           RedisQueuedLocks::TimedLockIntermediateTimeoutError,
+           ::Timeout::ExitException
+      # NOTE: (timeouts) the timeout can interrupt the attempt inside the WATCH block:
+      #   redis-client sends `UNWATCH` only on `StandardError` (the internal timeouts and the
+      #   `Timeout.timeout` of the user without an exception class are `::Exception`s), and the
+      #   connection would return to the pool with the active WATCH (an EXEC of the next
+      #   transaction on it is aborted when a watched key is changed);
       #   - the closed connection drops the WATCH state and is reconnected on the next use;
       rconn.close
       raise

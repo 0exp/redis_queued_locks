@@ -2814,6 +2814,56 @@ RSpec.shared_examples 'redis_queued_locks' do
     end
   end
 
+  specify 'user timeouts (`Timeout.timeout` without a class): no WATCH left on the connection' do
+    # NOTE: one connection: the next transaction uses the connection of the interrupted attempt
+    single_connection_redis = RedisClient.config(db: 0).new_pool(
+      timeout: 5, size: 1, connect_timeout: 5, read_timeout: 5, write_timeout: 5
+    )
+    slow_logger = Class.new do
+      attr_reader :slowed
+
+      def initialize
+        @slowed = false
+      end
+
+      def debug(progname = nil, &block)
+        message = block ? yield : progname
+        # NOTE: the first attempt (with WATCH) logs the obtained lock inside the WATCH block:
+        #   the user's timeout (`Timeout::ExitException`) interrupts it there
+        return if @slowed || !message.to_s.include?('try_lock.exit__lock_still_obtained')
+
+        @slowed = true
+        sleep(3)
+      end
+    end.new
+
+    holder = RedisQueuedLocks::Client.new(redis)
+    holder.lock('user.timeouts.acq', ttl: 10_000)
+    acquirer = RedisQueuedLocks::Client.new(single_connection_redis) do |config|
+      config['logger'] = slow_logger
+      config['log_lock_try'] = true
+    end
+
+    expect do
+      Timeout.timeout(1) do
+        acquirer.lock(
+          'user.timeouts.acq', ttl: 5_000, timeout: nil, retry_count: 3, retry_delay: 10
+        )
+      end
+    end.to raise_error(Timeout::Error)
+    expect(slow_logger.slowed).to eq(true)
+
+    # NOTE: a watched key is changed: a transaction on the connection with the active WATCH of
+    #   the interrupted attempt would be aborted (`nil`)
+    holder.unlock('user.timeouts.acq')
+    transaction_result = single_connection_redis.multi do |transaction|
+      transaction.call('SET', 'user.timeouts.probe', '1')
+    end
+    expect(transaction_result).to eq(['OK'])
+
+    single_connection_redis.call('DEL', 'user.timeouts.probe')
+    single_connection_redis.close
+  end
   specify 'lock queues' do
     client = RedisQueuedLocks::Client.new(redis)
 
