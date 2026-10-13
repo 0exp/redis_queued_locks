@@ -162,6 +162,13 @@ module RedisQueuedLocks::Acquirer::Locks
         # rubocop:enable Layout/LineLength
 
         lock_keys.each_slice(scan_size) do |lock_keys_batch|
+          # Step 0: lock names of the batch (once per lock: the readers registry keys and the read
+          #   lock data keys are built from them)
+          # @type var lock_names_batch: Array[String]
+          lock_names_batch = lock_keys_batch.map do |lock_key|
+            RedisQueuedLocks::Resource.lock_name_from_key(lock_key, :lock) #: String
+          end
+
           # Step 1: extract the state of the batch of locks in one round trip
           # NOTE: (pipeline layout) [0] TIME (read locks are checked in redis time), then
           #   `LOCK_STATE_REPLIES` replies per lock in the batch order (the replies of the lock
@@ -170,10 +177,9 @@ module RedisQueuedLocks::Acquirer::Locks
           # @type var batch_state: Array[untyped]
           batch_state = redis_client.pipelined do |pipeline|
             pipeline.call('TIME')
-            lock_keys_batch.each do |lock_key|
-              lock_readers_key = RedisQueuedLocks::Resource.prepare_lock_readers(
-                lock_key.delete_prefix('rql:lock:')
-              )
+            lock_keys_batch.each_with_index do |lock_key, index|
+              lock_readers_key =
+                RedisQueuedLocks::Resource.prepare_lock_readers(lock_names_batch[index])
               pipeline.call('HGETALL', lock_key)
               pipeline.call('PTTL', lock_key)
               pipeline.call('ZRANGE', lock_readers_key, '0', '-1', 'WITHSCORES')
@@ -199,12 +205,13 @@ module RedisQueuedLocks::Acquirer::Locks
           #   read lock data can be absent if it is dropped during the read lock life;
           # @type var read_locks_data: Array[Hash[String,String]]
           read_locks_data = redis_client.pipelined do |pipeline|
-            lock_keys_batch.each_with_index do |lock_key, index|
-              lock_name = lock_key.delete_prefix('rql:lock:')
+            lock_keys_batch.each_index do |index|
               live_read_locks[index]&.each do |(acquirer_id, _expiration)|
                 pipeline.call(
                   'HGETALL',
-                  RedisQueuedLocks::Resource.prepare_read_lock_key(lock_name, acquirer_id)
+                  RedisQueuedLocks::Resource.prepare_read_lock_key(
+                    lock_names_batch[index], acquirer_id
+                  )
                 )
               end
             end
