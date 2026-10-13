@@ -118,7 +118,9 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   delete the lock key in the obtaining `MULTI`, read: the reader expiration is computed from it);
   `LockSeriesPoC` checks the series `ttl` the same way before computing the lock ttls (they include
   the retry delay and jitter); `config['default_lock_ttl']` must be positive too; `extend_lock_ttl`
-  `milliseconds` must be a positive Integer (a non-positive one would decrease/delete the lock).
+  `milliseconds` must be a positive Integer (a non-positive one would decrease/delete the lock);
+  `meta` keys must not be reserved lock data keys, String or Symbol (Symbol keys are written as
+  Strings: `Symbol#name`; the same check in `AcquireLock` and `LockSeriesPoC`).
 - RW-aware operations: `unlock` (write lock + readers + reader data + both queues + the lock index entry (the enabled lock index), same result shape; one release
   `MULTI` that also reads the readers registry, then one `DEL` of the released readers' data only when readers existed:
   1 round trip without readers; trade-off: a released reader that obtains a new read lock in between loses its new data),

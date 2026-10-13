@@ -2147,6 +2147,38 @@ RSpec.shared_examples 'redis_queued_locks' do
       end.to raise_error(RedisQueuedLocks::ArgumentError)
       expect(client.locked?('bum.bum.bam.bam')).to eq(false)
     end
+
+    aggregate_failures 'reserved keys (Symbol keys are written to the lock data as Strings)' do
+      reserved_keys = %i[
+        acq_id hst_id ts ini_ttl lock_key rem_ttl
+        spc_ext_ttl spc_cnt l_spc_ext_ini_ttl l_spc_ext_ts l_spc_ts rw_mode
+      ]
+      modes = %i[write read]
+
+      reserved_keys.each do |reserved_key|
+        modes.each do |mode|
+          expect do
+            client.lock(
+              'bum.bum.bam.bam', ttl: 5_000, read_write_mode: mode, meta: { reserved_key => 'kek' }
+            )
+          end.to raise_error(RedisQueuedLocks::ArgumentError, /reserved lock data keys/)
+          expect(client.locked?('bum.bum.bam.bam')).to eq(false)
+
+          expect do
+            client.lock_series(
+              'bum.a', 'bum.b', ttl: 5_000, read_write_mode: mode, meta: { reserved_key => 'kek' }
+            )
+          end.to raise_error(RedisQueuedLocks::ArgumentError, /reserved lock data keys/)
+          expect(client.locked?('bum.a')).to eq(false)
+          expect(client.locked?('bum.b')).to eq(false)
+        end
+      end
+
+      # NOTE: non-reserved Symbol keys are custom meta
+      client.lock('sym.meta', ttl: 5_000, meta: { chuk: '321', buk: 123 })
+      expect(client.lock_info('sym.meta')).to include('chuk' => '321', 'buk' => '123')
+      client.unlock('sym.meta')
+    end
   end
 
   specify ':instrument' do

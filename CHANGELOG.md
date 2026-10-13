@@ -11,6 +11,10 @@
 - `config['default_lock_ttl']` should be a positive `Integer` (`RedisQueuedLocks::ConfigValidationError`);
 - `#extend_lock_ttl` with a non-positive `milliseconds` decreased the lock TTL (or deleted the lock) and reported a successful
   extension: `milliseconds` should be a positive `Integer` now (`RedisQueuedLocks::ArgumentError`);
+- `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (both modes): reserved lock data keys were rejected in `:meta` only as
+  String keys, while Symbol keys (`meta: { acq_id: '...' }`) passed the validation and overwrote the lock data fields
+  (`acq_id`, `hst_id`, `ts`, `ini_ttl`, `spc_*`, ...: reentrant locks, owner checks of lock releases and lock info were
+  broken while the lock lived); Symbol keys are validated too now (`RedisQueuedLocks::ArgumentError`);
 
 ## [1.20.0] - 2026-10-12
 ### Added

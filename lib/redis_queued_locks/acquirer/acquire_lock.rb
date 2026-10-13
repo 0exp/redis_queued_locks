@@ -247,19 +247,22 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       end
 
       # Step 0.2: prevent :meta incompatabiltiies (structure)
+      #   - Symbol keys are written to the lock data as Strings (`Symbol#name`, as redis-client
+      #     does it) and would overwrite the reserved lock data fields too;
       if meta.is_a?(::Hash) && (meta.any? do |key, _value|
-        key == 'acq_id' ||
-        key == 'hst_id' ||
-        key == 'ts' ||
-        key == 'ini_ttl' ||
-        key == 'lock_key' ||
-        key == 'rem_ttl' ||
-        key == 'spc_ext_ttl' ||
-        key == 'spc_cnt' ||
-        key == 'l_spc_ext_ini_ttl' ||
-        key == 'l_spc_ext_ts' ||
-        key == 'l_spc_ts' ||
-        key == 'rw_mode'
+        meta_key = key.is_a?(::Symbol) ? key.name : key
+        meta_key == 'acq_id' ||
+        meta_key == 'hst_id' ||
+        meta_key == 'ts' ||
+        meta_key == 'ini_ttl' ||
+        meta_key == 'lock_key' ||
+        meta_key == 'rem_ttl' ||
+        meta_key == 'spc_ext_ttl' ||
+        meta_key == 'spc_cnt' ||
+        meta_key == 'l_spc_ext_ini_ttl' ||
+        meta_key == 'l_spc_ext_ts' ||
+        meta_key == 'l_spc_ts' ||
+        meta_key == 'rw_mode'
       end)
         raise(
           RedisQueuedLocks::ArgumentError,
