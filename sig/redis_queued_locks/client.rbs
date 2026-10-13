@@ -141,7 +141,7 @@ module RedisQueuedLocks
       ?ractor_id: Integer|String,
       ?identity: String
     ) -> String
-    alias ccurrent_acq_id current_acquirer_id
+    alias current_acq_id current_acquirer_id
     alias acq_id current_acquirer_id
 
     def current_host_id: (
