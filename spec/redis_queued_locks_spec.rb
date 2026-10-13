@@ -2057,6 +2057,29 @@ RSpec.shared_examples 'redis_queued_locks' do
     expect(client.keys).to be_empty
   end
 
+  specify 'config validation: positive ttls, periods and batch sizes' do
+    positive_keys = %w[
+      default_lock_ttl default_queue_ttl dead_request_ttl
+      lock_release_batch_size clear_locks_of__lock_scan_size clear_locks_of__queue_scan_size
+      key_extraction_batch_size
+      swarm.supervisor.liveness_probing_period swarm.probe_hosts.probe_period
+      swarm.flush_zombies.zombie_ttl swarm.flush_zombies.zombie_flush_period
+      swarm.flush_zombies.zombie_lock_scan_size swarm.flush_zombies.zombie_queue_scan_size
+    ]
+    invalid_values = [0, -1]
+
+    aggregate_failures 'non-positive values are rejected, positive values are accepted' do
+      positive_keys.each do |key|
+        invalid_values.each do |value|
+          expect do
+            RedisQueuedLocks::Client.new(redis) { |config| config[key] = value }
+          end.to raise_error(RedisQueuedLocks::ConfigValidationError, /#{Regexp.escape(key)}/)
+        end
+        client = RedisQueuedLocks::Client.new(redis) { |config| config[key] = 1 }
+        expect(client.config[key]).to eq(1)
+      end
+    end
+  end
   specify '#unlock' do
     client = RedisQueuedLocks::Client.new(redis)
     client.lock('unlock_check_lock_pock', ttl: 10_000)

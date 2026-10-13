@@ -26,6 +26,15 @@
   the ttl made of the retry delay and jitter only; the series `ttl` should be a positive `Integer` now
   (`RedisQueuedLocks::ArgumentError`);
 - `config['default_lock_ttl']` should be a positive `Integer` (`RedisQueuedLocks::ConfigValidationError`);
+- the config validation accepted zero and negative TTLs, periods and batch/scan sizes: `config['default_queue_ttl'] = 0`
+  dropped the own lock request in the queueing pipeline (endless `:dead_score_reached`), zero batch/scan sizes failed
+  `SCAN`/`ZSCAN` (`COUNT 0`: `ERR syntax error`) and `each_slice(0)`, zero/negative swarm periods killed the swarm main loops
+  and the supervisor (`sleep` with a negative value) or made them busy loops, a non-positive `zombie_ttl` made all hosts
+  zombies; these keys should be positive `Integer`s now (`RedisQueuedLocks::ConfigValidationError`): `default_queue_ttl`,
+  `lock_release_batch_size`, `clear_locks_of__lock_scan_size`, `clear_locks_of__queue_scan_size`, `key_extraction_batch_size`,
+  `swarm.supervisor.liveness_probing_period`, `swarm.probe_hosts.probe_period`, `swarm.flush_zombies.zombie_ttl`,
+  `swarm.flush_zombies.zombie_flush_period`, `swarm.flush_zombies.zombie_lock_scan_size`,
+  `swarm.flush_zombies.zombie_queue_scan_size`;
 - `#extend_lock_ttl` with a non-positive `milliseconds` decreased the lock TTL (or deleted the lock) and reported a successful
   extension: `milliseconds` should be a positive `Integer` now (`RedisQueuedLocks::ArgumentError`);
 - `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (both modes): reserved lock data keys were rejected in `:meta` only as

@@ -207,6 +207,7 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - lock request timeout. after this timeout your lock request in queue will be requeued with new position (at the end of the queue);
   # - (the enabled lock index) the lock request queue lives as long as its latest lock request (the queue TTL is refreshed with
   #   the queue ttl on each lock request): queues of dead acquirers expire by themselves;
+  # - should be a positive Integer
   config['default_queue_ttl'] = 15
 
   # (boolean) (default: false)
@@ -266,6 +267,7 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - (the enabled lock index) how many locks (lock names of the lock index) will be processed at a time
   #   (the ZSCAN count of the lock index pass);
   # - affects the performance of your Redis and Ruby Application (configure thoughtfully);
+  # - should be a positive Integer
   config['lock_release_batch_size'] = 100
 
   # (default: 300)
@@ -274,12 +276,14 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   (the ZSCAN count of the lock index pass, DEL for batch deletion);
   # - affects the ruby's memory (cuz this batch will be stored in Set object in first, and then will be splatted to the DEL redis method invocation) (configure thoughtfully);
   # - affects the performance of your Redis (configure thoughtfully);
+  # - should be a positive Integer
   config['clear_locks_of__lock_scan_size'] = 300
 
   # (default: 300)
   # - how many lock queues will be processed in one round trip in #clear_locks_of and in #clear_current_locks methods
   #   (lock queues are found by the same SCAN pass as locks or derived from the lock names of the same lock index pass);
   # - affects the performance of your Redis (configure thoughtfully);
+  # - should be a positive Integer
   config['clear_locks_of__queue_scan_size'] = 300
 
   # (default: 500)
@@ -288,6 +292,7 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   # - (the enabled lock index) how many locks (lock names of the lock index) should be processed at a time
   #   (the ZSCAN count of the lock index pass);
   # - affects the performance of your Redis and Ruby Application (configure thoughtfully);
+  # - should be a positive Integer
   config['key_extraction_batch_size'] = 500
 
   # (default: 1 day)
@@ -2305,6 +2310,8 @@ rql.possible_host_ids
   clinet = RedisQueuedLocks::Client.new(redis_client) do |config|
     # NOTE: auto-swarm your RQL client after initalization (run swarm elements and their supervisor)
     config['swarm.auto_swarm'] = false
+
+    # NOTE: the periods, the zombie ttl and the scan sizes should be positive Integers
 
     # supervisor configs
     config['swarm.supervisor.liveness_probing_period'] = 2 # NOTE: in seconds

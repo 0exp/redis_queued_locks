@@ -46,7 +46,7 @@ Related rule files (loaded for narrower paths):
 4. Return `{ ok:, result: }` hashes from public API operations (`Client`, `Acquirer::*`, `Swarm` facade actions); raise only in `!` methods or on invalid arguments (`RedisQueuedLocks::ArgumentError`). Internal APIs, and swarm element internals in particular, use bare scalars/primitives (`true`/`false`, String, Symbol, Integer, `nil`, a flat Hash of scalars) without the wrapper.
 5. Never hardcode `rql:` strings; add a `Resource.prepare_*` helper or constant instead.
 6. Use WATCH/MULTI or a Lua constant for any read-modify-write on lock/queue keys; never do check-then-set in Ruby without a transaction.
-7. New config option: `setting` with default + `validate` with a type check, both in `config.rb`; read it in `Client` as `config['key']`.
+7. New config option: `setting` with default + `validate` with a type check and the valid range (TTLs, periods, batch/scan sizes are positive Integers: `val.is_a?(Integer) && val > 0`), both in `config.rb`; read it in `Client` as `config['key']`.
 8. Logs and instrumentation events go through visitor modules (see `visitors.md`); event names follow `redis_queued_locks.<snake_case>`.
 9. Keep thread/Ractor safety: guard shared state with `Utilities::Lock`, never share a `RedisClient` across Ractors.
 10. Disable rubocop cops only locally with a matching `rubocop:enable`, and only for Metrics/Layout on large methods (the only exception: the line-level `Lint/InheritException` of the base `RedisQueuedLocks::Exception < ::Exception` in `errors.rb`, see rule 15).
