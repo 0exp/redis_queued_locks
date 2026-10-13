@@ -2,7 +2,7 @@
 
 # @api public
 # @since 1.0.0
-# @version 1.20.0
+# @version 1.21.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @return [RedisClient]
@@ -171,7 +171,9 @@ class RedisQueuedLocks::Client
   # @param lock_name [String]
   #   Lock name to be obtained.
   # @option ttl [Integer]
-  #   Lock's time to live (in milliseconds).
+  #   - Lock's time to live (in milliseconds);
+  #   - a positive Integer;
+  #   - pre-configured in `config['default_lock_ttl']`;
   # @option queue_ttl [Integer]
   #   Lifetime of the acuier's lock request. In seconds.
   # @option lock_index_grace_period [Integer]
@@ -339,7 +341,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   # rubocop:disable Metrics/MethodLength
   def lock(
     lock_name,
@@ -418,7 +420,7 @@ class RedisQueuedLocks::Client
   # rubocop:disable all
   # @api public
   # @since 1.16.0
-  # @version 1.20.0
+  # @version 1.21.0
   def lock_series( # steep:ignore
     *lock_names,
     detailed_result: false,
@@ -498,7 +500,7 @@ class RedisQueuedLocks::Client
   # rubocop:disable all
   # @api public
   # @since 1.16.0
-  # @version 1.20.0
+  # @version 1.21.0
   def lock_series!( # steep:ignore
     *lock_names,
     detailed_result: false,
@@ -570,7 +572,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def lock!(
     lock_name,
     ttl: config['default_lock_ttl'],
@@ -914,7 +916,8 @@ class RedisQueuedLocks::Client
   # Use it at your own risk and consider async nature when calling this method.
   #
   # @param lock_name [String]
-  # @param milliseconds [Integer] How many milliseconds should be added.
+  # @param milliseconds [Integer]
+  #   How many milliseconds should be added: a positive Integer.
   # @option read_write_mode [Symbol]
   #   - `:write` (default) - extends the write lock (the method description above);
   #   - `:read` - extends the read lock of the current acquirer only (an expired read lock or
@@ -944,7 +947,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def extend_lock_ttl(
     lock_name,
     milliseconds,

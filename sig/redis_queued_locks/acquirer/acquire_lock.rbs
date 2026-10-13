@@ -19,7 +19,7 @@ module RedisQueuedLocks
         thread_id: Integer|String,
         fiber_id: Integer|String,
         ractor_id: Integer|String,
-        ttl: Integer?,
+        ttl: Integer,
         queue_ttl: Integer,
         lock_index_enabled: bool,
         lock_index_grace_period: Integer,

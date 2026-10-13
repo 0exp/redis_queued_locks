@@ -1,4 +1,16 @@
 ## [Unreleased]
+### Fixed
+- `#lock`/`#lock!` with a non-positive `ttl` in the write mode: the lock was reported as obtained, but `PEXPIRE` with
+  a non-positive ttl deleted the lock key in the obtaining transaction, so other acquirers could obtain the same lock
+  at the same time (no mutual exclusion); `ttl` should be a positive `Integer` in both modes now
+  (`RedisQueuedLocks::ArgumentError`, previously validated for read locks only); `ttl: nil` was never supported
+  (the YARD docs described it as "without timeout");
+- `#lock_series`/`#lock_series!` (PoC) with a non-positive `ttl` (both modes): the locks of the series were obtained with
+  the ttl made of the retry delay and jitter only; the series `ttl` should be a positive `Integer` now
+  (`RedisQueuedLocks::ArgumentError`);
+- `config['default_lock_ttl']` should be a positive `Integer` (`RedisQueuedLocks::ConfigValidationError`);
+- `#extend_lock_ttl` with a non-positive `milliseconds` decreased the lock TTL (or deleted the lock) and reported a successful
+  extension: `milliseconds` should be a positive `Integer` now (`RedisQueuedLocks::ArgumentError`);
 
 ## [1.20.0] - 2026-10-12
 ### Added

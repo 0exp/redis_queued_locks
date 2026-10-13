@@ -195,6 +195,7 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
 
   # (milliseconds) (default: 5_000)
   # - lock's time to live
+  # - should be a positive Integer
   config['default_lock_ttl'] = 5_000
 
   # (seconds) (default: 15)
@@ -488,6 +489,7 @@ def lock(
   - Lock name to be obtained.
 - `ttl` - (optional) - [Integer]
   - Lock's time to live (in milliseconds);
+  - should be a positive `Integer` (write and read locks);
   - pre-configured in `config['default_lock_ttl']`;
 - `queue_ttl` - (optional) `[Integer]`
   - Lifetime of the acuier's lock request. In seconds.
@@ -1684,6 +1686,7 @@ rql.release_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acqu
     - the lock name which ttl should be extended;
   - `milliseconds` - (required) `[Integer]`
     - how many milliseconds should be added to the lock's TTL;
+    - should be a positive `Integer`;
   - `:read_write_mode` - (optional) `[Symbol]`
     - `:write` (default) - extends the write lock (the behavior described below);
     - `:read` - extends the read lock of the current acquirer only (see [Read/Write Locks](#readwrite-locks)):
@@ -2547,7 +2550,7 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
   - `:random` - lock queues are ignored: any free lock is obtained (a continuous flow of readers can starve writers);
 - read locks:
   - each read lock has its own `ttl` and is released (after the block execution) or expired independently of other read locks;
-  - `ttl` should be a positive `Integer` (`RedisQueuedLocks::ArgumentError`);
+  - `ttl` should be a positive `Integer`;
   - each read lock has its own data with the same structure as the write lock data: acquirer, host, timestamp,
     initial ttl, `:meta` (with the same reserved keys) and reentrant lock data (`spc_cnt`, `spc_ext_ttl`, ...);
     the read lock data lives as long as the read lock and is returned by `#lock_info`/`#locks_info` for each reader

@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.20.0
+# @version 1.21.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::ExtendLockTTL
   # @return [String]
@@ -19,6 +19,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     # @param redis_client [RedisClient]
     # @param lock_name [String]
     # @param milliseconds [Integer]
+    #   How many milliseconds should be added: a positive Integer.
     # @param read_write_mode [Symbol]
     #   - `:write` - extends the write lock (of any acquirer);
     #   - `:read` - extends the read lock of the given acquirer (other read locks are not affected)
@@ -45,7 +46,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
     # rubocop:disable Metrics/MethodLength
     def extend_lock_ttl(
       redis_client,
@@ -72,6 +73,14 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
           RedisQueuedLocks::ArgumentError,
           "`:read_write_mode` argument should be `:read` or `:write`, " \
           "got #{read_write_mode.inspect}."
+        )
+      end
+
+      # NOTE: a non-positive value would decrease the lock ttl or delete the lock;
+      if !milliseconds.is_a?(::Integer) || milliseconds <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`milliseconds` argument should be a positive Integer, got #{milliseconds.inspect}."
         )
       end
 

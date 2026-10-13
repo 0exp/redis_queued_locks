@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.20.0
+# @version 1.21.0
 # rubocop:disable Metrics/ModuleLength
 # rubocop:disable Metrics/MethodLength
 # rubocop:disable Metrics/ClassLength
@@ -42,8 +42,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   A current fiber that want to acquire a lock.
     # @option ractor_id [Integer,String]
     #   The current ractor that want to acquire a lock.
-    # @option ttl [Integer,NilClass]
-    #   Lock's time to live (in milliseconds). Nil means "without timeout".
+    # @option ttl [Integer]
+    #   Lock's time to live (in milliseconds). A positive Integer (both modes).
     # @option queue_ttl [Integer]
     #   Lifetime of the acuier's lock request. In seconds.
     # @option lock_index_enabled [Boolean]
@@ -176,7 +176,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
     def acquire_lock(
       redis,
       lock_name,
@@ -235,12 +235,14 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         )
       end
 
-      # Step 0.1 (RW): prevent read lock incompatabilities
-      #   - read lock expiration time is calculated from the lock ttl;
-      if read_write_mode == :read && (!ttl.is_a?(::Integer) || ttl <= 0)
+      # Step 0.1: prevent :ttl incompatibilities (both modes)
+      #   - write lock: `PEXPIRE` with a non-positive ttl deletes the just obtained lock key in the
+      #     obtaining transaction (the lock is "obtained" without the mutual exclusion);
+      #   - read lock: the read lock expiration time is calculated from the lock ttl;
+      if !ttl.is_a?(::Integer) || ttl <= 0
         raise(
           RedisQueuedLocks::ArgumentError,
-          "`:ttl` argument should be a positive Integer for read locks, got #{ttl.inspect}."
+          "`:ttl` argument should be a positive Integer, got #{ttl.inspect}."
         )
       end
 

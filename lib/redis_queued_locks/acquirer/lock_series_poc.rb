@@ -4,6 +4,7 @@
 # rubocop:disable all
 # @api private
 # @since 1.16.0
+# @version 1.21.0
 module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
   require_relative 'lock_series_poc/log_visitor'
   require_relative 'lock_series_poc/instr_visitor'
@@ -14,7 +15,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
   class << self
     # @api private
     # @since 1.16.0
-    # @version 1.20.0
+    # @version 1.21.0
     def lock_series_poc( # steep:ignore
       redis,
       lock_names,
@@ -85,6 +86,17 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
           '`:meta` keys can not overlap reserved lock data keys ' \
           '"acq_id", "hst_id", "ts", "ini_ttl", "lock_key", "rem_ttl", "spc_cnt", ' \
           '"spc_ext_ttl", "l_spc_ext_ini_ttl", "l_spc_ext_ts", "l_spc_ts", "rw_mode"'
+        )
+      end
+
+      # NOTE: the series ttl is validated before the lock ttl calculation: each lock ttl of
+      #   the series includes the retry delay and jitter (a non-positive series ttl can produce
+      #   a positive lock ttl), the series ttl limits the `timed` block (the same check as in
+      #   RedisQueuedLocks::Acquirer::AcquireLock);
+      if !ttl.is_a?(::Integer) || ttl <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:ttl` argument should be a positive Integer, got #{ttl.inspect}."
         )
       end
 

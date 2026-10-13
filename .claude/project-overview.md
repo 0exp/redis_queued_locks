@@ -113,8 +113,12 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 - Try results (internal symbols): `:write_request_is_ahead`, `:read_request_is_ahead`,
   `:read_lock_is_still_acquired`, `:conflict_lock_upgrade`, `:read_lock_is_expired_during_extension`;
   try success result carries internal `rw_mode` (held mode), not exposed in the public `lock` result.
-- Validation (`AcquireLock`): `read_write_mode` must be `:read`/`:write`; read `ttl` must be a positive
-  Integer (`RedisQueuedLocks::ArgumentError`).
+- Validation (`AcquireLock`): `read_write_mode` must be `:read`/`:write`; `ttl` must be a positive
+  Integer in both modes (`RedisQueuedLocks::ArgumentError`; write: `PEXPIRE` with a non-positive ttl would
+  delete the lock key in the obtaining `MULTI`, read: the reader expiration is computed from it);
+  `LockSeriesPoC` checks the series `ttl` the same way before computing the lock ttls (they include
+  the retry delay and jitter); `config['default_lock_ttl']` must be positive too; `extend_lock_ttl`
+  `milliseconds` must be a positive Integer (a non-positive one would decrease/delete the lock).
 - RW-aware operations: `unlock` (write lock + readers + reader data + both queues + the lock index entry (the enabled lock index), same result shape; one release
   `MULTI` that also reads the readers registry, then one `DEL` of the released readers' data only when readers existed:
   1 round trip without readers; trade-off: a released reader that obtains a new read lock in between loses its new data),

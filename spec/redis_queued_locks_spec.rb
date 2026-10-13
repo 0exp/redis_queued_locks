@@ -1948,6 +1948,73 @@ RSpec.shared_examples 'redis_queued_locks' do
     expect(result[:result]).to eq(:async_expire_or_no_lock)
   end
 
+  specify 'lock ttl and ttl extension validation' do
+    client = RedisQueuedLocks::Client.new(redis)
+
+    aggregate_failures 'non-positive lock ttl (both modes)' do
+      # NOTE: a write lock with a non-positive ttl was "obtained" with the lock key deleted by
+      #   `PEXPIRE` in the obtaining transaction (no mutual exclusion)
+      invalid_ttls = [0, -1_000]
+      %i[write read].each do |mode|
+        invalid_ttls.each do |ttl|
+          expect do
+            client.lock('ttl.args', ttl:, read_write_mode: mode)
+          end.to raise_error(RedisQueuedLocks::ArgumentError, /ttl/)
+          expect do
+            client.lock!('ttl.args', ttl:, read_write_mode: mode)
+          end.to raise_error(RedisQueuedLocks::ArgumentError, /ttl/)
+          expect do
+            client.lock('ttl.args', ttl:, read_write_mode: mode) { 1 + 1 }
+          end.to raise_error(RedisQueuedLocks::ArgumentError, /ttl/)
+          # NOTE: each lock ttl of the series includes the retry delay (a positive lock ttl)
+          expect do
+            client.lock_series('ttl.args.a', 'ttl.args.b', ttl:, read_write_mode: mode)
+          end.to raise_error(RedisQueuedLocks::ArgumentError, /ttl/)
+        end
+      end
+      expect(client.locked?('ttl.args')).to eq(false)
+      expect(client.locked?('ttl.args.a')).to eq(false)
+      expect(client.keys).to be_empty
+    end
+
+    aggregate_failures 'non-positive default lock ttl' do
+      expect do
+        client.configure { |config| config['default_lock_ttl'] = 0 }
+      end.to raise_error(RedisQueuedLocks::ConfigValidationError)
+      expect do
+        RedisQueuedLocks::Client.new(redis) { |config| config['default_lock_ttl'] = -1 }
+      end.to raise_error(RedisQueuedLocks::ConfigValidationError)
+      expect(client.config['default_lock_ttl']).to eq(5_000)
+    end
+
+    aggregate_failures 'non-positive ttl extension (both modes)' do
+      client.lock('ttl.ext.write', ttl: 10_000)
+      client.lock('ttl.ext.read', ttl: 10_000, read_write_mode: :read)
+
+      [0, -20_000].each do |milliseconds|
+        expect do
+          client.extend_lock_ttl('ttl.ext.write', milliseconds)
+        end.to raise_error(RedisQueuedLocks::ArgumentError, /milliseconds/)
+        expect do
+          client.extend_lock_ttl('ttl.ext.read', milliseconds, read_write_mode: :read)
+        end.to raise_error(RedisQueuedLocks::ArgumentError, /milliseconds/)
+        expect do
+          client.extend_lock_ttl(
+            'ttl.ext.read', milliseconds, read_write_mode: :read, all_read_locks: true
+          )
+        end.to raise_error(RedisQueuedLocks::ArgumentError, /milliseconds/)
+      end
+
+      # NOTE: the locks are neither deleted nor shortened
+      expect(client.lock_info('ttl.ext.write')['rem_ttl']).to be > 9_000
+      expect(client.lock_info('ttl.ext.read')['rem_ttl']).to be > 9_000
+    end
+
+    client.unlock('ttl.ext.write')
+    client.unlock('ttl.ext.read')
+    expect(client.keys).to be_empty
+  end
+
   specify '#unlock' do
     client = RedisQueuedLocks::Client.new(redis)
     client.lock('unlock_check_lock_pock', ttl: 10_000)

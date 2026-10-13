@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.13.0
-# @version 1.20.0
+# @version 1.21.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Config
   require_relative 'config/dsl'
@@ -80,7 +80,7 @@ class RedisQueuedLocks::Config
   validate('retry_delay') { |val| val.is_a?(Integer) && val >= 0 }
   validate('retry_jitter') { |val| val.is_a?(Integer) && val >= 0 }
   validate('try_to_lock_timeout') { |val| val == nil || (val.is_a?(Integer) && val >= 0) }
-  validate('default_lock_ttl') { |val| val.is_a?(Integer) }
+  validate('default_lock_ttl') { |val| val.is_a?(Integer) && val > 0 }
   validate('default_queue_ttl') { |val| val.is_a?(Integer) }
   validate('detailed_acq_timeout_error') { |val| val == true || val == false }
   validate('lock_release_batch_size') { |val| val.is_a?(Integer) }
