@@ -2,7 +2,7 @@
 
 # @api public
 # @since 1.9.0
-# @version 1.21.0
+# @version 1.13.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Swarm
   require_relative 'swarm/redis_client_builder'

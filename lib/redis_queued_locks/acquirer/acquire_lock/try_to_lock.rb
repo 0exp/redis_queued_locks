@@ -39,7 +39,7 @@
 #
 # @api private
 # @since 1.0.0
-# @version 1.21.0
+# @version 1.20.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   require_relative 'try_to_lock/log_visitor'

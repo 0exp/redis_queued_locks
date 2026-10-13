@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.21.0
+# @version 1.20.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::Locks
   # The number of replies of one lock in the lock state pipeline of a batch of locks

@@ -2,7 +2,6 @@
 
 # @api private
 # @since 1.9.0
-# @version 1.21.0
 module RedisQueuedLocks::Swarm::RedisClientBuilder
   class << self
     # @option pooled [Boolean]

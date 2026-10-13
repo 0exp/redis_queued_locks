@@ -24,7 +24,7 @@ Related rule files (loaded for narrower paths):
 - Constants are defined compactly: `class RedisQueuedLocks::Acquirer::IsLocked` / `module ...`, never nested `module A; module B`.
 - Namespace files (`acquirer.rb`, `swarm.rb`, `logging.rb`, `swarm/swarm_element.rb`) only `require_relative` their children; the root `lib/redis_queued_locks.rb` requires the namespaces in dependency order.
 - YARD doc block on every class, module, constant, attr and method:
-  `@param name [Type]`, `@option`, `@return [Type]`, blank `#` line, then `@api public|private`, `@since X.Y.Z`, optional `@version X.Y.Z` (latest behavior change).
+  `@param name [Type]`, `@option`, `@return [Type]`, blank `#` line, then `@api public|private`, `@since X.Y.Z`, optional `@version X.Y.Z` (methods: the latest behavior/signature change; classes/modules: the latest interface change, see rule 2).
 - Operations are stateless modules with `class << self` functions; dependencies (`redis_client`, logger, instrumenter, sampling options) are passed as explicit args, never read from globals.
 - Operation modules (except PoC modules such as `LockSeriesPoC`) are independent of each other: no cross-calls and no shared RBS types between them; common logic lives in `Resource`/`Utilities`, similar logic is duplicated on purpose (see `acquirer.md`, "Independence of operation modules").
 - Public API results are hashes `{ ok: Boolean, result: Symbol|Hash }` (`Client`, `Acquirer::*`, `Swarm` facade actions); `Client` `!` methods raise `RedisQueuedLocks::*Error`. Internal swarm element APIs return bare scalars/primitives (see `swarm.md`).
@@ -41,7 +41,14 @@ Related rule files (loaded for narrower paths):
 
 ## Claude rules
 1. Start new files with `# frozen_string_literal: true` and use compact constant paths.
-2. Add a full YARD block to every new public/private method; new code gets `@since <next version>`; when changing existing behavior, add/bump `@version`.
+2. Add a full YARD block to every new public/private method; new code gets `@since <next version>`. `@version <next version>`:
+    - a method: when its behavior or its signature changes;
+    - a class/module header: only when its interface changes:
+      - a method signature changes: its parameters (their kinds and names); the default values and the return values are behavior;
+      - a method is added or removed (public or private, `attr_*` and aliases too);
+      - the ancestors change: `extend`/`include`/`prepend` of a module or a changed superclass (e.g. the internal timeout errors in 1.21.0);
+    - behavior changes inside the methods, constants, config settings (`setting`/`validate`: `Config` has no interface changes since 1.13.0) and comments bump only the method tags, never the class/module header;
+    - the header keeps the version of the latest interface change; no `@version` when the interface never changed since `@since` (the headers of the versions >= 1.17.0 are aligned with this rule).
 3. New operation = new `Acquirer::*` module + thin `Client` method delegating to it (+ `!` variant only if it must raise); details in `acquirer.md`.
 4. Return `{ ok:, result: }` hashes from public API operations (`Client`, `Acquirer::*`, `Swarm` facade actions); raise only in `!` methods or on invalid arguments (`RedisQueuedLocks::ArgumentError`). Internal APIs, and swarm element internals in particular, use bare scalars/primitives (`true`/`false`, String, Symbol, Integer, `nil`, a flat Hash of scalars) without the wrapper.
 5. Never hardcode `rql:` strings; add a `Resource.prepare_*` helper or constant instead.

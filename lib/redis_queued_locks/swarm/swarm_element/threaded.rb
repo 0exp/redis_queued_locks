@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.9.0
+# @version 1.17.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0

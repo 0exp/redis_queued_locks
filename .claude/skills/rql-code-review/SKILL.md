@@ -89,7 +89,10 @@ locks", key layout, "Lock index", lock lookup modes, events, errors, conventions
 - Next version for `@since`/`@version`: the version the unreleased work already uses (`git diff <base> -- lib |
   grep -oE '^\+.*@(since|version) [0-9.]+'`, the CHANGELOG `[Unreleased]` code), otherwise the next minor of
   `RedisQueuedLocks::VERSION` (`version.rb`); don't take the maximum over `lib/` (old tags can be wrong).
-  A value older than `VERSION` on new code, or a behavior change without a `@version` bump, is a Minor finding.
+  A value older than `VERSION` on new code, a method behavior/signature change without the method `@version` bump, or a
+  class/module header `@version` that does not match its latest interface change (`logic.md#2`: signatures,
+  added/removed methods, `extend`/`include`/`prepend`, the superclass; behavior changes never bump the header) is a
+  Minor finding.
 
 ## 3. Spec files are exempt (until the suite rework)
 
@@ -272,8 +275,9 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - `# frozen_string_literal: true`; compact constant paths (`module RedisQueuedLocks::Acquirer::Keys`); namespace
   files only `require_relative` (`logic.md#1`).
 - YARD on every class, module, constant, attr and method: `@param`/`@option`/`@return` (`Format: { ... }` for hash
-  results), blank `#`, `@api public|private`, `@since <next>`; behavior changes bump `@version <next>` on the
-  method and on the module/class header (`logic.md#2`).
+  results), blank `#`, `@api public|private`, `@since <next>`; behavior/signature changes bump `@version <next>` on
+  the method; the module/class header `@version` changes only with the interface (signatures, added/removed methods,
+  `extend`/`include`/`prepend`, the superclass), never for behavior changes inside the methods (`logic.md#2`).
 - Comments: `# NOTE:` with `#   - item;` lists, `# Step N.x` in algorithms, `(RW)`/`(lock index)`/`(keyspace)`
   tags, `NOTE: (pipeline layout)`/`(transaction layout)` for positional replies.
 - Redis: uppercase String commands, String numeric args (`'0'`, `'-1'`, `'-inf'`, `'+inf'`), `redis.with do |rconn|`

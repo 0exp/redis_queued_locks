@@ -2,7 +2,6 @@
 
 # @api private
 # @since 1.13.0
-# @version 1.21.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Config
   require_relative 'config/dsl'

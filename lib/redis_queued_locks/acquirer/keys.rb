@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.21.0
+# @version 1.20.0
 module RedisQueuedLocks::Acquirer::Keys
   # The number of replies of one lock name in the key state pipeline of a batch of lock names
   # (`collect_lock_keys`): EXISTS (write lock), EXISTS (write lock queue), EXISTS (read lock

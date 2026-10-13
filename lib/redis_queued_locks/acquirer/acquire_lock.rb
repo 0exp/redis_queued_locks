@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.21.0
+# @version 1.20.0
 # rubocop:disable Metrics/ModuleLength
 # rubocop:disable Metrics/MethodLength
 # rubocop:disable Metrics/ClassLength

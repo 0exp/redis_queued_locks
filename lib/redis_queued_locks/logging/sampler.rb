@@ -2,7 +2,6 @@
 
 # @api public
 # @since 1.5.0
-# @version 1.21.0
 module RedisQueuedLocks::Logging::Sampler
   class << self
     # Super simple probalistic function based on the `weight` of <true>/<false> values.

@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.14.0
-# @version 1.21.0
+# @version 1.20.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::ReleaseLocksOf
   # @since 1.14.0

@@ -3,7 +3,7 @@
 # NOTE: Lock Series PoC
 # @api private
 # @since 1.16.1
-# @version 1.21.0
+# @version 1.18.0
 module RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor # steep:ignore
   class << self
     # NOTE: Lock Series PoC

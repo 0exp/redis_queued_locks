@@ -4,7 +4,7 @@
 # rubocop:disable all
 # @api private
 # @since 1.16.0
-# @version 1.21.0
+# @version 1.20.0
 module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
   require_relative 'lock_series_poc/log_visitor'
   require_relative 'lock_series_poc/instr_visitor'

@@ -120,6 +120,9 @@
   - YARD: the `#clear_current_locks` options (`lock_scan_size`, `queue_scan_size` instead of the missing `batch_size`), the tag
     typos (`@sine`, `@since ?.?.?`, `@since 19.0.0`, `@api ppublic`/`pulic`/`pub;ic`); the inert `# steep:ingore` comments
     are removed;
+  - YARD: the `@version` tags of the classes/modules (versions >= 1.17.0) follow the interface changes only (method
+    signatures, added/removed methods, `extend`/`include`/`prepend`, the superclass), not the behavior changes inside
+    the methods;
 
 ## [1.20.0] - 2026-10-12
 ### Added

@@ -345,7 +345,7 @@ Known quirk: `sig/redis_queued_locks/acquier.rbs` is misspelled (should be `acqu
 ## 6. Conventions
 
 - `# frozen_string_literal: true` in every Ruby file.
-- YARD tags on every class/method: `@api public|private`, `@since`, `@version` (bump `@version` when changing behavior).
+- YARD tags on every class/method: `@api public|private`, `@since`, `@version` (methods: bump on a behavior/signature change; classes/modules: only on an interface change: signatures, added/removed methods, `extend`/`include`/`prepend` or the superclass; `logic.md#2`).
 - Every `lib/` change gets a matching `sig/` RBS update; use `# steep:ignore` only where Steep can't infer types.
 - New operation: new `Acquirer::*` module, thin `Client` method (+ `!` variant if it should raise), RBS, spec.
 - New config option: `setting` (+ `validate`) in `config.rb`, read via `config['key']`, document defaults.

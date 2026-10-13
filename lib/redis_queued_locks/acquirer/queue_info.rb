@@ -2,7 +2,6 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.20.0
 module RedisQueuedLocks::Acquirer::QueueInfo
   class << self
     # Returns an information about the required lock queue by the lock name. The result
