@@ -3,13 +3,14 @@
 # NOTE: Lock Series PoC
 # @api private
 # @since 1.16.1
+# @version 1.21.0
 module RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor # steep:ignore
   class << self
     # NOTE: Lock Series PoC
     # @param rw_mode [Symbol] The mode of the lock series (`:read` or `:write`).
     # @api private
     # @since 1.16.0
-    # @version 1.18.0
+    # @version 1.21.0
     def start_lock_series_obtaining( # steep:ignore
       logger,
       log_sampled,
@@ -30,14 +31,14 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor # steep:ignore
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}'"
-      end # rescue nil
+      end rescue nil
     end
 
     # NOTE: Lock Series PoC
     # @param rw_mode [Symbol] The mode of the lock series (`:read` or `:write`).
     # @api private
     # @since 1.16.0
-    # @version 1.18.0
+    # @version 1.21.0
     def lock_series_obtained( # steep:ignore
       logger,
       log_sampled,
@@ -60,7 +61,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor # steep:ignore
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
         "acq_time => #{acq_time} (ms)"
-      end # rescue nil
+      end rescue nil
     end
 
     # NOTE: Lock Series PoC

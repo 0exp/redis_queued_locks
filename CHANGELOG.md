@@ -25,6 +25,10 @@
   are the same (`RedisQueuedLocks::TimedLockTimeoutError`, `RedisQueuedLocks::LockAcquirementTimeoutError`,
   `:timeout_reached`); a connection interrupted inside a `WATCH` block is closed (redis-client sends `UNWATCH` only on
   `StandardError`s: the next transaction on the connection would be aborted);
+- `#lock_series`/`#lock_series!` (PoC): the log events and the `redis_queued_locks.lock_series_hold_and_release`
+  instrumentation event raised the errors of the logger/instrumenter: a failing logger broke the series call (after
+  obtaining all the locks of the series the locks were not released till their ttl), a failing instrumenter replaced
+  the block result with its error; the logger/instrumenter errors are swallowed now (like in all other events);
 - README/YARD documentation that did not match the code:
   - config keys: `config['instr_sampling_enabled']` in the configuration example (was `nstr_sampling_enabled`),
     `config['log_sampling_enabled']` (was `log_samplign_enabled`), `*_sampling_enabled` (was `*_sampling_enalbed`);

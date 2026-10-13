@@ -296,6 +296,48 @@ RSpec.shared_examples 'redis_queued_locks' do
         client.unlock('ls.busy')
       end
     end
+
+    # NOTE: the series events (logs: start, obtained, expire; instrumentation: obtained, hold and
+    #   release): the failures are swallowed (the series locks are released after the block,
+    #   the block result is kept)
+    %w[logger instrumenter].each do |port|
+      specify "#lock_series: a failing #{port} does not break the series" do
+        failing_ports = {
+          'logger' => Class.new do
+            def debug(progname = nil, &block)
+              raise 'logger failure'
+            end
+          end.new,
+          'instrumenter' => Class.new do
+            def notify(event, payload = {})
+              raise 'instrumenter failure'
+            end
+          end.new
+        }
+        client = RedisQueuedLocks::Client.new(redis) do |config|
+          config[port] = failing_ports[port]
+        end
+        modes = %i[write read]
+
+        modes.each do |mode|
+          result = client.lock_series(
+            'ls.observed.a', 'ls.observed.b', read_write_mode: mode, ttl: 10_000
+          ) { :done }
+          expect(result).to eq(:done)
+          expect(client.locked?('ls.observed.a')).to eq(false)
+          expect(client.locked?('ls.observed.b')).to eq(false)
+        end
+
+        # NOTE: without the block the series locks are obtained (and live till their ttl)
+        expect do
+          client.lock_series('ls.observed.a', 'ls.observed.b', ttl: 10_000)
+        end.not_to raise_error
+        expect(client.locked?('ls.observed.a')).to eq(true)
+        expect(client.locked?('ls.observed.b')).to eq(true)
+        client.unlock('ls.observed.a')
+        client.unlock('ls.observed.b')
+      end
+    end
   end
   # rubocop:enable all
 
