@@ -81,6 +81,8 @@
     (the same as in the `## Logging` section);
   - the `#lock!` link of the Usage list and the `#lock` link of `#lock_info`, the Usage list and the table of contents: `unlock_read`, `clear_locks_of`,
     `clear_current_locks`, `reindex_locks`;
+  - YARD: the `#clear_current_locks` options (`lock_scan_size`, `queue_scan_size` instead of the missing `batch_size`), the tag
+    typos (`@sine`, `@since ?.?.?`, `@since 19.0.0`, `@api ppublic`/`pulic`/`pub;ic`, `# steep:ingore`);
 
 ## [1.20.0] - 2026-10-12
 ### Added

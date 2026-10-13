@@ -88,7 +88,7 @@ locks", key layout, "Lock index", lock lookup modes, events, errors, conventions
   `lock_series_poc*` has no RBS.
 - Next version for `@since`/`@version`: the version the unreleased work already uses (`git diff <base> -- lib |
   grep -oE '^\+.*@(since|version) [0-9.]+'`, the CHANGELOG `[Unreleased]` code), otherwise the next minor of
-  `RedisQueuedLocks::VERSION` (`version.rb`). Don't take the maximum over `lib/`: the typo `@since 19.0.0` wins it.
+  `RedisQueuedLocks::VERSION` (`version.rb`); don't take the maximum over `lib/` (old tags can be wrong).
   A value older than `VERSION` on new code, or a behavior change without a `@version` bump, is a Minor finding.
 
 ## 3. Spec files are exempt (until the suite rework)
@@ -308,8 +308,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   check; `HMGET`→`DEL` without `WATCH` in `ReleaseLocksOf`/`FlushZombies`; `unlock` dropping the data of a reader
   re-acquired between its two round trips; `zombie_acquirers` vs `flush_zombies` acquirer sets.
 - Known debt: `WithAcqTimeout` → `LockInfo`/`QueueInfo`; rspec-retry, disabled coverage minimum, non-blocking runtime
-  type checks; `acquier.rbs` and the `yield_with_expire` RBS path; typos `swarm_element__termiante`,
-  `@api ppublic`/`pulic`/`pub;ic`, `@since 19.0.0`; `sleep(0.1)` readiness waits and missing logging in the swarm;
+  type checks; `acquier.rbs` and the `yield_with_expire` RBS path; the `swarm_element__termiante` typo;
+  `sleep(0.1)` readiness waits and missing logging in the swarm;
   one flusher per process; `EVAL` without `SCRIPT LOAD`; `# rubocop:disable all` around lock series.
 - "Recommendations (proposed, not yet project policy)" in the rule files: never violations; mention one only as an
   optional suggestion for touched code.

@@ -142,7 +142,7 @@ class RedisQueuedLocks::Swarm
   # @option lock_scan_size [Integer]
   # @return [Set<String>]
   #
-  # @api ppublic
+  # @api public
   # @since 1.9.0
   # @version 1.20.0
   def zombie_acquirers(

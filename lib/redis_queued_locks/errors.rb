@@ -63,7 +63,7 @@ module RedisQueuedLocks
   # @version 1.21.0
   class TimedLockIntermediateTimeoutError < Exception; end
 
-  # @api pulic
+  # @api public
   # @since 1.0.0
   class TimedLockTimeoutError < Error; end
 
@@ -87,7 +87,7 @@ module RedisQueuedLocks
   # @since 1.13.0
   class ConfigNotFoundError < ConfigError; end
 
-  # @api pub;ic
+  # @api public
   # @since 1.13.0
   class ConfigValidationError < ConfigError; end
 end

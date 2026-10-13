@@ -132,7 +132,7 @@ class RedisQueuedLocks::Client
   # @option lock_scan_size [Integer]
   # @return [Set<String>]
   #
-  # @api ppublic
+  # @api public
   # @since 1.9.0
   def zombie_acquirers(
     zombie_ttl: config['swarm.flush_zombies.zombie_ttl'],
@@ -1100,7 +1100,7 @@ class RedisQueuedLocks::Client
     host_id:,
     acquirer_id:,
     lock_scan_size: config['clear_locks_of__lock_scan_size'],
-    queue_scan_size: config['clear_locks_of__queue_scan_size'], # steep:ingore
+    queue_scan_size: config['clear_locks_of__queue_scan_size'],
     logger: config['logger'],
     instrumenter: config['instrumenter'],
     instrument: nil,
@@ -1138,7 +1138,8 @@ class RedisQueuedLocks::Client
   # Release all locks of the current acquirer/host and
   # remove the current acquirer/host from all queues;
   #
-  # @option batch_size [Integer]
+  # @option lock_scan_size [Integer]
+  # @option queue_scan_size [Integer]
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify] See `config['instrumenter']` docs for details.
   # @option instrument [NilClass,Any]
@@ -1160,7 +1161,7 @@ class RedisQueuedLocks::Client
   # @version 1.21.0
   def clear_current_locks(
     lock_scan_size: config['clear_locks_of__lock_scan_size'],
-    queue_scan_size: config['clear_locks_of__queue_scan_size'], # steep:ingore
+    queue_scan_size: config['clear_locks_of__queue_scan_size'],
     logger: config['logger'],
     instrumenter: config['instrumenter'],
     instrument: nil,

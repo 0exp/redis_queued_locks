@@ -114,7 +114,7 @@ Public element API (called by `Swarm`/`Supervisor` only):
 16. Swarm specs (in `describe 'swarm'`) deal with real timing: set short periods via config, kill elements with `try_kill!`, wait longer than `liveness_probing_period`, and match states loosely (`eq('running').or(eq('blocking'))`, `'sleep'`/`'run'`).
 
 ## Known quirks (don't copy; fix only in a dedicated change)
-- Typos: `swarm_element__termiante`, `@since 19.0.0` on `Threaded#reswarm_if_dead!`, `@api ppublic` on `Swarm#zombie_acquirers`, "lopp"/"teh" in comments.
+- Typo in a method name: `swarm_element__termiante` (rename it only in a dedicated change).
 - `swarm_loop__stop` is not used by the swarm itself, only by specs.
 - Killing an element while its main loop is still connecting to Redis makes Ruby's `Socket.tcp` helper threads print `terminated with exception ... IO#write` reports. This is harmless noise from the stdlib.
 - `sleep(0.1)` "give a timespot" waits in `swarm!`/`deswarm!`/`observe!` instead of real readiness signalling.
