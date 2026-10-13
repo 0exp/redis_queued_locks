@@ -66,7 +66,8 @@
   the client config (`transform_keys!`): with frozen hashes each start of the host probing and zombie flushing main loops
   failed with `FrozenError` (the hosts were not probed, zombie locks were not flushed); the hashes are not mutated now;
 - RBS: the `RedisQueuedLocks::Client#current_acq_id` alias was declared as `ccurrent_acq_id` (a typo: the public method was
-  missing in the signatures);
+  missing in the signatures); `RedisQueuedLocks::Client#queues_info` returned the `queues` union (`queueList | queuesInfo`)
+  instead of `queuesInfo`;
 - `RedisQueuedLocks::Resource.lock_key_from_queue` (a private debug helper for manual checks in a console, not used by
   the library) returned a wrong key for the read lock request queues (`rql:lock:ueue:<name>`); it supports the write and
   read lock request queues now and returns `nil` for other keys;

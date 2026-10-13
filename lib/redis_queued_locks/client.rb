@@ -1231,8 +1231,8 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.0.0
   # @version 1.21.0
-  def locks_info(scan_size: config['key_extraction_batch_size']) # steep:ignore
-    locks(scan_size:, with_info: true)
+  def locks_info(scan_size: config['key_extraction_batch_size'])
+    locks(scan_size:, with_info: true) #: RedisQueuedLocks::Acquirer::Locks::locksInfo
   end
 
   # @option scan_size [Integer]
@@ -1269,7 +1269,7 @@ class RedisQueuedLocks::Client
   # @api public
   # @since 1.0.0
   def queues_info(scan_size: config['key_extraction_batch_size'])
-    queues(scan_size:, with_info: true)
+    queues(scan_size:, with_info: true) #: RedisQueuedLocks::Acquirer::Queues::queuesInfo
   end
 
   # @option scan_size [Integer]

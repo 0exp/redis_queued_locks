@@ -236,7 +236,7 @@ module RedisQueuedLocks
               | (?scan_size: Integer, ?with_info: true) -> RQL::Acquirer::Queues::queuesInfo
               | (?scan_size: Integer, ?with_info: false) -> RQL::Acquirer::Queues::queueList
 
-    def queues_info: (?scan_size: Integer) -> RQL::Acquirer::Queues::queues
+    def queues_info: (?scan_size: Integer) -> RQL::Acquirer::Queues::queuesInfo
     def keys: (?scan_size: Integer) -> RQL::Acquirer::Keys::keyList
 
     def clear_dead_requests: (
