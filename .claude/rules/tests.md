@@ -7,7 +7,7 @@ paths:
 # Test rules (`spec/`)
 
 ## Observed conventions
-- All behavior specs live in one integration file, `spec/redis_queued_locks_spec.rb` (~3.4k lines), under `RSpec.describe RedisQueuedLocks`; groups: `describe 'Lock Series PoC'`, `describe 'swarm'`, `describe 'read/write locks'`, plus top-level `specify` blocks. The file header says it will be reworked; rspec-retry (5 retries) masks flakiness meanwhile.
+- All behavior specs live in one integration file, `spec/redis_queued_locks_spec.rb` (~5.6k lines), under `RSpec.describe RedisQueuedLocks`; groups: `describe 'Lock Series PoC'`, `describe 'swarm'`, `describe 'read/write locks'`, plus top-level `specify` blocks (all of them in the shared examples), and `describe 'lock index'` (outside the shared examples, see below). The file header says it will be reworked; rspec-retry (5 retries) masks flakiness meanwhile.
 - Known flaky example: `all in + notifications` (timing-dependent `sleep(1)`; passes in isolation).
 - `.rspec` auto-requires `spec_helper`; `spec_helper.rb` loads SimpleCov first (`setup_simplecov.rb`), then `rspec/retry`, `pry`, the gem.
 - RSpec config: random order (`Kernel.srand config.seed`), `disable_monkey_patching!`, `expect` syntax only, `filter_run_when_matching :focus`, `Thread.abort_on_exception = true`.

@@ -293,7 +293,7 @@ lib/redis_queued_locks/
   resource.rb                      keys and identities
   data.rb, errors.rb, utilities.rb, utilities/lock.rb, debugger/, version.rb
 sig/                               RBS mirror of lib/ + sig/vendor stubs (redis_client, active_support, semantic_logger)
-spec/                              redis_queued_locks_spec.rb (~4.9k lines, integration: shared examples run with both lock lookup modes), spec_helper.rb, setup_simplecov.rb
+spec/                              redis_queued_locks_spec.rb (~5.6k lines, integration: shared examples run with both lock lookup modes), spec_helper.rb, setup_simplecov.rb
 .github/workflows/                 tests, lint, typecheck-static, typecheck-runtime
 bin/console, bin/setup             dev scripts
 Rakefile, Steepfile, rbs_collection.yaml
