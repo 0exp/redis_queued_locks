@@ -1,4 +1,6 @@
 ## [Unreleased]
+
+## [1.21.0] - 2026-10-13
 ### Added
 - Logging and instrumentation of all operations that change Redis keys (the swarm is not covered yet):
   - the lock acquirement: the new `redis_queued_locks.lock_obtaining_failed` instrumentation event and log
