@@ -196,6 +196,7 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
 
   # (seconds) (supports nil)
   # - nil means "no timeout" and you are only limited by "retry_count" config;
+  # - 0 is the same as nil (no timeout);
   config['try_to_lock_timeout'] = 10
 
   # (milliseconds) (default: 5_000)
@@ -536,6 +537,7 @@ def lock(
   - pre-configured in `config['lock_index_grace_period']`;
 - `timeout` - (optional) `[Integer,NilClass]`
   - Time period a client should try to acquire the lock (in seconds). Nil means "without timeout".
+  - `0` is the same as `nil` (without timeout);
   - pre-configured in `config['try_to_lock_timeout']`;
   - the timeout can not be swallowed by `rescue` of your logger/instrumenter (see `timed` below);
 - `timed` - (optiona) `[Boolean]`

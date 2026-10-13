@@ -185,7 +185,8 @@ class RedisQueuedLocks::Client
   #     mode: the lock index is maintained by all lock acquirements of the client);
   #   - pre-configured in `config['lock_index_grace_period']`;
   # @option timeout [Integer,NilClass]
-  #   Time period whe should try to acquire the lock (in seconds). Nil means "without timeout".
+  #   Time period whe should try to acquire the lock (in seconds). Nil means "without timeout"
+  #   (`0` is the same as `nil`).
   # @option timed [Boolean]
   #   Limit the invocation time period of the passed block of code by the lock's TTL.
   # @option retry_count [Integer,NilClass]

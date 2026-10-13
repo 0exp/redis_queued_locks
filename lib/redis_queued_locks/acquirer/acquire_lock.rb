@@ -57,7 +57,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   - pre-configured in `config['lock_index_grace_period']`;
     #   - used only with the enabled lock index (`lock_index_enabled`);
     # @option timeout [Integer,NilClass]
-    #   Time period whe should try to acquire the lock (in seconds).
+    #   Time period whe should try to acquire the lock (in seconds). Nil means "without timeout"
+    #   (`0` is the same as `nil`: `Timeout.timeout(0)` sets no timeout).
     # @option timed [Boolean]
     #   Limit the invocation time period of the passed block of code by the lock's TTL.
     # @option retry_count [Integer,NilClass]
