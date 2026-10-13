@@ -247,6 +247,51 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         )
       end
 
+      # Step 0.1: prevent :queue_ttl, :timeout, :retry_* and :lock_index_grace_period
+      #   incompatibilities (the same ranges as their config keys):
+      #   - a non-positive queue ttl drops the own lock request in the queueing pipeline (the lock
+      #     request is always dead);
+      #   - a negative timeout/retry delay/retry jitter fails `Timeout.timeout`/`sleep` in the
+      #     middle of the acquirement (`0` timeout is the same as `nil`: no timeout);
+      if !queue_ttl.is_a?(::Integer) || queue_ttl <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:queue_ttl` argument should be a positive Integer, got #{queue_ttl.inspect}."
+        )
+      end
+      if timeout != nil && (!timeout.is_a?(::Integer) || timeout < 0)
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:timeout` argument should be nil or a non-negative Integer, got #{timeout.inspect}."
+        )
+      end
+      if retry_count != nil && (!retry_count.is_a?(::Integer) || retry_count < 0)
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:retry_count` argument should be nil or a non-negative Integer, " \
+          "got #{retry_count.inspect}."
+        )
+      end
+      if !retry_delay.is_a?(::Integer) || retry_delay < 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:retry_delay` argument should be a non-negative Integer, got #{retry_delay.inspect}."
+        )
+      end
+      if !retry_jitter.is_a?(::Integer) || retry_jitter < 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:retry_jitter` argument should be a non-negative Integer, got #{retry_jitter.inspect}."
+        )
+      end
+      if !lock_index_grace_period.is_a?(::Integer) || lock_index_grace_period < 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:lock_index_grace_period` argument should be a non-negative Integer, " \
+          "got #{lock_index_grace_period.inspect}."
+        )
+      end
+
       # Step 0.2: prevent :meta incompatabiltiies (structure)
       #   - Symbol keys are written to the lock data as Strings (`Symbol#name`, as redis-client
       #     does it) and would overwrite the reserved lock data fields too;

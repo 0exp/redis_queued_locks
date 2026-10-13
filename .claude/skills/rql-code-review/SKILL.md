@@ -214,7 +214,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   key / acquirer id in the message.
 - Keys only via `Resource.prepare_*`, `*_PATTERN`, `SWARM_KEY`, `LOCK_INDEX_KEY` (`logic.md#5`): flag every new
   `'rql:...'` literal outside `resource.rb`.
-- Config: `setting` + `validate` in `config.rb` (booleans `val == true || val == false`, Integers with ranges), dotted
+- Config: `setting` + `validate` in `config.rb` (booleans `val == true || val == false`, Integers with ranges; per-call
+  numeric options validated with the same ranges in the operation module, `logic.md#7`), dotted
   keys for groups, unit in a trailing `# NOTE:` comment, read as `config['key']` (`logic.md#7`). Errors:
   `class XError < Error; end` in `errors.rb`, each under the global base of its branch (`Error`, `ArgumentError`,
   `Exception`: super exceptional cases only, with the reason in the comment; `logic.md#15`). Runtime dependencies:

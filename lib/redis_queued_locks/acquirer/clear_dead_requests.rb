@@ -62,6 +62,21 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
       instr_sampler,
       instr_sample_this
     )
+      # NOTE: (arguments) the same ranges as the config keys: zero/negative sizes fail SCAN/ZSCAN
+      #   (`COUNT 0`) and the batching, a non-positive dead ttl drops all lock requests;
+      if !scan_size.is_a?(::Integer) || scan_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:scan_size` argument should be a positive Integer, got #{scan_size.inspect}."
+        )
+      end
+      if !dead_ttl.is_a?(::Integer) || dead_ttl <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:dead_ttl` argument should be a positive Integer, got #{dead_ttl.inspect}."
+        )
+      end
+
       rel_start_time = clock_gettime
       processed_queues = fully_clear_dead_requests(
         redis_client, scan_size, dead_ttl, lock_index_enabled

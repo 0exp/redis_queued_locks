@@ -27,6 +27,15 @@ module RedisQueuedLocks::Acquirer::Locks
     # @since 1.0.0
     # @version 1.21.0
     def locks(redis_client, scan_size:, with_info:, lock_index_enabled:)
+      # NOTE: (arguments) the same range as the config key: zero/negative sizes fail SCAN/ZSCAN
+      #   (`COUNT 0`) and the batching (`each_slice(0)`);
+      if !scan_size.is_a?(::Integer) || scan_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:scan_size` argument should be a positive Integer, got #{scan_size.inspect}."
+        )
+      end
+
       redis_client.with do |rconn|
         lock_keys =
           lock_index_enabled ? index_locks(rconn, scan_size) : scan_locks(rconn, scan_size)

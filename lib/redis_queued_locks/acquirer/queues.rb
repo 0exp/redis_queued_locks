@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.20.0
+# @version 1.21.0
 module RedisQueuedLocks::Acquirer::Queues
   class << self
     # @param redis_client [RedisClient]
@@ -15,8 +15,17 @@ module RedisQueuedLocks::Acquirer::Queues
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.21.0
     def queues(redis_client, scan_size:, with_info:, lock_index_enabled:)
+      # NOTE: (arguments) the same range as the config key: zero/negative sizes fail SCAN/ZSCAN
+      #   (`COUNT 0`) and the batching (`each_slice(0)`);
+      if !scan_size.is_a?(::Integer) || scan_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:scan_size` argument should be a positive Integer, got #{scan_size.inspect}."
+        )
+      end
+
       redis_client.with do |rconn|
         lock_queues =
           lock_index_enabled ? index_queues(rconn, scan_size) : scan_queues(rconn, scan_size)

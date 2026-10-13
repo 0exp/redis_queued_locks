@@ -65,6 +65,28 @@ module RedisQueuedLocks::Acquirer::ReindexLocks
       instr_sampler,
       instr_sample_this
     )
+      # NOTE: (arguments) the same ranges as the config keys: zero/negative sizes fail SCAN
+      #   (`COUNT 0`), a non-positive queue ttl expires the lock queues without TTL at once;
+      if !scan_size.is_a?(::Integer) || scan_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:scan_size` argument should be a positive Integer, got #{scan_size.inspect}."
+        )
+      end
+      if !queue_ttl.is_a?(::Integer) || queue_ttl <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:queue_ttl` argument should be a positive Integer, got #{queue_ttl.inspect}."
+        )
+      end
+      if !lock_index_grace_period.is_a?(::Integer) || lock_index_grace_period < 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:lock_index_grace_period` argument should be a non-negative Integer, " \
+          "got #{lock_index_grace_period.inspect}."
+        )
+      end
+
       idx_start_time = clock_gettime
       idx_key_cnt = fully_reindex_locks(redis_client, scan_size, queue_ttl, lock_index_grace_period)
       time_at = Time.now.to_f

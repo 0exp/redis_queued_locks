@@ -2,6 +2,7 @@
 
 # @api public
 # @since 1.9.0
+# @version 1.21.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Swarm
   require_relative 'swarm/redis_client_builder'
@@ -76,7 +77,16 @@ class RedisQueuedLocks::Swarm
   #
   # @api public
   # @since 1.9.0
+  # @version 1.21.0
   def swarm_info(zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'])
+    # NOTE: (arguments) the same ranges as the config keys;
+    if !zombie_ttl.is_a?(::Integer) || zombie_ttl <= 0
+      raise(
+        RedisQueuedLocks::SwarmArgumentError,
+        "`:zombie_ttl` argument should be a positive Integer, got #{zombie_ttl.inspect}."
+      )
+    end
+
     RedisQueuedLocks::Swarm::Acquirers.acquirers(
       rql_client.redis_client,
       zombie_ttl
@@ -104,12 +114,32 @@ class RedisQueuedLocks::Swarm
   #
   # @api public
   # @since 1.9.0
-  # @version 1.20.0
+  # @version 1.21.0
   def flush_zombies(
     zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: rql_client.config['swarm.flush_zombies.zombie_lock_scan_size'],
     queue_scan_size: rql_client.config['swarm.flush_zombies.zombie_queue_scan_size']
   )
+    # NOTE: (arguments) the same ranges as the config keys;
+    if !zombie_ttl.is_a?(::Integer) || zombie_ttl <= 0
+      raise(
+        RedisQueuedLocks::SwarmArgumentError,
+        "`:zombie_ttl` argument should be a positive Integer, got #{zombie_ttl.inspect}."
+      )
+    end
+    if !lock_scan_size.is_a?(::Integer) || lock_scan_size <= 0
+      raise(
+        RedisQueuedLocks::SwarmArgumentError,
+        "`:lock_scan_size` argument should be a positive Integer, got #{lock_scan_size.inspect}."
+      )
+    end
+    if !queue_scan_size.is_a?(::Integer) || queue_scan_size <= 0
+      raise(
+        RedisQueuedLocks::SwarmArgumentError,
+        "`:queue_scan_size` argument should be a positive Integer, got #{queue_scan_size.inspect}."
+      )
+    end
+
     RedisQueuedLocks::Swarm::FlushZombies.flush_zombies(
       rql_client.redis_client,
       zombie_ttl,
@@ -125,11 +155,25 @@ class RedisQueuedLocks::Swarm
   #
   # @api public
   # @since 1.9.0
-  # @version 1.20.0
+  # @version 1.21.0
   def zombie_locks(
     zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: rql_client.config['swarm.flush_zombies.zombie_lock_scan_size']
   )
+    # NOTE: (arguments) the same ranges as the config keys;
+    if !zombie_ttl.is_a?(::Integer) || zombie_ttl <= 0
+      raise(
+        RedisQueuedLocks::SwarmArgumentError,
+        "`:zombie_ttl` argument should be a positive Integer, got #{zombie_ttl.inspect}."
+      )
+    end
+    if !lock_scan_size.is_a?(::Integer) || lock_scan_size <= 0
+      raise(
+        RedisQueuedLocks::SwarmArgumentError,
+        "`:lock_scan_size` argument should be a positive Integer, got #{lock_scan_size.inspect}."
+      )
+    end
+
     RedisQueuedLocks::Swarm::ZombieInfo.zombie_locks(
       rql_client.redis_client,
       zombie_ttl,
@@ -144,11 +188,25 @@ class RedisQueuedLocks::Swarm
   #
   # @api public
   # @since 1.9.0
-  # @version 1.20.0
+  # @version 1.21.0
   def zombie_acquirers(
     zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: rql_client.config['swarm.flush_zombies.zombie_lock_scan_size']
   )
+    # NOTE: (arguments) the same ranges as the config keys;
+    if !zombie_ttl.is_a?(::Integer) || zombie_ttl <= 0
+      raise(
+        RedisQueuedLocks::SwarmArgumentError,
+        "`:zombie_ttl` argument should be a positive Integer, got #{zombie_ttl.inspect}."
+      )
+    end
+    if !lock_scan_size.is_a?(::Integer) || lock_scan_size <= 0
+      raise(
+        RedisQueuedLocks::SwarmArgumentError,
+        "`:lock_scan_size` argument should be a positive Integer, got #{lock_scan_size.inspect}."
+      )
+    end
+
     RedisQueuedLocks::Swarm::ZombieInfo.zombie_acquirers(
       rql_client.redis_client,
       zombie_ttl,
@@ -162,7 +220,16 @@ class RedisQueuedLocks::Swarm
   #
   # @api public
   # @since 1.9.0
+  # @version 1.21.0
   def zombie_hosts(zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'])
+    # NOTE: (arguments) the same ranges as the config keys;
+    if !zombie_ttl.is_a?(::Integer) || zombie_ttl <= 0
+      raise(
+        RedisQueuedLocks::SwarmArgumentError,
+        "`:zombie_ttl` argument should be a positive Integer, got #{zombie_ttl.inspect}."
+      )
+    end
+
     RedisQueuedLocks::Swarm::ZombieInfo.zombie_hosts(rql_client.redis_client, zombie_ttl)
   end
 
@@ -172,11 +239,25 @@ class RedisQueuedLocks::Swarm
   #
   # @api public
   # @since 1.9.0
-  # @version 1.20.0
+  # @version 1.21.0
   def zombies_info(
     zombie_ttl: rql_client.config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: rql_client.config['swarm.flush_zombies.zombie_lock_scan_size']
   )
+    # NOTE: (arguments) the same ranges as the config keys;
+    if !zombie_ttl.is_a?(::Integer) || zombie_ttl <= 0
+      raise(
+        RedisQueuedLocks::SwarmArgumentError,
+        "`:zombie_ttl` argument should be a positive Integer, got #{zombie_ttl.inspect}."
+      )
+    end
+    if !lock_scan_size.is_a?(::Integer) || lock_scan_size <= 0
+      raise(
+        RedisQueuedLocks::SwarmArgumentError,
+        "`:lock_scan_size` argument should be a positive Integer, got #{lock_scan_size.inspect}."
+      )
+    end
+
     RedisQueuedLocks::Swarm::ZombieInfo.zombies_info(
       rql_client.redis_client,
       zombie_ttl,

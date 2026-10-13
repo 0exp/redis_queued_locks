@@ -79,6 +79,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
+  # @version 1.21.0
   def swarm_info(zombie_ttl: config['swarm.flush_zombies.zombie_ttl'])
     swarm.swarm_info(zombie_ttl:)
   end
@@ -107,6 +108,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
+  # @version 1.21.0
   def flush_zombies(
     zombie_ttl: config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: config['swarm.flush_zombies.zombie_lock_scan_size'],
@@ -121,6 +123,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
+  # @version 1.21.0
   def zombie_locks(
     zombie_ttl: config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: config['swarm.flush_zombies.zombie_lock_scan_size']
@@ -134,6 +137,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
+  # @version 1.21.0
   def zombie_acquirers(
     zombie_ttl: config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: config['swarm.flush_zombies.zombie_lock_scan_size']
@@ -146,6 +150,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
+  # @version 1.21.0
   def zombie_hosts(zombie_ttl: config['swarm.flush_zombies.zombie_ttl'])
     swarm.zombie_hosts(zombie_ttl:)
   end
@@ -159,7 +164,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.9.0
-  # @version 1.17.0
+  # @version 1.21.0
   def zombies_info(
     zombie_ttl: config['swarm.flush_zombies.zombie_ttl'],
     lock_scan_size: config['swarm.flush_zombies.zombie_lock_scan_size']
@@ -1255,7 +1260,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def queues(scan_size: config['key_extraction_batch_size'], with_info: false)
     RedisQueuedLocks::Acquirer::Queues.queues(
       redis_client, scan_size:, with_info:, lock_index_enabled: config['lock_index_enabled']
@@ -1269,6 +1274,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
+  # @version 1.21.0
   def queues_info(scan_size: config['key_extraction_batch_size'])
     queues(scan_size:, with_info: true) #: RedisQueuedLocks::Acquirer::Queues::queuesInfo
   end
@@ -1281,7 +1287,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.20.0
+  # @version 1.21.0
   def keys(scan_size: config['key_extraction_batch_size'])
     RedisQueuedLocks::Acquirer::Keys.keys(
       redis_client, scan_size:, lock_index_enabled: config['lock_index_enabled']

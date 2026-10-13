@@ -2116,6 +2116,99 @@ RSpec.shared_examples 'redis_queued_locks' do
     expect(client.keys).to be_empty
   end
 
+  specify 'per-call numeric arguments: the same ranges as their config keys' do
+    client = RedisQueuedLocks::Client.new(redis)
+    non_positive = [0, -1]
+    negative = [-1]
+
+    aggregate_failures 'lock acquirement (#lock, #lock!, #lock_series)' do
+      {
+        queue_ttl: non_positive,
+        timeout: negative,
+        retry_count: negative,
+        retry_delay: negative,
+        retry_jitter: negative,
+        lock_index_grace_period: negative
+      }.each do |option, values|
+        values.each do |value|
+          options = { option => value }
+          expect do
+            client.lock('args.lock', **options)
+          end.to raise_error(RedisQueuedLocks::ArgumentError, /`:#{option}`/)
+          expect do
+            client.lock!('args.lock', **options)
+          end.to raise_error(RedisQueuedLocks::ArgumentError, /`:#{option}`/)
+          expect do
+            client.lock_series('args.series.a', 'args.series.b', **options)
+          end.to raise_error(RedisQueuedLocks::ArgumentError, /`:#{option}`/)
+        end
+      end
+      expect(client.keys).to be_empty
+    end
+
+    aggregate_failures 'scan/batch sizes and ttls of the lock-iterating operations' do
+      non_positive.each do |value|
+        {
+          scan_size: [
+            -> { client.locks(scan_size: value) },
+            -> { client.locks_info(scan_size: value) },
+            -> { client.queues(scan_size: value) },
+            -> { client.queues_info(scan_size: value) },
+            -> { client.keys(scan_size: value) },
+            -> { client.clear_dead_requests(scan_size: value) },
+            -> { client.reindex_locks(scan_size: value) }
+          ],
+          batch_size: [-> { client.clear_locks(batch_size: value) }],
+          lock_scan_size: [
+            -> { client.clear_current_locks(lock_scan_size: value) },
+            lambda do
+              client.clear_locks_of(
+                host_id: client.current_host_id, acquirer_id: client.current_acquirer_id,
+                lock_scan_size: value
+              )
+            end
+          ],
+          queue_scan_size: [-> { client.clear_current_locks(queue_scan_size: value) }],
+          dead_ttl: [-> { client.clear_dead_requests(dead_ttl: value) }],
+          queue_ttl: [-> { client.reindex_locks(queue_ttl: value) }]
+        }.each do |option, operations|
+          operations.each do |operation|
+            expect(&operation).to raise_error(RedisQueuedLocks::ArgumentError, /`:#{option}`/)
+          end
+        end
+      end
+      expect do
+        client.reindex_locks(lock_index_grace_period: -1)
+      end.to raise_error(RedisQueuedLocks::ArgumentError, /`:lock_index_grace_period`/)
+    end
+
+    aggregate_failures 'swarm actions (RedisQueuedLocks::SwarmArgumentError)' do
+      non_positive.each do |value|
+        {
+          zombie_ttl: [
+            -> { client.swarm_info(zombie_ttl: value) },
+            -> { client.flush_zombies(zombie_ttl: value) },
+            -> { client.zombie_locks(zombie_ttl: value) },
+            -> { client.zombie_acquirers(zombie_ttl: value) },
+            -> { client.zombie_hosts(zombie_ttl: value) },
+            -> { client.zombies_info(zombie_ttl: value) }
+          ],
+          lock_scan_size: [
+            -> { client.flush_zombies(lock_scan_size: value) },
+            -> { client.zombie_locks(lock_scan_size: value) },
+            -> { client.zombie_acquirers(lock_scan_size: value) },
+            -> { client.zombies_info(lock_scan_size: value) }
+          ],
+          queue_scan_size: [-> { client.flush_zombies(queue_scan_size: value) }]
+        }.each do |option, operations|
+          operations.each do |operation|
+            expect(&operation).to raise_error(RedisQueuedLocks::SwarmArgumentError, /`:#{option}`/)
+          end
+        end
+      end
+    end
+  end
+
   specify 'config validation: positive ttls, periods and batch sizes' do
     positive_keys = %w[
       default_lock_ttl default_queue_ttl dead_request_ttl

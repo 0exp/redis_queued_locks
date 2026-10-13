@@ -464,6 +464,10 @@ end
 - [current_host_id](#current_host_id)
 - [possible_host_ids](#possible_host_ids)
 
+The numeric options of the methods (ttls, timeouts, retries, scan and batch sizes, zombie ttl) are validated with the same
+ranges as their `config` keys (`RedisQueuedLocks::ArgumentError`, `RedisQueuedLocks::SwarmArgumentError` for the swarm
+methods).
+
 ---
 
 #### #lock - obtain a lock

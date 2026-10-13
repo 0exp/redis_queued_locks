@@ -103,6 +103,23 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
         )
       end
 
+      # NOTE: the retry delay and jitter are parts of the lock ttls of the series (validated before
+      #   the lock ttl calculation; other options are validated by
+      #   RedisQueuedLocks::Acquirer::AcquireLock on the first lock of the series, before any lock
+      #   is obtained);
+      if !retry_delay.is_a?(::Integer) || retry_delay < 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:retry_delay` argument should be a non-negative Integer, got #{retry_delay.inspect}."
+        )
+      end
+      if !retry_jitter.is_a?(::Integer) || retry_jitter < 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:retry_jitter` argument should be a non-negative Integer, got #{retry_jitter.inspect}."
+        )
+      end
+
       locks_count = lock_names.size
 
       lock_acquirement_operations = lock_names.each_with_index.map do |lock_name, position|

@@ -114,6 +114,22 @@ module RedisQueuedLocks::Acquirer::ReleaseLocksOf
       instr_sampler,
       instr_sample_this
     )
+      # NOTE: (arguments) the same ranges as the config keys: zero/negative sizes fail SCAN/ZSCAN
+      #   (`COUNT 0`) and the batching (`each_slice(0)`);
+      if !lock_scan_size.is_a?(::Integer) || lock_scan_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:lock_scan_size` argument should be a positive Integer, got #{lock_scan_size.inspect}."
+        )
+      end
+      if !queue_scan_size.is_a?(::Integer) || queue_scan_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:queue_scan_size` argument should be a positive Integer, " \
+          "got #{queue_scan_size.inspect}."
+        )
+      end
+
       rel_start_time = clock_gettime
 
       # steep:ignore:start

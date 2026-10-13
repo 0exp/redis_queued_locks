@@ -120,7 +120,12 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   the retry delay and jitter); `config['default_lock_ttl']` must be positive too; `extend_lock_ttl`
   `milliseconds` must be a positive Integer (a non-positive one would decrease/delete the lock);
   `meta` keys must not be reserved lock data keys, String or Symbol (Symbol keys are written as
-  Strings: `Symbol#name`; the same check in `AcquireLock` and `LockSeriesPoC`).
+  Strings: `Symbol#name`; the same check in `AcquireLock` and `LockSeriesPoC`); the other per-call
+  numeric options are validated with the ranges of their config keys (`logic.md#7`): `queue_ttl` > 0,
+  `timeout`/`retry_count` nil or >= 0, `retry_delay`/`retry_jitter`/`lock_index_grace_period` >= 0
+  (`AcquireLock`; `LockSeriesPoC` checks the retry delay/jitter before the lock ttl calculation),
+  scan/batch sizes, `dead_ttl`, reindexing `queue_ttl` > 0 (operation modules), `zombie_ttl` and the
+  zombie scan sizes > 0 (`Swarm` facade: `SwarmArgumentError`).
 - RW-aware operations: `unlock` (write lock + readers + reader data + both queues + the lock index entry (the enabled lock index), same result shape; one release
   `MULTI` that also reads the readers registry, then one `DEL` of the released readers' data only when readers existed:
   1 round trip without readers; trade-off: a released reader that obtains a new read lock in between loses its new data),

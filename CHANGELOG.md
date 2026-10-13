@@ -75,6 +75,17 @@
   (`Timeout::ExitException`, e.g. `Timeout.timeout(5) { rql.lock("x") { ... } }`) returned to the connection pool with
   the active `WATCH` (redis-client sends `UNWATCH` only on `StandardError`s): the next transaction on the connection could
   be aborted (e.g. a lock release); the connection is closed now (like with the internal timeouts);
+- the per-call numeric options were not validated (zero/negative values broke the operations like the same config values
+  before the config validation fix): they are validated with the same ranges as their config keys now
+  (`RedisQueuedLocks::ArgumentError`; `RedisQueuedLocks::SwarmArgumentError` for the swarm methods), before any Redis
+  command:
+  - `#lock`/`#lock!`/`#lock_series`/`#lock_series!`: `queue_ttl` > 0, `timeout` and `retry_count` - `nil` or >= 0,
+    `retry_delay`, `retry_jitter` and `lock_index_grace_period` >= 0;
+  - `#locks`, `#locks_info`, `#queues`, `#queues_info`, `#keys`, `#clear_dead_requests`, `#reindex_locks`: `scan_size` > 0;
+    `#clear_locks`: `batch_size` > 0; `#clear_locks_of`/`#clear_current_locks`: `lock_scan_size`, `queue_scan_size` > 0;
+    `#clear_dead_requests`: `dead_ttl` > 0; `#reindex_locks`: `queue_ttl` > 0, `lock_index_grace_period` >= 0;
+  - `#swarm_info`, `#flush_zombies`, `#zombie_locks`, `#zombie_acquirers`, `#zombie_hosts`, `#zombies_info`: `zombie_ttl`
+    and the scan sizes > 0;
 - README/YARD documentation that did not match the code:
   - config keys: `config['instr_sampling_enabled']` in the configuration example (was `nstr_sampling_enabled`),
     `config['log_sampling_enabled']` (was `log_samplign_enabled`), `*_sampling_enabled` (was `*_sampling_enalbed`);

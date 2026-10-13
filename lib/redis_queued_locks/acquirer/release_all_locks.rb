@@ -99,6 +99,15 @@ module RedisQueuedLocks::Acquirer::ReleaseAllLocks
       instr_sampler,
       instr_sample_this
     )
+      # NOTE: (arguments) the same ranges as the config keys: zero/negative sizes fail SCAN/ZSCAN
+      #   (`COUNT 0`) and the batching (`each_slice(0)`);
+      if !batch_size.is_a?(::Integer) || batch_size <= 0
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:batch_size` argument should be a positive Integer, got #{batch_size.inspect}."
+        )
+      end
+
       rel_start_time = clock_gettime
       # steep:ignore:start
       fully_release_all_locks(redis, batch_size, lock_index_enabled) => { ok:, result: }
