@@ -465,8 +465,8 @@ end
 - [possible_host_ids](#possible_host_ids)
 
 The numeric options of the methods (ttls, timeouts, retries, scan and batch sizes, zombie ttl) are validated with the same
-ranges as their `config` keys (`RedisQueuedLocks::ArgumentError`, `RedisQueuedLocks::SwarmArgumentError` for the swarm
-methods).
+types and ranges as their `config` keys: `Integer` values only (`timeout: 0.5` is rejected), `RedisQueuedLocks::ArgumentError`
+(`RedisQueuedLocks::SwarmArgumentError` for the swarm methods) otherwise.
 
 ---
 

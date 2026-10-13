@@ -12,6 +12,22 @@
     `explicit_read_lock_release` (`#unlock_read`), `explicit_all_locks_release` (`#clear_locks`), `release_locks_of`
     (`#clear_locks_of`/`#clear_current_locks`) events (the `logger:` option of these methods was not used);
   - `#reindex_locks`: `logger:`, `instrumenter:`, `instrument:` and the log/instrumentation sampling options;
+### Changed
+- stricter validation (the details are in "Fixed"): invalid values raise `RedisQueuedLocks::ArgumentError`
+  (`RedisQueuedLocks::SwarmArgumentError` for the swarm methods, `RedisQueuedLocks::ConfigValidationError` for the config)
+  instead of the previous silent misbehavior:
+  - `ttl` of `#lock`/`#lock!`/`#lock_series`/`#lock_series!` should be a positive `Integer` in both modes (`ttl: 0` was
+    accepted in the write mode);
+  - `#extend_lock_ttl`: `milliseconds` should be a positive `Integer` (`extend_lock_ttl(name, 0)` was a successful no-op);
+  - the per-call numeric options should be `Integer`s in the ranges of their config keys: `Float` values (e.g.
+    `timeout: 0.5`, `retry_delay: 10.0`) are rejected now;
+  - the config: positive TTLs, periods and batch/scan sizes;
+  - `:meta`: reserved lock data keys are rejected as Symbol keys too;
+- the internal timeout errors of `timed: true` and `timeout` inherit from `RedisQueuedLocks::Exception < ::Exception`
+  (were `Timeout::Error`s): a `rescue Timeout::Error` (or `rescue => e`) inside the block does not catch the lock timeout
+  anymore; the public errors/results are the same;
+- `#locks_info`: the info of write locks has the `"lock_key"` field (like `#lock_info`);
+- instrumentation payloads: `explicit_lock_release`, `explicit_all_locks_release` and `release_locks_of` have `instrument`;
 ### Fixed
 - the `instrument:` option of `#unlock`, `#clear_locks`, `#clear_locks_of`/`#clear_current_locks` (README: "passed to
   the instrumenter's payload") was not passed to the payload (`#unlock` did not even forward it); the payloads of
@@ -78,7 +94,8 @@
 - the per-call numeric options were not validated (zero/negative values broke the operations like the same config values
   before the config validation fix): they are validated with the same ranges as their config keys now
   (`RedisQueuedLocks::ArgumentError`; `RedisQueuedLocks::SwarmArgumentError` for the swarm methods), before any Redis
-  command:
+  command; the values should be `Integer`s (like the config values: `Float` values such as `timeout: 0.5` or
+  `retry_delay: 10.0` are rejected now):
   - `#lock`/`#lock!`/`#lock_series`/`#lock_series!`: `queue_ttl` > 0, `timeout` and `retry_count` - `nil` or >= 0,
     `retry_delay`, `retry_jitter` and `lock_index_grace_period` >= 0;
   - `#locks`, `#locks_info`, `#queues`, `#queues_info`, `#keys`, `#clear_dead_requests`, `#reindex_locks`: `scan_size` > 0;
@@ -101,7 +118,8 @@
   - the `#lock!` link of the Usage list and the `#lock` link of `#lock_info`, the Usage list and the table of contents: `unlock_read`, `clear_locks_of`,
     `clear_current_locks`, `reindex_locks`;
   - YARD: the `#clear_current_locks` options (`lock_scan_size`, `queue_scan_size` instead of the missing `batch_size`), the tag
-    typos (`@sine`, `@since ?.?.?`, `@since 19.0.0`, `@api ppublic`/`pulic`/`pub;ic`, `# steep:ingore`);
+    typos (`@sine`, `@since ?.?.?`, `@since 19.0.0`, `@api ppublic`/`pulic`/`pub;ic`); the inert `# steep:ingore` comments
+    are removed;
 
 ## [1.20.0] - 2026-10-12
 ### Added
