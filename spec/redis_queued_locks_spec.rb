@@ -2272,6 +2272,32 @@ RSpec.shared_examples 'redis_queued_locks' do
     expect(test_notifier.notifications[1][:payload][:instrument]).to eq(nil)
   end
 
+  specify 'log and instrumentation samplers: <sampling_percent>% of invocations' do
+    samplers = [RedisQueuedLocks::Logging::Sampler, RedisQueuedLocks::Instrument::Sampler]
+
+    aggregate_failures 'the boundaries (one of 100 equally probable values)' do
+      samplers.each do |sampler|
+        allow(SecureRandom).to receive(:rand).with(100).and_return(0)
+        expect(sampler.sampling_happened?(0)).to eq(false)
+        expect(sampler.sampling_happened?(1)).to eq(true)
+        allow(SecureRandom).to receive(:rand).with(100).and_return(15)
+        expect(sampler.sampling_happened?(15)).to eq(false)
+        expect(sampler.sampling_happened?(16)).to eq(true)
+        allow(SecureRandom).to receive(:rand).with(100).and_return(99)
+        expect(sampler.sampling_happened?(99)).to eq(false)
+        expect(sampler.sampling_happened?(100)).to eq(true)
+      end
+    end
+
+    aggregate_failures '0% => never, 100% => always' do
+      allow(SecureRandom).to receive(:rand).and_call_original
+      samplers.each do |sampler|
+        expect(Array.new(10_000) { sampler.sampling_happened?(0) }).to all(eq(false))
+        expect(Array.new(10_000) { sampler.sampling_happened?(100) }).to all(eq(true))
+      end
+    end
+  end
+
   specify 'operations that change keys: one log and one instrumentation event per operation' do
     test_notifier = Class.new do
       attr_reader :notifications

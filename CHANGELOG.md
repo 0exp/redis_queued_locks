@@ -58,6 +58,10 @@
 - `#locks_info` (and `#locks(with_info: true)`): the info of write locks had no `"lock_key"` field (the info of read locks and
   `#lock_info` have it), so the info shape depended on the lock mode; the write lock info has `"lock_key"` now (the same
   fields as `#lock_info`);
+- `RedisQueuedLocks::Logging::Sampler` and `RedisQueuedLocks::Instrument::Sampler` (the default log/instrumentation samplers)
+  sampled `sampling_percent` of 101 values (`SecureRandom.rand(0..100)`): `0%` sampled ~1% of the cases (instead of none),
+  `15%` sampled ~15.8%; they sample exactly `sampling_percent` of 100 values now (`0%` - never, `100%` - always);
+  the private `SAMPLING_PERCENT_RANGE` constants are removed;
 - README/YARD documentation that did not match the code:
   - config keys: `config['instr_sampling_enabled']` in the configuration example (was `nstr_sampling_enabled`),
     `config['log_sampling_enabled']` (was `log_samplign_enabled`), `*_sampling_enabled` (was `*_sampling_enalbed`);
