@@ -66,6 +66,10 @@ Related rule files (loaded for narrower paths):
     - lock mutation operations (release, extension, cleanup, reindexing): exactly one log line and one instrumentation event per operation with the time of the whole work of the root operation module called by the public `Client` method (the two-layer pattern of `acquirer.md`: the timer wraps the `fully_*` helper), never of its internal parts; the log line and the event have the same name (`redis_queued_locks.<event>`) and the same data in the same order (the log has no `instrument`), the payload ends with the user's `instrument`; they are written inline in the module (`run_non_critical`, gated by `Logging.should_log?` / `Instrument.should_instrument?`);
     - every such public `Client` method takes `logger:`, `instrumenter:`, `instrument:` and the log/instrumentation sampling keywords (defaults from `config`) and forwards them by name to the operation module;
     - known debt: the swarm elements and the manual swarm actions (`ProbeHosts`, `FlushZombies`: `#probe_hosts`, `#flush_zombies`) are neither logged nor instrumented yet (the flusher Ractor can not get the user's logger/instrumenter).
+17. Debug methods of `Resource`: `Resource` may keep methods that the library does not use when they are justified for debugging: they let you check a subtle part of the logic by hand at runtime (in a console), e.g. `lock_key_from_queue` maps a lock request queue of any mode to its lock. Each of them:
+    - has a `# NOTE: (debug)` comment in its YARD block: that it is not used by the library and what it checks (with a console example);
+    - is correct for every key family it can get (write and read keys), has the full YARD block, the RBS signature and a spec;
+    - is not a dead code finding; an unused method without the `(debug)` note is dead code (remove it); a debug method that the library starts to use loses the note.
 
 ## Recommendations (proposed, not yet project policy)
 Apply to new or touched code; don't refactor existing code for these unless asked.

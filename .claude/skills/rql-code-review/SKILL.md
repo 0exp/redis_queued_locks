@@ -304,6 +304,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   read→write upgrade as an error unless `:wait_for_lock`; nested reads through `conflict_strategy`; no fairness
   between modes with `:random`; best-effort cross-host FIFO; no Lua in the RW path; one mode per lock series;
   `lock_index_enabled` as a config-only mode; the lock index defaulting to `false`.
+- Unused `Resource` methods marked `# NOTE: (debug)` (manual runtime checks, `logic.md#17`); report a debug method
+  only when it is wrong for a key family it can get.
 - Known limitations kept by the user: `YieldExpire` write release (`EXPIRE 0`) and ttl decrease without an owner
   check; `HMGET`→`DEL` without `WATCH` in `ReleaseLocksOf`/`FlushZombies`; `unlock` dropping the data of a reader
   re-acquired between its two round trips; `zombie_acquirers` vs `flush_zombies` acquirer sets.

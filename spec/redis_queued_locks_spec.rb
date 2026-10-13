@@ -970,6 +970,27 @@ RSpec.shared_examples 'redis_queued_locks' do
     end
   end
 
+  specify 'lock key of the lock request queue (the debug method of Resource)' do
+    resource = RedisQueuedLocks::Resource
+
+    aggregate_failures 'write and read lock request queues' do
+      ['my-lock', 'my_queue:a', 'rql:lock_queue:x', 'ключ'].each do |lock_name|
+        expect(resource.lock_key_from_queue(resource.prepare_lock_queue(lock_name))).to eq(
+          resource.prepare_lock_key(lock_name)
+        )
+        expect(resource.lock_key_from_queue(resource.prepare_read_lock_queue(lock_name))).to eq(
+          resource.prepare_lock_key(lock_name)
+        )
+      end
+    end
+
+    aggregate_failures 'other keys' do
+      expect(resource.lock_key_from_queue(resource.prepare_lock_key('my-lock'))).to eq(nil)
+      expect(resource.lock_key_from_queue(resource.prepare_lock_readers('my-lock'))).to eq(nil)
+      expect(resource.lock_key_from_queue('rql:lockX')).to eq(nil)
+    end
+  end
+
   specify ':random access strategy' do
     client = RedisQueuedLocks::Client.new(redis) do |conf|
       conf['default_access_strategy'] = :random

@@ -67,6 +67,9 @@
   failed with `FrozenError` (the hosts were not probed, zombie locks were not flushed); the hashes are not mutated now;
 - RBS: the `RedisQueuedLocks::Client#current_acq_id` alias was declared as `ccurrent_acq_id` (a typo: the public method was
   missing in the signatures);
+- `RedisQueuedLocks::Resource.lock_key_from_queue` (a private debug helper for manual checks in a console, not used by
+  the library) returned a wrong key for the read lock request queues (`rql:lock:ueue:<name>`); it supports the write and
+  read lock request queues now and returns `nil` for other keys;
 - README/YARD documentation that did not match the code:
   - config keys: `config['instr_sampling_enabled']` in the configuration example (was `nstr_sampling_enabled`),
     `config['log_sampling_enabled']` (was `log_samplign_enabled`), `*_sampling_enabled` (was `*_sampling_enalbed`);
