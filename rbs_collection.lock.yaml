@@ -9,6 +9,10 @@ gems:
     revision: c69c75ba79d7c19870f8d0e6fa7fe2c1d356e5ae
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
+- name: json
+  version: '0'
+  source:
+    type: stdlib
 - name: logger
   version: '1.7'
   source:

@@ -13,3 +13,4 @@ gems:
   - name: timeout
   - name: logger
   - name: monitor
+  - name: json # NOTE: used by the runtime type checking only, not by the library code
