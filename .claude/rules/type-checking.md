@@ -17,7 +17,7 @@ paths:
 - Each `Acquirer::*` operation module (except PoC modules) declares its own aliases and never references another operation module's aliases (`Locks::lockInfo` / `Locks::readerInfo` mirror `LockInfo::lockInfo` / `LockInfo::readerInfo`); `Client` signatures may reference any of them.
 - Module functions are declared `def self.name: (...) -> T`; long signatures put one param per line with names.
 - Instance variables are declared (`@config_setters: configSetters`) and attr readers typed.
-- Third-party types: `sig/vendor/*.rbs` hand-written stubs (redis_client, active_support, semantic_logger) plus `rbs collection` gems (redis-client, securerandom, timeout, logger, monitor) installed into `.gem_rbs_collection/`.
+- Third-party types: `sig/vendor/*.rbs` hand-written stubs (redis_client, active_support, semantic_logger) plus `rbs collection` gems (redis-client, securerandom, timeout, logger, monitor, json) installed into `.gem_rbs_collection/`.
 - `Steepfile`: target `lib`, signatures `sig`, ignores `spec`, libraries timeout/securerandom/logger/monitor, diagnostics `Steep::Diagnostic::Ruby.strict`.
 - In Ruby code: `# @type var x: T` and `x = ... #: T` annotations narrow types; `# steep:ignore` silences spots Steep really reports (nil-narrowed `attr_reader` results, pattern-matching destructures, splats). `Config#[]` returns `untyped`, so `config['...']` defaults in `Client` need no ignore.
 - Steep 2.1 pitfalls found in this codebase:
