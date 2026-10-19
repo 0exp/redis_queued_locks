@@ -228,7 +228,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       end
 
       # Step 0.1 (RW): prevent :read_write_mode incompatabilities
-      if read_write_mode != :read && read_write_mode != :write
+      case read_write_mode # NOTE: (steep) case/when narrows `Symbol` to `RQL::readWriteMode` below
+      when :read, :write then nil
+      else
         raise(
           RedisQueuedLocks::ArgumentError,
           "`:read_write_mode` argument should be `:read` or `:write`, " \

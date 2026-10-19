@@ -9,13 +9,13 @@ module RedisQueuedLocks
           RC::client redis,
           RQL::loggerObj logger,
           String lock_key,
-          Symbol read_write_mode,
+          RQL::readWriteMode read_write_mode,
           String lock_key_queue,
           String read_lock_key_queue,
           Integer queue_ttl,
           String acquirer_id,
           String host_id,
-          Symbol access_strategy,
+          RQL::accessStrategy access_strategy,
           bool log_sampled,
           bool instr_sampled
         ) -> { ok: bool, result: Integer }

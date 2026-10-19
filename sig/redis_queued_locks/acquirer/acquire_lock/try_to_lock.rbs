@@ -25,7 +25,7 @@ module RedisQueuedLocks
         #     hst_id: String,
         #     ts: Integer?,
         #     ttl: Integer?,
-        #     rw_mode: Symbol
+        #     rw_mode: RQL::readWriteMode
         #   }
         # }
 
@@ -34,7 +34,7 @@ module RedisQueuedLocks
           RQL::loggerObj logger,
           bool log_lock_try,
           String lock_key,
-          Symbol read_write_mode,
+          RQL::readWriteMode read_write_mode,
           String lock_key_queue,
           String read_lock_key_queue,
           String lock_readers_key,
@@ -48,8 +48,8 @@ module RedisQueuedLocks
           bool lock_index_enabled,
           Integer lock_index_grace_period,
           bool fail_fast,
-          Symbol conflict_strategy,
-          Symbol access_strategy,
+          RQL::conflictStrategy conflict_strategy,
+          RQL::accessStrategy access_strategy,
           Hash[String|Symbol,untyped]? meta,
           bool retry_attempt,
           bool log_sampled,
@@ -89,7 +89,7 @@ module RedisQueuedLocks
         ) -> void
 
         def find_opposite_request_ahead: (
-          Symbol access_strategy,
+          RQL::accessStrategy access_strategy,
           [String, Float]? opposite_waiting_request,
           Integer|Float acquirer_position,
           String acquirer_id
@@ -104,7 +104,7 @@ module RedisQueuedLocks
 
         def lock_obstacle: (
           bool read_mode,
-          Symbol access_strategy,
+          RQL::accessStrategy access_strategy,
           String acquirer_id,
           String? waiting_acquirer,
           String? opposite_request_ahead,
@@ -122,8 +122,8 @@ module RedisQueuedLocks
           Integer queue_ttl,
           String acquirer_id,
           String host_id,
-          Symbol access_strategy,
-          Symbol read_write_mode,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode read_write_mode,
           String? waiting_acquirer,
           String? opposite_request_ahead,
           String? current_lock_obtainer
@@ -135,7 +135,7 @@ module RedisQueuedLocks
           bool log_sampled,
           bool log_lock_try,
           String lock_key,
-          Symbol read_write_mode,
+          RQL::readWriteMode read_write_mode,
           String lock_readers_key,
           String request_queue,
           String opposite_request_queue,
@@ -148,7 +148,7 @@ module RedisQueuedLocks
           bool lock_index_enabled,
           Integer lock_index_grace_period,
           bool fail_fast,
-          Symbol access_strategy
+          RQL::accessStrategy access_strategy
         ) -> (lockObstacle | :fail_fast_no_try)?
       end
     end
