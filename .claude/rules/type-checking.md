@@ -17,7 +17,7 @@ paths:
 - Each `Acquirer::*` operation module (except PoC modules) declares its own aliases and never references another operation module's aliases (`Locks::lockInfo` / `Locks::readerInfo` mirror `LockInfo::lockInfo` / `LockInfo::readerInfo`); `Client` signatures may reference any of them.
 - Module functions are declared `def self.name: (...) -> T`; long signatures put one param per line with names.
 - Instance variables are declared (`@config_setters: configSetters`) and attr readers typed.
-- Third-party types: `sig/vendor/*.rbs` hand-written stubs (redis_client, active_support, semantic_logger) plus `rbs collection` gems (redis-client, securerandom, timeout, logger, monitor, json) installed into `.gem_rbs_collection/`.
+- Third-party types: `sig/vendor/*.rbs` hand-written stubs (redis_client, active_support, semantic_logger) plus `rbs collection` gems (redis-client, securerandom, timeout, logger, monitor, json) installed into `.gem_rbs_collection/`; the `gem_rbs_collection` source is pinned to a commit `revision` in `rbs_collection.yaml` (never `main`), so installs are reproducible and `rbs_collection.lock.yaml` stays stable.
 - `Steepfile`: target `lib`, signatures `sig`, ignores `spec`, libraries timeout/securerandom/logger/monitor, diagnostics `Steep::Diagnostic::Ruby.strict`.
 - In Ruby code: `# @type var x: T` and `x = ... #: T` annotations narrow types; `# steep:ignore` silences spots Steep really reports (nil-narrowed `attr_reader` results, pattern-matching destructures, splats). `Config#[]` returns `untyped`, so `config['...']` defaults in `Client` need no ignore.
 - Steep 2.1 pitfalls found in this codebase:
@@ -40,11 +40,11 @@ paths:
 8. Verify with `bundle exec rbs collection install && bundle exec rake steep:check`; for signature/runtime mismatches run the specs under RBS runtime testing (command in `.github/workflows/typecheck-runtime.yml`).
 9. Keep RBS file and directory names identical to their `lib/` counterparts (`acquirer.rbs`, `acquire_lock/yield_expire/`).
 10. After `steep:check`, also grep its output for `ERROR`/`FATAL` lines: an internal Steep crash skips the file but still reports "No type error detected".
-11. `bundle exec rbs collection install` may rewrite `rbs_collection.lock.yaml` with environment-specific entries; restore it (`git checkout -- rbs_collection.lock.yaml`) unless the change is intended.
+11. Bump the pinned `gem_rbs_collection` revision only deliberately, in its own change: set the new commit in `rbs_collection.yaml`, run `bundle exec rbs collection update`, commit both files together and keep Steep green.
+12. `bundle exec rbs collection install` may rewrite `rbs_collection.lock.yaml` with environment-specific entries; restore it (`git checkout -- rbs_collection.lock.yaml`) unless the change is intended.
 
 ## Recommendations (proposed, not yet project policy)
 1. Make the runtime type-check CI job blocking (drop `--failure-exit-code=0`) once current violations are fixed.
 2. Type `config['...']` lookups (`Config#[]` returns `untyped`, so `Client` keyword defaults are unchecked) with a typed config accessor (e.g. per-key typed readers or an RBS overload table for `Config#[]`).
-3. Pin the `gem_rbs_collection` revision in `rbs_collection.yaml` instead of `main` for reproducible checks.
-5. Replace remaining `untyped` in signatures with precise unions or interfaces where the value set is known (e.g. strategy symbols as `:queued | :random`).
-6. Type strategy and mode options as literal unions (`conflict_strategy: :wait_for_lock | :work_through | :extendable_work_through | :dead_locking`) so Steep catches invalid values.
+3. Replace remaining `untyped` in signatures with precise unions or interfaces where the value set is known (e.g. strategy symbols as `:queued | :random`).
+4. Type strategy and mode options as literal unions (`conflict_strategy: :wait_for_lock | :work_through | :extendable_work_through | :dead_locking`) so Steep catches invalid values.
