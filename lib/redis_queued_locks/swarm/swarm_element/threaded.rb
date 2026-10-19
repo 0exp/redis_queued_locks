@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.9.0
-# @version 1.17.0
+# @version 1.21.1
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0
@@ -70,7 +70,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
     return unless enabled?
 
     sync.synchronize do
-      swarm_element__termiante
+      swarm_element__terminate
       swarm!
       swarm_loop__start
     end
@@ -99,7 +99,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0
   def try_kill!
     sync.synchronize do
-      swarm_element__termiante
+      swarm_element__terminate
     end
   end
 
@@ -157,7 +157,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # => 1) init (swarm!): create a thread, main loop is not started;
   # => 2) start (swarm_loop__start): run the main loop inside the created thread;
   # => 3) stop (swarm_loop__stop): stop the main loop inside the created thread;
-  # => 4) terminate (swarm_element__termiante): kill the created thread;
+  # => 4) terminate (swarm_element__terminate): kill the created thread;
   # In addition you should implement `#spawn_main_loop!` method that will be the main logic
   # of the your swarm element.
   #
@@ -341,7 +341,8 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   #
   # @api private
   # @since 1.9.0
-  def swarm_element__termiante
+  # @version 1.21.1
+  def swarm_element__terminate
     return if idle? || swarmed__dead?
     sync.synchronize do
       main_loop&.kill

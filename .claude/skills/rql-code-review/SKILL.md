@@ -83,13 +83,12 @@ locks", key layout, "Lock index", lock lookup modes, events, errors, conventions
   - reserved `meta` keys validation in `AcquireLock` and `LockSeriesPoC`;
   - lock-family options in `Client#lock`, `#lock!`, `#lock_series`, `#lock_series!` and their forwarding in
     `LockSeriesPoC.lock_series_poc`.
-- Mirror path exceptions: `acquirer.rb` → `sig/redis_queued_locks/acquier.rbs`;
-  `acquire_lock/yield_expire/log_visitor.rb` → `sig/.../acquire_lock/yield_with_expire/log_visitor.rbs`;
-  `lock_series_poc*` has no RBS.
+- Mirror path exception: `lock_series_poc*` has no RBS.
 - Next version for `@since`/`@version`: the version the unreleased work already uses (`git diff <base> -- lib |
   grep -oE '^\+.*@(since|version) [0-9.]+'`, the CHANGELOG `[Unreleased]` code), otherwise the next minor of
   `RedisQueuedLocks::VERSION` (`version.rb`); don't take the maximum over `lib/` (old tags can be wrong).
-  A value older than `VERSION` on new code, a method behavior/signature change without the method `@version` bump, or a
+  A value older than `VERSION` on new code, a method behavior/signature change (a typo fix in the method or keyword
+  argument name included; a renamed positional parameter is not a signature change) without the method `@version` bump, or a
   class/module header `@version` that does not match its latest interface change (`logic.md#2`: signatures,
   added/removed methods, `extend`/`include`/`prepend`, the superclass; behavior changes never bump the header) is a
   Minor finding.
@@ -315,7 +314,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   check; `HMGET`→`DEL` without `WATCH` in `ReleaseLocksOf`/`FlushZombies`; `unlock` dropping the data of a reader
   re-acquired between its two round trips; `zombie_acquirers` vs `flush_zombies` acquirer sets.
 - Known debt: `WithAcqTimeout` → `LockInfo`/`QueueInfo`; rspec-retry, disabled coverage minimum, non-blocking runtime
-  type checks; `acquier.rbs` and the `yield_with_expire` RBS path; the `swarm_element__termiante` typo;
+  type checks;
   `sleep(0.1)` readiness waits and missing logging in the swarm;
   one flusher per process; `EVAL` without `SCRIPT LOAD`; `# rubocop:disable all` around lock series.
 - "Recommendations (proposed, not yet project policy)" in the rule files: never violations; mention one only as an

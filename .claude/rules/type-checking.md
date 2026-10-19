@@ -9,7 +9,7 @@ paths:
 # Type-checking rules (`sig/`, Steep, RBS)
 
 ## Observed conventions
-- `sig/` mirrors `lib/` one file per file (`lib/redis_queued_locks/acquirer/is_locked.rb` → `sig/redis_queued_locks/acquirer/is_locked.rbs`). Known typo: `sig/redis_queued_locks/acquier.rbs` is the `Acquirer` namespace file.
+- `sig/` mirrors `lib/` one file per file (`lib/redis_queued_locks/acquirer/is_locked.rb` → `sig/redis_queued_locks/acquirer/is_locked.rbs`).
 - RBS uses fully nested `module RedisQueuedLocks / module Acquirer / ...` blocks (unlike compact Ruby constants).
 - Common aliases at the top: `use RedisQueuedLocks as RQL`, `use RedisClient as RC`; Redis connections typed as `RC::client`.
 - Shared duck types live in `sig/redis_queued_locks.rbs`: `_Loggable`, `_Instrumentable`, `loggerObj`, `instrObj`; samplers as `RQL::Logging::samplerObj` / `RQL::Instrument::samplerObj`.
@@ -38,7 +38,7 @@ paths:
 6. Don't loosen `Steep::Diagnostic::Ruby.strict` or add `ignore` entries to the `Steepfile`.
 7. New third-party gem used in `lib/`: add it to `rbs_collection.yaml` (and `sig/manifest.yml` for stdlib) or write a minimal stub in `sig/vendor/`.
 8. Verify with `bundle exec rbs collection install && bundle exec rake steep:check`; for signature/runtime mismatches run the specs under RBS runtime testing (command in `.github/workflows/typecheck-runtime.yml`).
-9. Don't rename `acquier.rbs` unless asked; it is a known quirk.
+9. Keep RBS file and directory names identical to their `lib/` counterparts (`acquirer.rbs`, `acquire_lock/yield_expire/`).
 10. After `steep:check`, also grep its output for `ERROR`/`FATAL` lines: an internal Steep crash skips the file but still reports "No type error detected".
 11. `bundle exec rbs collection install` may rewrite `rbs_collection.lock.yaml` with environment-specific entries; restore it (`git checkout -- rbs_collection.lock.yaml`) unless the change is intended.
 
@@ -46,6 +46,5 @@ paths:
 1. Make the runtime type-check CI job blocking (drop `--failure-exit-code=0`) once current violations are fixed.
 2. Type `config['...']` lookups (`Config#[]` returns `untyped`, so `Client` keyword defaults are unchecked) with a typed config accessor (e.g. per-key typed readers or an RBS overload table for `Config#[]`).
 3. Pin the `gem_rbs_collection` revision in `rbs_collection.yaml` instead of `main` for reproducible checks.
-4. Rename `sig/redis_queued_locks/acquier.rbs` to `acquirer.rbs` in a dedicated change.
 5. Replace remaining `untyped` in signatures with precise unions or interfaces where the value set is known (e.g. strategy symbols as `:queued | :random`).
 6. Type strategy and mode options as literal unions (`conflict_strategy: :wait_for_lock | :work_through | :extendable_work_through | :dead_locking`) so Steep catches invalid values.

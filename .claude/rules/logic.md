@@ -42,7 +42,7 @@ Related rule files (loaded for narrower paths):
 ## Claude rules
 1. Start new files with `# frozen_string_literal: true` and use compact constant paths.
 2. Add a full YARD block to every new public/private method; new code gets `@since <next version>`. `@version <next version>`:
-    - a method: when its behavior or its signature changes;
+    - a method: when its behavior or its signature changes; a typo fix in the method name or in a keyword argument name is a signature change too (callers change): the method gets `@version <next version>` (and the class/module header, see below); a typo fix in a positional parameter name is not a signature change (callers don't change) and bumps nothing;
     - a class/module header: only when its interface changes:
       - a method signature changes: its parameters (their kinds and names); the default values and the return values are behavior;
       - a method is added or removed (public or private, `attr_*` and aliases too);
@@ -82,6 +82,6 @@ Related rule files (loaded for narrower paths):
 Apply to new or touched code; don't refactor existing code for these unless asked.
 1. Avoid `# rubocop:disable all` (used in `client.rb` lock_series and `lock_series_poc.rb`); disable only the specific cops.
 2. Document every option fully in YARD.
-3. Spell new identifiers correctly and don't copy existing typos (`swarm_element__termiante` method, `Acquier` in comments and the `acquier.rbs` filename); fix them only in a dedicated change.
+3. Spell new identifiers correctly; fix a found typo only in a dedicated change.
 4. Include context in raised errors (lock name, acquirer id, timeout) so failures are diagnosable.
 5. Prefer `then` (the modern alias) over `yield_self` in new code.

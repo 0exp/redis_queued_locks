@@ -305,8 +305,6 @@ bin/console, bin/setup             dev scripts
 Rakefile, Steepfile, rbs_collection.yaml
 ```
 
-Known quirk: `sig/redis_queued_locks/acquier.rbs` is misspelled (should be `acquirer.rbs`).
-
 ---
 
 ## 5. Technology stack

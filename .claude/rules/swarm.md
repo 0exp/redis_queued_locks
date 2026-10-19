@@ -42,7 +42,7 @@ Each element has two layers, with different code for each base:
 1. **Control unit** (`swarm_element`). Threaded: a `Thread` reading `swarm_element_commands` (`Thread::SizedQueue.new(1)`) and replying on `swarm_element_results` (`SizedQueue(1)`). Isolated: a `Ractor` running `self.swarm_loop(swarm_element_results_port)` that reads `swarm_element_commands_port` and replies on `swarm_element_results_port`, both `Ractor::Port`s (see "Isolated ports" below).
 2. **Main loop**: a `Thread` that does the actual periodic work (`loop { op(redis_client, ...); sleep(period) }`), with a Redis client built inside the thread by `RedisClientBuilder` from `swarm.<element>.redis_config.*`.
 
-Phases: **init** `swarm!` (create control unit, loop not started) → **start** `swarm_loop__start` (kill old main loop, spawn new) → **stop** `swarm_loop__stop` kills only the main loop → **kill** `swarm_element__termiante` (Threaded: kill both threads, close and clear queues, nil them) / `swarm_loop__kill` (Isolated: `:kill` makes the ractor kill and join all its threads, ack, and leave its loop; the host then `join`s the ractor).
+Phases: **init** `swarm!` (create control unit, loop not started) → **start** `swarm_loop__start` (kill old main loop, spawn new) → **stop** `swarm_loop__stop` kills only the main loop → **kill** `swarm_element__terminate` (Threaded: kill both threads, close and clear queues, nil them) / `swarm_loop__kill` (Isolated: `:kill` makes the ractor kill and join all its threads, ack, and leave its loop; the host then `join`s the ractor).
 
 Command protocol: the same bare-value replies in both bases (see "Internal API: scalars and primitives" below).
 | Command | Reply |
@@ -114,7 +114,6 @@ Public element API (called by `Swarm`/`Supervisor` only):
 16. Swarm specs (in `describe 'swarm'`) deal with real timing: set short periods via config, kill elements with `try_kill!`, wait longer than `liveness_probing_period`, and match states loosely (`eq('running').or(eq('blocking'))`, `'sleep'`/`'run'`).
 
 ## Known quirks (don't copy; fix only in a dedicated change)
-- Typo in a method name: `swarm_element__termiante` (rename it only in a dedicated change).
 - `swarm_loop__stop` is not used by the swarm itself, only by specs.
 - Killing an element while its main loop is still connecting to Redis makes Ruby's `Socket.tcp` helper threads print `terminated with exception ... IO#write` reports. This is harmless noise from the stdlib.
 - `sleep(0.1)` "give a timespot" waits in `swarm!`/`deswarm!`/`observe!` instead of real readiness signalling.
