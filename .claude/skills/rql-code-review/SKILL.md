@@ -314,8 +314,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - Known limitations kept by the user: `YieldExpire` write release (`EXPIRE 0`) and ttl decrease without an owner
   check; `HMGET`→`DEL` without `WATCH` in `ReleaseLocksOf`/`FlushZombies`; `unlock` dropping the data of a reader
   re-acquired between its two round trips; `zombie_acquirers` vs `flush_zombies` acquirer sets.
-- Known debt: `WithAcqTimeout` → `LockInfo`/`QueueInfo`; rspec-retry, disabled coverage minimum, non-blocking runtime
-  type checks;
+- Known debt: `WithAcqTimeout` → `LockInfo`/`QueueInfo`; rspec-retry, disabled coverage minimum;
   `sleep(0.1)` readiness waits and missing logging in the swarm;
   one flusher per process; `EVAL` without `SCRIPT LOAD`.
 - "Recommendations (proposed, not yet project policy)" in the rule files: never violations; mention one only as an

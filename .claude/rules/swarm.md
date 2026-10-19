@@ -117,7 +117,7 @@ Public element API (called by `Swarm`/`Supervisor` only):
 - `swarm_loop__stop` is not used by the swarm itself, only by specs.
 - Killing an element while its main loop is still connecting to Redis makes Ruby's `Socket.tcp` helper threads print `terminated with exception ... IO#write` reports. This is harmless noise from the stdlib.
 - `sleep(0.1)` "give a timespot" waits in `swarm!`/`deswarm!`/`observe!` instead of real readiness signalling.
-- RBS runtime type checking (`rbs/test/setup`, the `typecheck-runtime` CI job) can't run inside Ractors. Its hooks on methods called in the element Ractor (`.swarm_loop`, `.flush_zombies`) read `RBS.logger` and raise `Ractor::IsolationError`, so Isolated elements die at startup and the swarm specs fail only under that job.
+- RBS runtime type checking (`rbs/test/setup`, the `typecheck-runtime` CI job) can't run inside Ractors: its hooks read `RBS.logger` and raise `Ractor::IsolationError`. The Ractor-side classes (`FlushZombies`, `SwarmElement::Isolated`, `RedisClientBuilder`) are excluded with `RBS_TEST_SKIP` and the shared helpers they call carry `%a{rbs:test:skip}` (`type-checking.md`); a new function called inside the element Ractor needs the same.
 - Swarm has no logging or instrumentation, and supervisor errors are silently dropped (`TODO: (CHECK)`).
 - Every process with a swarm runs its own zombie flusher: N processes make N lookup passes per flush period (no leader election yet); with the default keyspace lookup each pass is a full keyspace `SCAN` (the reason for the lock index).
 - Zombie write locks are checked (`HMGET`) and deleted (`DEL`) in two round trips without `WATCH`: a lock that expires and is re-acquired by a live acquirer in between can be deleted (kept by the user's decision).

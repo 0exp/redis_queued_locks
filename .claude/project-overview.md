@@ -336,7 +336,7 @@ Rakefile, Steepfile, rbs_collection.yaml
 | tests | `bundle exec rake rspec` (with a Redis service) |
 | lint | `bundle exec rake rubocop` |
 | typecheck-static | `bundle exec rbs collection install && bundle exec rake steep:check -j 10` |
-| typecheck-runtime | `RBS_TEST_RAISE=true RUBYOPT='-rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_TARGET='RedisQueuedLocks::*' bundle exec rspec --failure-exit-code=0` (never fails the build) |
+| typecheck-runtime | `RBS_TEST_RAISE=true RUBYOPT='-rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec` (blocking; Ractor-executed methods are skipped: `RBS_TEST_SKIP` + `%a{rbs:test:skip}` in `resource.rbs`/`utilities.rbs`) |
 
 ---
 
@@ -349,5 +349,5 @@ Rakefile, Steepfile, rbs_collection.yaml
 - New config option: `setting` (+ `validate`) in `config.rb` + the typed `Config#[]` overload line in `sig/redis_queued_locks/config.rbs`, read via `config['key']`, document defaults.
 - Development gems go in `Gemfile` (`Gemspec/DevelopmentDependencies: Gemfile`), not the gemspec.
 - This overview and `.claude/rules/*.md` are updated in the same change as the code (keys, options, results, events, algorithm steps, limitations); README and CHANGELOG `[Unreleased]` for user-visible behavior (log keys and instrumentation payloads: README `## Logging` / `### Instrumentation Events`).
-- Temporary debt: rspec-retry, disabled coverage minimum, runtime type-check job that can't fail.
+- Temporary debt: rspec-retry, disabled coverage minimum.
 - Specs (`spec/**/*_spec.rb`) are not ideal and will be totally reworked (header `NOTE` of `spec/redis_queued_locks_spec.rb`): until then any coding principle may be broken there; code review checks only that the library behavior is covered and that changed expectations are correct (`.claude/skills/rql-code-review`).

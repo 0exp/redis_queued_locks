@@ -1,7 +1,9 @@
 module RedisQueuedLocks
   module Logging
     module Sampler
-      def self.sampling_happened?: (Integer sampling_percent) -> bool
+      # NOTE: (rbs test) not hooked: `valid_sampler?` introspects `#parameters` of this method,
+      #   and a hooked method has the `(*rest, &block)` parameters;
+      %a{rbs:test:skip} def self.sampling_happened?: (Integer sampling_percent) -> bool
     end
   end
 end

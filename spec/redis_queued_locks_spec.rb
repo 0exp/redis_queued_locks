@@ -4964,25 +4964,29 @@ RSpec.shared_examples 'redis_queued_locks' do
           false, 15, RedisQueuedLocks::Instrument::Sampler, false
         )
       end.to raise_error(RedisQueuedLocks::ArgumentError, /read_write_mode/)
-      expect do
-        RedisQueuedLocks::Acquirer::ExtendLockTTL.extend_lock_ttl(
-          redis, 'rw.args', 1_000, :read, nil, client.current_acquirer_id,
-          client.config['lock_index_enabled'],
-          client.config['logger'], client.config['instrumenter'], nil,
-          false, 15, RedisQueuedLocks::Logging::Sampler, false,
-          false, 15, RedisQueuedLocks::Instrument::Sampler, false
-        )
-      end.to raise_error(RedisQueuedLocks::ArgumentError, /all_read_locks/)
-      # NOTE: `all_read_locks` is ignored for `:write` mode
-      expect(
-        RedisQueuedLocks::Acquirer::ExtendLockTTL.extend_lock_ttl(
-          redis, 'rw.args', 1_000, :write, nil, client.current_acquirer_id,
-          client.config['lock_index_enabled'],
-          client.config['logger'], client.config['instrumenter'], nil,
-          false, 15, RedisQueuedLocks::Logging::Sampler, false,
-          false, 15, RedisQueuedLocks::Instrument::Sampler, false
-        )
-      ).to eq({ ok: false, result: :async_expire_or_no_lock })
+      # NOTE: (RBS) a type-invalid value (`nil` for `bool all_read_locks`) can't reach the runtime
+      #   validation under the RBS runtime type checks (the hook raises first)
+      unless RBS_RUNTIME_TEST
+        expect do
+          RedisQueuedLocks::Acquirer::ExtendLockTTL.extend_lock_ttl(
+            redis, 'rw.args', 1_000, :read, nil, client.current_acquirer_id,
+            client.config['lock_index_enabled'],
+            client.config['logger'], client.config['instrumenter'], nil,
+            false, 15, RedisQueuedLocks::Logging::Sampler, false,
+            false, 15, RedisQueuedLocks::Instrument::Sampler, false
+          )
+        end.to raise_error(RedisQueuedLocks::ArgumentError, /all_read_locks/)
+        # NOTE: `all_read_locks` is ignored for `:write` mode
+        expect(
+          RedisQueuedLocks::Acquirer::ExtendLockTTL.extend_lock_ttl(
+            redis, 'rw.args', 1_000, :write, nil, client.current_acquirer_id,
+            client.config['lock_index_enabled'],
+            client.config['logger'], client.config['instrumenter'], nil,
+            false, 15, RedisQueuedLocks::Logging::Sampler, false,
+            false, 15, RedisQueuedLocks::Instrument::Sampler, false
+          )
+        ).to eq({ ok: false, result: :async_expire_or_no_lock })
+      end
       expect do
         client.lock('rw.args', read_write_mode: :read, meta: { 'acq_id' => 'pek' })
       end.to raise_error(RedisQueuedLocks::ArgumentError, /meta/)
