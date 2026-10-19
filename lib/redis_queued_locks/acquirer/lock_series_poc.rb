@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # NOTE: Lock Series PoC
-# rubocop:disable all
+# rubocop:disable Metrics/ModuleLength, Metrics/ClassLength, Metrics/MethodLength
 # @api private
 # @since 1.16.0
 # @version 1.20.0
@@ -164,10 +164,10 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
         identity
       )
 
-      RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.start_lock_series_obtaining( # steep:ignore
+      LogVisitor.start_lock_series_obtaining( # steep:ignore
         logger, log_sampled, lock_keys_for_instrumentation,
-        queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy,
-        read_write_mode
+        queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation,
+        access_strategy, read_write_mode
       )
 
       acq_start_time = RedisQueuedLocks::Utilities.clock_gettime
@@ -240,7 +240,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
         else
           failed_on_lock = lock_operation_options[:lock_name]
           failed_locks_and_errors[lock_operation_options[:lock_name]] = result
-          # NOTE: release all previously acquired locks (non-exceptional failure: raise_errors: false)
+          # NOTE: release all previously acquired locks
+          #   (non-exceptional failure: raise_errors: false)
           unless is_failed_series_released
             release_lock_series( # steep:ignore
               redis, read_write_mode, successfully_acquired_locks, acquirer_id_for_instrumentation
@@ -251,20 +252,22 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
         end
       end
 
-      if (successfully_acquired_locks.size == lock_names.size && (successfully_acquired_locks.all? { |res| res[:ok] }))
+      if successfully_acquired_locks.size == lock_names.size &&
+         successfully_acquired_locks.all? { |res| res[:ok] }
         acq_end_time = RedisQueuedLocks::Utilities.clock_gettime
         acq_time = ((acq_end_time - acq_start_time) / 1_000.0).ceil(2)
         ts = Time.now.to_f
 
-        RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.lock_series_obtained( # steep:ignore
+        LogVisitor.lock_series_obtained( # steep:ignore
           logger, log_sampled, lock_keys_for_instrumentation,
           queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation,
           acq_time, access_strategy, read_write_mode
         )
 
-        RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor.lock_series_obtained( # steep:ignore
+        InstrVisitor.lock_series_obtained( # steep:ignore
           instrumenter, instr_sampled, lock_keys_for_instrumentation, read_write_mode,
-          ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, ts, acq_time, instrument
+          ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, ts, acq_time,
+          instrument
         )
 
         yield_time = RedisQueuedLocks::Utilities.clock_gettime
@@ -274,8 +277,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
         ).ceil(2)
 
         yield_result = nil
-        is_lock_manually_released = nil
-        hold_time = nil
+        # @type var is_lock_manually_released: bool
+        # @type var hold_time: Float | Integer
 
         begin
           yield_result = yield_expire( # steep:ignore
@@ -316,13 +319,13 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
           hold_time = ((rel_time - acq_end_time) / 1_000.0).ceil(2)
           ts = Time.now.to_f
 
-          RedisQueuedLocks::Acquirer::LockSeriesPoC::LogVisitor.expire_lock_series( # steep:ignore
+          LogVisitor.expire_lock_series( # steep:ignore
             logger, log_sampled, lock_keys_for_instrumentation,
-            queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, access_strategy,
-            read_write_mode
+            queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation,
+            access_strategy, read_write_mode
           ) if is_lock_manually_released
 
-          RedisQueuedLocks::Acquirer::LockSeriesPoC::InstrVisitor.lock_series_hold_and_release( # steep:ignore
+          InstrVisitor.lock_series_hold_and_release( # steep:ignore
             instrumenter,
             instr_sampled,
             lock_keys_for_instrumentation,
@@ -362,7 +365,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
             lock_series: lock_names,
             acquired_locks:,
             missing_locks:,
-            failed_on_lock:,
+            failed_on_lock:
           }
         }
       end
@@ -382,7 +385,9 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
     #
     # @api private
     # @since 1.18.0
-    def release_lock_series(redis, read_write_mode, successfully_acquired_locks, acquirer_id) # steep:ignore
+    def release_lock_series( # steep:ignore
+      redis, read_write_mode, successfully_acquired_locks, acquirer_id
+    )
       lock_names = obtained_lock_names(successfully_acquired_locks) # steep:ignore
 
       if read_write_mode == :read
@@ -427,7 +432,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
             own_lock_keys.each { |lock_key| transaction.call('DEL', lock_key) }
           end
           # NOTE: `nil` => the transaction is aborted (a watched lock is changed) => retry
-          break unless released.nil?
+          break unless released == nil
         end
       rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,
              RedisQueuedLocks::TimedLockIntermediateTimeoutError,
@@ -481,4 +486,4 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
     end
   end
 end
-# rubocop:enable all
+# rubocop:enable Metrics/ModuleLength, Metrics/ClassLength, Metrics/MethodLength

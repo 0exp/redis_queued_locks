@@ -5,7 +5,7 @@ Full details (config keys, key layout, events, errors, stack, CI): `.claude/proj
 
 ## Commands
 - Tests (need a running local Redis): `bundle exec rake rspec`
-- Lint: `bundle exec rake rubocop`
+- Lint: `bundle exec rake rubocop` (two passes, Ruby then RBS: both must be clean; never tune `.rubocop.yml` to pass, fix the code)
 - Static types: `bundle exec rbs collection install && bundle exec rake steep:check`
 
 ## Architecture

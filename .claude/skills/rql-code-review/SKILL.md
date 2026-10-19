@@ -292,7 +292,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - Rubocop: only specific `Metrics`/`Layout` cops disabled locally with a paired `enable`, never
   `# rubocop:disable all` in new code (`logic.md#10`); long signatures are not "fixed" (`arguments.md#8`).
 - Suggestions only (`logic.md` recommendations, not violations): correctly spelled new identifiers (don't copy the
-  known typos), `then` instead of `yield_self` in new code.
+  known typos).
 
 ### J. Docs and process
 - The same change updates `.claude/project-overview.md` and the affected `.claude/rules/*.md` for every new/changed
@@ -316,7 +316,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - Known debt: `WithAcqTimeout` → `LockInfo`/`QueueInfo`; rspec-retry, disabled coverage minimum, non-blocking runtime
   type checks;
   `sleep(0.1)` readiness waits and missing logging in the swarm;
-  one flusher per process; `EVAL` without `SCRIPT LOAD`; `# rubocop:disable all` around lock series.
+  one flusher per process; `EVAL` without `SCRIPT LOAD`.
 - "Recommendations (proposed, not yet project policy)" in the rule files: never violations; mention one only as an
   optional suggestion for touched code.
 - Pre-existing problems outside the diff: out of scope; mention a severe one briefly in the template's

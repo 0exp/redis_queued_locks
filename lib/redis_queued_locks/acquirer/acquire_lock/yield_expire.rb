@@ -83,7 +83,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
         # @type var ttl: Integer
         # @type var ttl_shift: Float|Integer
         # @type var timeout: Float
-        timeout = ((ttl - ttl_shift) / 1_000.0).then do |time|
+        timeout = ((ttl - ttl_shift) / 1_000.0).yield_self do |time|
           # @type var time: Float
           # NOTE: time in <seconds> cuz Ruby's Timeout requires <seconds>
           (time < 0) ? 0.0 : time

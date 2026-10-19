@@ -36,7 +36,7 @@ Related rule files (loaded for narrower paths):
 - Config: `setting('key', default)` + `validate('key') { |val| ... }` in `config.rb`; dotted keys for nested groups (`swarm.flush_zombies.zombie_ttl`); units in a trailing `# NOTE: in milliseconds` comment.
 - Errors: subclasses in `errors.rb`, written as `class XError < Error; end` (not `Class.new`) so RBS/Steep can see the superclass. Each error inherits from the global base error of its branch: `Error < ::StandardError` (the main hierarchy), `ArgumentError < ::ArgumentError` (`SwarmArgumentError`), `Exception < ::Exception` (the internal timeouts `LockAcquirementIntermediateTimeoutError`, `TimedLockIntermediateTimeoutError`); inside `module RedisQueuedLocks` the bare `Error`/`ArgumentError`/`Exception` are these bases.
 - Comments use `# NOTE:`, `# TODO:` and `# @type var x: T` / `#: T` for inline type hints.
-- Rubocop is suppressed locally with `# rubocop:disable Metrics/MethodLength` etc. (paired `enable`), mostly for large algorithm methods.
+- Rubocop is suppressed locally with `# rubocop:disable Metrics/MethodLength` etc. (paired `enable`), mostly for large algorithm methods. The inherited armitage config enforces `yield_self` over `then` (`Style/ObjectThen`).
 - Shared mutable state is guarded by `RedisQueuedLocks::Utilities::Lock#synchronize`; Ractor code must not capture non-shareable objects (build a fresh Redis client via `Swarm::RedisClientBuilder`).
 
 ## Claude rules
@@ -56,7 +56,7 @@ Related rule files (loaded for narrower paths):
 7. New config option: `setting` with default + `validate` with a type check and the valid range (TTLs, periods, batch/scan sizes are positive Integers: `val.is_a?(Integer) && val > 0`), both in `config.rb`; read it in `Client` as `config['key']`. A per-call numeric option (a `Client` keyword with a `config` default) is validated with the same type and range at the start of the operation module (the `Swarm` facade for the swarm actions), before any Redis command: `RedisQueuedLocks::ArgumentError` (`SwarmArgumentError` in `Swarm`) with the option name and the value (`` "`:scan_size` argument should be a positive Integer, got 0." ``).
 8. Logs and instrumentation events go through visitor modules (see `visitors.md`); event names follow `redis_queued_locks.<snake_case>`.
 9. Keep thread/Ractor safety: guard shared state with `Utilities::Lock`, never share a `RedisClient` across Ractors.
-10. Disable rubocop cops only locally with a matching `rubocop:enable`, and only for Metrics/Layout on large methods (the only exception: the line-level `Lint/InheritException` of the base `RedisQueuedLocks::Exception < ::Exception` in `errors.rb`, see rule 15).
+10. Follow the rubocop rules of the project (`.rubocop.yml` inheriting the armitage config, `.rubocop.rbs.yml` for RBS): `bundle exec rake rubocop` runs two passes (Ruby sources, then RBS) and both must be clean; read the whole output, not only its tail. Never change `.rubocop.yml` to make an offense pass: rewrite the code (e.g. `yield_self`, not `then`); a config change is a separate decision of the user. Disable rubocop cops only locally with a matching `rubocop:enable`, and only for Metrics/Layout on large methods; never `# rubocop:disable all` (it hid real offenses until 1.21.1: an unpaired one in `client.rb` switched the linter off till the end of the file). A PoC file disables its `Metrics/*` cops by name at the top with the paired `enable` at the bottom (the only exception: the line-level `Lint/InheritException` of the base `RedisQueuedLocks::Exception < ::Exception` in `errors.rb`, see rule 15).
 11. After any change here, update the mirrored `sig/` file (see `type-checking.md`) and add/adjust a spec (see `tests.md`).
 12. Keep `.claude/project-overview.md` and the affected `.claude/rules/*.md` in sync in the same change (keys, options, results, events, algorithm steps, limitations); read the relevant overview sections before implementing and follow their invariants.
 13. Read/write awareness: every new or changed operation over locks/queues (release, cleanup, info, zombies, series) must handle the read key family too (see the key families above) and keep the result shape for write-only usage unchanged (add keys/branches only when read data exists).
@@ -80,8 +80,6 @@ Related rule files (loaded for narrower paths):
 
 ## Recommendations (proposed, not yet project policy)
 Apply to new or touched code; don't refactor existing code for these unless asked.
-1. Avoid `# rubocop:disable all` (used in `client.rb` lock_series and `lock_series_poc.rb`); disable only the specific cops.
-2. Document every option fully in YARD.
-3. Spell new identifiers correctly; fix a found typo only in a dedicated change.
-4. Include context in raised errors (lock name, acquirer id, timeout) so failures are diagnosable.
-5. Prefer `then` (the modern alias) over `yield_self` in new code.
+1. Document every option fully in YARD.
+2. Spell new identifiers correctly; fix a found typo only in a dedicated change.
+3. Include context in raised errors (lock name, acquirer id, timeout) so failures are diagnosable.
