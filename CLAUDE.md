@@ -20,7 +20,7 @@ Full details (config keys, key layout, events, errors, stack, CI): `.claude/proj
 - `resource.rb`: all key names and acquirer/host IDs. `config.rb`: `setting`/`validate` DSL, read as `config['a.b']`.
 - `swarm/`: zombie-lock cleanup. `Supervisor` thread revives `ProbeHosts` (`SwarmElement::Threaded`) and `FlushZombies` (`SwarmElement::Isolated`, Ractor talking via `Ractor::Port`s); each element runs a main-loop thread with its own Redis connection.
 - `logging/`, `instrument/`: Void null-object defaults, percent samplers, ActiveSupport adapter.
-- `sig/`: RBS mirror of `lib/`. `spec/redis_queued_locks_spec.rb`: single integration spec.
+- `sig/`: RBS mirror of `lib/`. `spec/redis_queued_locks_spec.rb`: single integration spec (+ Redis-free `spec/redis_queued_locks/config_spec.rb`).
 
 ## Rules
 Detailed, path-scoped rules in `.claude/rules/`: `logic.md` (lib, general), `acquirer.md` (acquirer modules, Redis access), `visitors.md` (log/instrumentation visitors), `arguments.md` (long keyword lists), `swarm.md` (swarm supervisor/elements, Ractor/Thread rules), `tests.md` (spec), `type-checking.md` (sig/Steep), `git.md` (commit messages and commit flow, always loaded).
@@ -30,7 +30,7 @@ Detailed, path-scoped rules in `.claude/rules/`: `logic.md` (lib, general), `acq
 - `{ ok:, result: }` is for the public API only (`Client`, `Acquirer::*`, `Swarm` facade actions). Internal swarm element APIs (commands, replies, helpers) use bare scalars/primitives (see `swarm.md`).
 - New operation: `Acquirer::*` module, thin `Client` method (+ `!` variant), RBS, spec.
 - Operation modules behind `Client` methods (all `Acquirer::*` except the `AcquireLock` acquisition core and PoC modules such as `LockSeriesPoC`, which may reuse other modules) are independent: they never call each other or reference each other's RBS types, share logic only via `Resource`/`Utilities`, and duplicate similar logic on purpose (independence over DRY; e.g. `Locks` duplicates the `LockInfo` formatting). Details: `acquirer.md`.
-- New option: `setting` (+ `validate`) in `config.rb`.
+- New option: `setting` (+ `validate`) in `config.rb` + its `Config#[]` overload line in `sig/redis_queued_locks/config.rbs` (typed per key).
 - Dev gems go in `Gemfile`, not the gemspec.
 - Commits (`git.md`): subject only `[<scope>] <summary>` (several features: 1-2 words each, comma-separated), no body; when a step is complete (requirement fully implemented, specs/rubocop/steep green), and only then, run the `rql-code-review` skill on the uncommitted changes, then ask before committing, with the proposed subject, a recap of the changes and the review verdict; an explicit "commit" request needs no extra question and no review (a commit authorized in advance for a task still gets the review); never on `master`, never push.
 - Before implementing, read the relevant sections of `.claude/project-overview.md` (key layout, lock flow, "Read/Write locks", events) and keep their invariants. In the same change, update the overview and the affected `.claude/rules/*.md` for every new/changed key, option, result shape, event, algorithm step or limitation (and README/CHANGELOG `[Unreleased]` for user-visible behavior). New or changed log keys / instrumentation payload keys (visitors or inline `notify`) also go to README `## Logging` / `### Instrumentation Events` (see `visitors.md`).

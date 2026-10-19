@@ -7,7 +7,7 @@ paths:
 # Test rules (`spec/`)
 
 ## Observed conventions
-- All behavior specs live in one integration file, `spec/redis_queued_locks_spec.rb` (~5.6k lines), under `RSpec.describe RedisQueuedLocks`; groups: `describe 'Lock Series PoC'`, `describe 'swarm'`, `describe 'read/write locks'`, plus top-level `specify` blocks (all of them in the shared examples), and `describe 'lock index'` (outside the shared examples, see below). The file header says it will be reworked; rspec-retry (5 retries) masks flakiness meanwhile.
+- All behavior specs live in one integration file, `spec/redis_queued_locks_spec.rb` (~5.6k lines), under `RSpec.describe RedisQueuedLocks`; the only other spec is the Redis-free `spec/redis_queued_locks/config_spec.rb` (the typed `Config#[]` overload table of `config.rbs` == the `setting` registry); groups: `describe 'Lock Series PoC'`, `describe 'swarm'`, `describe 'read/write locks'`, plus top-level `specify` blocks (all of them in the shared examples), and `describe 'lock index'` (outside the shared examples, see below). The file header says it will be reworked; rspec-retry (5 retries) masks flakiness meanwhile.
 - Known flaky examples (timing-dependent: they pass in isolation, rspec-retry usually hides them; check them with `RSPEC_RETRY_RETRY_COUNT=1` before blaming a change):
   - `all in + notifications`: `sleep(1)` before the lock/queue info checks; in full runs it can fail all retries in a row in the keyspace lookup mode (`locks_info.size` is 1 instead of 2): order-dependent (reproducible with `--seed 6170`, also without retried swarm examples), the example that leaks the state is not found yet (`rspec --bisect` of the suite is too slow);
   - `:queued access strategy`: the 4th attempt of `trd2` (~9 s, `retry_delay: 3_000`) races the expiration of the `trd1` lock (obtained at ~7 s with ttl 2 s), and the default `try_to_lock_timeout` (10 s) leaves no later attempt;
@@ -32,7 +32,7 @@ paths:
 The suite is pending a total rework (overview "Conventions"): these rules guide new examples, but their violations in `*_spec.rb` are not code review findings until the rework; the review checks only that the changed library behavior is covered and that changed expectations are correct (`.claude/skills/rql-code-review`, §3).
 
 1. Run specs with a local Redis available: `bundle exec rake rspec` (single example: `bundle exec rspec spec/redis_queued_locks_spec.rb:<line>`).
-2. Add new examples to `spec/redis_queued_locks_spec.rb` with `specify '<feature>'`, inside an existing `describe` when one fits; don't create new spec files unless asked (the suite is pending a rework).
+2. Add new examples to `spec/redis_queued_locks_spec.rb` with `specify '<feature>'`, inside an existing `describe` when one fits; don't create new spec files unless asked (the suite is pending a rework); Redis-free consistency checks (e.g. the `config_spec.rb` table sync) are the exception: one small file per subject under `spec/redis_queued_locks/`.
 3. Use only `expect` syntax; no `should`, no monkey-patched DSL, no `focus` left behind.
 4. Use the shared `redis` pool and rely on the global `before`/`after` FLUSHDB; never use a different DB or flush in the middle of an example without reason.
 5. Build fakes as anonymous classes implementing the duck-typed interface (`debug`, `notify`, `sampling_happened?`), not with doubles of real loggers.

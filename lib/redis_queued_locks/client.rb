@@ -43,7 +43,7 @@ class RedisQueuedLocks::Client
   # @version 1.13.0
   def initialize(redis_client, &configuration)
     @config = RedisQueuedLocks::Config.new(&configuration)
-    @uniq_identity = config['uniq_identifier'].call #: String
+    @uniq_identity = config['uniq_identifier'].call
     @redis_client = redis_client
     @swarm = RedisQueuedLocks::Swarm.new(self)
     @swarm.swarm! if config['swarm.auto_swarm']
@@ -291,8 +291,8 @@ class RedisQueuedLocks::Client
   #   - Custom instrumenter that will be invoked via #notify method with `event` and `payload` data;
   #   - See RedisQueuedLocks::Instrument::ActiveSupport for examples and implementation details;
   #   - See [Instrumentation](#instrumentation) section of docs;
-  #   - pre-configured in `config['isntrumenter']` with void notifier
-  #     (`RedisQueuedLocks::Instrumenter::VoidNotifier`);
+  #   - pre-configured in `config['instrumenter']` with void notifier
+  #     (`RedisQueuedLocks::Instrument::VoidNotifier`);
   # @option instrument [NilClass,Any]
   #   - Custom instrumentation data wich will be passed to the instrumenter's payload
   #     with :instrument key;

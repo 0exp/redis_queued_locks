@@ -1,4 +1,10 @@
 ## [Unreleased]
+### Changed
+- RBS: `RedisQueuedLocks::Config#[]` is typed per config key (one overload per key with its value type) instead of
+  `(String) -> untyped`: Steep users get precise types of `config['...']` reads and type errors on unknown keys;
+  lookups with a dynamic `String` key no longer type-check (the runtime behavior is unchanged).
+- RBS: new aliases `RedisQueuedLocks::accessStrategy` (`:queued | :random`) and `RedisQueuedLocks::conflictStrategy`
+  (`:wait_for_lock | :work_through | :extendable_work_through | :dead_locking`) type the strategy config defaults.
 
 ## [1.21.0] - 2026-10-13
 ### Added

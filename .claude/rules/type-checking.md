@@ -19,7 +19,7 @@ paths:
 - Instance variables are declared (`@config_setters: configSetters`) and attr readers typed.
 - Third-party types: `sig/vendor/*.rbs` hand-written stubs (redis_client, active_support, semantic_logger) plus `rbs collection` gems (redis-client, securerandom, timeout, logger, monitor, json) installed into `.gem_rbs_collection/`; the `gem_rbs_collection` source is pinned to a commit `revision` in `rbs_collection.yaml` (never `main`), so installs are reproducible and `rbs_collection.lock.yaml` stays stable.
 - `Steepfile`: target `lib`, signatures `sig`, ignores `spec`, libraries timeout/securerandom/logger/monitor, diagnostics `Steep::Diagnostic::Ruby.strict`.
-- In Ruby code: `# @type var x: T` and `x = ... #: T` annotations narrow types; `# steep:ignore` silences spots Steep really reports (nil-narrowed `attr_reader` results, pattern-matching destructures, splats). `Config#[]` returns `untyped`, so `config['...']` defaults in `Client` need no ignore.
+- In Ruby code: `# @type var x: T` and `x = ... #: T` annotations narrow types; `# steep:ignore` silences spots Steep really reports (nil-narrowed `attr_reader` results, pattern-matching destructures, splats). `Config#[]` is typed per key (one overload per `setting` with a string literal key in `config.rbs`), so `config['...']` reads are precisely typed, unknown keys are Steep errors (`Cannot find compatible overloading`) and a dynamic `String` key does not type-check (lookups by variable are not used in `lib/`).
 - Steep 2.1 pitfalls found in this codebase:
   - record types with String keys (`{ 'acq_id' => String, ... }`) crash Steep's subtyping (`RuntimeError`/`Unexpected error` logged as `ERROR`/`FATAL`, while the summary still says "No type error detected"): use `Hash[String, ...]` aliases instead (see `QueueInfo::queueInfo`, `LockInfo::lockInfo`);
   - `x != nil` does not narrow `String?`/`Float?` in `elsif` branches or `&&` chains on locals typed from tuples: use truthiness (`elsif x`) or total conversions (`x.to_f > now`, `ttl.to_i`);
@@ -41,10 +41,11 @@ paths:
 9. Keep RBS file and directory names identical to their `lib/` counterparts (`acquirer.rbs`, `acquire_lock/yield_expire/`).
 10. After `steep:check`, also grep its output for `ERROR`/`FATAL` lines: an internal Steep crash skips the file but still reports "No type error detected".
 11. Bump the pinned `gem_rbs_collection` revision only deliberately, in its own change: set the new commit in `rbs_collection.yaml`, run `bundle exec rbs collection update`, commit both files together and keep Steep green.
-12. `bundle exec rbs collection install` may rewrite `rbs_collection.lock.yaml` with environment-specific entries; restore it (`git checkout -- rbs_collection.lock.yaml`) unless the change is intended.
+12. New `setting` in `config.rb` = new overload line `| ("<key>") -> <value type>` in `Config#[]` (`config.rbs`), in the `setting` order; the value type is the validator's type (`Integer`, `Integer?` for nullable keys, `bool`, shared aliases such as `RQL::loggerObj`, `RQL::conflictStrategy`).
+13. `bundle exec rbs collection install` may rewrite `rbs_collection.lock.yaml` with environment-specific entries; restore it (`git checkout -- rbs_collection.lock.yaml`) unless the change is intended.
 
 ## Recommendations (proposed, not yet project policy)
 1. Make the runtime type-check CI job blocking (drop `--failure-exit-code=0`) once current violations are fixed.
-2. Type `config['...']` lookups (`Config#[]` returns `untyped`, so `Client` keyword defaults are unchecked) with a typed config accessor (e.g. per-key typed readers or an RBS overload table for `Config#[]`).
+2. Type `Config#[]=` per key like `Config#[]` (an overload table of key literal => value type) so Steep checks assignments in user code too.
 3. Replace remaining `untyped` in signatures with precise unions or interfaces where the value set is known (e.g. strategy symbols as `:queued | :random`).
-4. Type strategy and mode options as literal unions (`conflict_strategy: :wait_for_lock | :work_through | :extendable_work_through | :dead_locking`) so Steep catches invalid values.
+4. Type strategy and mode options as literal unions (the aliases `RQL::accessStrategy` / `RQL::conflictStrategy` exist in `sig/redis_queued_locks.rbs` and type the config defaults; propagate them to the `Client`/`AcquireLock` signatures) so Steep catches invalid values.
