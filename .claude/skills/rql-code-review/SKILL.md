@@ -83,13 +83,12 @@ locks", key layout, "Lock index", lock lookup modes, events, errors, conventions
   - reserved `meta` keys validation in `AcquireLock` and `LockSeriesPoC`;
   - lock-family options in `Client#lock`, `#lock!`, `#lock_series`, `#lock_series!` and their forwarding in
     `LockSeriesPoC.lock_series_poc`.
-- Mirror path exceptions: `acquirer.rb` → `sig/redis_queued_locks/acquier.rbs`;
-  `acquire_lock/yield_expire/log_visitor.rb` → `sig/.../acquire_lock/yield_with_expire/log_visitor.rbs`;
-  `lock_series_poc*` has no RBS.
+- Mirror path exception: `lock_series_poc*` has no RBS.
 - Next version for `@since`/`@version`: the version the unreleased work already uses (`git diff <base> -- lib |
   grep -oE '^\+.*@(since|version) [0-9.]+'`, the CHANGELOG `[Unreleased]` code), otherwise the next minor of
   `RedisQueuedLocks::VERSION` (`version.rb`); don't take the maximum over `lib/` (old tags can be wrong).
-  A value older than `VERSION` on new code, a method behavior/signature change without the method `@version` bump, or a
+  A value older than `VERSION` on new code, a method behavior/signature change (a typo fix in the method or keyword
+  argument name included; a renamed positional parameter is not a signature change) without the method `@version` bump, or a
   class/module header `@version` that does not match its latest interface change (`logic.md#2`: signatures,
   added/removed methods, `extend`/`include`/`prepend`, the superclass; behavior changes never bump the header) is a
   Minor finding.
@@ -219,7 +218,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   `'rql:...'` literal outside `resource.rb`.
 - Config: `setting` + `validate` in `config.rb` (booleans `val == true || val == false`, Integers with ranges; per-call
   numeric options validated with the same ranges in the operation module, `logic.md#7`), dotted
-  keys for groups, unit in a trailing `# NOTE:` comment, read as `config['key']` (`logic.md#7`). Errors:
+  keys for groups, unit in a trailing `# NOTE:` comment, read as `config['key']` (`logic.md#7`), one typed
+  `Config#[]` overload line per key in `config.rbs` (`type-checking.md#12`). Errors:
   `class XError < Error; end` in `errors.rb`, each under the global base of its branch (`Error`, `ArgumentError`,
   `Exception`: super exceptional cases only, with the reason in the comment; `logic.md#15`). Runtime dependencies:
   `redis-client` only; dev gems in `Gemfile`.
@@ -293,7 +293,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - Rubocop: only specific `Metrics`/`Layout` cops disabled locally with a paired `enable`, never
   `# rubocop:disable all` in new code (`logic.md#10`); long signatures are not "fixed" (`arguments.md#8`).
 - Suggestions only (`logic.md` recommendations, not violations): correctly spelled new identifiers (don't copy the
-  known typos), `then` instead of `yield_self` in new code.
+  known typos).
 
 ### J. Docs and process
 - The same change updates `.claude/project-overview.md` and the affected `.claude/rules/*.md` for every new/changed
@@ -314,10 +314,9 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - Known limitations kept by the user: `YieldExpire` write release (`EXPIRE 0`) and ttl decrease without an owner
   check; `HMGET`→`DEL` without `WATCH` in `ReleaseLocksOf`/`FlushZombies`; `unlock` dropping the data of a reader
   re-acquired between its two round trips; `zombie_acquirers` vs `flush_zombies` acquirer sets.
-- Known debt: `WithAcqTimeout` → `LockInfo`/`QueueInfo`; rspec-retry, disabled coverage minimum, non-blocking runtime
-  type checks; `acquier.rbs` and the `yield_with_expire` RBS path; the `swarm_element__termiante` typo;
+- Known debt: `WithAcqTimeout` → `LockInfo`/`QueueInfo`; rspec-retry, disabled coverage minimum;
   `sleep(0.1)` readiness waits and missing logging in the swarm;
-  one flusher per process; `EVAL` without `SCRIPT LOAD`; `# rubocop:disable all` around lock series.
+  one flusher per process; `EVAL` without `SCRIPT LOAD`.
 - "Recommendations (proposed, not yet project policy)" in the rule files: never violations; mention one only as an
   optional suggestion for touched code.
 - Pre-existing problems outside the diff: out of scope; mention a severe one briefly in the template's

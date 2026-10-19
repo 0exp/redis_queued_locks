@@ -299,13 +299,11 @@ lib/redis_queued_locks/
   resource.rb                      keys and identities
   data.rb, errors.rb, utilities.rb, utilities/lock.rb, debugger/, version.rb
 sig/                               RBS mirror of lib/ + sig/vendor stubs (redis_client, active_support, semantic_logger)
-spec/                              redis_queued_locks_spec.rb (~5.6k lines, integration: shared examples run with both lock lookup modes), spec_helper.rb, setup_simplecov.rb
+spec/                              redis_queued_locks_spec.rb (~5.6k lines, integration: shared examples run with both lock lookup modes), redis_queued_locks/config_spec.rb (Redis-free: `Config#[]` RBS table == `setting` registry), spec_helper.rb, setup_simplecov.rb
 .github/workflows/                 tests, lint, typecheck-static, typecheck-runtime
 bin/console, bin/setup             dev scripts
 Rakefile, Steepfile, rbs_collection.yaml
 ```
-
-Known quirk: `sig/redis_queued_locks/acquier.rbs` is misspelled (should be `acquirer.rbs`).
 
 ---
 
@@ -338,7 +336,7 @@ Known quirk: `sig/redis_queued_locks/acquier.rbs` is misspelled (should be `acqu
 | tests | `bundle exec rake rspec` (with a Redis service) |
 | lint | `bundle exec rake rubocop` |
 | typecheck-static | `bundle exec rbs collection install && bundle exec rake steep:check -j 10` |
-| typecheck-runtime | `RBS_TEST_RAISE=true RUBYOPT='-rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_TARGET='RedisQueuedLocks::*' bundle exec rspec --failure-exit-code=0` (never fails the build) |
+| typecheck-runtime | `RBS_TEST_RAISE=true RUBYOPT='-rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec` (blocking; Ractor-executed methods are skipped: `RBS_TEST_SKIP` + `%a{rbs:test:skip}` in `resource.rbs`/`utilities.rbs`) |
 
 ---
 
@@ -348,8 +346,8 @@ Known quirk: `sig/redis_queued_locks/acquier.rbs` is misspelled (should be `acqu
 - YARD tags on every class/method: `@api public|private`, `@since`, `@version` (methods: bump on a behavior/signature change; classes/modules: only on an interface change: signatures, added/removed methods, `extend`/`include`/`prepend` or the superclass; `logic.md#2`).
 - Every `lib/` change gets a matching `sig/` RBS update; use `# steep:ignore` only where Steep can't infer types.
 - New operation: new `Acquirer::*` module, thin `Client` method (+ `!` variant if it should raise), RBS, spec.
-- New config option: `setting` (+ `validate`) in `config.rb`, read via `config['key']`, document defaults.
+- New config option: `setting` (+ `validate`) in `config.rb` + the typed `Config#[]` overload line in `sig/redis_queued_locks/config.rbs`, read via `config['key']`, document defaults.
 - Development gems go in `Gemfile` (`Gemspec/DevelopmentDependencies: Gemfile`), not the gemspec.
 - This overview and `.claude/rules/*.md` are updated in the same change as the code (keys, options, results, events, algorithm steps, limitations); README and CHANGELOG `[Unreleased]` for user-visible behavior (log keys and instrumentation payloads: README `## Logging` / `### Instrumentation Events`).
-- Temporary debt: rspec-retry, disabled coverage minimum, runtime type-check job that can't fail.
+- Temporary debt: rspec-retry, disabled coverage minimum.
 - Specs (`spec/**/*_spec.rb`) are not ideal and will be totally reworked (header `NOTE` of `spec/redis_queued_locks_spec.rb`): until then any coding principle may be broken there; code review checks only that the library behavior is covered and that changed expectations are correct (`.claude/skills/rql-code-review`).

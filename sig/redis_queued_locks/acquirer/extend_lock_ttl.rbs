@@ -13,7 +13,7 @@ module RedisQueuedLocks
         RC::client redis_client,
         String lock_name,
         Integer milliseconds,
-        Symbol read_write_mode,
+        Symbol read_write_mode, # NOTE: (rbs test) validated at runtime: any Symbol is accepted here
         bool all_read_locks,
         String acquirer_id,
         bool lock_index_enabled,
@@ -35,7 +35,7 @@ module RedisQueuedLocks
         String lock_name,
         String lock_key,
         Integer milliseconds,
-        Symbol read_write_mode,
+        RQL::readWriteMode read_write_mode,
         bool all_read_locks,
         String acquirer_id,
         bool lock_index_enabled

@@ -13,8 +13,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode
           ) -> void
 
           def self.rconn_fetched: (
@@ -25,8 +25,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode
           ) -> void
 
           def self.same_process_conflict_detected: (
@@ -37,8 +37,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode
           ) -> void
 
           def self.same_process_conflict_analyzed: (
@@ -49,8 +49,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
             Symbol sp_conflict_status
           ) -> void
 
@@ -62,8 +62,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
             Symbol sp_conflict_status,
             Integer? ttl,
             ::Float spc_processed_timestamp
@@ -77,8 +77,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
             Symbol sp_conflict_status,
             ::Float spc_processed_timestamp
           ) -> void
@@ -91,8 +91,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
             Symbol sp_conflict_status,
             ::Float spc_processed_timestamp
           ) -> void
@@ -105,8 +105,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
             Symbol sp_conflict_status,
             ::Float spc_processed_timestamp
           ) -> void
@@ -119,8 +119,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode
           ) -> void
 
           def self.remove_expired_acqs: (
@@ -131,8 +131,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode
           ) -> void
 
           def self.get_first_from_queue: (
@@ -143,8 +143,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
             String? waiting_acquirer
           ) -> void
 
@@ -156,8 +156,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode
           ) -> void
 
           def self.exit__no_first: (
@@ -168,8 +168,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
             String? waiting_acquirer,
             Hash[String,untyped] current_lock_data
           ) -> void
@@ -182,8 +182,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
             String? waiting_acquirer,
             String locked_by_acquirer,
             Hash[String,untyped] current_lock_data
@@ -197,8 +197,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
             String ahead_acquirer
           ) -> void
 
@@ -210,8 +210,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
             String ahead_acquirer
           ) -> void
 
@@ -223,8 +223,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
             String? waiting_acquirer
           ) -> void
 
@@ -236,8 +236,8 @@ module RedisQueuedLocks
             Integer queue_ttl,
             String acquirer_id,
             String host_id,
-            Symbol access_strategy,
-            Symbol rw_mode
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode
           ) -> void
         end
       end

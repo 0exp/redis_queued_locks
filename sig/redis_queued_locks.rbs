@@ -10,5 +10,9 @@ module RedisQueuedLocks
   type loggerObj = Object & _Loggable
   type instrObj = Object & _Instrumentable
 
+  type readWriteMode = :read | :write
+  type accessStrategy = :queued | :random
+  type conflictStrategy = :wait_for_lock | :work_through | :extendable_work_through | :dead_locking
+
   extend ::RedisQueuedLocks::Debugger::Interface
 end

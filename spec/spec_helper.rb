@@ -8,6 +8,10 @@ require 'rspec/retry'
 require 'pry'
 require 'redis_queued_locks'
 
+# NOTE: (RBS) true under the RBS runtime type checks (`-rrbs/test/setup`, typecheck-runtime CI):
+#   expectations that pass type-invalid values on purpose are skipped there (the hooks raise first).
+RBS_RUNTIME_TEST = ENV.key?('RBS_TEST_TARGET')
+
 RSpec.configure do |config|
   # NOTE: (github-ci) (rspec-retry) temporary decision for non-refactored tests
   config.verbose_retry = true # (rspec-retry)

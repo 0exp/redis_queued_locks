@@ -37,9 +37,9 @@ module RedisQueuedLocks
         logger: RQL::loggerObj,
         log_lock_try: bool,
         instrument: untyped?,
-        conflict_strategy: Symbol,
-        read_write_mode: Symbol,
-        access_strategy: Symbol,
+        conflict_strategy: RQL::conflictStrategy,
+        read_write_mode: Symbol, # NOTE: (rbs test) validated at runtime (Step 0.1 (RW)): any Symbol is accepted here
+        access_strategy: RQL::accessStrategy,
         log_sampling_enabled: bool,
         log_sampling_percent: Integer,
         log_sampler: RQL::Logging::samplerObj,

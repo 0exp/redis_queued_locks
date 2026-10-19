@@ -43,7 +43,7 @@ class RedisQueuedLocks::Client
   # @version 1.13.0
   def initialize(redis_client, &configuration)
     @config = RedisQueuedLocks::Config.new(&configuration)
-    @uniq_identity = config['uniq_identifier'].call #: String
+    @uniq_identity = config['uniq_identifier'].call
     @redis_client = redis_client
     @swarm = RedisQueuedLocks::Swarm.new(self)
     @swarm.swarm! if config['swarm.auto_swarm']
@@ -291,8 +291,8 @@ class RedisQueuedLocks::Client
   #   - Custom instrumenter that will be invoked via #notify method with `event` and `payload` data;
   #   - See RedisQueuedLocks::Instrument::ActiveSupport for examples and implementation details;
   #   - See [Instrumentation](#instrumentation) section of docs;
-  #   - pre-configured in `config['isntrumenter']` with void notifier
-  #     (`RedisQueuedLocks::Instrumenter::VoidNotifier`);
+  #   - pre-configured in `config['instrumenter']` with void notifier
+  #     (`RedisQueuedLocks::Instrument::VoidNotifier`);
   # @option instrument [NilClass,Any]
   #   - Custom instrumentation data wich will be passed to the instrumenter's payload
   #     with :instrument key;
@@ -423,7 +423,7 @@ class RedisQueuedLocks::Client
   # rubocop:enable Metrics/MethodLength
 
   # NOTE: Lock Series PoC
-  # rubocop:disable all
+  # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.16.0
   # @version 1.21.0
@@ -500,10 +500,10 @@ class RedisQueuedLocks::Client
       &block
     )
   end
-  # rubocop:enable all
+  # rubocop:enable Metrics/MethodLength
 
   # NOTE: Lock Series PoC
-  # rubocop:disable all
+  # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.16.0
   # @version 1.21.0
@@ -573,9 +573,11 @@ class RedisQueuedLocks::Client
       &block
     )
   end
+  # rubocop:enable Metrics/MethodLength
 
   # @note See #lock method signature.
   #
+  # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.0.0
   # @version 1.21.0
@@ -714,13 +716,15 @@ class RedisQueuedLocks::Client
   #
   # @param lock_name [String] The lock name whose read lock should be released.
   # @option acquirer_id [String,NilClass]
-  #   - The acquirer whose read lock should be released (`nil` by default);
-  #   - `nil` => the current acquirer is used (calculated from `identity:`, see `#current_acquirer_id`);
-  #   - can be extracted from the lock data (`#lock_info`, `#locks_info`, `#queue_info`, `#queues_info`);
+  #   - the acquirer whose read lock should be released (`nil` by default);
+  #   - `nil` => the current acquirer is used (calculated from `identity:`,
+  #     see `#current_acquirer_id`);
+  #   - can be extracted from the lock data (`#lock_info`, `#locks_info`, `#queue_info`,
+  #     `#queues_info`);
   # @option identity [String]
   #   Unique acquirer identity (the same as for `#lock`) that is used to calculate the current
-  #   acquirer id (see `#current_acquirer_id`). Ignored when `acquirer_id:` is passed: the acquirer id
-  #   already contains its own identity.
+  #   acquirer id (see `#current_acquirer_id`). Ignored when `acquirer_id:` is passed: the
+  #   acquirer id already contains its own identity.
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify]
   # @option instrument [NilClass,Any]
@@ -1354,8 +1358,8 @@ class RedisQueuedLocks::Client
   end
 
   # Adds the lock keys without the lock index entry (keys of older RQL versions, keys created while
-  # the lock index was disabled) to the lock index (`rql:index:locks`). Invoke it once after the lock
-  # index is enabled (`config['lock_index_enabled']`) on all your processes: lock-iterating
+  # the lock index was disabled) to the lock index (`rql:index:locks`). Invoke it once after the
+  # lock index is enabled (`config['lock_index_enabled']`) on all your processes: lock-iterating
   # operations (the swarm, `#locks`, `#queues`, `#keys`, `#clear_locks`, ...) find locks via
   # the lock index only.
   #   - works regardless of `config['lock_index_enabled']` (the lock index is not used and not

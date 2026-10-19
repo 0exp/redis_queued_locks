@@ -27,23 +27,26 @@ module RedisQueuedLocks
       String identity
     ) -> String
 
-    def self.prepare_lock_key: (String lock_name) -> String
-    def self.prepare_lock_queue: (String lock_name) -> String
-    def self.prepare_read_lock_queue: (String lock_name) -> String
-    def self.prepare_lock_readers: (String lock_name) -> String
-    def self.prepare_read_lock_key: (String lock_name, String acquirer_id) -> String
+    # NOTE: (rbs test) `%a{rbs:test:skip}`: these functions run inside the zombie flusher Ractor
+    #   (`FlushZombies.flush_zombies`); rbs/test hooks read `RBS.logger` and raise
+    #   `Ractor::IsolationError` there, so they are not hooked (Steep still checks them).
+    %a{rbs:test:skip} def self.prepare_lock_key: (String lock_name) -> String
+    %a{rbs:test:skip} def self.prepare_lock_queue: (String lock_name) -> String
+    %a{rbs:test:skip} def self.prepare_read_lock_queue: (String lock_name) -> String
+    %a{rbs:test:skip} def self.prepare_lock_readers: (String lock_name) -> String
+    %a{rbs:test:skip} def self.prepare_read_lock_key: (String lock_name, String acquirer_id) -> String
     def self.lock_queue_rw_mode: (String lock_queue) -> String?
     type lockKeyFamily = :lock | :lock_queue | :lock_readers | :read_lock_queue | :read_lock
-    def self.lock_key_family: (String key) -> lockKeyFamily?
+    %a{rbs:test:skip} def self.lock_key_family: (String key) -> lockKeyFamily?
     def self.lock_name_from_key: (String key, lockKeyFamily? key_family) -> String?
-    def self.lock_index_time: () -> Integer
-    def self.lock_name_from_readers: (String lock_readers_key) -> String
+    %a{rbs:test:skip} def self.lock_index_time: () -> Integer
+    %a{rbs:test:skip} def self.lock_name_from_readers: (String lock_readers_key) -> String
     def self.lock_key_from_readers: (String lock_readers_key) -> String
-    def self.host_identifier_from_acquirer: (String acquirer_id) -> String
+    %a{rbs:test:skip} def self.host_identifier_from_acquirer: (String acquirer_id) -> String
     def self.redis_time_ms: (Array[String] redis_time) -> Integer
     def self.calc_initial_acquirer_position: () -> Float
     def self.acquirer_dead_score: (Integer|Float queue_ttl) -> Float
-    def self.calc_zombie_score: (Float zombie_ttl) -> Float
+    %a{rbs:test:skip} def self.calc_zombie_score: (Float zombie_ttl) -> Float
     def self.dead_score_reached?: (Float acquirer_position, Integer queue_ttl) -> bool
     def self.lock_key_from_queue: (String lock_queue) -> String?
     def self.get_thread_id: () -> Integer

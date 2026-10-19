@@ -74,7 +74,9 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
       instr_sampler,
       instr_sample_this
     )
-      if read_write_mode != :read && read_write_mode != :write
+      case read_write_mode # NOTE: (steep) case/when narrows `Symbol` to `RQL::readWriteMode` below
+      when :read, :write then nil
+      else
         raise(
           RedisQueuedLocks::ArgumentError,
           "`:read_write_mode` argument should be `:read` or `:write`, " \

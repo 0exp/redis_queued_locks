@@ -65,4 +65,4 @@ Not covered by visitors (lock mutation operations, `logic.md#16`): `ReleaseLock`
 Apply to new or touched code; don't refactor existing code for these unless asked.
 1. Use one error-swallowing style consistently (visitors use modifier `rescue nil`, mutation modules use `run_non_critical`). Both silently hide bugs such as a `NoMethodError` inside the log block, so consider reporting swallowed errors when the debugger is enabled.
 2. Keep log and instrumentation event names in one registry constant (e.g. `RedisQueuedLocks::Instrument::EVENTS`) so README, specs and RBS can be checked against it.
-3. Fix the RBS path mismatch: `sig/.../acquire_lock/yield_with_expire/log_visitor.rbs` mirrors `lib/.../acquire_lock/yield_expire/log_visitor.rb`; add RBS for `lock_series_poc` visitors when the PoC stabilizes.
+3. Add RBS for the `lock_series_poc` visitors when the PoC stabilizes.

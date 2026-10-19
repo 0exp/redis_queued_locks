@@ -563,7 +563,7 @@ def lock(
 - `instrumenter` - (optional) `[#notify]`
   - See RedisQueuedLocks::Instrument::ActiveSupport for example;
   - See [Instrumentation](#instrumentation) section of docs;
-  - pre-configured in `config['isntrumenter']` with void notifier (`RedisQueuedLocks::Instrumenter::VoidNotifier`);
+  - pre-configured in `config['instrumenter']` with void notifier (`RedisQueuedLocks::Instrument::VoidNotifier`);
 - `instrument` - (optional) `[NilClass,Any]`
   - Custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
   - `nil` by default (means "no custom instrumentation data");
@@ -1471,7 +1471,7 @@ rql.unlock_read('report', acquirer_id: reader['acq_id'])
     - pre-configured value in `config['logger']`;
   - `:instrumenter` - (optional) `[#notify]`
     - custom instrumenter object;
-    - pre-configured value in `config['isntrumenter']`;
+    - pre-configured value in `config['instrumenter']`;
   - `:instrument` - (optional) `[NilClass,Any]`
     - custom instrumentation data wich will be passed to the instrumenter's payload with `:instrument` key;
   - `:log_sampling_enabled` - (optional) `[Boolean]`
@@ -1554,7 +1554,7 @@ rql.clear_locks
     - pre-configured value in `config['logger']`;
   - `:instrumenter` - (optional) `[#notify]`
     - custom instrumenter object;
-    - pre-configured value in `config['isntrumenter']`;
+    - pre-configured value in `config['instrumenter']`;
   - `:instrument` - (optional) `[NilClass,Any]`
     - custom instrumentation data wich will be passed to the instrumenter's payload with `:instrument` key;
   - `:log_sampling_enabled` - (optional) `[Boolean]`
@@ -1662,7 +1662,7 @@ rql.clear_current_locks
     - pre-configured value in `config['logger']`;
   - `:instrumenter` - (optional) `[#notify]`
     - custom instrumenter object;
-    - pre-configured value in `config['isntrumenter']`;
+    - pre-configured value in `config['instrumenter']`;
   - `:instrument` - (optional) `[NilClass,Any]`
     - custom instrumentation data wich will be passed to the instrumenter's payload with `:instrument` key;
   - `:log_sampling_enabled` - (optional) `[Boolean]`
@@ -2029,7 +2029,7 @@ Accepts:
   - pre-configured in `config['logger']`;
 - `:instrumenter` - (optional) `[#notify]`
   - custom instrumenter object;
-  - pre-configured in `config['isntrumenter']`;
+  - pre-configured in `config['instrumenter']`;
 - `:instrument` - (optional) `[NilClass,Any]`
   - custom instrumentation data wich will be passed to the instrumenter's payload with :instrument key;
   - `nil` by default (no additional data);
@@ -3281,7 +3281,7 @@ bundle exec rake steep:check
 
 - `Runtime` TypeChecking (`RBS`):
 ```shell
-bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' bundle exec rspec --failure-exit-code=0
+bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec
 ```
 
 ---

@@ -11,7 +11,53 @@ module RedisQueuedLocks
 
     def initialize: () ?{ (RedisQueuedLocks::Config) -> void } -> void
     def configure: () ?{ (RedisQueuedLocks::Config) -> void } -> void
-    def []: (String config_key) -> untyped
+    # NOTE: (typed config lookups) one overload per config key (the `setting` list of `config.rb`):
+    #   Steep checks `config['...']` defaults in `Client` and rejects unknown keys;
+    #   keep this table in sync with `setting`/`validate`;
+    def []: ("retry_count") -> Integer?
+          | ("retry_delay") -> Integer
+          | ("retry_jitter") -> Integer
+          | ("try_to_lock_timeout") -> Integer?
+          | ("default_lock_ttl") -> Integer
+          | ("default_queue_ttl") -> Integer
+          | ("detailed_acq_timeout_error") -> bool
+          | ("lock_release_batch_size") -> Integer
+          | ("clear_locks_of__lock_scan_size") -> Integer
+          | ("clear_locks_of__queue_scan_size") -> Integer
+          | ("key_extraction_batch_size") -> Integer
+          | ("instrumenter") -> RedisQueuedLocks::instrObj
+          | ("uniq_identifier") -> ^() -> String
+          | ("logger") -> RedisQueuedLocks::loggerObj
+          | ("log_lock_try") -> bool
+          | ("dead_request_ttl") -> Integer
+          | ("lock_index_enabled") -> bool
+          | ("lock_index_grace_period") -> Integer
+          | ("is_timed_by_default") -> bool
+          | ("default_conflict_strategy") -> RedisQueuedLocks::conflictStrategy
+          | ("default_access_strategy") -> RedisQueuedLocks::accessStrategy
+          | ("log_sampling_enabled") -> bool
+          | ("log_sampling_percent") -> Integer
+          | ("log_sampler") -> RedisQueuedLocks::Logging::samplerObj
+          | ("instr_sampling_enabled") -> bool
+          | ("instr_sampling_percent") -> Integer
+          | ("instr_sampler") -> RedisQueuedLocks::Instrument::samplerObj
+          | ("swarm.auto_swarm") -> bool
+          | ("swarm.supervisor.liveness_probing_period") -> Integer
+          | ("swarm.probe_hosts.enabled_for_swarm") -> bool
+          | ("swarm.probe_hosts.probe_period") -> Integer
+          | ("swarm.probe_hosts.redis_config.sentinel") -> bool
+          | ("swarm.probe_hosts.redis_config.pooled") -> bool
+          | ("swarm.probe_hosts.redis_config.config") -> Hash[untyped,untyped]
+          | ("swarm.probe_hosts.redis_config.pool_config") -> Hash[untyped,untyped]
+          | ("swarm.flush_zombies.enabled_for_swarm") -> bool
+          | ("swarm.flush_zombies.zombie_ttl") -> Integer
+          | ("swarm.flush_zombies.zombie_lock_scan_size") -> Integer
+          | ("swarm.flush_zombies.zombie_queue_scan_size") -> Integer
+          | ("swarm.flush_zombies.zombie_flush_period") -> Integer
+          | ("swarm.flush_zombies.redis_config.sentinel") -> bool
+          | ("swarm.flush_zombies.redis_config.pooled") -> bool
+          | ("swarm.flush_zombies.redis_config.config") -> Hash[untyped,untyped]
+          | ("swarm.flush_zombies.redis_config.pool_config") -> Hash[untyped,untyped]
     def []=: (String config_key, untyped config_value) -> void
     def slice: (String config_key_pattern) -> configState
 

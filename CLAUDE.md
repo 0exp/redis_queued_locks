@@ -5,7 +5,7 @@ Full details (config keys, key layout, events, errors, stack, CI): `.claude/proj
 
 ## Commands
 - Tests (need a running local Redis): `bundle exec rake rspec`
-- Lint: `bundle exec rake rubocop`
+- Lint: `bundle exec rake rubocop` (two passes, Ruby then RBS: both must be clean; never tune `.rubocop.yml` to pass, fix the code)
 - Static types: `bundle exec rbs collection install && bundle exec rake steep:check`
 
 ## Architecture
@@ -20,7 +20,7 @@ Full details (config keys, key layout, events, errors, stack, CI): `.claude/proj
 - `resource.rb`: all key names and acquirer/host IDs. `config.rb`: `setting`/`validate` DSL, read as `config['a.b']`.
 - `swarm/`: zombie-lock cleanup. `Supervisor` thread revives `ProbeHosts` (`SwarmElement::Threaded`) and `FlushZombies` (`SwarmElement::Isolated`, Ractor talking via `Ractor::Port`s); each element runs a main-loop thread with its own Redis connection.
 - `logging/`, `instrument/`: Void null-object defaults, percent samplers, ActiveSupport adapter.
-- `sig/`: RBS mirror of `lib/`. `spec/redis_queued_locks_spec.rb`: single integration spec.
+- `sig/`: RBS mirror of `lib/`. `spec/redis_queued_locks_spec.rb`: single integration spec (+ Redis-free `spec/redis_queued_locks/config_spec.rb`).
 
 ## Rules
 Detailed, path-scoped rules in `.claude/rules/`: `logic.md` (lib, general), `acquirer.md` (acquirer modules, Redis access), `visitors.md` (log/instrumentation visitors), `arguments.md` (long keyword lists), `swarm.md` (swarm supervisor/elements, Ractor/Thread rules), `tests.md` (spec), `type-checking.md` (sig/Steep), `git.md` (commit messages and commit flow, always loaded).
@@ -30,10 +30,10 @@ Detailed, path-scoped rules in `.claude/rules/`: `logic.md` (lib, general), `acq
 - `{ ok:, result: }` is for the public API only (`Client`, `Acquirer::*`, `Swarm` facade actions). Internal swarm element APIs (commands, replies, helpers) use bare scalars/primitives (see `swarm.md`).
 - New operation: `Acquirer::*` module, thin `Client` method (+ `!` variant), RBS, spec.
 - Operation modules behind `Client` methods (all `Acquirer::*` except the `AcquireLock` acquisition core and PoC modules such as `LockSeriesPoC`, which may reuse other modules) are independent: they never call each other or reference each other's RBS types, share logic only via `Resource`/`Utilities`, and duplicate similar logic on purpose (independence over DRY; e.g. `Locks` duplicates the `LockInfo` formatting). Details: `acquirer.md`.
-- New option: `setting` (+ `validate`) in `config.rb`.
+- New option: `setting` (+ `validate`) in `config.rb` + its `Config#[]` overload line in `sig/redis_queued_locks/config.rbs` (typed per key).
 - Dev gems go in `Gemfile`, not the gemspec.
 - Commits (`git.md`): subject only `[<scope>] <summary>` (several features: 1-2 words each, comma-separated), no body; when a step is complete (requirement fully implemented, specs/rubocop/steep green), and only then, run the `rql-code-review` skill on the uncommitted changes, then ask before committing, with the proposed subject, a recap of the changes and the review verdict; an explicit "commit" request needs no extra question and no review (a commit authorized in advance for a task still gets the review); never on `master`, never push.
 - Before implementing, read the relevant sections of `.claude/project-overview.md` (key layout, lock flow, "Read/Write locks", events) and keep their invariants. In the same change, update the overview and the affected `.claude/rules/*.md` for every new/changed key, option, result shape, event, algorithm step or limitation (and README/CHANGELOG `[Unreleased]` for user-visible behavior). New or changed log keys / instrumentation payload keys (visitors or inline `notify`) also go to README `## Logging` / `### Instrumentation Events` (see `visitors.md`).
 - Observability (`logic.md#16`): logic that creates/changes/deletes keys is logged and instrumented: the lock acquirement per meaningful outcome (visitors), each mutation operation with one log line + one event of the whole root operation called by `Client` (inline, `instrument` last in the payload); lock info queries are neither; the swarm elements are known debt.
 - Lock-touching code is read/write-aware and index-aware: any operation over locks, queues, zombies or lock info must cover the read family (`rql:lock_readers:*`, `rql:lock_read_queue:*`, `rql:lock_reader:*`) next to `rql:lock:*`/`rql:lock_queue:*`, and any new key-creating/extending command must keep the lock index a superset of the existing locks (enabled mode); a new lock-iterating operation implements both lookups (keyspace and lock index, `lock_index_enabled`). Mutual exclusion comes only from WATCH/MULTI on lock state (no Lua in the RW acquisition path unless asked); queues never guarantee safety.
-- Known debt: rspec-retry, disabled coverage minimum, runtime type-check CI uses `--failure-exit-code=0`.
+- Known debt: rspec-retry, disabled coverage minimum.
