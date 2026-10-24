@@ -334,9 +334,9 @@ Rakefile, Steepfile, rbs_collection.yaml
 | Workflow | Command |
 |---|---|
 | tests | `bundle exec rake rspec` (with a Redis service) |
-| lint | `bundle exec rake rubocop` |
+| lint | `bundle exec rake rubocop` (precompiled native gems: no `BUNDLE_FORCE_RUBY_PLATFORM`, a rubydex 0.4.1 source build on the runner flags constants as `@deprecated` and breaks `Lint/DeprecatedReference`) |
 | typecheck-static | `bundle exec rbs collection install && bundle exec rake steep:check -j 10` |
-| typecheck-runtime | `RBS_TEST_RAISE=true RUBYOPT='-rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec` (blocking; Ractor-executed methods are skipped: `RBS_TEST_SKIP` + `%a{rbs:test:skip}` in `resource.rbs`/`utilities.rbs`) |
+| typecheck-runtime | `RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec` (blocking; Ractor-executed methods are skipped: `RBS_TEST_SKIP` + `%a{rbs:test:skip}` in `resource.rbs`/`utilities.rbs`) |
 
 ---
 

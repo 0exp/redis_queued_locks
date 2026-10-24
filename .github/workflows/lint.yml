@@ -9,8 +9,6 @@ jobs:
         ruby_version: ['4.0']
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      BUNDLE_FORCE_RUBY_PLATFORM: 1
     steps:
       - uses: actions/checkout@v7
       - uses: supercharge/redis-github-action@1.8.1
@@ -18,5 +16,6 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby_version }}
           bundler-cache: true
+          cache-version: 1
       - name: (Linter) Rubocop+RBS
         run: bundle exec rake rubocop
