@@ -1,13 +1,13 @@
 ---
 name: rql-code-review
-description: Code review of redis_queued_locks changes against the project's own invariants and conventions (WATCH/MULTI lock safety, read/write key families, the lock index superset invariant in both lookup modes, one-pass iteration, operation-module independence, long explicit argument lists, log/instrumentation visitors, RBS/Steep, docs sync). Use when the user asks to review / code-review (ревью, код-ревью, проверь изменения) a branch, diff, commit range, PR, staged changes or files of this repository. Also run it automatically on the uncommitted changes when a task in this repository is done and ready to commit, right before asking about the commit (never earlier). Spec files (*_spec.rb) are exempt from style/principle checks until the suite rework; only the coverage of the changed library behavior is checked.
+description: Code review of redis_queued_locks changes against the project's own invariants and conventions (WATCH/MULTI lock safety, read/write key families and the order between modes, lock request priority bands and their head-driven dead request cleanup, the lock index superset invariant in both lookup modes, one-pass iteration, operation-module independence, long explicit argument lists, log/instrumentation visitors, RBS/Steep, docs sync). Use when the user asks to review / code-review (ревью, код-ревью, проверь изменения) a branch, diff, commit range, PR, staged changes or files of this repository. Also run it automatically on the uncommitted changes when a task in this repository is done and ready to commit, right before asking about the commit (never earlier). Spec files (*_spec.rb) are exempt from style/principle checks until the suite rework; only the coverage of the changed library behavior is checked.
 argument-hint: "[uncommitted | base..head | <commit> | pr <N> | staged | <paths...>]"
 ---
 
 # redis_queued_locks code review
 
 Review a change of this gem the way its maintainer does: lock safety first, then the project invariants
-(read/write locks, lock index, iteration), then architecture, types, docs and style. The rules live in
+(read/write locks, lock request priorities, lock index, iteration), then architecture, types, docs and style. The rules live in
 `CLAUDE.md`, `.claude/project-overview.md` and `.claude/rules/*.md`; this skill says what to check, where the
 details are, and what must not be reported.
 
@@ -28,7 +28,7 @@ details are, and what must not be reported.
   - Scope `uncommitted`: the changes of the step (earlier steps are reviewed before their own commits).
   - The completion checks have just run: report their results, don't re-run them. A step without code changes (docs,
     `.claude` files) gets a docs review only: accuracy against the code, the overview and the rules, cross-file
-    consistency (§4 J).
+    consistency (§4 K).
   - Blocker/Major findings in the step's own changes mean the step is not complete: fix them as part of the task (the
     review itself stays read-only), re-run the affected checks and review the fixed hunks once more; findings that
     need the user's decision, or remain after that pass, are reported instead of the commit question (`git.md#9`).
@@ -56,7 +56,8 @@ details are, and what must not be reported.
 ## 2. Context to load before judging
 
 Read the rule files of the touched paths and the overview sections of the touched topics (lock flow, "Read/Write
-locks", key layout, "Lock index", lock lookup modes, events, errors, conventions):
+locks in the architecture" + "Read/Write locks", "Lock request prioritization in the architecture" + "Lock request
+priorities", key layout, "Lock index", lock lookup modes, events, errors, conventions):
 
 | Changed path | Rule files |
 |---|---|
@@ -80,7 +81,12 @@ locks", key layout, "Lock index", lock lookup modes, events, errors, conventions
   - `EXTEND_LOCK_PTTL` in `TryToLock` and `ExtendLockTTL`;
   - lock state reply reading in `try_to_lock` Step 0.1 and `precheck_lock` (shared `pipeline_lock_state`,
     position constants, `lock_obstacle`, `log_lock_obstacle`);
-  - reserved `meta` keys validation in `AcquireLock` and `LockSeriesPoC`;
+  - reserved `meta` keys validation in `AcquireLock` and `LockSeriesPoC`; the `priority` resolution and range check
+    in `AcquireLock` Step 0.1 and `LockSeriesPoC` (the same message);
+  - the band liveness rule (a request is dead when its score is `<= Resource.lock_priority_band_dead_score(dead_score,
+    band)`): `TryToLock#dead_request_priority` / `pipeline_dead_requests_removal` and `ClearDeadRequests.drop_dead_requests`;
+  - the `'priority'` field of a request (`Resource.lock_request_priority`) in `QueueInfo.queue_info` and
+    `Queues.extract_queues_info`;
   - lock-family options in `Client#lock`, `#lock!`, `#lock_series`, `#lock_series!` and their forwarding in
     `LockSeriesPoC.lock_series_poc`.
 - Mirror path exception: `lock_series_poc*` has no RBS.
@@ -142,15 +148,31 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   the reentrant write extension check `result.size == (lock_index_enabled ? 5 : 4)` follows its `MULTI`.
 - Round trips of the hot path must not regress silently (overview "Lock acquisition flow"): `lock {}` = 4, a
   failed attempt = 3, a failed retry = 1 (pre-check), `fail_fast` on an obtained lock = 1, `unlock` without
-  readers = 1. Independent reads share one `pipelined` round trip (also inside `multi(watch:)`).
+  readers = 1; the only extra round trips are the dead blocking request removals of Step 2.2 (one per removal, none
+  while nothing dead blocks). Independent reads share one `pipelined` round trip (also inside `multi(watch:)`).
 - New destructive paths (delete/shorten a lock) check the owner, unless the change documents the trade-off as
   accepted by the user (like the known limitations in §5).
 - Shared mutable state behind `Utilities::Lock#synchronize` (`logic.md#9`).
 
-### B. Read/write awareness (`logic.md#13`, `acquirer.md#12`)
+### B. Read/write awareness (`logic.md#13`, `acquirer.md#12`, overview "Read/Write locks in the architecture")
 - Every operation over locks, queues, zombies or lock info covers `rql:lock:*`, `rql:lock_queue:*`,
-  `rql:lock_readers:*`, `rql:lock_read_queue:*` and `rql:lock_reader:<name>:<acq_id>`; every attempt prunes dead
-  requests in both queues; dequeue/cleanup removes the request from the queue of its mode.
+  `rql:lock_readers:*`, `rql:lock_read_queue:*` and `rql:lock_reader:<name>:<acq_id>`; every attempt prunes the dead
+  requests of its priority band in both queues (and the bands of the dead requests that block it, §4 C);
+  dequeue/cleanup removes the request from the queue of its mode.
+- Order between modes (`:queued`, `find_opposite_request_ahead`/`lock_obstacle`, shared by the attempt and the
+  pre-check): a write request must be the head of the write queue and have no earlier read request, a read request
+  must have no earlier write request ("earlier" = the `(score, acq_id)` comparison on the shifted scores); the
+  order never decides mutual exclusion.
+- The held mode decides the release: `acquire_lock` keeps the try result `rw_mode` as `held_rw_mode` for
+  `yield_expire` (a read request that works through the own write lock holds the write lock); a reader is released
+  owner-safe (`ZREM` of the own member + `DEL` of the own reader data), `unlock` releases everything; the internal
+  `rw_mode` never appears in the public `lock` result.
+- Read lock extension (`extend_lock_ttl(..., read_write_mode: :read)`): `multi(watch: [lock_key])`, only a live read
+  lock and only while no write lock exists, never revives an expired reader; `all_read_locks: true` extends every
+  live reader (`ZADD XX INCR`), the registry/reader data TTLs keep the max (`PEXPIRE NX` + `GT`).
+- `fail_fast`: write fails on a write holder or live readers, read fails on a write holder (or the own live read);
+  lock series: one mode for the whole series, `release_lock_series` releases only the locks the series obtained and
+  only the current acquirer's (write: compare-and-delete in one transaction, read: `ZREM` + `DEL`).
 - Write-only result shapes stay unchanged; read keys/fields appear only when read data exists.
 - `read_lock_key` is `nil` for write requests; reader data is a data carrier only (the registry decides existence),
   without `acq_id`/`hst_id`; don't store derivable values; a new lock field updates every formatting copy (§2,
@@ -159,7 +181,37 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   entries) is still read correctly; a key/data format change states the rolling-deploy requirement in README and
   CHANGELOG.
 
-### C. Lock index, both lookup modes (`acquirer.md#16`, overview "Lock index")
+### C. Lock request priorities (`acquirer.md` "Lock request priorities", overview "Lock request prioritization in the architecture")
+- Queue scores only through `Resource` (the single source of the layout): `calc_initial_acquirer_position(priority)`
+  (enqueue time - `priority * LOCK_PRIORITY_BAND`), the requeue check `dead_score_reached?(position, priority, ttl)`
+  (a requeued request goes to the end of its own band), decoding with `lock_request_priority(score)`; no raw
+  `Time.now.to_f` positions, no own band arithmetic outside `Resource`.
+- Dead request pruning per band only: `ZREMRANGEBYSCORE <queue> <lock_priority_band_floor(p)>
+  <lock_priority_band_dead_score(dead_score, p)>`; a new `-inf .. now - ttl` range on a request queue is a Blocker
+  (it drops alive higher-priority requests and keeps dead lower-priority ones); full clears (`-inf .. +inf`) and
+  member removals (`ZREM`) are band-independent.
+- Head-driven cleanup, cost independent of the priority range: the queueing prunes the own band in both queues (in
+  its pipeline), Step 2.2 (`drop_dead_requests_ahead`, attempt and pre-check, `:queued` only) drops the bands of the
+  dead blocking requests (the write queue head for writers, the earlier opposite-mode request) with the queue heads
+  re-read in the same round trip, bounded by `MAX_DEAD_REQUEST_REMOVALS`; `ClearDeadRequests` prunes only the bands
+  whose first request is dead. Never enumerate the priority range per attempt or per queue; any band is decoded
+  (also out of the range: newer versions).
+- Ordering uses the shifted scores as is (queue heads, the cross-mode `(score, acq_id)` comparison): strict priority
+  between bands, FIFO inside a band, the same in both modes; the priority never takes part in mutual exclusion.
+- The option: `priority:` in all four lock `Client` methods (default `config['default_lock_priority']`), an Integer
+  `MIN_LOCK_PRIORITY..MAX_LOCK_PRIORITY` or a name of `config['lock_priorities']` (the client-wide registry is
+  forwarded as the internal keyword `lock_priorities:`, never a public keyword); the name is resolved and the range
+  checked in `AcquireLock` Step 0.1 and before a lock series (`LockSeriesPoC`): code below sees Integers only (RBS
+  `RQL::lockPriority` at the boundary, `Integer` below); config validators for both keys.
+- Observability: every lock acquirement log line and event (classic, reentrant: the requested priority, lock series:
+  the series priority, `lock_obtaining_failed`) carries the Integer `priority` right after `rw_mode`; try-lock logs
+  that name another request carry its decoded priority (`first_priority_in_queue`, `ahead_priority`, `dead_priority`)
+  computed at the call site only when `log_sampled && log_lock_try`; info results carry `'priority'` (every copy).
+- Compatibility: priority `0` keeps the raw timestamp scores of older versions/data; a change of the score layout or
+  of the pruning states the rolling-deploy effect in README and CHANGELOG (older versions prune positive-priority
+  requests as dead ones).
+
+### D. Lock index, both lookup modes (`acquirer.md#16`, overview "Lock index")
 - Disabled mode (default): no lock index command at all (`LOCK_INDEX_KEY` only under `if lock_index_enabled` /
   after `return unless lock_index_enabled`), no `ZSCAN`, queues without TTL. Enabled mode: no keyspace `SCAN`
   except `ReindexLocks`.
@@ -176,7 +228,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   `lock`, `lock!`, `lock_series`, `lock_series!`, `reindex_locks`. Pruning (`ZREMRANGEBYSCORE <index> -inf
   <now - 1>`) stays in the queueing pipeline, `flush_zombies`, `clear_locks`, `clear_dead_requests`.
 
-### D. Iteration and performance (`acquirer.md#7`, `arguments.md#7`)
+### E. Iteration and performance (`acquirer.md#7`, `arguments.md#7`)
 - One pass per operation: one `SCAN` over `KEY_PATTERN`/`ALL_LOCK_QUEUES_PATTERN` classified by
   `Resource.lock_key_family`, or one `ZSCAN` via `each_lock_name_batch` (expired scores skipped). Never `KEYS`,
   never one round trip per key; per-key commands in pipelined batches collected across pages, plus the
@@ -190,7 +242,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   `NO_LOCK_DATA`); keys computed once in `acquire_lock`; log-only Redis reads gated at the call site
   (`acquirer.md#13`); no `Set` splatted in a loop.
 
-### E. Architecture and API design
+### F. Architecture and API design
 - `Client` only fills defaults from `config['...']` and delegates (`logic.md#3`); an `x!` variant exists only when it
   must raise and repeats the full keyword list.
 - No parameter objects, `Struct`/`Data.define`/`OpenStruct`, builders, `**opts`, `options = {}`, `...` forwarding
@@ -227,7 +279,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   (`acquirer.md#10`); `lock_series_poc.rb` is experimental: don't accept new features built on it without the
   user's request.
 
-### F. Swarm, Ractors, threads (`swarm.md`)
+### G. Swarm, Ractors, threads (`swarm.md`)
 - Redis work in stateless class functions shared by the main loop and the manual API (`#1`); main loops build
   their own client with `RedisClientBuilder` inside the loop thread (`#4`).
 - Into `Ractor.new` only copied plain values (`config.slice(...)`, scalars, `lock_index_enabled`): no `rql_client`,
@@ -241,7 +293,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - Lifecycle names and semantics identical in both bases (`#7`); a new element is registered everywhere (`#3`);
   status shapes `{ running:, state: }` with `'non_initialized'` and their RBS (`#10`).
 
-### G. Logging and instrumentation (`visitors.md`)
+### H. Logging and instrumentation (`visitors.md`)
 - Logs/events of `AcquireLock` and its mixins and of `LockSeriesPoC` go through visitor methods (`#1`); mutation
   modules write one log line and one event inline inside `run_non_critical`, gated by `log_sampled`/`instr_sampled`
   (`acquirer.md#9`).
@@ -261,7 +313,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   the default write success path (`#13`); new or changed log keys/payload keys go to README `## Logging` /
   `### Instrumentation Events` and CHANGELOG (`#14`).
 
-### H. Types (`type-checking.md`)
+### I. Types (`type-checking.md`)
 - Every changed method, param, return shape, constant or ivar is mirrored in `sig/` (`#1`): nested module blocks,
   `use RedisQueuedLocks as RQL` / `use RedisClient as RC`, shared types (`RC::client`, `RQL::loggerObj`,
   `RQL::instrObj`, `samplerObj`), `type xxxResult = { ok: bool, result: ... }` for public results, literal types for
@@ -271,7 +323,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   annotation carries `NOTE: (steep)`; never shape runtime code around Steep (`#5`). `Steepfile` is never loosened (`#6`).
 - RBS must match runtime values (runtime type checks run the suite): e.g. `Integer|Float` where a Float can arrive.
 
-### I. Ruby style of the codebase
+### J. Ruby style of the codebase
 - `# frozen_string_literal: true`; compact constant paths (`module RedisQueuedLocks::Acquirer::Keys`); namespace
   files only `require_relative` (`logic.md#1`).
 - YARD on every class, module, constant, attr and method: `@param`/`@option`/`@return` (`Format: { ... }` for hash
@@ -295,7 +347,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - Suggestions only (`logic.md` recommendations, not violations): correctly spelled new identifiers (don't copy the
   known typos).
 
-### J. Docs and process
+### K. Docs and process
 - The same change updates `.claude/project-overview.md` and the affected `.claude/rules/*.md` for every new/changed
   key, option, result shape, event, algorithm step or limitation (`logic.md#12`), README and CHANGELOG
   `[Unreleased]` for user-visible behavior, and the YARD of the touched `Client` methods.
@@ -309,6 +361,13 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   read→write upgrade as an error unless `:wait_for_lock`; nested reads through `conflict_strategy`; no fairness
   between modes with `:random`; best-effort cross-host FIFO; no Lua in the RW path; one mode per lock series;
   `lock_index_enabled` as a config-only mode; the lock index defaulting to `false`.
+- Settled design of the lock request priorities (overview "Lock request priorities", limitations kept by the user):
+  strict priority (lower priorities can starve within their timeout/retry limits), no preemption of an obtained lock,
+  the polled handoff (`retry_delay`), dead requests pruned with the pruner's `queue_ttl`, dead requests of lower bands
+  lingering until an attempt of their band/`clear_dead_requests`/the queue TTL/the swarm (they never block), the
+  library-constant range `-100..100` and its ~61 µs FIFO precision inside a band, `MAX_DEAD_REQUEST_REMOVALS` per
+  attempt, `:random` ignoring the priority, `clear_dead_requests` reading the batch queues (2 round trips per batch),
+  the order degradation with older versions (no safety impact).
 - Unused `Resource` methods marked `# NOTE: (debug)` (manual runtime checks, `logic.md#17`); report a debug method
   only when it is wrong for a key family it can get.
 - Known limitations kept by the user: `YieldExpire` write release (`EXPIRE 0`) and ttl decrease without an owner
@@ -327,7 +386,9 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 
 - Confirm it in the code (call sites, copies, RBS, specs), not by pattern match: concurrency claims name the
   interleaving (acquirer A at step X, B at step Y) and why `WATCH` doesn't catch it; layout claims count the
-  commands and positions; mode claims check both `lock_index_enabled` values and both `read_write_mode` values.
+  commands and positions; mode claims check both `lock_index_enabled` values and both `read_write_mode` values;
+  priority claims check a positive, the default (`0`) and a negative band, a request of another band ahead (alive and
+  dead) and requests in both queues.
 - Drop findings contradicted by §5, by a design `NOTE` in the code or by the overview. Mark the rest
   `CONFIRMED` (traced end to end) or `PLAUSIBLE` (depends on an assumption: name it).
 - Helpful greps:
@@ -376,11 +437,13 @@ Both templates have the same structure: change them together. A new language = a
 same structure plus a row in the table above.
 
 ### Severity and order
-- Blocker: breaks mutual exclusion or the lock index superset, loses or leaks locks/data, crashes, breaks the public
-  API (method, result shape, event, config key) or turns CI red.
-- Major: a rule violation with a real consequence: a missed read key family or lookup mode, per-key round trips, a
-  hot-path regression, broken module independence, a missing RBS/docs update for a changed contract, new
-  behavior without specs.
+- Blocker: breaks mutual exclusion or the lock index superset, loses or leaks locks/data (e.g. a queue pruning that
+  drops alive requests of another priority band), crashes, breaks the public API (method, result shape, event,
+  config key) or turns CI red.
+- Major: a rule violation with a real consequence: a missed read key family or lookup mode, a broken order between
+  modes or priorities, a release of the wrong (requested instead of held) mode, a dead request that can block a
+  queue, a cost that grows with the priority range, per-key round trips, a hot-path regression, broken module
+  independence, a missing RBS/docs update for a changed contract, new behavior without specs.
 - Minor: convention deviations with little impact (YARD tags, comment format, naming, idioms).
 - Nit: optional polish.
 - Order by severity, then by file. Empty sections are omitted; with no findings the verdict says so and the sync and
