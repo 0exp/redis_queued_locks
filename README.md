@@ -206,7 +206,8 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   config['default_lock_ttl'] = 5_000
 
   # (seconds) (default: 15)
-  # - lock request timeout. after this timeout your lock request in queue will be requeued with new position (at the end of the queue);
+  # - lock request timeout. after this timeout your lock request in queue will be requeued with new position (at the end of the
+  #   lock requests of its priority);
   # - (the enabled lock index) the lock request queue lives as long as its latest lock request (the queue TTL is refreshed with
   #   the queue ttl on each lock request): queues of dead acquirers expire by themselves;
   # - should be a positive Integer
@@ -867,7 +868,7 @@ rql.lock_info("my_lock")
 
 - (`:queue_ttl`) setting a short limit of time to the lock request queue position (if a process fails to acquire
   the lock within this period of time (and before timeout/retry_count limits occurs of course) -
-  its lock request will be moved to the end of queue):
+  its lock request will be moved to the end of queue: the end of the lock requests of its priority):
 
 ```ruby
 rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
@@ -2718,8 +2719,12 @@ rql.lock("user_#{user.id}", priority: :high) { update_profile } # priority: 50
     (`retry_count: nil` with `timeout`);
   - requests of the same priority made within ~61 µs of each other are ordered by their acquirer ids (the precision of
     the shifted positions);
-  - each lock request drops dead requests with its own `queue_ttl`: a longer `queue_ttl` of an important request does not keep
-    it in the queue longer than the shorter `queue_ttl` of other waiting requests (the request is requeued at the end of its priority);
+  - each lock request drops dead requests with its own `queue_ttl` (the requests of its priority and the requests that block it):
+    a request that waits longer than the shorter `queue_ttl` of such requests is dropped by their attempts and comes back at its
+    old position on its own attempts (its own `queue_ttl` is not reached yet), so the requests behind it with a shorter
+    `queue_ttl` don't wait for it: it loses its place (and the advantage of its priority) to them, the lock goes to the request
+    whose attempt finds the lock free first; use the same `queue_ttl` for the lock requests of a lock (a longer `queue_ttl` does
+    not keep a request in the queue);
   - `:random` access strategy ignores the lock request queues and the priority;
   - all processes that share locks should use RQL versions with priorities before the priorities are used: older versions drop
     the lock requests of the high priority as dead ones (the order is broken; the mutual exclusion is not affected: lock queues

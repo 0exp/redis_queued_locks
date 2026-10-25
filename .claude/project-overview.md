@@ -321,8 +321,11 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   versions: older clients prune high-priority requests as dead ones (`-inf..now-ttl`) and never prune low-priority ones (always
   behind): the order degrades, no stuck queues, no safety impact (upgrade all processes before using priorities); strict priority
   can starve lower priorities (bounded by their timeout/retry limits); the handoff is polled (`retry_delay`); dead requests are
-  pruned with the pruner's `queue_ttl` (existing behavior); dead requests of lower priorities can stay in the queues until an
-  attempt of their band (they never block; visible in `queue_info`).
+  pruned with the pruner's `queue_ttl` (existing behavior: a request that waits longer than the shorter `queue_ttl` of the
+  requests of its band or of the requests it blocks is dropped by their attempts and comes back at its old position on its own
+  ones (its own `queue_ttl` keeps the position): it loses its place and the advantage of its priority to the requests behind it
+  with a shorter `queue_ttl`; README recommends one `queue_ttl` for the lock requests of a lock); dead requests of lower
+  priorities can stay in the queues until an attempt of their band (they never block; visible in `queue_info`).
 
 ### Redis data layout (`resource.rb`)
 
