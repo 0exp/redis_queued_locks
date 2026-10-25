@@ -46,7 +46,7 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
     #
     # @api private
     # @since 1.0.0
-    # @version 1.21.0
+    # @version 1.22.0
     # rubocop:disable Metrics/MethodLength
     def clear_dead_requests(
       redis_client,

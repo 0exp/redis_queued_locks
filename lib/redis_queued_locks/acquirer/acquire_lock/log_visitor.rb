@@ -15,11 +15,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
     # @param host_id [String]
     # @param access_strategy [Symbol]
     # @param rw_mode [Symbol]
+    # @param priority [Integer] The lock request priority.
     # @return [void]
     #
     # @api private
     # @since 1.7.0
-    # @version 1.18.0
+    # @version 1.22.0
     def start_lock_obtaining(
       logger,
       log_sampled,
@@ -28,7 +29,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
       acquirer_id,
       host_id,
       access_strategy,
-      rw_mode
+      rw_mode,
+      priority
     )
       return unless log_sampled
 
@@ -39,7 +41,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
         "acq_id => '#{acquirer_id}' " \
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
-        "rw_mode => '#{rw_mode}'"
+        "rw_mode => '#{rw_mode}' " \
+        "priority => #{priority}"
       end rescue nil
     end
 
@@ -51,11 +54,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
     # @param host_id [String]
     # @param access_strategy [Symbol]
     # @param rw_mode [Symbol]
+    # @param priority [Integer] The lock request priority.
     # @return [void]
     #
     # @api private
     # @since 1.7.0
-    # @version 1.18.0
+    # @version 1.22.0
     def start_try_to_lock_cycle(
       logger,
       log_sampled,
@@ -64,7 +68,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
       acquirer_id,
       host_id,
       access_strategy,
-      rw_mode
+      rw_mode,
+      priority
     )
       return unless log_sampled
 
@@ -75,7 +80,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
         "acq_id => '#{acquirer_id}' " \
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
-        "rw_mode => '#{rw_mode}'"
+        "rw_mode => '#{rw_mode}' " \
+        "priority => #{priority}"
       end rescue nil
     end
 
@@ -87,11 +93,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
     # @param host_id [String]
     # @param access_strategy [Symbol]
     # @param rw_mode [Symbol]
+    # @param priority [Integer] The lock request priority.
     # @return [void]
     #
     # @api private
     # @since 1.7.0
-    # @version 1.18.0
+    # @version 1.22.0
     def dead_score_reached__reset_acquirer_position(
       logger,
       log_sampled,
@@ -100,7 +107,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
       acquirer_id,
       host_id,
       access_strategy,
-      rw_mode
+      rw_mode,
+      priority
     )
       return unless log_sampled
 
@@ -111,7 +119,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
         "acq_id => '#{acquirer_id}' " \
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
-        "rw_mode => '#{rw_mode}'"
+        "rw_mode => '#{rw_mode}' " \
+        "priority => #{priority}"
       end rescue nil
     end
 
@@ -124,11 +133,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
     # @param acq_time [Numeric]
     # @param access_strategy [Symbol]
     # @param rw_mode [Symbol]
+    # @param priority [Integer] The lock request priority.
     # @return [void]
     #
     # @api private
     # @since 1.7.0
-    # @version 1.18.0
+    # @version 1.22.0
     def extendable_reentrant_lock_obtained(
       logger,
       log_sampled,
@@ -138,7 +148,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
       host_id,
       acq_time,
       access_strategy,
-      rw_mode
+      rw_mode,
+      priority
     )
       return unless log_sampled
 
@@ -150,6 +161,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
+        "priority => #{priority} " \
         "acq_time => #{acq_time} (ms)"
       end rescue nil
     end
@@ -163,11 +175,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
     # @param acq_time [Numeric]
     # @param access_strategy [Symbol]
     # @param rw_mode [Symbol]
+    # @param priority [Integer] The lock request priority.
     # @return [void]
     #
     # @api private
     # @since 1.7.0
-    # @version 1.18.0
+    # @version 1.22.0
     def reentrant_lock_obtained(
       logger,
       log_sampled,
@@ -177,7 +190,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
       host_id,
       acq_time,
       access_strategy,
-      rw_mode
+      rw_mode,
+      priority
     )
       return unless log_sampled
 
@@ -189,6 +203,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::LogVisitor
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
+        "priority => #{priority} " \
         "acq_time => #{acq_time} (ms)"
       end rescue nil
     end

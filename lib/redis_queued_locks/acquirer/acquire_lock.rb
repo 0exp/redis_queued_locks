@@ -434,7 +434,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
 
       LogVisitor.start_lock_obtaining(
         logger, log_sampled, lock_key,
-        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
       )
 
       # Step 2: try to lock with timeout
@@ -455,7 +455,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
 
           LogVisitor.start_try_to_lock_cycle(
             logger, log_sampled, lock_key,
-            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
           )
 
           # Step 2.X: check the actual score: is it in queue ttl limit or not?
@@ -466,7 +466,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
 
             LogVisitor.dead_score_reached__reset_acquirer_position(
               logger, log_sampled, lock_key,
-              queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+              queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
             )
           end
 
@@ -520,10 +520,11 @@ module RedisQueuedLocks::Acquirer::AcquireLock
               # instrumetnation: (reentrant lock with ttl extension)
               LogVisitor.extendable_reentrant_lock_obtained(
                 logger, log_sampled, result[:lock_key],
-                queue_ttl, acquirer_id, host_id, acq_time, access_strategy, read_write_mode
+                queue_ttl, acquirer_id, host_id, acq_time, access_strategy, read_write_mode,
+                priority
               )
               InstrVisitor.extendable_reentrant_lock_obtained(
-                instrumenter, instr_sampled, result[:lock_key], read_write_mode,
+                instrumenter, instr_sampled, result[:lock_key], read_write_mode, priority,
                 result[:ttl], result[:acq_id], result[:hst_id], result[:ts], acq_time,
                 instrument
               )
@@ -531,10 +532,11 @@ module RedisQueuedLocks::Acquirer::AcquireLock
               # instrumetnation: (reentrant lock without ttl extension)
               LogVisitor.reentrant_lock_obtained(
                 logger, log_sampled, result[:lock_key],
-                queue_ttl, acquirer_id, host_id, acq_time, access_strategy, read_write_mode
+                queue_ttl, acquirer_id, host_id, acq_time, access_strategy, read_write_mode,
+                priority
               )
               InstrVisitor.reentrant_lock_obtained(
-                instrumenter, instr_sampled, result[:lock_key], read_write_mode,
+                instrumenter, instr_sampled, result[:lock_key], read_write_mode, priority,
                 result[:ttl], result[:acq_id], result[:hst_id], result[:ts], acq_time,
                 instrument
               )
@@ -705,6 +707,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
                 instr_sampled,
                 acq_process[:lock_info][:lock_key],
                 read_write_mode,
+                priority,
                 acq_process[:lock_info][:ttl],
                 acq_process[:lock_info][:acq_id],
                 acq_process[:lock_info][:hst_id],

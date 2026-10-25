@@ -137,7 +137,8 @@ module RedisQueuedLocks
           RQL::accessStrategy access_strategy,
           RQL::readWriteMode read_write_mode,
           String? waiting_acquirer,
-          String? opposite_request_ahead,
+          Integer? waiting_priority,
+          [String, Float]? opposite_waiting_request,
           String? current_lock_obtainer
         ) -> void
 
@@ -159,6 +160,8 @@ module RedisQueuedLocks
           [String, Float]? waiting_request,
           [String, Float]? opposite_waiting_request
         ) -> [[String, Float]?, [String, Float]?]?
+
+        def dead_request_priority: ([String, Float] lock_request, Float acquirer_dead_score) -> Integer?
 
         def precheck_lock: (
           RC::client rconn,

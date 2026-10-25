@@ -59,8 +59,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
     )
       # NOTE: (RW) the lock mode is the same for all locks of the series
       #   (see RedisQueuedLocks::Acquirer::AcquireLock for read_write_mode validations);
-      # NOTE: the lock request priority is the same for all locks of the series too
-      #   (see RedisQueuedLocks::Acquirer::AcquireLock for priority validations);
+      # NOTE: the lock request priority is the same for all locks of the series too (validated
+      #   below: the series logs and instrumentation report it);
 
       case meta
       when Hash, NilClass then nil
@@ -124,6 +124,23 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
         )
       end
 
+      # NOTE: the priority of the series is validated before the series logs and instrumentation:
+      #   a priority name is resolved to its Integer priority (the series events report the Integer
+      #   priority; the same check as in RedisQueuedLocks::Acquirer::AcquireLock);
+      priority = lock_priorities.fetch(priority, priority) if priority.is_a?(::Symbol)
+      if !priority.is_a?(::Integer) ||
+         priority < RedisQueuedLocks::Resource::MIN_LOCK_PRIORITY ||
+         priority > RedisQueuedLocks::Resource::MAX_LOCK_PRIORITY
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:priority` argument should be an Integer from " \
+          "#{RedisQueuedLocks::Resource::MIN_LOCK_PRIORITY} to " \
+          "#{RedisQueuedLocks::Resource::MAX_LOCK_PRIORITY} or a priority name of " \
+          "`config['lock_priorities']` (#{lock_priorities.keys.map(&:inspect).join(', ')}), " \
+          "got #{priority.inspect}."
+        )
+      end
+
       locks_count = lock_names.size
 
       lock_acquirement_operations = lock_names.each_with_index.map do |lock_name, position|
@@ -171,7 +188,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
       LogVisitor.start_lock_series_obtaining( # steep:ignore
         logger, log_sampled, lock_keys_for_instrumentation,
         queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation,
-        access_strategy, read_write_mode
+        access_strategy, read_write_mode, priority
       )
 
       acq_start_time = RedisQueuedLocks::Utilities.clock_gettime
@@ -267,11 +284,11 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
         LogVisitor.lock_series_obtained( # steep:ignore
           logger, log_sampled, lock_keys_for_instrumentation,
           queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation,
-          acq_time, access_strategy, read_write_mode
+          acq_time, access_strategy, read_write_mode, priority
         )
 
         InstrVisitor.lock_series_obtained( # steep:ignore
-          instrumenter, instr_sampled, lock_keys_for_instrumentation, read_write_mode,
+          instrumenter, instr_sampled, lock_keys_for_instrumentation, read_write_mode, priority,
           ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation, ts, acq_time,
           instrument
         )
@@ -328,7 +345,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
           LogVisitor.expire_lock_series( # steep:ignore
             logger, log_sampled, lock_keys_for_instrumentation,
             queue_ttl, acquirer_id_for_instrumentation, host_id_for_instrumentation,
-            access_strategy, read_write_mode
+            access_strategy, read_write_mode, priority
           ) if is_lock_manually_released
 
           InstrVisitor.lock_series_hold_and_release( # steep:ignore
@@ -336,6 +353,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
             instr_sampled,
             lock_keys_for_instrumentation,
             read_write_mode,
+            priority,
             ttl,
             acquirer_id_for_instrumentation,
             host_id_for_instrumentation,

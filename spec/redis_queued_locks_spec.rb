@@ -3778,7 +3778,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
     end
 
-    specify 'dead blocking requests: one more round trip per band (attempt and pre-check)' do
+    specify 'dead blocking requests: one more round trip per removal (attempt and pre-check)' do
       # NOTE: round trips are observed via a separate pool (the same db, one connection) with
       #   a recording middleware; `inject` adds lock requests right before a pipeline is sent;
       round_trips = []
@@ -3843,6 +3843,27 @@ RSpec.shared_examples 'redis_queued_locks' do
         expect(removal_logs.call).to contain_exactly(
           a_string_including("dead_acq_id => 'rql:acq:1/2/3/4/dead100' dead_priority => 100"),
           a_string_including("dead_acq_id => 'rql:acq:1/2/3/4/dead50' dead_priority => 50")
+        )
+        client.unlock('prio.trips')
+      end
+
+      aggregate_failures 'the attempt: both dead blocking requests in one round trip' do
+        test_logger.logs.clear
+        # NOTE: the head of the write lock queue and the earlier read lock request (other bands)
+        redis.call('ZADD', queue, *dead_request.call(70))
+        redis.call('ZADD', 'rql:lock_read_queue:prio.trips', *dead_request.call(30))
+        round_trips.clear
+        expect(client.lock('prio.trips', ttl: 1_000, retry_count: 1)).to match({
+          ok: true, result: hash_including(process: :lock_obtaining)
+        })
+        # NOTE: WATCH, the lock state with the queueing, one removal of both bands, MULTI/EXEC
+        expect(counted_round_trips.call.size).to eq(4)
+        expect(round_trips).to include(
+          %w[ZREMRANGEBYSCORE ZREMRANGEBYSCORE ZREMRANGEBYSCORE ZREMRANGEBYSCORE ZRANGE ZRANGE]
+        )
+        expect(removal_logs.call).to contain_exactly(
+          a_string_including("dead_acq_id => 'rql:acq:1/2/3/4/dead70' dead_priority => 70"),
+          a_string_including("dead_acq_id => 'rql:acq:1/2/3/4/dead30' dead_priority => 30")
         )
         client.unlock('prio.trips')
       end
@@ -4150,6 +4171,19 @@ RSpec.shared_examples 'redis_queued_locks' do
       client.lock_series('prio.events.a', 'prio.events.b', priority: 1) { :ok }
       client.lock('prio.events.busy', ttl: 30_000)
       client.lock('prio.events.busy', priority: 1, fail_fast: true)
+      client.lock_series('prio.events.c', 'prio.events.d', priority: :low) { :ok }
+      client.lock('prio.events.reentrant', priority: :high, conflict_strategy: :work_through) do
+        client.lock('prio.events.reentrant', priority: :high, conflict_strategy: :work_through) do
+          :ok
+        end
+      end
+      client.lock(
+        'prio.events.extendable', priority: -7, conflict_strategy: :extendable_work_through
+      ) do
+        client.lock(
+          'prio.events.extendable', priority: -7, conflict_strategy: :extendable_work_through
+        ) { :ok }
+      end
 
       expect(test_notifier.notifications).to include(
         match({
@@ -4182,6 +4216,42 @@ RSpec.shared_examples 'redis_queued_locks' do
           payload: hash_including(
             lock_key: 'rql:lock:prio.events.busy', priority: 1, result: :fail_fast_no_try
           )
+        }),
+        # NOTE: lock series events (the priority of the series)
+        match({
+          event: 'redis_queued_locks.lock_series_obtained',
+          payload: hash_including(
+            lock_keys: ['rql:lock:prio.events.a', 'rql:lock:prio.events.b'], priority: 1
+          )
+        }),
+        match({
+          event: 'redis_queued_locks.lock_series_hold_and_release',
+          payload: hash_including(
+            lock_keys: ['rql:lock:prio.events.a', 'rql:lock:prio.events.b'], priority: 1
+          )
+        }),
+        match({
+          event: 'redis_queued_locks.lock_series_obtained',
+          payload: hash_including(
+            lock_keys: ['rql:lock:prio.events.c', 'rql:lock:prio.events.d'], priority: -50
+          )
+        }),
+        # NOTE: reentrant lock events (the requested priority)
+        match({
+          event: 'redis_queued_locks.reentrant_lock_obtained',
+          payload: hash_including(lock_key: 'rql:lock:prio.events.reentrant', priority: 50)
+        }),
+        match({
+          event: 'redis_queued_locks.reentrant_lock_hold_completes',
+          payload: hash_including(lock_key: 'rql:lock:prio.events.reentrant', priority: 50)
+        }),
+        match({
+          event: 'redis_queued_locks.extendable_reentrant_lock_obtained',
+          payload: hash_including(lock_key: 'rql:lock:prio.events.extendable', priority: -7)
+        }),
+        match({
+          event: 'redis_queued_locks.reentrant_lock_hold_completes',
+          payload: hash_including(lock_key: 'rql:lock:prio.events.extendable', priority: -7)
         })
       )
       expect(test_logger.logs).to include(
@@ -4196,9 +4266,130 @@ RSpec.shared_examples 'redis_queued_locks' do
         a_string_including(
           '[redis_queued_locks.lock_obtaining_failed]', "lock_key => 'rql:lock:prio.events.busy'",
           "rw_mode => 'write' priority => 1 acq_time => "
+        ),
+        a_string_including(
+          '[redis_queued_locks.start_lock_obtaining]', "lock_key => 'rql:lock:prio.events'",
+          "rw_mode => 'write' priority => -1"
+        ),
+        a_string_including(
+          '[redis_queued_locks.start_try_to_lock_cycle]', "lock_key => 'rql:lock:prio.events'",
+          "rw_mode => 'write' priority => -1"
+        ),
+        a_string_including(
+          '[redis_queued_locks.reentrant_lock_obtained]',
+          "lock_key => 'rql:lock:prio.events.reentrant'",
+          "rw_mode => 'write' priority => 50 acq_time => "
+        ),
+        a_string_including(
+          '[redis_queued_locks.extendable_reentrant_lock_obtained]',
+          "lock_key => 'rql:lock:prio.events.extendable'",
+          "rw_mode => 'write' priority => -7 acq_time => "
+        ),
+        a_string_including(
+          '[redis_queued_locks.start_lock_series_obtaining]', 'prio.events.c',
+          "rw_mode => 'write' priority => -50"
+        ),
+        a_string_including(
+          '[redis_queued_locks.lock_series_obtained]', 'prio.events.c',
+          "rw_mode => 'write' priority => -50 acq_time => "
+        ),
+        a_string_including(
+          '[redis_queued_locks.expire_lock_series]', 'prio.events.c',
+          "rw_mode => 'write' priority => -50"
         )
       )
       client.unlock('prio.events.busy')
+      expect(client.keys).to be_empty
+    end
+
+    specify 'priorities in the try-lock logs (log_lock_try)' do
+      test_logger = Class.new do
+        attr_reader :logs
+
+        def initialize
+          @logs = []
+        end
+
+        def debug(progname = nil, &block)
+          logs << (block ? yield : progname)
+        end
+      end.new
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['logger'] = test_logger
+        config['log_lock_try'] = true
+      end
+      holder_client = RedisQueuedLocks::Client.new(redis)
+      position = lambda do |priority|
+        RedisQueuedLocks::Resource.calc_initial_acquirer_position(priority)
+      end
+      try_logs = lambda do |event|
+        test_logger.logs.grep(/\A\[redis_queued_locks\.try_lock\.#{event}\] /)
+      end
+      failed_attempt = { ok: false, result: :retry_limit_reached }
+
+      aggregate_failures 'the own priority and the first request of the queue' do
+        redis.call('ZADD', 'rql:lock_queue:prio.trylog', position.call(50), 'rql:acq:1/2/3/4/high')
+        expect(client.lock('prio.trylog', priority: -5, retry_count: 1)).to match(failed_attempt)
+        expect(try_logs.call('acq_added_to_queue')).to include(
+          a_string_including("rw_mode => 'write' priority => -5")
+        )
+        expect(try_logs.call('get_first_from_queue')).to include(
+          a_string_including(
+            "first_acq_id_in_queue => 'rql:acq:1/2/3/4/high' first_priority_in_queue => 50"
+          )
+        )
+        expect(try_logs.call('exit__no_first')).to include(
+          a_string_including(
+            "first_acq_id_in_queue => 'rql:acq:1/2/3/4/high' first_priority_in_queue => 50 "
+          )
+        )
+        redis.call('DEL', 'rql:lock_queue:prio.trylog')
+      end
+
+      aggregate_failures 'the earlier request of the opposite mode' do
+        redis.call(
+          'ZADD', 'rql:lock_read_queue:prio.trylog', position.call(30), 'rql:acq:1/2/3/4/reader'
+        )
+        expect(client.lock('prio.trylog', retry_count: 1)).to match(failed_attempt)
+        expect(try_logs.call('exit__read_request_ahead')).to include(
+          a_string_including("ahead_acq_id => 'rql:acq:1/2/3/4/reader' ahead_priority => 30")
+        )
+        redis.call('DEL', 'rql:lock_read_queue:prio.trylog')
+
+        redis.call(
+          'ZADD', 'rql:lock_queue:prio.trylog', position.call(30), 'rql:acq:1/2/3/4/writer'
+        )
+        expect(
+          client.lock('prio.trylog', read_write_mode: :read, retry_count: 1)
+        ).to match(failed_attempt)
+        expect(try_logs.call('exit__write_request_ahead')).to include(
+          a_string_including("ahead_acq_id => 'rql:acq:1/2/3/4/writer' ahead_priority => 30")
+        )
+        redis.call('DEL', 'rql:lock_queue:prio.trylog')
+      end
+
+      aggregate_failures 'the obtained lock: the own request is the first one' do
+        holder_client.lock('prio.trylog', ttl: 10_000)
+        expect(client.lock('prio.trylog', priority: :low, retry_count: 1)).to match(failed_attempt)
+        expect(try_logs.call('exit__lock_still_obtained')).to include(
+          a_string_including(
+            "first_acq_id_in_queue => '#{client.current_acquirer_id}' " \
+            "first_priority_in_queue => -50 "
+          )
+        )
+        holder_client.unlock('prio.trylog')
+
+        holder_client.lock('prio.trylog', ttl: 10_000, read_write_mode: :read)
+        expect(client.lock('prio.trylog', priority: 7, retry_count: 1)).to match(failed_attempt)
+        expect(try_logs.call('exit__read_lock_still_obtained')).to include(
+          a_string_including(
+            "first_acq_id_in_queue => '#{client.current_acquirer_id}' first_priority_in_queue => 7"
+          )
+        )
+        holder_client.unlock('prio.trylog')
+      end
+
+      expect(client.keys).to be_empty
     end
   end
 

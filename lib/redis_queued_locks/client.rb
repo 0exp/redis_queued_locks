@@ -1347,7 +1347,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.21.0
+  # @version 1.22.0
   def clear_dead_requests(
     dead_ttl: config['dead_request_ttl'],
     scan_size: config['lock_release_batch_size'],

@@ -9,9 +9,10 @@
   - the position of the lock request (the queue score) is the request time shifted by `-priority * 2**32` seconds: the default
     priority keeps the request time (the queue data of the default priority is the same as before);
   - every lock request drops dead lock requests of its own priority in both lock queues (in the same queueing pipeline: no new
-    commands and round trips); a dead lock request of another priority that blocks the lock request (decoded from its position)
-    is dropped with the dead lock requests of its priority in one more round trip of the same attempt (up to 5 priorities per
-    attempt); the cost of an attempt does not depend on the number of priorities;
+    commands and round trips); dead lock requests of other priorities that block the lock request (the head of the lock queue
+    and the earlier lock request of the other read/write mode, decoded from their positions) are dropped with the dead lock
+    requests of their priorities in one more round trip of the same attempt (up to 5 such round trips per attempt); the cost of
+    an attempt does not depend on the number of priorities;
   - `#clear_dead_requests` drops the dead lock requests of every priority found in the lock queues (two round trips per batch of
     lock queues: the lock requests are read, then the dead ones are dropped);
   - the new `log_lock_try` log event `[redis_queued_locks.try_lock.dead_request_removed]` (`dead_acq_id`, `dead_priority`);
@@ -24,8 +25,18 @@
     of the high priority as dead ones (the order is broken, the mutual exclusion is not affected);
 ### Changed
 - `#queue_info`/`#queues_info`: each lock request has the `"priority"` field (`Integer`, decoded from its position);
-- logs and instrumentation payloads of the lock events `lock_obtained`, `lock_obtaining_failed` (log and event) and
-  `lock_hold_and_release` (event) have `priority`;
+- logs and instrumentation payloads of the lock acquirement have the lock request `priority` (an Integer: a priority name is
+  reported as its priority): the events `lock_obtained`, `lock_obtaining_failed`, `lock_hold_and_release`,
+  `reentrant_lock_obtained`, `extendable_reentrant_lock_obtained`, `reentrant_lock_hold_completes`, `lock_series_obtained`,
+  `lock_series_hold_and_release` and the logs `start_lock_obtaining`, `start_try_to_lock_cycle`,
+  `dead_score_reached__reset_acquirer_position`, `lock_obtained`, `lock_obtaining_failed`, `reentrant_lock_obtained`,
+  `extendable_reentrant_lock_obtained`, `start_lock_series_obtaining`, `lock_series_obtained`, `expire_lock_series`,
+  `try_lock.acq_added_to_queue`; the `log_lock_try` logs that name another lock request have its priority too:
+  `first_priority_in_queue` (`try_lock.get_first_from_queue`, `try_lock.exit__no_first`, `try_lock.exit__lock_still_obtained`,
+  `try_lock.exit__read_lock_still_obtained`) and `ahead_priority` (`try_lock.exit__write_request_ahead`,
+  `try_lock.exit__read_request_ahead`);
+- `#lock_series`/`#lock_series!`: the `priority:` is validated (and a priority name is resolved) before the series is
+  acquired;
 - RBS: `RedisQueuedLocks::Config#[]` is typed per config key (one overload per key with its value type) instead of
   `(String) -> untyped`: Steep users get precise types of `config['...']` reads and type errors on unknown keys;
   lookups with a dynamic `String` key no longer type-check (the runtime behavior is unchanged).
