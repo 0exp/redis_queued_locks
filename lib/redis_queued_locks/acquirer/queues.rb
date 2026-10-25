@@ -15,7 +15,7 @@ module RedisQueuedLocks::Acquirer::Queues
     #
     # @api private
     # @since 1.0.0
-    # @version 1.21.0
+    # @version 1.22.0
     def queues(redis_client, scan_size:, with_info:, lock_index_enabled:)
       # NOTE: (arguments) the same range as the config key: zero/negative sizes fail SCAN/ZSCAN
       #   (`COUNT 0`) and the batching (`each_slice(0)`);
@@ -139,11 +139,13 @@ module RedisQueuedLocks::Acquirer::Queues
     # @param lock_queues [Set<String>]
     # @param scan_size [Integer] The number of queues whose requests are read in one round trip.
     # @return [Set<Hash<Symbol,Any>>]
-    #   - each request: `{ 'acq_id' => String, 'score' => Float, 'rw_mode' => 'read'/'write' }`;
+    #   - each request: `{ 'acq_id' => String, 'score' => Float, 'rw_mode' => 'read'/'write',
+    #     'priority' => Integer }` (the priority is decoded from the position: see
+    #     `RedisQueuedLocks::Resource::LOCK_PRIORITY_BAND`);
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.22.0
     def extract_queues_info(redis_client, lock_queues, scan_size)
       # NOTE: the same approach as in `QueueInfo` (duplicated on purpose: public operation modules
       #   do not reuse each other, they share logic via `Resource`, `Utilities`);
@@ -171,7 +173,12 @@ module RedisQueuedLocks::Acquirer::Queues
             seeded_queues << {
               queue: lock_queue,
               requests: queues_requests[index].map do |val|
-                { 'acq_id' => val[0], 'score' => val[1], 'rw_mode' => rw_mode }
+                {
+                  'acq_id' => val[0],
+                  'score' => val[1],
+                  'rw_mode' => rw_mode,
+                  'priority' => RedisQueuedLocks::Resource.lock_request_priority(val[1])
+                }
               end
             }
           end

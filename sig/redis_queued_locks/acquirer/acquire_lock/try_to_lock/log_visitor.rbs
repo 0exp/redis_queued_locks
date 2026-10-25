@@ -120,7 +120,8 @@ module RedisQueuedLocks
             String acquirer_id,
             String host_id,
             RQL::accessStrategy access_strategy,
-            RQL::readWriteMode rw_mode
+            RQL::readWriteMode rw_mode,
+            Integer priority
           ) -> void
 
           def self.remove_expired_acqs: (
@@ -135,6 +136,20 @@ module RedisQueuedLocks
             RQL::readWriteMode rw_mode
           ) -> void
 
+          def self.dead_request_removed: (
+            RQL::loggerObj logger,
+            bool log_sampled,
+            bool log_lock_try,
+            String lock_key,
+            Integer queue_ttl,
+            String acquirer_id,
+            String host_id,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
+            String dead_acquirer,
+            Integer dead_priority
+          ) -> void
+
           def self.get_first_from_queue: (
             RQL::loggerObj logger,
             bool log_sampled,
@@ -145,7 +160,8 @@ module RedisQueuedLocks
             String host_id,
             RQL::accessStrategy access_strategy,
             RQL::readWriteMode rw_mode,
-            String? waiting_acquirer
+            String? waiting_acquirer,
+            Integer? waiting_priority
           ) -> void
 
           def self.exit__queue_ttl_reached: (
@@ -171,6 +187,7 @@ module RedisQueuedLocks
             RQL::accessStrategy access_strategy,
             RQL::readWriteMode rw_mode,
             String? waiting_acquirer,
+            Integer? waiting_priority,
             Hash[String,untyped] current_lock_data
           ) -> void
 
@@ -185,6 +202,7 @@ module RedisQueuedLocks
             RQL::accessStrategy access_strategy,
             RQL::readWriteMode rw_mode,
             String? waiting_acquirer,
+            Integer? waiting_priority,
             String locked_by_acquirer,
             Hash[String,untyped] current_lock_data
           ) -> void
@@ -199,7 +217,8 @@ module RedisQueuedLocks
             String host_id,
             RQL::accessStrategy access_strategy,
             RQL::readWriteMode rw_mode,
-            String ahead_acquirer
+            String ahead_acquirer,
+            Integer? ahead_priority
           ) -> void
 
           def self.exit__read_request_ahead: (
@@ -212,7 +231,8 @@ module RedisQueuedLocks
             String host_id,
             RQL::accessStrategy access_strategy,
             RQL::readWriteMode rw_mode,
-            String ahead_acquirer
+            String ahead_acquirer,
+            Integer? ahead_priority
           ) -> void
 
           def self.exit__read_lock_still_obtained: (
@@ -225,7 +245,8 @@ module RedisQueuedLocks
             String host_id,
             RQL::accessStrategy access_strategy,
             RQL::readWriteMode rw_mode,
-            String? waiting_acquirer
+            String? waiting_acquirer,
+            Integer? waiting_priority
           ) -> void
 
           def self.obtain__free_to_acquire: (

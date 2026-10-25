@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.20.0
+# @version 1.22.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Resource
   # @return [String]
@@ -89,6 +89,44 @@ module RedisQueuedLocks::Resource
   # @api private
   # @since 1.3.0
   REDIS_TIMESHIFT_ERROR = 2
+
+  # The lowest lock request priority (the `priority` option of `#lock`).
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.22.0
+  MIN_LOCK_PRIORITY = -100
+
+  # The highest lock request priority (the `priority` option of `#lock`).
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.22.0
+  MAX_LOCK_PRIORITY = 100
+
+  # Lock request priority band: the position of the lock request in the lock request queue (the
+  # score) is the enqueue time (epoch, seconds) shifted by `priority * LOCK_PRIORITY_BAND` down:
+  #   - each priority gets its own range of positions (the band): requests of the higher priority
+  #     are always ahead of the requests of the lower priority, requests of the same priority are
+  #     ordered by the enqueue time (FIFO);
+  #   - 2**32 seconds (~136 years) is greater than any enqueue time (epoch) up to the year 2106,
+  #     so the bands never overlap and the priority is decoded from the position unambiguously;
+  #   - the default priority (`0`) keeps the position equal to the enqueue time (the positions of
+  #     the RQL versions without priorities);
+  #   - the band of the priority `p` is `(-p * LOCK_PRIORITY_BAND, (1 - p) * LOCK_PRIORITY_BAND)`;
+  #   - the enqueue time is decoded from the position of any priority, so dead lock requests of any
+  #     band are recognized by the position (the time barrier of the band, see
+  #     `lock_priority_band_dead_score`) without the knowledge of the priority range;
+  #   - the precision of the positions (the FIFO precision inside a priority) depends on the
+  #     shift: ~1 µs for -1..1, ~61 µs for -100..100 (`MIN_LOCK_PRIORITY`..`MAX_LOCK_PRIORITY`):
+  #     requests of the same priority made within this interval are ordered by acquirer ids;
+  # @return [Integer] In seconds.
+  #
+  # @api private
+  # @since 1.22.0
+  LOCK_PRIORITY_BAND = 4_294_967_296
 
   # rubocop:disable Metrics/ClassLength
   class << self
@@ -327,21 +365,66 @@ module RedisQueuedLocks::Resource
       (Integer(redis_time[0]) * 1_000) + (Integer(redis_time[1]) / 1_000)
     end
 
-    # @return [Float] Redis's <Set> score that is calculated from the time (epoch) as a float.
+    # @param priority [Integer]
+    #   The lock request priority (from `MIN_LOCK_PRIORITY` to `MAX_LOCK_PRIORITY`).
+    # @return [Float]
+    #   Redis's <Set> score: the time (epoch, as a float) shifted by the priority band (see
+    #   `LOCK_PRIORITY_BAND`; the default priority `0` keeps the time).
     #
     # @api private
     # @since 1.0.0
-    def calc_initial_acquirer_position
-      Time.now.to_f
+    # @version 1.22.0
+    def calc_initial_acquirer_position(priority)
+      Time.now.to_f - (priority * LOCK_PRIORITY_BAND)
     end
 
     # @param queue_ttl [Numeric] In seconds
-    # @return [Float] Redis's <Set> score barrier for acquirers that should be removed from queue.
+    # @return [Float]
+    #   Redis's <Set> score barrier for acquirers that should be removed from queue (the time
+    #   barrier: the barrier of the default priority band, see `lock_priority_band_dead_score`).
     #
     # @api private
     # @since 1.0.0
     def acquirer_dead_score(queue_ttl)
       Time.now.to_f - queue_ttl
+    end
+
+    # The lowest position (score) of the lock requests of the given priority band (see
+    # `LOCK_PRIORITY_BAND`): the lower bound of the dead lock request removal (`ZREMRANGEBYSCORE`).
+    #
+    # @param priority [Integer] Any priority (the bands of all priorities have the same layout).
+    # @return [Integer]
+    #   The lower edge of the band (the positions of the band never reach its edges: an enqueue
+    #   time is always greater than 0 and less than `LOCK_PRIORITY_BAND`).
+    #
+    # @api private
+    # @since 1.22.0
+    def lock_priority_band_floor(priority)
+      -priority * LOCK_PRIORITY_BAND
+    end
+
+    # Requests of the given priority band queued at this position or earlier are dead (the upper
+    # bound of the dead lock request removal, see `LOCK_PRIORITY_BAND`).
+    #
+    # @param dead_score [Float] The time barrier (see `acquirer_dead_score`).
+    # @param priority [Integer]
+    # @return [Float]
+    #
+    # @api private
+    # @since 1.22.0
+    def lock_priority_band_dead_score(dead_score, priority)
+      dead_score - (priority * LOCK_PRIORITY_BAND)
+    end
+
+    # Priority of the lock request by its position in the lock request queue (the score).
+    #
+    # @param acquirer_position [Numeric] The position (the score) of the lock request.
+    # @return [Integer] See `LOCK_PRIORITY_BAND`.
+    #
+    # @api private
+    # @since 1.22.0
+    def lock_request_priority(acquirer_position)
+      -(acquirer_position / LOCK_PRIORITY_BAND).floor
     end
 
     # @param zombie_ttl [Float] In seconds with milliseconds.
@@ -354,8 +437,10 @@ module RedisQueuedLocks::Resource
     end
 
     # @param acquirer_position [Float]
-    #   A time (epoch, seconds.milliseconds) that represents
-    #   the acquirer position in lock request queue.
+    #   A time (epoch, seconds.milliseconds) shifted by the priority band that represents
+    #   the acquirer position in lock request queue (see `calc_initial_acquirer_position`).
+    # @param priority [Integer]
+    #   The lock request priority (the band of the position).
     # @param queue_ttl [Integer]
     #   In second.
     # @return [Boolean]
@@ -363,8 +448,9 @@ module RedisQueuedLocks::Resource
     #
     # @api private
     # @since 1.0.0
-    def dead_score_reached?(acquirer_position, queue_ttl)
-      (acquirer_position + queue_ttl) < Time.now.to_f
+    # @version 1.22.0
+    def dead_score_reached?(acquirer_position, priority, queue_ttl)
+      (acquirer_position + (priority * LOCK_PRIORITY_BAND) + queue_ttl) < Time.now.to_f
     end
 
     # NOTE: (debug) not used by the library: a manual runtime check (in a console) of the lock that

@@ -31,6 +31,8 @@ class RedisQueuedLocks::Config
   setting('is_timed_by_default', false)
   setting('default_conflict_strategy', :wait_for_lock)
   setting('default_access_strategy', :queued)
+  setting('lock_priorities', { lowest: -100, low: -50, normal: 0, high: 50, highest: 100 }.freeze)
+  setting('default_lock_priority', 0)
   setting('log_sampling_enabled', false)
   setting('log_sampling_percent', 15)
   setting('log_sampler', RedisQueuedLocks::Logging::Sampler)
@@ -113,6 +115,25 @@ class RedisQueuedLocks::Config
     val == :queued ||
     val == :random
     # rubocop:enable Layout/MultilineOperationIndentation
+  end
+  validate('lock_priorities') do |val|
+    val.is_a?(Hash) && val.all? do |name, priority|
+      # rubocop:disable Layout/MultilineOperationIndentation
+      name.is_a?(Symbol) &&
+      priority.is_a?(Integer) &&
+      priority >= RedisQueuedLocks::Resource::MIN_LOCK_PRIORITY &&
+      priority <= RedisQueuedLocks::Resource::MAX_LOCK_PRIORITY
+      # rubocop:enable Layout/MultilineOperationIndentation
+    end
+  end
+  # NOTE: a Symbol is a priority name of `config['lock_priorities']`: it is checked on each lock
+  #   acquirement (the priority names can be configured after the default priority);
+  validate('default_lock_priority') do |val|
+    val.is_a?(Symbol) || (
+      val.is_a?(Integer) &&
+      val >= RedisQueuedLocks::Resource::MIN_LOCK_PRIORITY &&
+      val <= RedisQueuedLocks::Resource::MAX_LOCK_PRIORITY
+    )
   end
 
   # @return [Hash<Symbol,Any>]

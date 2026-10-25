@@ -35,6 +35,8 @@ module RedisQueuedLocks
           | ("is_timed_by_default") -> bool
           | ("default_conflict_strategy") -> RedisQueuedLocks::conflictStrategy
           | ("default_access_strategy") -> RedisQueuedLocks::accessStrategy
+          | ("lock_priorities") -> Hash[Symbol, Integer]
+          | ("default_lock_priority") -> RedisQueuedLocks::lockPriority
           | ("log_sampling_enabled") -> bool
           | ("log_sampling_percent") -> Integer
           | ("log_sampler") -> RedisQueuedLocks::Logging::samplerObj

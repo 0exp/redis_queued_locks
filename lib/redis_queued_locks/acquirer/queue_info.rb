@@ -16,22 +16,34 @@ module RedisQueuedLocks::Acquirer::QueueInfo
     #   - result format: {
     #     "lock_queue" => "rql:lock_queue:your_lock_name", # lock queue key in redis,
     #     "queue" => [
-    #       { "acq_id" => "rql:acq:123/456/789/987/id", "score" => 123.456, "rw_mode" => "write" },
-    #       { "acq_id" => "rql:acq:123/686/789/987/id", "score" => 456.789, "rw_mode" => "write" },
+    #       {
+    #         "acq_id" => "rql:acq:123/456/789/987/id",
+    #         "score" => 123.456,
+    #         "rw_mode" => "write",
+    #         "priority" => 0
+    #       },
     #       ...
     #     ] # ordered set (by score) with information about an acquirer, their position in queue
-    #       # and the requested lock mode
+    #       # (the enqueue time shifted by the priority band: see
+    #       # `RedisQueuedLocks::Resource::LOCK_PRIORITY_BAND`), the requested lock mode and
+    #       # the lock request priority (decoded from the position)
     #     <additional keys when the queue of read lock requests exists>:
     #     "read_lock_queue" => "rql:lock_read_queue:your_lock_name", # read lock queue key in redis
     #     "read_queue" => [
-    #       { "acq_id" => "rql:acq:123/456/789/987/id", "score" => 123.456, "rw_mode" => "read" },
+    #       {
+    #         "acq_id" => "rql:acq:123/456/789/987/id",
+    #         "score" => 123.456,
+    #         "rw_mode" => "read",
+    #         "priority" => 0
+    #       },
     #       ...
     #     ] # read lock requests (positions are comparable with the write lock request positions)
     #   }
     #
     # @api private
     # @since 1.0.0
-    # @version 1.20.0
+    # @version 1.22.0
+    # rubocop:disable Metrics/MethodLength
     def queue_info(redis_client, lock_name)
       lock_key_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
       read_lock_key_queue = RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
@@ -54,14 +66,24 @@ module RedisQueuedLocks::Acquirer::QueueInfo
         queue_info = {
           'lock_queue' => lock_key_queue,
           'queue' => zrange_cmd_res.map do |val|
-            { 'acq_id' => val[0], 'score' => val[1], 'rw_mode' => 'write' }
+            {
+              'acq_id' => val[0],
+              'score' => val[1],
+              'rw_mode' => 'write',
+              'priority' => RedisQueuedLocks::Resource.lock_request_priority(val[1])
+            }
           end
         }
         # NOTE: (RW) the queue of read lock requests
         unless read_zrange_cmd_res.empty?
           queue_info['read_lock_queue'] = read_lock_key_queue
           queue_info['read_queue'] = read_zrange_cmd_res.map do |val|
-            { 'acq_id' => val[0], 'score' => val[1], 'rw_mode' => 'read' }
+            {
+              'acq_id' => val[0],
+              'score' => val[1],
+              'rw_mode' => 'read',
+              'priority' => RedisQueuedLocks::Resource.lock_request_priority(val[1])
+            }
           end
         end
         queue_info
@@ -70,5 +92,6 @@ module RedisQueuedLocks::Acquirer::QueueInfo
         nil
       end
     end
+    # rubocop:enable Metrics/MethodLength
   end
 end

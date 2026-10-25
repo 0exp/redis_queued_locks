@@ -13,6 +13,9 @@ module RedisQueuedLocks
   type readWriteMode = :read | :write
   type accessStrategy = :queued | :random
   type conflictStrategy = :wait_for_lock | :work_through | :extendable_work_through | :dead_locking
+  # NOTE: (lock request priorities) an Integer priority or a priority name of
+  #   `config['lock_priorities']` (resolved by `AcquireLock.acquire_lock`);
+  type lockPriority = Integer | Symbol
 
   extend ::RedisQueuedLocks::Debugger::Interface
 end

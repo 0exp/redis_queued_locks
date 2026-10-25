@@ -1,8 +1,8 @@
 # redis_queued_locks: Project Overview
 
 Ruby gem providing **distributed locks on Redis with a prioritized lock-acquisition queue**.
-Each lock has its own request queue; requests are processed FIFO (`:queued`) or first-come
-(`:random`). Requests have TTLs (with requeue), so queues never get stuck. Includes reentrancy
+Each lock has its own request queue; requests are processed FIFO (`:queued`, ordered by the lock request
+priority first: `priority` -100..100) or first-come (`:random`). Requests have TTLs (with requeue), so queues never get stuck. Includes reentrancy
 (conflict) strategies, timed locks, retries/fail-fast, logging, instrumentation with sampling,
 and a background "swarm" that detects dead hosts and flushes their locks.
 
@@ -25,6 +25,8 @@ Client (client.rb)                              public API facade
               │
               ▼
         RedisClient (redis-client gem)          WATCH/MULTI, Lua (EVAL), ZSET, HASH, SCAN
+
+Resource (resource.rb)                          keys, acquirer/host ids, queue score layout (priority bands)
 ```
 
 `Client.new(redis_client) { |config| ... }`:
@@ -41,6 +43,104 @@ cross-calls and no shared RBS types; common logic lives in `Resource`/`Utilities
 duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatting, `Queues` the
 `QueueInfo` request formatting). Known debt: `AcquireLock::WithAcqTimeout` calls
 `LockInfo`/`QueueInfo` for detailed timeout errors.
+
+### Read/Write locks in the architecture
+
+`read_write_mode: :write` (default) is the exclusive classic lock (its keys and data are unchanged); `:read` is a shared
+lock: readers share the lock with each other, a writer waits for the write lock and for all live readers, a reader waits
+for the write lock only. Mutual exclusion comes only from WATCH/MULTI on the lock state (no Lua in the RW path); the
+request queues only order the requests (FIFO between modes by `(score, acq_id)`).
+
+Keys of one lock name (all of them match `KEY_PATTERN`, classified by `Resource.lock_key_family`):
+
+```
+rql:lock:<name>                 HASH  write lock: owner + data                      write lock state
+rql:lock_readers:<name>         ZSET  readers registry: acq_id => expiry (Redis ms)  read lock state (the source of truth)
+rql:lock_reader:<name>:<acq_id> HASH  reader data (the write lock format without ids: a data carrier only)
+rql:lock_queue:<name>           ZSET  write lock requests                            ordering only
+rql:lock_read_queue:<name>      ZSET  read lock requests (the same scores)           ordering only
+```
+
+The path of the mode through the components:
+
+```
+Client#lock / #lock! (read_write_mode:)            #lock_series / #lock_series! (one mode per series),
+  │                                                #unlock_read / #release_read_lock, #extend_lock_ttl(read_write_mode:,
+  │                                                all_read_locks:)
+  ▼
+AcquireLock Step 0.1 (RW)                          validates the mode; the keys are computed once (read_lock_key: readers only)
+  ▼
+TryToLock (each attempt and pre-check)             WATCH: writers [lock_key, lock_readers_key], readers [lock_key] only
+  │                                                (readers never abort each other); one state pipeline: HGET acq_id,
+  │                                                TIME, own reader score, longest reader (writers); the conditions:
+  │                                                write = no write lock + no live reader (score > Redis now),
+  │                                                read = no write lock; the order: write = head of the write queue +
+  │                                                no earlier read request, read = no earlier write request; the
+  │                                                obtaining MULTI: write HSET + PEXPIRE, read ZADD expiry + registry
+  │                                                PEXPIRE NX + GT + reader data; same-acquirer conflicts by
+  │                                                conflict_strategy (held mode `sp_conflict_rw_mode`; read->write
+  │                                                upgrade never works through)
+  ▼
+YieldExpire                                        releases the held mode (`held_rw_mode`): write EXPIRE 0, read ZREM +
+                                                   DEL of the own reader data (owner-safe)
+ReleaseLock (unlock)                               write lock + readers + both queues in one MULTI, then one DEL of the
+                                                   released readers' data (only when readers existed)
+ReleaseReadLock / ExtendLockTTL                    one read lock (own or `acquirer_id:`) / own or all live read locks
+Info, iteration, cleanup, swarm                    the read family everywhere: lock_info readers, queue_info read_queue,
+                                                   locks/queues/keys, clear_*, clear_dead_requests, zombies
+LogVisitor / InstrVisitor (+ series, try-lock)     rw_mode in every lock log/event (requested; YieldExpire: held; series)
+```
+
+- Invariants for any lock-touching code: cover the read family next to `rql:lock:*`/`rql:lock_queue:*`; writers WATCH
+  the registry, readers never; reader liveness only by the Redis-time score (`score > now`), never `ZCARD`/`EXISTS`;
+  registry and reader data TTLs keep the max with `PEXPIRE NX` + `PEXPIRE GT`; write-only result shapes stay unchanged
+  (read keys/fields only when read data exists); the lock index covers the read keys (enabled mode).
+- Details (reentrancy matrix, fail_fast, results, release semantics, design decisions): "Read/Write locks" below; the
+  public description: README "Read/Write Locks".
+
+### Lock request prioritization in the architecture
+
+The lock request priority orders the waiting requests of a lock (`:queued`): strict priority between priorities, FIFO
+inside a priority, in both read/write modes. It is carried by the queue score only (no new keys, fields or commands per
+request) and never takes part in mutual exclusion (WATCH/MULTI on the lock state decides it, as before). The path of the
+priority through the components:
+
+```
+Client#lock / #lock! / #lock_series / #lock_series!     priority: (Integer or a name), default config['default_lock_priority'];
+  │                                                     lock_priorities: config['lock_priorities'] (internal keyword)
+  ▼
+Config (config.rb)                                      lock_priorities (name => Integer) + default_lock_priority validators
+  │
+  ▼
+AcquireLock Step 0.1 / LockSeriesPoC                    name -> Integer, range -100..100 (ArgumentError); Integer only below
+  │
+  ├──▶ Resource                                         the single source of the score layout:
+  │      calc_initial_acquirer_position(priority)       score = enqueue time - priority * 2**32 (one band per priority)
+  │      dead_score_reached?(position, priority, ttl)   requeue check (decodes the enqueue time)
+  │      lock_priority_band_floor / _dead_score         the bounds of the dead requests of a band
+  │      lock_request_priority(score)                   the priority decoded from a score
+  │
+  ├──▶ TryToLock (each attempt and pre-check)           queueing: ZADD NX with the shifted score + the own band pruned in
+  │                                                     both queues (queue_lock_request, no extra round trip); Step 2.2:
+  │                                                     dead blocking requests of other bands dropped with their bands
+  │                                                     (drop_dead_requests_ahead, dead_request_priority: one round trip
+  │                                                     per removal, none while nothing dead blocks); ordering: queue heads
+  │                                                     and the cross-mode (score, acq_id) comparison on shifted scores
+  │
+  ├──▶ ClearDeadRequests                                per-band cleanup of the bands found in the queues (<= 2 round trips/batch)
+  ├──▶ QueueInfo / Queues                               'priority' of each request decoded from its score
+  └──▶ LogVisitor / InstrVisitor (+ series, try-lock)   priority in every lock acquirement log/event; try-lock logs decode
+                                                        the priorities of the requests ahead (first/ahead/dead)
+```
+
+- Unchanged by prioritization: the lock keys and their data, queue members (`acq_id`), dequeue (`ZREM`), `unlock` /
+  `clear_locks` (full queue clears), the swarm (hosts and zombies come from acquirer ids), the lock index, the obtaining
+  transactions.
+- Invariants for any code that touches lock queues: never prune a queue with one `-inf..now-ttl` range (prune bands with
+  the `Resource` bounds); never enumerate the priority range per attempt or per queue (decode the bands from the data);
+  read priorities only through `Resource.lock_request_priority`; the attempt cost must not depend on the priority range.
+- Details (encoding, liveness, cleanup, limitations, mixed versions): "Lock request priorities" below; the public
+  description: README "Lock Request Prioritization".
 
 ### Client → implementation map
 
@@ -67,7 +167,7 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 
 | Mixin | Role |
 |---|---|
-| `TryToLock` (`try_to_lock.rb`) | One attempt: `multi(watch:)` (write: lock key + readers registry, read: lock key only), one pipelined read of the lock state (`HGET acq_id`, `TIME`, own reader score, longest reader: write requests only), the lock request queueing in one pipelined round trip (`queue_lock_request`: `ZADD NX` into the queue of the requested mode (timestamp score), prune both queues, both queue heads, then (the enabled lock index only) the lock index commands: request queue `PEXPIRE NX`+`GT` (queue ttl), `ZADD GT` of the lock name into the lock index (queue ttl), `ZREMRANGEBYSCORE` of expired lock names), take the lock if allowed (see Read/Write locks; with the enabled lock index the obtaining `MULTI` ends with the lock index `ZADD GT` (lock ttl), the `:extendable_work_through` extension `MULTI` with `ZADD XX INCR`). Eager queueing (`:wait_for_lock`/`:dead_locking` without `fail_fast`) sends the queueing commands in the lock state round trip: `lock {}` = 4 round trips (`WATCH`, state + queueing, `MULTI/EXEC`, release), a failed attempt = 3. Pre-check (`precheck_lock`, retries and `fail_fast` attempts): the lock state (+ the queueing for retries) without `WATCH` in one round trip; an attempt that can not obtain the lock fails there (same results and log events: `lock_obstacle`/`log_lock_obstacle`), otherwise the attempt continues with `WATCH`/`MULTI` (a failed retry = 1 round trip, a successful one = 4; `fail_fast` on an obtained lock = 1); same-process conflicts are never decided by the pre-check. Handles reentrant conflicts (incl. read/write ones); write TTL extension via inline Lua (`PTTL` + `PEXPIRE`). |
+| `TryToLock` (`try_to_lock.rb`) | One attempt: `multi(watch:)` (write: lock key + readers registry, read: lock key only), one pipelined read of the lock state (`HGET acq_id`, `TIME`, own reader score, longest reader: write requests only), the lock request queueing in one pipelined round trip (`queue_lock_request`: `ZADD NX` into the queue of the requested mode (timestamp score shifted by the priority band, see "Lock request priorities"), prune the priority band of the request in both queues, both queue heads with scores, then (the enabled lock index only) the lock index commands: request queue `PEXPIRE NX`+`GT` (queue ttl), `ZADD GT` of the lock name into the lock index (queue ttl), `ZREMRANGEBYSCORE` of expired lock names), drop the dead requests of other priority bands that block the request (the write queue head and the earlier opposite-mode request) with their bands in one more round trip that re-reads the heads (`drop_dead_requests_ahead`, Step 2.2, also in the pre-check: up to `MAX_DEAD_REQUEST_REMOVALS` = 5 such round trips per attempt, none while no dead request blocks), take the lock if allowed (see Read/Write locks; with the enabled lock index the obtaining `MULTI` ends with the lock index `ZADD GT` (lock ttl), the `:extendable_work_through` extension `MULTI` with `ZADD XX INCR`). Eager queueing (`:wait_for_lock`/`:dead_locking` without `fail_fast`) sends the queueing commands in the lock state round trip: `lock {}` = 4 round trips (`WATCH`, state + queueing, `MULTI/EXEC`, release), a failed attempt = 3. Pre-check (`precheck_lock`, retries and `fail_fast` attempts): the lock state (+ the queueing for retries) without `WATCH` in one round trip; an attempt that can not obtain the lock fails there (same results and log events: `lock_obstacle`/`log_lock_obstacle`), otherwise the attempt continues with `WATCH`/`MULTI` (a failed retry = 1 round trip, a successful one = 4; `fail_fast` on an obtained lock = 1); same-process conflicts are never decided by the pre-check. Handles reentrant conflicts (incl. read/write ones); write TTL extension via inline Lua (`PTTL` + `PEXPIRE`). |
 | `WithAcqTimeout` | Global acquisition timeout (`timeout`). |
 | `DelayExecution` | Retry delay + jitter between attempts. |
 | `DequeueFromLockQueue` | Removes the acquirer from the queue of the requested mode on timeout/failure. |
@@ -78,7 +178,8 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 
 `ttl`, `queue_ttl`, `lock_index_grace_period` (used with the enabled lock index only; the mode itself, `config['lock_index_enabled']`,
 is client-wide: `Client` passes it to the acquirers, it is not a `lock` option), `timeout`, `timed`, `retry_count`, `retry_delay`, `retry_jitter`,
-`raise_errors`, `fail_fast`, `conflict_strategy`, `access_strategy`, `read_write_mode`
+`raise_errors`, `fail_fast`, `conflict_strategy`, `access_strategy`, `priority` (`-100`..`100` or a priority name of `config['lock_priorities']`, default
+`config['default_lock_priority']` = `0`, see "Lock request priorities"), `read_write_mode`
 (`:write` (default, exclusive) | `:read` (shared)), `identity`, `meta`, `logger`, `log_lock_try`,
 `instrumenter`, `instrument`, log/instr sampling options, `log_sample_this`, `instr_sample_this`.
 
@@ -98,8 +199,9 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   ignored (`score > now`) and pruned on reader acquisition; registry TTL = max reader TTL (`PEXPIRE NX`
   + `PEXPIRE GT` in the same MULTI).
 - Ordering (`:queued`): FIFO between modes by `(score, acq_id)`: read waits for earlier write requests;
-  write must be the head of the write queue and waits for earlier read requests. Every attempt prunes
-  dead requests in both queues. `:random` ignores queues (writers can starve). Ordering is best effort
+  write must be the head of the write queue and waits for earlier read requests. Scores are shifted by the priority
+  bands (see "Lock request priorities"), so "earlier" means "ahead": a higher priority is ahead in both modes. Every attempt prunes
+  dead requests of its priority band in both queues (and the dead requests of other bands that block it). `:random` ignores queues (writers can starve). Ordering is best effort
   (client clocks, `unlock` clears queues); it never affects mutual exclusion.
 - Read lock data: `rql:lock_reader:<name>:<acq_id>` HASH with the write-lock format without `acq_id`/`hst_id`
   (`ts`, `ini_ttl`, `meta`, `spc_*` reentrant counters; acquirer and host are derived from the acquirer id and are
@@ -121,7 +223,8 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   `milliseconds` must be a positive Integer (a non-positive one would decrease/delete the lock);
   `meta` keys must not be reserved lock data keys, String or Symbol (Symbol keys are written as
   Strings: `Symbol#name`; the same check in `AcquireLock` and `LockSeriesPoC`); the other per-call
-  numeric options are validated with the ranges of their config keys (`logic.md#7`): `queue_ttl` > 0,
+  numeric options are validated with the ranges of their config keys (`logic.md#7`): `priority` Integer from
+  `Resource::MIN_LOCK_PRIORITY` (-100) to `MAX_LOCK_PRIORITY` (100), `queue_ttl` > 0,
   `timeout`/`retry_count` nil or >= 0, `retry_delay`/`retry_jitter`/`lock_index_grace_period` >= 0
   (`AcquireLock`; `LockSeriesPoC` checks the retry delay/jitter before the lock ttl calculation),
   scan/batch sizes, `dead_ttl`, reindexing `queue_ttl` > 0 (operation modules), `zombie_ttl` and the
@@ -162,14 +265,67 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 - RBS: `Client` types `read_write_mode` as `:read | :write`. Older gem versions ignore readers: all processes must be upgraded
   before read locks are used.
 
+### Lock request priorities (`priority`)
+
+- Option `priority` of `lock`/`lock!`/`lock_series`/`lock_series!` (one value per series): Integer from
+  `Resource::MIN_LOCK_PRIORITY` (-100, the lowest) to `Resource::MAX_LOCK_PRIORITY` (100, the highest) or a priority
+  name (Symbol, RBS `RQL::lockPriority`), default `config['default_lock_priority']` (0, a name allowed); validated in
+  `AcquireLock` (Step 0.1), in `LockSeriesPoC` (before the series: the same check, duplicated like its ttl checks) and by the
+  config validators.
+- Priority names: `config['lock_priorities']` (Hash Symbol => Integer in the range, default frozen
+  `{ lowest: -100, low: -50, normal: 0, high: 50, highest: 100 }`, validated by the config) is read by `Client#lock` /
+  `#lock_series` and forwarded as the internal keyword `lock_priorities:` (`AcquireLock`, `LockSeriesPoC`; not a public
+  keyword: a client-wide registry); `AcquireLock` Step 0.1 resolves a Symbol `priority` to its Integer
+  (`lock_priorities.fetch(priority, priority)`, an unknown name stays a Symbol and fails the range check with
+  `ArgumentError`; `LockSeriesPoC` resolves it the same way before the series events), so everything after Step 0.1 (scores,
+  logs, events, `queue_info`) sees Integers only; a name in
+  `default_lock_priority` is checked at the lock acquirement (validators can't see other keys).
+- Semantics (`:queued`): strict priority, FIFO inside a priority, in both modes (the read and write queues use the same scores);
+  orders waiting requests only (no preemption); `:random` ignores it; the obtained lock is never taken away.
+- Encoding (`Resource`, the single source of the score layout): position (score) = enqueue time (client `Time.now.to_f`) -
+  `priority * Resource::LOCK_PRIORITY_BAND` (2**32 s: bands never overlap until 2106, the priority is decoded by
+  `Resource.lock_request_priority(score) = -floor(score / 2**32)`); priority 0 keeps the pre-priority score (old data and old
+  clients' default requests are unchanged). `calc_initial_acquirer_position(priority)` encodes, `dead_score_reached?(position,
+  priority, queue_ttl)` decodes the enqueue time for the requeue check.
+- Liveness (score = order + liveness): dead requests are pruned per band, `ZREMRANGEBYSCORE <queue>
+  <Resource.lock_priority_band_floor(p)> <Resource.lock_priority_band_dead_score(now - queue_ttl, p)>` (the floor is `-p * 2**32`
+  for every band, inclusive: positions never reach band edges). Head-driven cleanup (the attempt cost does not depend on the
+  priority range): `queue_lock_request` prunes the band of the request in both queues before the heads (5 queueing commands, 9
+  with the lock index, as before priorities) and reads both heads with scores; `drop_dead_requests_ahead` (Step 2.2 of the attempt
+  and of the pre-check, before the obstacle decision, `:queued` only) decodes the band and the enqueue time of the blocking requests
+  (the write queue head for writers, the earlier opposite-mode request for both modes) from their scores (`dead_request_priority`)
+  and prunes the bands of the dead ones (by the barrier of the current request: its `queue_ttl`) in both queues and re-reads both
+  heads in one round trip (one or two bands; a live write queue head stops the removal; `try_lock.dead_request_removed` log per
+  dropped request), up to `MAX_DEAD_REQUEST_REMOVALS` (5) round trips per attempt (more dead blocking requests: the next
+  attempts); no round trip while the blocking requests are alive or there are none. Any band is decoded (also out of the range:
+  newer versions). Dead requests of lower priorities never block: they are dropped by the attempts of their band (or lower),
+  `clear_dead_requests`, the queue TTL (enabled lock index) or the swarm. `ClearDeadRequests.drop_dead_requests` (both lookups):
+  one round trip reads the batch queues (`ZRANGE 0 -1 WITHSCORES`), one more prunes only the bands whose first request is dead
+  (the requests of a band are adjacent and ordered by time), none without dead requests; `processed_queues` of the lock index
+  lookup = non-empty queues.
+- Unchanged by priorities: keys, members (`acq_id`), `ZADD NX`, `ZRANGE 0 0`, the cross-mode `(score, acq_id)` comparison, dequeue,
+  `unlock`/`clear_locks` (`-inf..+inf`), swarm (hosts from acquirer ids), lock index.
+- Info/observability: `queue_info`/`queues_info` requests have `'priority'` (decoded); every lock acquirement log and event
+  carries the Integer `priority` of the request (classic, reentrant: the requested one, they never queue; lock series: the
+  priority of the series, resolved and validated by `LockSeriesPoC` before the series events); `log_lock_try` logs that name
+  another request carry its decoded priority (`first_priority_in_queue`, `ahead_priority`, `dead_priority`; decoded for logs
+  only: gated by `log_sampled && log_lock_try`).
+- Limitations: the priority range is a library constant that bounds the score shift (float precision of the shifted positions:
+  ~61 µs at ±100, ~0.5 ms at ±1000; requests of the same priority within this interval are ordered by acquirer ids); mixed
+  versions: older clients prune high-priority requests as dead ones (`-inf..now-ttl`) and never prune low-priority ones (always
+  behind): the order degrades, no stuck queues, no safety impact (upgrade all processes before using priorities); strict priority
+  can starve lower priorities (bounded by their timeout/retry limits); the handoff is polled (`retry_delay`); dead requests are
+  pruned with the pruner's `queue_ttl` (existing behavior); dead requests of lower priorities can stay in the queues until an
+  attempt of their band (they never block; visible in `queue_info`).
+
 ### Redis data layout (`resource.rb`)
 
 | Key | Type | Purpose |
 |---|---|---|
 | `rql:lock:<name>` | HASH | lock owner + metadata (e.g. `l_spc_ts`, `l_spc_ext_ts` for reentrant cases) |
-| `rql:lock_queue:<name>` | ZSET | acquirer queue scored by enqueue time |
+| `rql:lock_queue:<name>` | ZSET | acquirer queue scored by enqueue time shifted by the priority band (`ts - priority * 2**32`) |
 | `rql:lock_readers:<name>` | ZSET | read locks: acquirer id => expiration (Redis `TIME`, ms) |
-| `rql:lock_read_queue:<name>` | ZSET | read lock requests (write requests use `rql:lock_queue:<name>`) |
+| `rql:lock_read_queue:<name>` | ZSET | read lock requests (write requests use `rql:lock_queue:<name>`), same scores |
 | `rql:lock_reader:<name>:<acq_id>` | HASH | read lock data (same fields as `rql:lock:<name>` incl. meta, without `acq_id`/`hst_id`; data carrier only) |
 | `rql:swarm:hsts` | HASH | swarm host heartbeats |
 | `rql:index:locks` | ZSET | lock index (the enabled lock index only): lock name => upper bound of the lifetime of all its keys (client time ms + ttl + grace), see "Lock index" |
@@ -232,8 +388,14 @@ acquirement error), each mutation operation with one log line + one event of the
 Lock events (`lock_obtained`, `reentrant_lock_obtained`, `extendable_reentrant_lock_obtained`,
 `lock_hold_and_release`, `reentrant_lock_hold_completes`) carry `rw_mode` (requested mode) in the payload;
 lock series events (`lock_series_obtained`, `lock_series_hold_and_release`) carry the mode of the series;
+all lock acquirement events (the lock events above, `lock_obtaining_failed` and the lock series events) carry `priority`
+after `rw_mode` (the Integer lock request priority: a priority name is resolved before; the series events: the priority of
+the series); all lock acquirement log lines of `AcquireLock` and `LockSeriesPoC` (not the release logs of `YieldExpire`)
+log `priority => N` after `rw_mode`, `try_lock.acq_added_to_queue` too; the try-lock logs that name another request log
+its priority (`first_priority_in_queue` after `first_acq_id_in_queue`, `ahead_priority` after `ahead_acq_id`);
 lock log lines (incl. lock series logs) carry `rw_mode => '...'`. RW try-lock log events: `exit__write_request_ahead`,
-`exit__read_request_ahead`, `exit__read_lock_still_obtained`, `single_process_lock_conflict__lock_upgrade`.
+`exit__read_request_ahead`, `exit__read_lock_still_obtained`, `single_process_lock_conflict__lock_upgrade`. Priorities try-lock
+log event: `dead_request_removed` (`dead_acq_id`, `dead_priority`: a dead blocking request of another band was dropped).
 
 ### Errors (`errors.rb`)
 
@@ -274,7 +436,7 @@ the connection (drops the WATCH state, reconnected on the next use) and re-raise
 |---|---|
 | Retry/timeouts | `retry_count` (3), `retry_delay` (200 ms), `retry_jitter` (25 ms), `try_to_lock_timeout` (10 s), `is_timed_by_default` (false) |
 | TTLs | `default_lock_ttl` (5000 ms), `default_queue_ttl` (15 s), `dead_request_ttl` (1 day, ms) |
-| Strategies | `default_conflict_strategy` (`:wait_for_lock`), `default_access_strategy` (`:queued`) |
+| Strategies | `default_conflict_strategy` (`:wait_for_lock`), `default_access_strategy` (`:queued`), `default_lock_priority` (0, from -100 to 100 or a priority name), `lock_priorities` (priority names => Integer priorities) |
 | Batching | `lock_release_batch_size` (100), `clear_locks_of__lock_scan_size` / `__queue_scan_size` (300), `key_extraction_batch_size` (500) |
 | Lock index | `lock_index_enabled` (false; client-wide mode, config only), `lock_index_grace_period` (60_000 ms; also a `lock`/`lock!`/`lock_series`/`lock_series!`/`reindex_locks` option) |
 | Identity | `uniq_identifier` (lambda → `Resource.calc_uniq_identity`) |
@@ -299,7 +461,7 @@ lib/redis_queued_locks/
   resource.rb                      keys and identities
   data.rb, errors.rb, utilities.rb, utilities/lock.rb, debugger/, version.rb
 sig/                               RBS mirror of lib/ + sig/vendor stubs (redis_client, active_support, semantic_logger)
-spec/                              redis_queued_locks_spec.rb (~5.6k lines, integration: shared examples run with both lock lookup modes), redis_queued_locks/config_spec.rb (Redis-free: `Config#[]` RBS table == `setting` registry), spec_helper.rb, setup_simplecov.rb
+spec/                              redis_queued_locks_spec.rb (~5.6k lines, integration: shared examples run with both lock lookup modes), redis_queued_locks/config_spec.rb (Redis-free: `Config#[]` RBS table == `setting` registry), spec_helper.rb, setup_simplecov.rb, support/parallel_runner.rb (the `rake rspec:parallel` runner, not a spec)
 .github/workflows/                 tests, lint, typecheck-static, typecheck-runtime
 bin/console, bin/setup             dev scripts
 Rakefile, Steepfile, rbs_collection.yaml
@@ -327,16 +489,16 @@ Rakefile, Steepfile, rbs_collection.yaml
 - rake, bundler, pry, pry-doc, reline, activesupport 8.1
 
 ### Rake tasks
-`rspec` (default), `rubocop` (runs `rubocop:ruby` and `rubocop:rbs`, fails if either fails), `steep:check`, plus bundler gem tasks (`build`, `release`, ...).
+`rspec` (default), `rspec:parallel` (`spec/support/parallel_runner.rb`, the `Rakefile` only declares the task: the specs in `WORKERS` processes, ~1 min instead of ~6: each worker gets its own pair of Redis databases via `RQL_SPEC_DB_OFFSET` = worker index * 2, prepended to `RedisClient::Config` in `spec_helper.rb` (the library, swarm and Ractor clients included); examples listed by `rspec --dry-run` and distributed by the durations of the previous runs (`tmp/rspec_parallel/durations.json`, the longest first to the least loaded worker); per-worker logs/JSON in `tmp/rspec_parallel/`; coverage: each worker stores only its SimpleCov result in `coverage/parallel/worker-<n>` (`rspec:worker:<n>` command names, no report), the task collates one report into `coverage/` after all workers (`SimpleCov.collate`) and drops the collated resultset (later `rspec` runs don't merge it); the environment is passed to the workers: the RBS runtime checks and `RSPEC_RETRY_RETRY_COUNT` work as with `rspec`), `rubocop` (runs `rubocop:ruby` and `rubocop:rbs`, fails if either fails), `steep:check`, plus bundler gem tasks (`build`, `release`, ...).
 
 ### CI (GitHub Actions, ubuntu-latest, Ruby 4.0, on every push)
 
 | Workflow | Command |
 |---|---|
-| tests | `bundle exec rake rspec` (with a Redis service) |
+| tests | `bundle exec rake rspec:parallel` (with a Redis service; 4 workers on the 4-core runner; `tmp/rspec_parallel/durations.json` restored/saved with `actions/cache` (a new key per run, `restore-keys` prefix) to balance the workers; the worker logs are uploaded as an artifact on failure) |
 | lint | `bundle exec rake rubocop` (precompiled native gems: no `BUNDLE_FORCE_RUBY_PLATFORM`, a rubydex 0.4.1 source build on the runner flags constants as `@deprecated` and breaks `Lint/DeprecatedReference`) |
 | typecheck-static | `bundle exec rbs collection install && bundle exec rake steep:check -j 10` |
-| typecheck-runtime | `RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec` (blocking; Ractor-executed methods are skipped: `RBS_TEST_SKIP` + `%a{rbs:test:skip}` in `resource.rbs`/`utilities.rbs`) |
+| typecheck-runtime | `RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec` (blocking; serial on purpose: the RBS hooks keep a worker on a CPU core, and parallel workers on the runner (4 vCPU = 2 physical cores) starved the timing-sensitive examples: Redis connect timeouts with 4 workers, swarm flush waits with 2; locally `rake rspec:parallel` works for the RBS checks; Ractor-executed methods are skipped: `RBS_TEST_SKIP` + `%a{rbs:test:skip}` in `resource.rbs`/`utilities.rbs`) |
 
 ---
 

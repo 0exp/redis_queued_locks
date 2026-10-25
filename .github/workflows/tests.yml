@@ -20,5 +20,18 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby_version }}
           bundler-cache: true
+      # NOTE: (parallel specs) the example durations of the previous runs balance the workers
+      #   (a new cache entry per run, restored from the latest one of the branch or of the default branch)
+      - uses: actions/cache@v4
+        with:
+          path: tmp/rspec_parallel/durations.json
+          key: rspec-durations-${{ github.run_id }}
+          restore-keys: rspec-durations-
       - name: Tests (RSpec)
-        run: bundle exec rake rspec
+        run: bundle exec rake rspec:parallel
+      - name: Worker logs (RSpec)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rspec-worker-logs
+          path: tmp/rspec_parallel/worker-*.log

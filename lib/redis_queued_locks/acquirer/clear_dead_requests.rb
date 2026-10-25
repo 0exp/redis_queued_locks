@@ -11,13 +11,16 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
   # rubocop:disable Metrics/ClassLength
   class << self
     # Drops dead lock requests (requests older than `dead_ttl`) from the lock queues (write and
-    # read):
-    #   - the disabled lock index: the lock queues found in one SCAN pass, one round trip per batch
-    #     of `scan_size` lock queues (batches are collected across SCAN pages);
+    # read; the requests of any priority: see `RedisQueuedLocks::Resource::LOCK_PRIORITY_BAND`):
+    #   - the disabled lock index: the lock queues found in one SCAN pass, two round trips per
+    #     batch of `scan_size` lock queues (batches are collected across SCAN pages);
     #   - the enabled lock index: the lock queues of the locks of the lock index: one ZSCAN pass
-    #     over the lock names (the keyspace is never scanned), one round trip per batch of
+    #     over the lock names (the keyspace is never scanned), two round trips per batch of
     #     `scan_size` lock names (both lock queues of each lock name); expired lock names are
     #     dropped from the lock index first;
+    #   - the batch round trips: the lock requests of the batch queues are read, then the dead
+    #     requests of each priority band that has them are dropped (only when dead requests exist,
+    #     see `drop_dead_requests`);
     #   - the operation is reported with one log and one instrumentation event
     #     (`redis_queued_locks.clear_dead_requests`) with the time of the whole operation;
     #
@@ -43,7 +46,7 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
     #
     # @api private
     # @since 1.0.0
-    # @version 1.21.0
+    # @version 1.22.0
     # rubocop:disable Metrics/MethodLength
     def clear_dead_requests(
       redis_client,
@@ -198,25 +201,67 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
       end
     end
 
-    # Drops dead requests of the given lock queues in one round trip (the disabled lock index).
+    # Drops dead requests of the given lock queues (both lookups):
+    #   - the first round trip reads the lock requests of the lock queues;
+    #   - the second round trip drops the dead requests of each priority band that has them: one
+    #     `ZREMRANGEBYSCORE` per band from the lower edge of the band to its time barrier (see
+    #     `RedisQueuedLocks::Resource::LOCK_PRIORITY_BAND`), so the number of commands depends on
+    #     the bands of the queued requests, not on the priority range; no round trip without dead
+    #     requests (an empty pipeline sends nothing);
+    #   - the requests of a band are adjacent and ordered by the enqueue time (the bands are
+    #     disjoint position ranges): the first request of a band decides whether the band has dead
+    #     requests;
+    #   - requests queued (or re-queued) between the round trips are never dropped: they are after
+    #     the time barrier of their band;
     #
     # @param redis_client [RedisClient]
     # @param lock_queues [Array<String>]
-    # @param dead_score [Float]
-    # @return [void]
+    # @param dead_score [Float] Requests queued before this time are dead.
+    # @return [Array<Array<Array<String,Float>>>]
+    #   The lock requests (acquirer id, position) of each lock queue before the removal, in the
+    #   order of `lock_queues` (an empty list for a missing lock queue).
     #
     # @api private
     # @since 1.20.0
+    # @version 1.22.0
     def drop_dead_requests(redis_client, lock_queues, dead_score)
-      redis_client.pipelined do |pipeline|
+      # NOTE: (pipeline layout) one ZRANGE WITHSCORES per lock queue (the `lock_queues` order)
+      # @type var queued_requests: Array[Array[[String, Float]]]
+      queued_requests = redis_client.pipelined do |pipeline|
         lock_queues.each do |lock_queue|
-          pipeline.call('ZREMRANGEBYSCORE', lock_queue, '-inf', dead_score)
+          pipeline.call('ZRANGE', lock_queue, '0', '-1', 'WITHSCORES')
         end
       end
+
+      redis_client.pipelined do |pipeline|
+        lock_queues.each_with_index do |lock_queue, index|
+          # @type var checked_band: Integer?
+          checked_band = nil
+
+          queued_requests[index].each do |lock_request|
+            position = lock_request[1]
+            priority = RedisQueuedLocks::Resource.lock_request_priority(position)
+            next if priority == checked_band
+
+            # NOTE: the first request of the band: the band has dead requests when it is dead
+            checked_band = priority
+            band_dead_score =
+              RedisQueuedLocks::Resource.lock_priority_band_dead_score(dead_score, priority)
+            next if position > band_dead_score
+
+            pipeline.call(
+              'ZREMRANGEBYSCORE', lock_queue,
+              RedisQueuedLocks::Resource.lock_priority_band_floor(priority), band_dead_score
+            )
+          end
+        end
+      end
+
+      queued_requests
     end
 
-    # Drops dead requests of both lock queues of the given lock names in one round trip
-    # (the enabled lock index).
+    # Drops dead requests of both lock queues of the given lock names (the enabled lock index; the
+    # round trips of `drop_dead_requests`).
     #
     # @param redis_client [RedisClient]
     # @param lock_names [Array<String>]
@@ -226,28 +271,21 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
     #
     # @api private
     # @since 1.20.0
+    # @version 1.22.0
     def drop_dead_requests_of_locks(redis_client, lock_names, dead_score, processed_queues)
-      # NOTE: (pipeline layout) two replies per lock queue (two lock queues per lock name) in
-      #   the batch order: EXISTS (the queue is processed when it exists), ZREMRANGEBYSCORE;
-      # @type var replies: Array[Integer]
-      replies = redis_client.pipelined do |pipeline|
-        lock_names.each do |lock_name|
-          lock_queue = RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
-          read_lock_queue = RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
-          pipeline.call('EXISTS', lock_queue)
-          pipeline.call('ZREMRANGEBYSCORE', lock_queue, '-inf', dead_score)
-          pipeline.call('EXISTS', read_lock_queue)
-          pipeline.call('ZREMRANGEBYSCORE', read_lock_queue, '-inf', dead_score)
-        end
+      # NOTE: both lock queues of each lock name in the batch order (write, read)
+      # @type var lock_queues: Array[String]
+      lock_queues = []
+      lock_names.each do |lock_name|
+        lock_queues << RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
+        lock_queues << RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
       end
 
-      lock_names.each_with_index do |lock_name, index|
-        if replies[index * 4] == 1
-          processed_queues << RedisQueuedLocks::Resource.prepare_lock_queue(lock_name)
-        end
-        if replies[(index * 4) + 2] == 1
-          processed_queues << RedisQueuedLocks::Resource.prepare_read_lock_queue(lock_name)
-        end
+      queued_requests = drop_dead_requests(redis_client, lock_queues, dead_score)
+
+      # NOTE: a lock queue is processed when it exists (Redis never keeps empty sorted sets)
+      lock_queues.each_with_index do |lock_queue, index|
+        processed_queues << lock_queue unless queued_requests[index].empty?
       end
     end
 

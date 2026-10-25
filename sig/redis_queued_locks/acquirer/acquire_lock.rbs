@@ -40,6 +40,8 @@ module RedisQueuedLocks
         conflict_strategy: RQL::conflictStrategy,
         read_write_mode: Symbol, # NOTE: (rbs test) validated at runtime (Step 0.1 (RW)): any Symbol is accepted here
         access_strategy: RQL::accessStrategy,
+        priority: RQL::lockPriority,
+        lock_priorities: Hash[Symbol, Integer],
         log_sampling_enabled: bool,
         log_sampling_percent: Integer,
         log_sampler: RQL::Logging::samplerObj,

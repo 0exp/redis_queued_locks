@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.7.0
-# @version 1.18.0
+# @version 1.22.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
   # rubocop:disable Metrics/ClassLength
@@ -349,11 +349,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
     # @param host_id [String]
     # @param access_strategy [Symbol]
     # @param rw_mode [Symbol]
+    # @param priority [Integer] The lock request priority.
     # @return [void]
     #
     # @api private
     # @since 1.7.0
-    # @version 1.18.0
+    # @version 1.22.0
     def acq_added_to_queue(
       logger,
       log_sampled,
@@ -363,7 +364,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
       acquirer_id,
       host_id,
       access_strategy,
-      rw_mode
+      rw_mode,
+      priority
     )
       return unless log_sampled && log_lock_try
 
@@ -374,7 +376,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "acq_id => '#{acquirer_id}' " \
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
-        "rw_mode => '#{rw_mode}'"
+        "rw_mode => '#{rw_mode}' " \
+        "priority => #{priority}"
       end rescue nil
     end
 
@@ -416,6 +419,52 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
       end rescue nil
     end
 
+    # (priorities) A dead lock request of another priority band blocked the lock request: it is
+    # dropped with all dead lock requests of its band (both lock queues).
+    #
+    # @param logger [::Logger,#debug]
+    # @param log_sampled [Boolean]
+    # @param log_lock_try [Boolean]
+    # @param lock_key [String]
+    # @param queue_ttl [Integer]
+    # @param acquirer_id [String]
+    # @param host_id [String]
+    # @param access_strategy [Symbol]
+    # @param rw_mode [Symbol]
+    # @param dead_acquirer [String] The acquirer of the dropped blocking lock request.
+    # @param dead_priority [Integer] The priority of the dropped blocking lock request.
+    # @return [void]
+    #
+    # @api private
+    # @since 1.22.0
+    def dead_request_removed(
+      logger,
+      log_sampled,
+      log_lock_try,
+      lock_key,
+      queue_ttl,
+      acquirer_id,
+      host_id,
+      access_strategy,
+      rw_mode,
+      dead_acquirer,
+      dead_priority
+    )
+      return unless log_sampled && log_lock_try
+
+      logger.debug do
+        "[redis_queued_locks.try_lock.dead_request_removed] " \
+        "lock_key => '#{lock_key}' " \
+        "queue_ttl => #{queue_ttl} " \
+        "acq_id => '#{acquirer_id}' " \
+        "hst_id => '#{host_id}' " \
+        "acs_strat => '#{access_strategy}' " \
+        "rw_mode => '#{rw_mode}' " \
+        "dead_acq_id => '#{dead_acquirer}' " \
+        "dead_priority => #{dead_priority}"
+      end rescue nil
+    end
+
     # @param logger [::Logger,#debug]
     # @param log_sampled [Boolean]
     # @param log_lock_try [Boolean]
@@ -426,11 +475,14 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
     # @param access_strategy [Symbol]
     # @param rw_mode [Symbol]
     # @param waiting_acquirer [String,NilClass]
+    # @param waiting_priority [Integer,NilClass]
+    #   The priority of the first request (decoded for logs only: `nil` without logs and
+    #   without the first request).
     # @return [void]
     #
     # @api private
     # @since 1.7.0
-    # @version 1.18.0
+    # @version 1.22.0
     def get_first_from_queue(
       logger,
       log_sampled,
@@ -441,7 +493,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
       host_id,
       access_strategy,
       rw_mode,
-      waiting_acquirer
+      waiting_acquirer,
+      waiting_priority
     )
       return unless log_sampled && log_lock_try
 
@@ -453,7 +506,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
-        "first_acq_id_in_queue => '#{waiting_acquirer}'"
+        "first_acq_id_in_queue => '#{waiting_acquirer}' " \
+        "first_priority_in_queue => #{waiting_priority}"
       end rescue nil
     end
 
@@ -505,12 +559,14 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
     # @param access_strategy [Symbol]
     # @param rw_mode [Symbol]
     # @param waiting_acquirer [String,NilClass]
+    # @param waiting_priority [Integer,NilClass]
+    #   The priority of the first request (decoded for logs only: `nil` without logs).
     # @param current_lock_data [Hash<String,Any>]
     # @return [void]
     #
     # @api private
     # @since 1.7.0
-    # @version 1.18.0
+    # @version 1.22.0
     def exit__no_first(
       logger,
       log_sampled,
@@ -522,6 +578,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
       access_strategy,
       rw_mode,
       waiting_acquirer,
+      waiting_priority,
       current_lock_data
     )
       return unless log_sampled && log_lock_try
@@ -535,6 +592,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
         "first_acq_id_in_queue => '#{waiting_acquirer}' " \
+        "first_priority_in_queue => #{waiting_priority} " \
         "<current_lock_data> => <<#{current_lock_data}>>"
       end rescue nil
     end
@@ -549,13 +607,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
     # @param access_strategy [Symbol]
     # @param rw_mode [Symbol]
     # @param waiting_acquirer [String,NilClass]
+    # @param waiting_priority [Integer,NilClass]
+    #   The priority of the first request (decoded for logs only: `nil` without logs).
     # @param locked_by_acquirer [String]
     # @param current_lock_data [Hash<String,Any>]
     # @return [void]
     #
     # @api private
     # @since 1.7.0
-    # @version 1.18.0
+    # @version 1.22.0
     def exit__lock_still_obtained(
       logger,
       log_sampled,
@@ -567,6 +627,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
       access_strategy,
       rw_mode,
       waiting_acquirer,
+      waiting_priority,
       locked_by_acquirer,
       current_lock_data
     )
@@ -581,6 +642,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
         "first_acq_id_in_queue => '#{waiting_acquirer}' " \
+        "first_priority_in_queue => #{waiting_priority} " \
         "locked_by_acq_id => '#{locked_by_acquirer}' " \
         "<current_lock_data> => <<#{current_lock_data}>>"
       end rescue nil
@@ -598,10 +660,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
     # @param access_strategy [Symbol]
     # @param rw_mode [Symbol]
     # @param ahead_acquirer [String]
+    # @param ahead_priority [Integer,NilClass]
+    #   The priority of the request ahead (decoded for logs only: `nil` without logs).
     # @return [void]
     #
     # @api private
     # @since 1.18.0
+    # @version 1.22.0
     def exit__write_request_ahead(
       logger,
       log_sampled,
@@ -612,7 +677,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
       host_id,
       access_strategy,
       rw_mode,
-      ahead_acquirer
+      ahead_acquirer,
+      ahead_priority
     )
       return unless log_sampled && log_lock_try
 
@@ -624,7 +690,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
-        "ahead_acq_id => '#{ahead_acquirer}'"
+        "ahead_acq_id => '#{ahead_acquirer}' " \
+        "ahead_priority => #{ahead_priority}"
       end rescue nil
     end
 
@@ -640,10 +707,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
     # @param access_strategy [Symbol]
     # @param rw_mode [Symbol]
     # @param ahead_acquirer [String]
+    # @param ahead_priority [Integer,NilClass]
+    #   The priority of the request ahead (decoded for logs only: `nil` without logs).
     # @return [void]
     #
     # @api private
     # @since 1.18.0
+    # @version 1.22.0
     def exit__read_request_ahead(
       logger,
       log_sampled,
@@ -654,7 +724,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
       host_id,
       access_strategy,
       rw_mode,
-      ahead_acquirer
+      ahead_acquirer,
+      ahead_priority
     )
       return unless log_sampled && log_lock_try
 
@@ -666,7 +737,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
-        "ahead_acq_id => '#{ahead_acquirer}'"
+        "ahead_acq_id => '#{ahead_acquirer}' " \
+        "ahead_priority => #{ahead_priority}"
       end rescue nil
     end
 
@@ -683,10 +755,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
     # @param access_strategy [Symbol]
     # @param rw_mode [Symbol]
     # @param waiting_acquirer [String,NilClass]
+    # @param waiting_priority [Integer,NilClass]
+    #   The priority of the first request (decoded for logs only: `nil` without logs).
     # @return [void]
     #
     # @api private
     # @since 1.18.0
+    # @version 1.22.0
     def exit__read_lock_still_obtained(
       logger,
       log_sampled,
@@ -697,7 +772,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
       host_id,
       access_strategy,
       rw_mode,
-      waiting_acquirer
+      waiting_acquirer,
+      waiting_priority
     )
       return unless log_sampled && log_lock_try
 
@@ -709,7 +785,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
-        "first_acq_id_in_queue => '#{waiting_acquirer}'"
+        "first_acq_id_in_queue => '#{waiting_acquirer}' " \
+        "first_priority_in_queue => #{waiting_priority}"
       end rescue nil
     end
 

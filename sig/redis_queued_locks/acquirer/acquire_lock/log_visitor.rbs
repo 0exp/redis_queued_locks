@@ -12,7 +12,8 @@ module RedisQueuedLocks
           String acquirer_id,
           String host_id,
           RQL::accessStrategy access_strategy,
-          RQL::readWriteMode rw_mode
+          RQL::readWriteMode rw_mode,
+          Integer priority
         ) -> void
 
         def self.start_try_to_lock_cycle: (
@@ -23,7 +24,8 @@ module RedisQueuedLocks
           String acquirer_id,
           String host_id,
           RQL::accessStrategy access_strategy,
-          RQL::readWriteMode rw_mode
+          RQL::readWriteMode rw_mode,
+          Integer priority
         ) -> void
 
         def self.dead_score_reached__reset_acquirer_position: (
@@ -34,7 +36,8 @@ module RedisQueuedLocks
           String acquirer_id,
           String host_id,
           RQL::accessStrategy access_strategy,
-          RQL::readWriteMode rw_mode
+          RQL::readWriteMode rw_mode,
+          Integer priority
         ) -> void
 
         def self.extendable_reentrant_lock_obtained: (
@@ -46,7 +49,8 @@ module RedisQueuedLocks
           String host_id,
           Integer|Float acq_time,
           RQL::accessStrategy access_strategy,
-          RQL::readWriteMode rw_mode
+          RQL::readWriteMode rw_mode,
+          Integer priority
         ) -> void
 
         def self.reentrant_lock_obtained: (
@@ -58,7 +62,8 @@ module RedisQueuedLocks
           String host_id,
           Integer|Float acq_time,
           RQL::accessStrategy access_strategy,
-          RQL::readWriteMode rw_mode
+          RQL::readWriteMode rw_mode,
+          Integer priority
         ) -> void
 
         def self.lock_obtained: (
@@ -70,7 +75,8 @@ module RedisQueuedLocks
           String host_id,
           Integer|Float acq_time,
           RQL::accessStrategy access_strategy,
-          RQL::readWriteMode rw_mode
+          RQL::readWriteMode rw_mode,
+          Integer priority
         ) -> void
 
         def self.lock_obtaining_failed: (
@@ -83,6 +89,7 @@ module RedisQueuedLocks
           Integer|Float acq_time,
           RQL::accessStrategy access_strategy,
           RQL::readWriteMode rw_mode,
+          Integer priority,
           Symbol result
         ) -> void
       end
