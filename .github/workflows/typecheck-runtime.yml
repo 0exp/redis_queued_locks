@@ -29,7 +29,12 @@ jobs:
           path: tmp/rspec_parallel/durations-rbs.json
           key: rspec-durations-rbs-${{ github.run_id }}
           restore-keys: rspec-durations-rbs-
+      # NOTE: (parallel specs) 2 workers: the RBS runtime checks keep a worker busy on a CPU core, and
+      #   4 workers on the 4-vCPU runner (2 physical cores) starve Redis (connect timeouts of 5 s)
+      #   without a faster run
       - name: TypeCheck (Runtime) (RBS)
+        env:
+          WORKERS: 2
         run: bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rake rspec:parallel
       - name: Worker logs (RBS runtime)
         if: failure()
