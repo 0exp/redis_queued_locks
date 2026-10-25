@@ -205,7 +205,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   `MIN_LOCK_PRIORITY..MAX_LOCK_PRIORITY` or a name of `config['lock_priorities']` (the client-wide registry is
   forwarded as the internal keyword `lock_priorities:`, never a public keyword); the name is resolved and the range
   checked in `AcquireLock` Step 0.1 and before a lock series (`LockSeriesPoC`): code below sees Integers only (RBS
-  `RQL::lockPriority` at the boundary, `Integer` below); config validators for both keys.
+  `RQL::lockPriority` at the boundary, `Integer` below); config validators for both keys, and a name of
+  `default_lock_priority` checked against `lock_priorities` by `Config` (after a `configure` block, before a direct `[]=`).
 - Observability: every lock acquirement log line and event (classic, reentrant: the requested priority, lock series:
   the series priority, `lock_obtaining_failed`) carries the Integer `priority` right after `rw_mode`; try-lock logs
   that name another request carry its decoded priority (`first_priority_in_queue`, `ahead_priority`, `dead_priority`)

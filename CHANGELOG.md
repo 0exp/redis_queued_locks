@@ -24,7 +24,10 @@
     `config['lock_priorities']` (a priority name => its Integer priority; default names: `:lowest` (`-100`), `:low` (`-50`),
     `:normal` (`0`), `:high` (`50`), `:highest` (`100`); applications define their own names); a name is resolved to its
     Integer priority on each lock acquirement (queues, `#queue_info`, logs and instrumentation have the Integer priority),
-    an unknown name fails with `RedisQueuedLocks::ArgumentError`;
+    an unknown name fails with `RedisQueuedLocks::ArgumentError`; an unknown name in `config['default_lock_priority']` fails
+    the configuration with `RedisQueuedLocks::ConfigValidationError` (checked once after a configuration block: the keys can
+    be assigned in any order, both keys keep their previous values on a failure; a direct `config[...] =` assignment is
+    checked before it is applied);
   - all processes that share locks should be upgraded before the priorities are used: older versions drop the lock requests
     of the high priority as dead ones (the order is broken, the mutual exclusion is not affected);
 ### Changed

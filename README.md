@@ -263,7 +263,12 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
 
   # (integer/symbol) (default: 0)
   # - The default lock request priority: an Integer from `-100` (the lowest) to `100` (the highest)
-  #   or a priority name of `config['lock_priorities']` (the name is checked on each lock acquirement);
+  #   or a priority name of `config['lock_priorities']`;
+  # - The priority name should be a key of `config['lock_priorities']` (`RedisQueuedLocks::ConfigValidationError` otherwise):
+  #   it is checked once after the configuration block (`Client.new { ... }`, `#configure { ... }`: the keys can be assigned
+  #   in any order; an inconsistent pair is never applied: both keys keep their previous values, also when the block fails)
+  #   and on a direct `config[...] =` assignment (before the value is applied: change the priority names and the default
+  #   name together in a configuration block);
   # - Can be customized in methods `#lock`, `#lock!`, `#lock_series` and `#lock_series!` via `:priority` attribute;
   # - `:queued` access strategy: the lock request is placed in the lock request queue after all requests of the same
   #   or higher priority and before all requests of the lower priority (FIFO inside the same priority);
@@ -2664,7 +2669,9 @@ rql.possible_host_ids
     a new hash);
   - a name is resolved to its Integer priority on each lock acquirement: the lock request queues, `#queue_info`/`#queues_info`,
     logs and instrumentation have the Integer priority; an unknown name fails with `RedisQueuedLocks::ArgumentError`;
-  - `config['default_lock_priority']` can be a priority name too;
+  - `config['default_lock_priority']` can be a priority name too: an unknown one fails the configuration with
+    `RedisQueuedLocks::ConfigValidationError` (checked after the configuration block, the keys can be assigned in any order,
+    and on a direct `config[...] =` assignment);
 - `:queued` access strategy (default): the lock request is placed in the lock request queue after all requests of the same
   or higher priority and before all requests of the lower priority: strict priority between priorities, FIFO inside the same
   priority (read and write lock requests too, see [Read/Write Locks](#readwrite-locks));

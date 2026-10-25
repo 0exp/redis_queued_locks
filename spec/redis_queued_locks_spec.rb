@@ -4287,14 +4287,6 @@ RSpec.shared_examples 'redis_queued_locks' do
         expect { prio_client.lock_series('prio.a', 'prio.b', priority: :urgent) }.to raise_error(
           RedisQueuedLocks::ArgumentError, /got :urgent/
         )
-        # NOTE: a priority name of the default priority is checked on each lock acquirement (the
-        #   priority names can be configured after the default priority)
-        urgent_client = RedisQueuedLocks::Client.new(redis) do |config|
-          config['default_lock_priority'] = :urgent
-        end
-        expect { urgent_client.lock('prio.names') }.to raise_error(
-          RedisQueuedLocks::ArgumentError, /got :urgent/
-        )
       end
 
       aggregate_failures 'config validation' do
@@ -4315,6 +4307,81 @@ RSpec.shared_examples 'redis_queued_locks' do
         expect(default_priorities).to be_frozen
       end
       expect(prio_client.keys).to be_empty
+    end
+
+    specify 'the priority name of the default priority is checked by the configuration' do
+      # NOTE: a priority name of `config['default_lock_priority']` must be a key of
+      #   `config['lock_priorities']`: checked once after a configuration block (the keys can be
+      #   assigned in any order) and on a direct assignment (before the value is applied);
+      default_names = { lowest: -100, low: -50, normal: 0, high: 50, highest: 100 }
+      unknown_name = lambda do |name|
+        "The priority name :#{name} of the 'default_lock_priority' config key is not a key of " \
+          "the 'lock_priorities' config key"
+      end
+      high_client = lambda do
+        RedisQueuedLocks::Client.new(redis) { |config| config['default_lock_priority'] = :high }
+      end
+
+      aggregate_failures 'a configuration block: any order of the keys' do
+        client = RedisQueuedLocks::Client.new(redis) do |config|
+          config['default_lock_priority'] = :payment
+          config['lock_priorities'] = config['lock_priorities'].merge(payment: 90)
+        end
+        expect(client.config['default_lock_priority']).to eq(:payment)
+
+        # NOTE: the priority names and the default priority name are replaced together
+        client.configure do |config|
+          config['lock_priorities'] = { urgent: 100 }
+          config['default_lock_priority'] = :urgent
+        end
+        expect(client.config['lock_priorities']).to eq({ urgent: 100 })
+        expect(client.config['default_lock_priority']).to eq(:urgent)
+
+        expect do
+          RedisQueuedLocks::Client.new(redis) { |config| config['default_lock_priority'] = :urgent }
+        end.to raise_error(
+          RedisQueuedLocks::ConfigValidationError,
+          "#{unknown_name.call(:urgent)} (:lowest, :low, :normal, :high, :highest)."
+        )
+      end
+
+      aggregate_failures 'a failed configuration block: the priority keys keep their values' do
+        client = high_client.call
+        expect do
+          client.configure { |config| config['lock_priorities'] = { payment: 90 } }
+        end.to raise_error(
+          RedisQueuedLocks::ConfigValidationError, "#{unknown_name.call(:high)} (:payment)."
+        )
+        expect(client.config['lock_priorities']).to eq(default_names)
+        expect(client.config['default_lock_priority']).to eq(:high)
+
+        # NOTE: a failed block (its own error) never leaves an inconsistent pair either
+        expect do
+          client.configure do |config|
+            config['lock_priorities'] = { payment: 90 }
+            config['retry_count'] = -1
+          end
+        end.to raise_error(RedisQueuedLocks::ConfigValidationError, /'retry_count'/)
+        expect(client.config['lock_priorities']).to eq(default_names)
+        expect(client.config['default_lock_priority']).to eq(:high)
+      end
+
+      aggregate_failures 'a direct assignment: checked before the value is applied' do
+        client = high_client.call
+        expect { client.config['default_lock_priority'] = :urgent }.to raise_error(
+          RedisQueuedLocks::ConfigValidationError, /\A#{unknown_name.call(:urgent)} /
+        )
+        expect(client.config['default_lock_priority']).to eq(:high)
+        expect { client.config['lock_priorities'] = { payment: 90 } }.to raise_error(
+          RedisQueuedLocks::ConfigValidationError, /\A#{unknown_name.call(:high)} /
+        )
+        expect(client.config['lock_priorities']).to eq(default_names)
+
+        # NOTE: an Integer default priority does not depend on the priority names
+        client.config['default_lock_priority'] = 10
+        client.config['lock_priorities'] = { payment: 90 }
+        expect(client.config['lock_priorities']).to eq({ payment: 90 })
+      end
     end
 
     specify 'priority in logs and instrumentation of the lock events' do

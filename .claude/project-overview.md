@@ -109,7 +109,8 @@ priority through the components:
 Client#lock / #lock! / #lock_series / #lock_series!     priority: (Integer or a name), default config['default_lock_priority'];
   │                                                     lock_priorities: config['lock_priorities'] (internal keyword)
   ▼
-Config (config.rb)                                      lock_priorities (name => Integer) + default_lock_priority validators
+Config (config.rb)                                      lock_priorities (name => Integer) + default_lock_priority validators,
+  │                                                     the default name checked against the names (configure / []=)
   │
   ▼
 AcquireLock Step 0.1 / LockSeriesPoC                    name -> Integer, range -100..100 (ArgumentError); Integer only below
@@ -278,8 +279,11 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   keyword: a client-wide registry); `AcquireLock` Step 0.1 resolves a Symbol `priority` to its Integer
   (`lock_priorities.fetch(priority, priority)`, an unknown name stays a Symbol and fails the range check with
   `ArgumentError`; `LockSeriesPoC` resolves it the same way before the series events), so everything after Step 0.1 (scores,
-  logs, events, `queue_info`) sees Integers only; a name in
-  `default_lock_priority` is checked at the lock acquirement (validators can't see other keys).
+  logs, events, `queue_info`) sees Integers only; a name in `default_lock_priority` must be a key of `lock_priorities`
+  (validators see one value: `Config#prevent_default_priority__unknown_name`, `ConfigValidationError`): `Config#configure`
+  checks the pair once after the block (the keys can be assigned in any order; on a failure both keys keep their values from
+  before the block, nested blocks: after the outer one), `Config#[]=` checks a direct assignment of either key (out of a
+  block) before it is applied.
 - Semantics (`:queued`): strict priority, FIFO inside a priority, in both modes (the read and write queues use the same scores);
   orders waiting requests only (no preemption); a `:random` request does not wait for its turn (it ignores the order and the
   priorities of other requests), but it is queued at the position of its priority (`ZADD NX` like any request): `:queued`
