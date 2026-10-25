@@ -40,8 +40,8 @@
   `extendable_reentrant_lock_obtained`, `start_lock_series_obtaining`, `lock_series_obtained`, `expire_lock_series`,
   `try_lock.acq_added_to_queue`; the `log_lock_try` logs that name another lock request have its priority too:
   `first_priority_in_queue` (`try_lock.get_first_from_queue`, `try_lock.exit__no_first`, `try_lock.exit__lock_still_obtained`,
-  `try_lock.exit__read_lock_still_obtained`) and `ahead_priority` (`try_lock.exit__write_request_ahead`,
-  `try_lock.exit__read_request_ahead`);
+  `try_lock.exit__read_lock_still_obtained`; `nil` when the lock queue has no requests) and `ahead_priority`
+  (`try_lock.exit__write_request_ahead`, `try_lock.exit__read_request_ahead`);
 - `#lock_series`/`#lock_series!`: the `priority:` is validated (and a priority name is resolved) before the series is
   acquired;
 - RBS: `RedisQueuedLocks::Config#[]` is typed per config key (one overload per key with its value type) instead of

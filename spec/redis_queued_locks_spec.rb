@@ -4635,6 +4635,19 @@ RSpec.shared_examples 'redis_queued_locks' do
         holder_client.unlock('prio.trylog')
       end
 
+      aggregate_failures 'no first request: the missing priority is logged as nil' do
+        # NOTE: the queue can be empty when the heads are read (the own request is dropped by
+        #   `#unlock`/`#clear_locks` or the zombie flusher right after the queueing): the visitor
+        #   is called directly (the race can not be reproduced by a lock acquirement)
+        RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor.get_first_from_queue(
+          test_logger, true, true, 'rql:lock:prio.trylog', 15, 'rql:acq:1/2/3/4/empty',
+          'rql:hst:1/2/4/empty', :queued, :write, nil, nil
+        )
+        expect(try_logs.call('get_first_from_queue').last).to end_with(
+          "first_acq_id_in_queue => '' first_priority_in_queue => nil"
+        )
+      end
+
       expect(client.keys).to be_empty
     end
   end

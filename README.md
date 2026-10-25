@@ -2718,7 +2718,8 @@ rql.lock("user_#{user.id}", priority: :high) { update_profile } # priority: 50
     requests and is never dropped as a dead one;
   - `#queue_info`/`#queues_info` return the priority of each lock request (`"priority"`); the lock acquirement logs and
     instrumentation events (classic, reentrant and lock series ones) have the `priority` of the lock request, the `log_lock_try`
-    logs also have the priorities of the requests ahead (`first_priority_in_queue`, `ahead_priority`, `dead_priority`);
+    logs also have the priorities of the requests ahead (`first_priority_in_queue`, `ahead_priority`, `dead_priority`;
+    `first_priority_in_queue => nil` when the lock queue has no requests);
 - limitations and recommendations:
   - the priority orders the waiting lock requests only: the obtained lock is never taken away (no preemption);
   - strict priority: a continuous flow of requests of a higher priority can starve the requests of lower priorities (they
