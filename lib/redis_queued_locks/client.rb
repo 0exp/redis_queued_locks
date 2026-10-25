@@ -260,7 +260,8 @@ class RedisQueuedLocks::Client
   #     `0` by default (`RedisQueuedLocks::Resource::MIN_LOCK_PRIORITY`..`MAX_LOCK_PRIORITY`),
   #     or a priority name of `config['lock_priorities']` (`:lowest` (-100), `:low` (-50),
   #     `:normal` (0), `:high` (50), `:highest` (100) by default; the application can define its
-  #     own names: `config['lock_priorities'] = { payment: 90, email: -10 }`);
+  #     own names, `merge` keeps the default ones:
+  #     `config['lock_priorities'] = config['lock_priorities'].merge(payment: 90, email: -10)`);
   #   - `:queued` access strategy: the lock request is placed in the lock request queue after all
   #     requests of the same or higher priority and before all requests of the lower priority
   #     (strict priority, FIFO inside the same priority; read and write lock requests too);
