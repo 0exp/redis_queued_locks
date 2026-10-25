@@ -33,6 +33,8 @@ module RQLParallelSpecs
   module_function
 
   def run(workers, rspec_args)
+    # NOTE: the progress lines are shown as they happen when the output is a pipe (CI logs)
+    $stdout.sync = true
     FileUtils.mkdir_p(DIR)
     max_workers = redis_databases / DATABASES_PER_WORKER
     workers ||= [max_workers, Etc.nprocessors].min
