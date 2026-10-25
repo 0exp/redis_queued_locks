@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.7.0
-# @version 1.18.0
+# @version 1.22.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
   # rubocop:disable Metrics/ClassLength
@@ -413,6 +413,52 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "hst_id => '#{host_id}' " \
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}'"
+      end rescue nil
+    end
+
+    # (priorities) A dead lock request of another priority band blocked the lock request: it is
+    # dropped with all dead lock requests of its band (both lock queues).
+    #
+    # @param logger [::Logger,#debug]
+    # @param log_sampled [Boolean]
+    # @param log_lock_try [Boolean]
+    # @param lock_key [String]
+    # @param queue_ttl [Integer]
+    # @param acquirer_id [String]
+    # @param host_id [String]
+    # @param access_strategy [Symbol]
+    # @param rw_mode [Symbol]
+    # @param dead_acquirer [String] The acquirer of the dropped blocking lock request.
+    # @param dead_priority [Integer] The priority of the dropped blocking lock request.
+    # @return [void]
+    #
+    # @api private
+    # @since 1.22.0
+    def dead_request_removed(
+      logger,
+      log_sampled,
+      log_lock_try,
+      lock_key,
+      queue_ttl,
+      acquirer_id,
+      host_id,
+      access_strategy,
+      rw_mode,
+      dead_acquirer,
+      dead_priority
+    )
+      return unless log_sampled && log_lock_try
+
+      logger.debug do
+        "[redis_queued_locks.try_lock.dead_request_removed] " \
+        "lock_key => '#{lock_key}' " \
+        "queue_ttl => #{queue_ttl} " \
+        "acq_id => '#{acquirer_id}' " \
+        "hst_id => '#{host_id}' " \
+        "acs_strat => '#{access_strategy}' " \
+        "rw_mode => '#{rw_mode}' " \
+        "dead_acq_id => '#{dead_acquirer}' " \
+        "dead_priority => #{dead_priority}"
       end rescue nil
     end
 

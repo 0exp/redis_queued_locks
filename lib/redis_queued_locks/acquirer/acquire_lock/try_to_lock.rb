@@ -37,9 +37,21 @@
 #   - each queueing drops the expired lock names from the index (`ZREMRANGEBYSCORE`): the index
 #     is maintained by the lock acquirement itself (no background jobs);
 #
+# Lock request priorities (`priority`, see `RedisQueuedLocks::Resource::LOCK_PRIORITY_BAND`):
+#   - the position of the lock request (the score) is the enqueue time shifted by the priority
+#     band: requests of a higher priority are ahead of the requests of a lower priority in both
+#     queues (FIFO inside the same priority), so the queue heads and the order between modes
+#     (`find_opposite_request_ahead`) work with the positions as is;
+#   - dead lock requests are dropped per priority band (each band has its own time barrier):
+#     the band of the current request before the queue heads are read (both queues); a dead
+#     request of another band is dropped when it blocks the current request (the queue head or
+#     the earlier request of the opposite mode): its band and its enqueue time are decoded from
+#     its position, so the cost of an attempt does not depend on the number of priorities (see
+#     `drop_dead_requests_ahead`);
+#
 # @api private
 # @since 1.0.0
-# @version 1.20.0
+# @version 1.22.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   require_relative 'try_to_lock/log_visitor'
@@ -101,8 +113,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @since 1.20.0
   LOCK_STATE_QUEUE_REPLIES_AT = 3
 
-  # Position of the first request of the request queue (`ZRANGE`) in the replies of the lock
-  # request queueing commands (`queue_lock_request`), relative to their first reply.
+  # Position of the first request of the request queue (`ZRANGE WITHSCORES`) in the replies of
+  # the lock request queueing commands (`queue_lock_request`), relative to their first reply.
   #
   # @return [Integer]
   #
@@ -120,6 +132,17 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @since 1.20.0
   OPPOSITE_QUEUE_HEAD_REPLY = 4
 
+  # The maximum number of dead blocking lock requests dropped by one call of
+  # `drop_dead_requests_ahead` (the attempt or its pre-check; one round trip per dead request with
+  # the dead requests of its priority band): the attempt fails when more dead lock requests block
+  # it (the next attempts drop them).
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.22.0
+  MAX_DEAD_REQUEST_REMOVALS = 5
+
   # @param redis [RedisClient]
   # @param logger [::Logger,#debug]
   # @param log_lock_try [Boolean]
@@ -135,6 +158,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param acquirer_position [Numeric]
+  #   The position of the lock request (the score: the enqueue time shifted by the priority band).
+  # @param priority [Integer]
+  #   The lock request priority (the band of `acquirer_position`).
   # @param ttl [Integer]
   # @param queue_ttl [Integer]
   # @param lock_index_enabled [Boolean]
@@ -154,7 +180,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   #
   # @api private
   # @since 1.0.0
-  # @version 1.21.0
+  # @version 1.22.0
   # rubocop:disable Metrics/MethodLength
   def try_to_lock(
     redis,
@@ -170,6 +196,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     acquirer_id,
     host_id,
     acquirer_position,
+    priority,
     ttl,
     queue_ttl,
     lock_index_enabled,
@@ -234,7 +261,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         inter_result = precheck_lock(
           rconn, logger, log_sampled, log_lock_try, lock_key, read_write_mode, lock_readers_key,
           request_queue, opposite_request_queue, lock_name, acquirer_id, host_id,
-          acquirer_position, acquirer_dead_score, queue_ttl, lock_index_enabled,
+          acquirer_position, priority, acquirer_dead_score, queue_ttl, lock_index_enabled,
           lock_index_grace_period, fail_fast, access_strategy
         )
         next if inter_result
@@ -261,8 +288,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         lock_state = rconn.pipelined do |pipeline|
           pipeline_lock_state(
             pipeline, lock_key, lock_readers_key, acquirer_id, read_mode, eager_queueing,
-            request_queue, opposite_request_queue, acquirer_position, acquirer_dead_score,
-            lock_name, queue_ttl, lock_index_enabled, lock_index_grace_period
+            request_queue, opposite_request_queue, acquirer_position, priority,
+            acquirer_dead_score, lock_name, queue_ttl, lock_index_enabled, lock_index_grace_period
           )
         end
         # @type var current_lock_obtainer: String?
@@ -498,6 +525,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # Step 3: get the actual acquirer waiting in the queue
           #   - one round trip for all of them (see `queue_lock_request`);
           #   - eager queueing: already done in the lock state round trip (Step 0.1);
+          #   - Step 2.2 (priorities) runs after them (see below);
           # @type var queue_replies: Array[untyped]
           queue_replies =
             if eager_queueing
@@ -506,15 +534,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
               rconn.pipelined do |pipeline|
                 queue_lock_request(
                   pipeline, request_queue, opposite_request_queue,
-                  acquirer_position, acquirer_id, acquirer_dead_score,
+                  acquirer_position, priority, acquirer_id, acquirer_dead_score,
                   lock_name, queue_ttl, lock_index_enabled, lock_index_grace_period
                 )
               end
             end
           # NOTE: the position of the first queueing reply (see "pipeline layout" in Step 0.1)
           queue_replies_at = eager_queueing ? LOCK_STATE_QUEUE_REPLIES_AT : 0
-          # @type var waiting_acquirer: String?
-          waiting_acquirer = queue_replies[queue_replies_at + QUEUE_HEAD_REPLY].first
+          # @type var waiting_request: [String, Float]?
+          waiting_request = queue_replies[queue_replies_at + QUEUE_HEAD_REPLY].first
           # @type var opposite_waiting_request: [String, Float]?
           opposite_waiting_request =
             queue_replies[queue_replies_at + OPPOSITE_QUEUE_HEAD_REPLY].first
@@ -527,6 +555,20 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
             logger, log_sampled, log_lock_try, lock_key,
             queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
           )
+
+          # Step 2.2: (priorities) drop the dead lock requests of other priority bands that block
+          #   the current one (the queue head or the earlier request of the opposite mode) and get
+          #   the actual queue heads (no round trips while no dead request blocks the current one);
+          # @type var actual_queue_heads: [[String, Float]?, [String, Float]?]?
+          actual_queue_heads = drop_dead_requests_ahead(
+            rconn, logger, log_sampled, log_lock_try, lock_key, read_write_mode,
+            request_queue, opposite_request_queue, acquirer_id, host_id, acquirer_position,
+            acquirer_dead_score, queue_ttl, access_strategy, waiting_request,
+            opposite_waiting_request
+          )
+          waiting_request, opposite_waiting_request = actual_queue_heads if actual_queue_heads
+          waiting_acquirer = waiting_request ? waiting_request[0] : nil
+
           LogVisitor.get_first_from_queue(
             logger, log_sampled, log_lock_try, lock_key,
             queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer
@@ -833,20 +875,23 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # the attempt): the commands are added to the given pipeline (one round trip with other
   # pipelined commands).
   # Replies (positions relative to the first one): [0] ZADD NX, [1] ZREMRANGEBYSCORE (request
-  # queue), [2] ZREMRANGEBYSCORE (opposite request queue), [QUEUE_HEAD_REPLY] ZRANGE (the first
-  # request of the request queue), [OPPOSITE_QUEUE_HEAD_REPLY] ZRANGE WITHSCORES (the first
-  # request of the opposite request queue); the enabled lock index only: [5] PEXPIRE NX, [6]
-  # PEXPIRE GT (the request queue TTL), [7] ZADD GT (the lock index), [8] ZREMRANGEBYSCORE
-  # (expired lock names of the lock index). Update these constants when the commands change
-  # (new commands go to the end: the replies are not read after `OPPOSITE_QUEUE_HEAD_REPLY`, so
-  # the conditional lock index commands do not shift the read replies).
+  # queue, the priority band of the request), [2] ZREMRANGEBYSCORE (opposite request queue, the
+  # priority band of the request), [QUEUE_HEAD_REPLY] ZRANGE WITHSCORES (the first request of
+  # the request queue), [OPPOSITE_QUEUE_HEAD_REPLY] ZRANGE WITHSCORES (the first request of
+  # the opposite request queue); the enabled lock index only: [5] PEXPIRE NX, [6] PEXPIRE GT (the
+  # request queue TTL), [7] ZADD GT (the lock index), [8] ZREMRANGEBYSCORE (expired lock names of
+  # the lock index). Update these constants when the commands change (new commands go to the end:
+  # the replies are not read after `OPPOSITE_QUEUE_HEAD_REPLY`, so the conditional lock index
+  # commands do not shift the read replies).
   #
   # @param pipeline [RedisClient::Pipeline]
   # @param request_queue [String] Queue of the requests of the requested lock mode.
   # @param opposite_request_queue [String] Queue of the requests of the opposite lock mode.
-  # @param acquirer_position [Numeric]
+  # @param acquirer_position [Numeric] The enqueue time shifted by the priority band.
+  # @param priority [Integer] The priority band of `acquirer_position`.
   # @param acquirer_id [String]
-  # @param acquirer_dead_score [Float] Requests queued before this score are expired.
+  # @param acquirer_dead_score [Float]
+  #   Requests queued before this time are expired (the barrier of the default priority band).
   # @param lock_name [String] The lock name (the member of the lock index).
   # @param queue_ttl [Integer] Lifetime of the lock request (in seconds).
   # @param lock_index_enabled [Boolean] Send the lock index commands (Steps 3.2-3.4).
@@ -855,11 +900,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   #
   # @api private
   # @since 1.20.0
+  # @version 1.22.0
   def queue_lock_request(
     pipeline,
     request_queue,
     opposite_request_queue,
     acquirer_position,
+    priority,
     acquirer_id,
     acquirer_dead_score,
     lock_name,
@@ -879,12 +926,18 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     # Step 2.1: drop expired acquirers from the lock queues
     #   - (RW) both queues are cleared: an expired request of the opposite mode should not
     #     block the current request forever;
-    pipeline.call('ZREMRANGEBYSCORE', request_queue, '-inf', acquirer_dead_score)
-    pipeline.call('ZREMRANGEBYSCORE', opposite_request_queue, '-inf', acquirer_dead_score)
+    #   - (priorities) the requests of the priority band of the current request (the band has its
+    #     own time barrier, see `RedisQueuedLocks::Resource::LOCK_PRIORITY_BAND`); a dead request of
+    #     another band is dropped when it blocks the current request (`drop_dead_requests_ahead`),
+    #     requests of lower priorities are never ahead of the current request;
+    pipeline_dead_requests_removal(
+      pipeline, request_queue, opposite_request_queue, acquirer_dead_score, priority
+    )
 
-    # Step 3: get the actual acquirer waiting in the queue
+    # Step 3: get the actual acquirer waiting in the queue (with its position: the band and
+    #   the liveness of the queue head are decoded from it, see `drop_dead_requests_ahead`)
     #   - (RW) and the first request of the opposite mode;
-    pipeline.call('ZRANGE', request_queue, '0', '0')
+    pipeline.call('ZRANGE', request_queue, '0', '0', 'WITHSCORES')
     pipeline.call('ZRANGE', opposite_request_queue, '0', '0', 'WITHSCORES')
 
     # NOTE: the disabled lock index: no lock index commands, lock request queues have no TTL
@@ -921,6 +974,34 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     )
   end
 
+  # Adds the removal of the dead lock requests of the given priority band (both lock queues) to
+  # the given pipeline (see `queue_lock_request` and `drop_dead_requests_ahead`).
+  #
+  # @param pipeline [RedisClient::Pipeline]
+  # @param request_queue [String]
+  # @param opposite_request_queue [String]
+  # @param acquirer_dead_score [Float]
+  #   Requests queued before this time are expired (the barrier of the default priority band).
+  # @param priority [Integer]
+  #   The priority band (see `RedisQueuedLocks::Resource::LOCK_PRIORITY_BAND`).
+  # @return [void]
+  #
+  # @api private
+  # @since 1.22.0
+  def pipeline_dead_requests_removal(
+    pipeline,
+    request_queue,
+    opposite_request_queue,
+    acquirer_dead_score,
+    priority
+  )
+    band_floor = RedisQueuedLocks::Resource.lock_priority_band_floor(priority)
+    band_dead_score =
+      RedisQueuedLocks::Resource.lock_priority_band_dead_score(acquirer_dead_score, priority)
+    pipeline.call('ZREMRANGEBYSCORE', request_queue, band_floor, band_dead_score)
+    pipeline.call('ZREMRANGEBYSCORE', opposite_request_queue, band_floor, band_dead_score)
+  end
+
   # Adds the lock state commands to the given pipeline (the lock state of the attempt and of
   # the pre-check: one round trip).
   #
@@ -949,6 +1030,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param request_queue [String]
   # @param opposite_request_queue [String]
   # @param acquirer_position [Numeric]
+  # @param priority [Integer]
   # @param acquirer_dead_score [Float]
   # @param lock_name [String] The lock name (the member of the lock index).
   # @param queue_ttl [Integer] In seconds.
@@ -958,6 +1040,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   #
   # @api private
   # @since 1.20.0
+  # @version 1.22.0
   def pipeline_lock_state(
     pipeline,
     lock_key,
@@ -968,6 +1051,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     request_queue,
     opposite_request_queue,
     acquirer_position,
+    priority,
     acquirer_dead_score,
     lock_name,
     queue_ttl,
@@ -981,7 +1065,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     if queueing
       queue_lock_request(
         pipeline, request_queue, opposite_request_queue,
-        acquirer_position, acquirer_id, acquirer_dead_score,
+        acquirer_position, priority, acquirer_id, acquirer_dead_score,
         lock_name, queue_ttl, lock_index_enabled, lock_index_grace_period
       )
     end
@@ -991,6 +1075,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
   # (RW) The request of the opposite mode that should obtain the lock earlier
   #   - FIFO between modes (`:queued` access strategy only);
+  #   - (priorities) positions are shifted by the priority bands: a request of a higher priority
+  #     is ahead of any request of a lower priority, requests of the same priority are FIFO;
   #   - equal positions are ordered by acquirer ids;
   #
   # @param access_strategy [Symbol]
@@ -1147,12 +1233,127 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   end
   # rubocop:enable Metrics/MethodLength
 
+  # (priorities) Drops the dead lock requests of other priority bands that block the current lock
+  # request (`:queued` access strategy: the head of the write lock queue for write lock requests,
+  # the earlier lock request of the opposite mode for both modes) and reads the actual queue heads
+  # (Step 2.2 of the attempt and of its pre-check):
+  #   - the dead lock requests of the band of the current request are dropped by the queueing
+  #     (Step 2.1, before the queue heads are read) and requests of lower priorities are never
+  #     ahead of it: only a request of a higher priority can be a dead blocking request;
+  #   - the band and the enqueue time of the blocking request are decoded from its position (see
+  #     `RedisQueuedLocks::Resource::LOCK_PRIORITY_BAND`): no Redis commands to check the liveness,
+  #     any band is recognized (the priority range of the current RQL version is not used), the
+  #     time barrier is the barrier of the current request (`acquirer_dead_score`: its `queue_ttl`);
+  #   - a dead blocking request is dropped with all dead requests of its band (both queues) in one
+  #     round trip with the reading of the actual queue heads; no round trips while no dead request
+  #     blocks the current one (the lock state does not matter: the attempt drops the dead blocking
+  #     requests even when the lock is obtained by another acquirer);
+  #   - up to `MAX_DEAD_REQUEST_REMOVALS` round trips (bands) per call;
+  #
+  # @param rconn [RedisClient]
+  # @param logger [::Logger,#debug]
+  # @param log_sampled [Boolean]
+  # @param log_lock_try [Boolean]
+  # @param lock_key [String]
+  # @param read_write_mode [Symbol]
+  # @param request_queue [String]
+  # @param opposite_request_queue [String]
+  # @param acquirer_id [String]
+  # @param host_id [String]
+  # @param acquirer_position [Numeric]
+  # @param acquirer_dead_score [Float]
+  #   Requests queued before this time are expired (the barrier of the default priority band).
+  # @param queue_ttl [Integer]
+  # @param access_strategy [Symbol]
+  # @param waiting_request [Array<String,Float>,NilClass] The head of the request queue.
+  # @param opposite_waiting_request [Array<String,Float>,NilClass]
+  #   The head of the opposite request queue.
+  # @return [Array<Array<String,Float>,NilClass>,NilClass]
+  #   The actual queue heads (`[waiting_request, opposite_waiting_request]`) when at least one
+  #   dead lock request is dropped, `nil` otherwise.
+  #
+  # @api private
+  # @since 1.22.0
+  # rubocop:disable Metrics/MethodLength
+  def drop_dead_requests_ahead(
+    rconn,
+    logger,
+    log_sampled,
+    log_lock_try,
+    lock_key,
+    read_write_mode,
+    request_queue,
+    opposite_request_queue,
+    acquirer_id,
+    host_id,
+    acquirer_position,
+    acquirer_dead_score,
+    queue_ttl,
+    access_strategy,
+    waiting_request,
+    opposite_waiting_request
+  )
+    return unless access_strategy == :queued
+
+    read_mode = (read_write_mode == :read)
+    removals = 0
+
+    while removals < MAX_DEAD_REQUEST_REMOVALS
+      # NOTE: the lock request that blocks the current one: the head of the write lock queue
+      #   (write lock requests only) or the earlier lock request of the opposite mode (the same
+      #   order as in `lock_obstacle`);
+      # @type var blocking_request: [String, Float]?
+      blocking_request =
+        if !read_mode && waiting_request && waiting_request[0] != acquirer_id
+          waiting_request
+        elsif find_opposite_request_ahead(
+          access_strategy, opposite_waiting_request, acquirer_position, acquirer_id
+        )
+          opposite_waiting_request
+        end
+      break unless blocking_request
+
+      # NOTE: the blocking request is alive while its position is after the time barrier of
+      #   its band (the same barrier as the dropping of the dead requests of the band)
+      blocking_priority = RedisQueuedLocks::Resource.lock_request_priority(blocking_request[1])
+      blocking_band_dead_score = RedisQueuedLocks::Resource.lock_priority_band_dead_score(
+        acquirer_dead_score, blocking_priority
+      )
+      break if blocking_request[1] > blocking_band_dead_score
+
+      # NOTE: (pipeline layout) [0..1] ZREMRANGEBYSCORE (the band of the dead request in both
+      #   queues), [2] ZRANGE WITHSCORES (the head of the request queue), [3] ZRANGE WITHSCORES (the
+      #   head of the opposite request queue);
+      # @type var queue_state: Array[untyped]
+      queue_state = rconn.pipelined do |pipeline|
+        pipeline_dead_requests_removal(
+          pipeline, request_queue, opposite_request_queue, acquirer_dead_score, blocking_priority
+        )
+        pipeline.call('ZRANGE', request_queue, '0', '0', 'WITHSCORES')
+        pipeline.call('ZRANGE', opposite_request_queue, '0', '0', 'WITHSCORES')
+      end
+      LogVisitor.dead_request_removed(
+        logger, log_sampled, log_lock_try, lock_key, queue_ttl, acquirer_id, host_id,
+        access_strategy, read_write_mode, blocking_request[0], blocking_priority
+      )
+      waiting_request = queue_state[2].first
+      opposite_waiting_request = queue_state[3].first
+      removals += 1
+    end
+
+    [waiting_request, opposite_waiting_request] if removals.positive?
+  end
+  # rubocop:enable Metrics/MethodLength
+
   # Pre-check of the attempt (Step PRE): the lock state without WATCH (one round trip).
   #   - `fail_fast` attempts: the lock state only (the request is not queued: the failed "no try"
   #     attempt does not dequeue the request); fails with `:fail_fast_no_try` on the obtained lock;
   #   - retries: the lock state and the lock request queueing (the request is already queued by
   #     the previous attempts); fails with the obstacle of the classic logic (`lock_obstacle`)
   #     and logs the same events as the failed attempt;
+  #   - (priorities) retries drop the dead lock requests of other priority bands that block the
+  #     request before the decision (Step 2.2 of the attempt: one more round trip per dropped
+  #     band, see `drop_dead_requests_ahead`);
   #   - same-process conflicts (the lock is obtained by the current acquirer) and locks that can be
   #     obtained are not decided: the attempt continues with the WATCH/MULTI logic (`nil`);
   #   - the pre-check never obtains the lock (mutual exclusion relies on WATCH/MULTI only);
@@ -1170,6 +1371,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param acquirer_position [Numeric]
+  # @param priority [Integer]
   # @param acquirer_dead_score [Float]
   # @param queue_ttl [Integer]
   # @param lock_index_enabled [Boolean]
@@ -1180,6 +1382,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   #
   # @api private
   # @since 1.20.0
+  # @version 1.22.0
   # rubocop:disable Metrics/MethodLength
   def precheck_lock(
     rconn,
@@ -1195,6 +1398,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     acquirer_id,
     host_id,
     acquirer_position,
+    priority,
     acquirer_dead_score,
     queue_ttl,
     lock_index_enabled,
@@ -1208,7 +1412,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     lock_state = rconn.pipelined do |pipeline|
       pipeline_lock_state(
         pipeline, lock_key, lock_readers_key, acquirer_id, read_mode, !fail_fast,
-        request_queue, opposite_request_queue, acquirer_position, acquirer_dead_score,
+        request_queue, opposite_request_queue, acquirer_position, priority, acquirer_dead_score,
         lock_name, queue_ttl, lock_index_enabled, lock_index_grace_period
       )
     end
@@ -1228,12 +1432,22 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     # NOTE: the fail-fast check of the attempt (Fast-Step X0) without same-process conflicts
     return ((current_lock_obtainer || read_locked) ? :fail_fast_no_try : nil) if fail_fast
 
-    # @type var waiting_acquirer: String?
-    waiting_acquirer =
-      lock_state[LOCK_STATE_QUEUE_REPLIES_AT + QUEUE_HEAD_REPLY].first
+    # @type var waiting_request: [String, Float]?
+    waiting_request = lock_state[LOCK_STATE_QUEUE_REPLIES_AT + QUEUE_HEAD_REPLY].first
     # @type var opposite_waiting_request: [String, Float]?
     opposite_waiting_request =
       lock_state[LOCK_STATE_QUEUE_REPLIES_AT + OPPOSITE_QUEUE_HEAD_REPLY].first
+    # NOTE: (priorities) Step 2.2 of the attempt: the dead lock requests of other priority bands
+    #   that block the current one are dropped before the obstacle decision (its log event goes
+    #   before the queueing log events of the failed pre-check: they follow the decision);
+    # @type var actual_queue_heads: [[String, Float]?, [String, Float]?]?
+    actual_queue_heads = drop_dead_requests_ahead(
+      rconn, logger, log_sampled, log_lock_try, lock_key, read_write_mode, request_queue,
+      opposite_request_queue, acquirer_id, host_id, acquirer_position, acquirer_dead_score,
+      queue_ttl, access_strategy, waiting_request, opposite_waiting_request
+    )
+    waiting_request, opposite_waiting_request = actual_queue_heads if actual_queue_heads
+    waiting_acquirer = waiting_request ? waiting_request[0] : nil
     # @type var opposite_request_ahead: String?
     opposite_request_ahead = find_opposite_request_ahead(
       access_strategy, opposite_waiting_request, acquirer_position, acquirer_id

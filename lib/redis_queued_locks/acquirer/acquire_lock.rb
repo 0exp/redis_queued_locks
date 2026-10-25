@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.20.0
+# @version 1.22.0
 # rubocop:disable Metrics/ModuleLength
 # rubocop:disable Metrics/MethodLength
 # rubocop:disable Metrics/ClassLength
@@ -126,6 +126,20 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #       (but with checking the limist, retries, timeouts and so on). if lock is
     #       free to obtain - it will be obtained;
     #   - pre-configured in `config['default_access_strategy']`;
+    # @option priority [Integer,Symbol]
+    #   - The lock request priority: from `RedisQueuedLocks::Resource::MIN_LOCK_PRIORITY` (`-100`)
+    #     to `RedisQueuedLocks::Resource::MAX_LOCK_PRIORITY` (`100`), `0` by default, or a priority
+    #     name of `lock_priorities` (resolved to its Integer priority: the lock request queues,
+    #     the logs and the instrumentation use the Integer priority);
+    #   - `:queued` access strategy: the lock request is placed in the lock request queue after all
+    #     requests of the same or higher priority and before all requests of the lower priority
+    #     (strict priority, FIFO inside the same priority; between modes too: the read and write
+    #     lock request queues use the same positions);
+    #   - `:random` access strategy ignores the lock request queues (and the priority);
+    #   - the obtained lock is never taken away: the priority orders the waiting lock requests only;
+    #   - pre-configured in `config['default_lock_priority']`;
+    # @option lock_priorities [Hash<Symbol,Integer>]
+    #   - The priority names (`config['lock_priorities']`): a priority name => its Integer priority;
     # @option log_sampling_enabled [Boolean]
     #   - enables <log sampling>: only the configured percent of RQL cases will be logged;
     #   - disabled by default;
@@ -177,7 +191,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.21.0
+    # @version 1.22.0
     def acquire_lock(
       redis,
       lock_name,
@@ -206,6 +220,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       conflict_strategy:,
       read_write_mode:,
       access_strategy:,
+      priority:,
+      lock_priorities:,
       log_sampling_enabled:,
       log_sampling_percent:,
       log_sampler:,
@@ -294,6 +310,27 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         )
       end
 
+      # Step 0.1: prevent :priority incompatibilities (the same range as its config key)
+      #   - a Symbol is a priority name of `config['lock_priorities']`: it is resolved to its
+      #     Integer priority (the lock request queues, the logs and the instrumentation use the
+      #     Integer priority; an unknown name stays a Symbol and fails the check);
+      #   - each priority has its own band of positions in the lock request queues: the range
+      #     bounds the shift of the positions (float scores lose precision with the shift: the FIFO
+      #     order inside a priority keeps ~61 µs for -100..100, see `LOCK_PRIORITY_BAND`);
+      priority = lock_priorities.fetch(priority, priority) if priority.is_a?(::Symbol)
+      if !priority.is_a?(::Integer) ||
+         priority < RedisQueuedLocks::Resource::MIN_LOCK_PRIORITY ||
+         priority > RedisQueuedLocks::Resource::MAX_LOCK_PRIORITY
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:priority` argument should be an Integer from " \
+          "#{RedisQueuedLocks::Resource::MIN_LOCK_PRIORITY} to " \
+          "#{RedisQueuedLocks::Resource::MAX_LOCK_PRIORITY} or a priority name of " \
+          "`config['lock_priorities']` (#{lock_priorities.keys.map(&:inspect).join(', ')}), " \
+          "got #{priority.inspect}."
+        )
+      end
+
       # Step 0.2: prevent :meta incompatabiltiies (structure)
       #   - Symbol keys are written to the lock data as Strings (`Symbol#name`, as redis-client
       #     does it) and would overwrite the reserved lock data fields too;
@@ -348,7 +385,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           RedisQueuedLocks::Resource.prepare_read_lock_key(lock_name, acquirer_id)
         end
 
-      acquirer_position = RedisQueuedLocks::Resource.calc_initial_acquirer_position
+      # NOTE: the position in the lock request queue: the enqueue time shifted by the priority band
+      #   (see `RedisQueuedLocks::Resource::LOCK_PRIORITY_BAND`);
+      acquirer_position = RedisQueuedLocks::Resource.calc_initial_acquirer_position(priority)
 
       log_sampled = RedisQueuedLocks::Logging.should_log?(
         log_sampling_enabled,
@@ -420,9 +459,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           )
 
           # Step 2.X: check the actual score: is it in queue ttl limit or not?
-          if RedisQueuedLocks::Resource.dead_score_reached?(acquirer_position, queue_ttl)
-            # Step 2.X.X: dead score reached => re-queue the lock request with the new score;
-            acquirer_position = RedisQueuedLocks::Resource.calc_initial_acquirer_position
+          if RedisQueuedLocks::Resource.dead_score_reached?(acquirer_position, priority, queue_ttl)
+            # Step 2.X.X: dead score reached => re-queue the lock request with the new score
+            #   (the end of the requests of the same priority);
+            acquirer_position = RedisQueuedLocks::Resource.calc_initial_acquirer_position(priority)
 
             LogVisitor.dead_score_reached__reset_acquirer_position(
               logger, log_sampled, lock_key,
@@ -446,6 +486,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             acquirer_id,
             host_id,
             acquirer_position,
+            priority,
             lock_ttl,
             queue_ttl,
             lock_index_enabled,
@@ -502,10 +543,11 @@ module RedisQueuedLocks::Acquirer::AcquireLock
               # NOTE: classic is: acq_process[:result][:process] == :lock_obtaining
               LogVisitor.lock_obtained(
                 logger, log_sampled, result[:lock_key],
-                queue_ttl, acquirer_id, host_id, acq_time, access_strategy, read_write_mode
+                queue_ttl, acquirer_id, host_id, acq_time, access_strategy, read_write_mode,
+                priority
               )
               InstrVisitor.lock_obtained(
-                instrumenter, instr_sampled, result[:lock_key], read_write_mode,
+                instrumenter, instr_sampled, result[:lock_key], read_write_mode, priority,
                 result[:ttl], result[:acq_id], result[:hst_id], result[:ts], acq_time,
                 instrument
               )
@@ -678,6 +720,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
                 instr_sampled,
                 acq_process[:lock_info][:lock_key],
                 read_write_mode,
+                priority,
                 acq_process[:lock_info][:ttl],
                 acq_process[:lock_info][:acq_id],
                 acq_process[:lock_info][:hst_id],
@@ -707,11 +750,11 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         acq_time = ((clock_gettime - acq_start_time) / 1_000.0).ceil(2)
         LogVisitor.lock_obtaining_failed(
           logger, log_sampled, lock_key, queue_ttl, acquirer_id, host_id,
-          acq_time, access_strategy, read_write_mode, acq_process[:result]
+          acq_time, access_strategy, read_write_mode, priority, acq_process[:result]
         )
         InstrVisitor.lock_obtaining_failed(
-          instrumenter, instr_sampled, lock_key, read_write_mode, lock_ttl, acquirer_id, host_id,
-          Time.now.to_f, acq_time, acq_process[:result], instrument
+          instrumenter, instr_sampled, lock_key, read_write_mode, priority, lock_ttl, acquirer_id,
+          host_id, Time.now.to_f, acq_time, acq_process[:result], instrument
         )
         { ok: false, result: acq_process[:result] } #: { ok: bool, result: Symbol }
       end
@@ -732,11 +775,11 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         acq_time = ((clock_gettime - acq_start_time) / 1_000.0).ceil(2)
         LogVisitor.lock_obtaining_failed(
           logger, log_sampled, lock_key, queue_ttl, acquirer_id, host_id,
-          acq_time, access_strategy, read_write_mode, acq_process[:result]
+          acq_time, access_strategy, read_write_mode, priority, acq_process[:result]
         )
         InstrVisitor.lock_obtaining_failed(
-          instrumenter, instr_sampled, lock_key, read_write_mode, lock_ttl, acquirer_id, host_id,
-          Time.now.to_f, acq_time, acq_process[:result], instrument
+          instrumenter, instr_sampled, lock_key, read_write_mode, priority, lock_ttl, acquirer_id,
+          host_id, Time.now.to_f, acq_time, acq_process[:result], instrument
         )
       end
       # steep:ignore:end

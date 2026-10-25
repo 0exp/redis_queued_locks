@@ -70,7 +70,8 @@ module RedisQueuedLocks
           String host_id,
           Integer|Float acq_time,
           RQL::accessStrategy access_strategy,
-          RQL::readWriteMode rw_mode
+          RQL::readWriteMode rw_mode,
+          Integer priority
         ) -> void
 
         def self.lock_obtaining_failed: (
@@ -83,6 +84,7 @@ module RedisQueuedLocks
           Integer|Float acq_time,
           RQL::accessStrategy access_strategy,
           RQL::readWriteMode rw_mode,
+          Integer priority,
           Symbol result
         ) -> void
       end

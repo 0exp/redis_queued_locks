@@ -2,7 +2,7 @@
 
 # @api public
 # @since 1.0.0
-# @version 1.21.0
+# @version 1.22.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @return [RedisClient]
@@ -255,6 +255,21 @@ class RedisQueuedLocks::Client
   #       (but with checking the limist, retries, timeouts and so on). if lock is
   #       free to obtain - it will be obtained;
   #   - pre-configured in `config['default_access_strategy']`;
+  # @option priority [Integer,Symbol]
+  #   - The lock request priority: an Integer from `-100` (the lowest) to `100` (the highest),
+  #     `0` by default (`RedisQueuedLocks::Resource::MIN_LOCK_PRIORITY`..`MAX_LOCK_PRIORITY`),
+  #     or a priority name of `config['lock_priorities']` (`:lowest` (-100), `:low` (-50),
+  #     `:normal` (0), `:high` (50), `:highest` (100) by default; the application can define its
+  #     own names: `config['lock_priorities'] = { payment: 90, email: -10 }`);
+  #   - `:queued` access strategy: the lock request is placed in the lock request queue after all
+  #     requests of the same or higher priority and before all requests of the lower priority
+  #     (strict priority, FIFO inside the same priority; read and write lock requests too);
+  #   - `:random` access strategy ignores the lock request queues (and the priority);
+  #   - the obtained lock is never taken away: the priority orders the waiting lock requests;
+  #   - all processes that share the lock should use RQL versions with priorities (older versions
+  #     drop lock requests of a higher priority as dead ones: the order is broken, the mutual
+  #     exclusion is not affected);
+  #   - pre-configured in `config['default_lock_priority']`;
   # @option meta [NilClass,Hash<String|Symbol,Any>]
   #   - A custom metadata wich will be passed to the lock data in addition to the existing data;
   #   - Metadata can not contain reserved lock data keys;
@@ -347,7 +362,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.21.0
+  # @version 1.22.0
   # rubocop:disable Metrics/MethodLength
   def lock(
     lock_name,
@@ -364,6 +379,7 @@ class RedisQueuedLocks::Client
     conflict_strategy: config['default_conflict_strategy'],
     read_write_mode: :write,
     access_strategy: config['default_access_strategy'],
+    priority: config['default_lock_priority'],
     identity: uniq_identity,
     meta: nil,
     detailed_acq_timeout_error: config['detailed_acq_timeout_error'],
@@ -404,6 +420,8 @@ class RedisQueuedLocks::Client
       conflict_strategy:,
       read_write_mode:,
       access_strategy:,
+      priority:,
+      lock_priorities: config['lock_priorities'],
       meta:,
       detailed_acq_timeout_error:,
       logger:,
@@ -426,7 +444,7 @@ class RedisQueuedLocks::Client
   # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.16.0
-  # @version 1.21.0
+  # @version 1.22.0
   def lock_series( # steep:ignore
     *lock_names,
     detailed_result: false,
@@ -443,6 +461,7 @@ class RedisQueuedLocks::Client
     conflict_strategy: config['default_conflict_strategy'],
     read_write_mode: :write,
     access_strategy: config['default_access_strategy'],
+    priority: config['default_lock_priority'],
     identity: uniq_identity,
     meta: nil,
     detailed_acq_timeout_error: config['detailed_acq_timeout_error'],
@@ -484,6 +503,8 @@ class RedisQueuedLocks::Client
       conflict_strategy:,
       read_write_mode:,
       access_strategy:,
+      priority:,
+      lock_priorities: config['lock_priorities'],
       meta:,
       detailed_acq_timeout_error:,
       logger:,
@@ -506,7 +527,7 @@ class RedisQueuedLocks::Client
   # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.16.0
-  # @version 1.21.0
+  # @version 1.22.0
   def lock_series!( # steep:ignore
     *lock_names,
     detailed_result: false,
@@ -522,6 +543,7 @@ class RedisQueuedLocks::Client
     conflict_strategy: config['default_conflict_strategy'],
     read_write_mode: :write,
     access_strategy: config['default_access_strategy'],
+    priority: config['default_lock_priority'],
     identity: uniq_identity,
     meta: nil,
     detailed_acq_timeout_error: config['detailed_acq_timeout_error'],
@@ -555,6 +577,7 @@ class RedisQueuedLocks::Client
       conflict_strategy:,
       read_write_mode:,
       access_strategy:,
+      priority:,
       identity:,
       meta:,
       detailed_acq_timeout_error:,
@@ -580,7 +603,7 @@ class RedisQueuedLocks::Client
   # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.0.0
-  # @version 1.21.0
+  # @version 1.22.0
   def lock!(
     lock_name,
     ttl: config['default_lock_ttl'],
@@ -595,6 +618,7 @@ class RedisQueuedLocks::Client
     conflict_strategy: config['default_conflict_strategy'],
     read_write_mode: :write,
     access_strategy: config['default_access_strategy'],
+    priority: config['default_lock_priority'],
     identity: uniq_identity,
     instrumenter: config['instrumenter'],
     meta: nil,
@@ -634,6 +658,7 @@ class RedisQueuedLocks::Client
       conflict_strategy:,
       read_write_mode:,
       access_strategy:,
+      priority:,
       log_sampling_enabled:,
       log_sampling_percent:,
       log_sampler:,
@@ -830,7 +855,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.18.0
+  # @version 1.22.0
   def queue_info(lock_name)
     RedisQueuedLocks::Acquirer::QueueInfo.queue_info(redis_client, lock_name)
   end
@@ -1264,7 +1289,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.21.0
+  # @version 1.22.0
   def queues(scan_size: config['key_extraction_batch_size'], with_info: false)
     RedisQueuedLocks::Acquirer::Queues.queues(
       redis_client, scan_size:, with_info:, lock_index_enabled: config['lock_index_enabled']
@@ -1278,7 +1303,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.21.0
+  # @version 1.22.0
   def queues_info(scan_size: config['key_extraction_batch_size'])
     queues(scan_size:, with_info: true) #: RedisQueuedLocks::Acquirer::Queues::queuesInfo
   end

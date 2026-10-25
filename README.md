@@ -4,11 +4,11 @@
 
 **RedisQueuedLocks** (aka **RQL**, aka **RQL-lock**) - <a href="https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/">distributed locks</a> with "prioritized lock acquisition queue" capabilities based on the Redis Database.
 
-Each lock request is put into the request queue (each lock is hosted by its own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) (with requeue capabilities) which guarantees the request queue will never be stacked.
+Each lock request is put into the request queue (each lock is hosted by its own queue separately from other queues) and processed in order of their priority: requests of a higher [priority](#lock-request-priorities) go first, requests of the same priority are processed in FIFO order. Each lock request lives some period of time (RTTL) (with requeue capabilities) which guarantees the request queue will never be stacked.
 
 In addition to the classic `queued` (FIFO) strategy RQL supports `random` (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
 
-Supports `Read`/`Write` locks and `Reentrant` locks.
+Supports [lock request priorities](#lock-request-priorities), `Read`/`Write` locks and `Reentrant` locks.
 
 Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), **zombie locks elimination**, **[lock indexing](#lock-index)**, logging and instrumentation (and much more).
 
@@ -71,6 +71,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 - [Lock Access Strategies](#lock-access-strategies)
   - [queued](#lock-access-strategies)
   - [random](#lock-access-strategies)
+- [Lock Request Priorities](#lock-request-priorities)
 - [Read/Write Locks](#readwrite-locks)
 - [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks)
 - [Logging](#logging)
@@ -125,7 +126,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
-> Each lock request is put into the request queue (each lock is hosted by its own queue separately from other queues) and processed in order of their priority (FIFO). Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
+> Each lock request is put into the request queue (each lock is hosted by its own queue separately from other queues) and processed in order of their priority: requests of a higher [priority](#lock-request-priorities) go first, requests of the same priority are processed in FIFO order. Each lock request lives some period of time (RTTL) which guarantees that the request queue will never be stacked.
 
 > In addition to the classic "queued" (FIFO) strategy RQL supports "random" (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
 
@@ -249,6 +250,25 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   #     retries, timeouts and so on). if lock is free to obtain - it will be obtained;
   config['default_access_strategy'] = :queued
 
+  # (hash) (default: { lowest: -100, low: -50, normal: 0, high: 50, highest: 100 })
+  # - Lock request priority names: a priority name (Symbol) => its priority (Integer from `-100` to `100`);
+  # - The names can be used instead of the Integer priorities in the `:priority` attribute and in
+  #   `config['default_lock_priority']`: `rql.lock('name', priority: :high) { ... }`;
+  # - Define the names of your application (keep the default names with `merge`):
+  #   `config['lock_priorities'] = config['lock_priorities'].merge(payment: 90, email: -10)`;
+  # - The default value is frozen (it is shared by all clients): assign a new hash, don't change it in place;
+  # - See [Lock Request Priorities](#lock-request-priorities) documentation section for details;
+  config['lock_priorities'] = { lowest: -100, low: -50, normal: 0, high: 50, highest: 100 }
+
+  # (integer/symbol) (default: 0)
+  # - The default lock request priority: an Integer from `-100` (the lowest) to `100` (the highest)
+  #   or a priority name of `config['lock_priorities']` (the name is checked on each lock acquirement);
+  # - Can be customized in methods `#lock`, `#lock!`, `#lock_series` and `#lock_series!` via `:priority` attribute;
+  # - `:queued` access strategy: the lock request is placed in the lock request queue after all requests of the same
+  #   or higher priority and before all requests of the lower priority (FIFO inside the same priority);
+  # - See [Lock Request Priorities](#lock-request-priorities) documentation section for details;
+  config['default_lock_priority'] = 0
+
   # (symbol) (default: :wait_for_lock)
   # - Global default conflict strategy mode;
   # - Can be customized in methods `#lock` and `#lock!` via `:conflict_strategy` attribute (see method signatures of #lock and #lock! methods);
@@ -342,8 +362,8 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
   #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
   #   - "[redis_queued_locks.dead_score_reached__reset_acquirer_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
-  #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
-  #   - "[redis_queued_locks.lock_obtaining_failed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time", "result");
+  #   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "priority", "acq_time");
+  #   - "[redis_queued_locks.lock_obtaining_failed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "priority", "acq_time", "result");
   #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
   #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
   #   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
@@ -378,6 +398,7 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.try_lock.single_process_lock_conflict__lock_upgrade]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_spc_ts");
   #   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
   #   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+  #   - "[redis_queued_locks.try_lock.dead_request_removed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "dead_acq_id", "dead_priority");
   #   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue");
   #   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
   #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue", "<current_lock_data>");
@@ -503,6 +524,7 @@ def lock(
   conflict_strategy: config['default_conflict_strategy'],
   read_write_mode: :write,
   access_strategy: config['default_access_strategy'],
+  priority: config['default_lock_priority'],
   identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config['uniq_identifier'] proc;
   meta: nil,
   detailed_acq_timeout_error: config['detailed_acq_timeout_error'],
@@ -585,6 +607,17 @@ def lock(
       if lock is free to obtain - it will be obtained;
   - pre-configured in `config['default_access_strategy']`;
   - See [Lock Access Strategies](#lock-access-strategies) documentation section for details;
+- `priority` - (optional) - `[Integer,Symbol]`
+  - The lock request priority: an Integer from `-100` (the lowest) to `100` (the highest), `0` by default,
+    or a priority name of `config['lock_priorities']` (`:lowest`, `:low`, `:normal`, `:high`, `:highest` by default,
+    the names of your application can be configured);
+  - `:queued` access strategy: the lock request is placed in the lock request queue after all requests of the same or
+    higher priority and before all requests of the lower priority (strict priority, FIFO inside the same priority;
+    read and write lock requests too);
+  - `:random` access strategy ignores the lock request queues (and the priority);
+  - the obtained lock is never taken away: the priority orders the waiting lock requests only;
+  - pre-configured in `config['default_lock_priority']`;
+  - See [Lock Request Priorities](#lock-request-priorities) documentation section for details;
 - `conflict_strategy` - (optional) - `[Symbol]`
   - The conflict strategy mode for cases when the process that obtained the lock
     want to acquire this lock again;
@@ -946,6 +979,7 @@ def lock!(
   instrument: nil,
   instrumenter: config['instrumenter'],
   access_strategy: config['default_access_strategy'],
+  priority: config['default_lock_priority'],
   conflict_strategy: config['default_conflict_strategy'],
   read_write_mode: :write,
   log_sampling_enabled: config['log_sampling_enabled'],
@@ -994,6 +1028,7 @@ applied with the same value to the each lock acquirement process (for each lock 
   - reentrant locks (already obtained by your outer logic, `conflict_strategy: :work_through`/`:extendable_work_through`) are kept;
   - a lock that is expired during your block and obtained by another acquirer is kept;
 - `read_write_mode:` is the same for all locks of the series (see [Read/Write Locks](#readwrite-locks));
+- `priority:` is the same for all locks of the series (see [Lock Request Priorities](#lock-request-priorities));
 - if you did not pass a block - all locks will be released with their forumla-based TTL described above;
   - **HOW WILL THIS CASE WORK IN FUTURE RELESAE**: all locks will have the same TTL (`5 seconds` for our example, not `15/10/5 seconds`);
 
@@ -1256,15 +1291,18 @@ lock acquirers and their position in queue. The queue of write lock requests is 
 - get the lock queue information;
 - queue represents the ordered set of lock key reqests:
   - set is ordered by score in ASC manner (inside the Redis Set);
-  - score is represented as a timestamp when the lock request was made;
+  - score is represented as a timestamp when the lock request was made shifted by the
+    [priority](#lock-request-priorities) band (`-priority * 2**32` seconds: the default priority `0` keeps the timestamp);
   - represents the acquirer identifier and their score as an array of hashes;
 - returns `nil` if lock queues (write and read) do not exist;
 - lock queue data (`Hash<String,String|Array<Hash<String|Numeric>>`):
   - `"lock_queue"` - `string` - lock queue key in redis (write lock requests);
   - `"queue"` - `array` - an array of lock requests (array of hashes):
     - `"acq_id"` - `string` - acquirer identifier (process_id/thread_id/fiber_id/ractor_id/identity by default);
-    - `"score"` - `float`/`epoch` - time when the lock request was made (epoch);
+    - `"score"` - `float`/`epoch` - the position of the lock request: time when the lock request was made (epoch) shifted by
+      `-priority * 2**32` seconds (the time itself for the default priority `0`);
     - `"rw_mode"` - `string` - the requested lock mode (`"write"`);
+    - `"priority"` - `integer` - the lock request priority (from `-100` to `100`, see [Lock Request Priorities](#lock-request-priorities));
   - `"read_lock_queue"`, `"read_queue"` - (only when read lock requests exist) the read lock queue key and read lock requests
     with the same structure (`"rw_mode"` - `"read"`), see [Read/Write Locks](#readwrite-locks);
 
@@ -1275,15 +1313,16 @@ rql.queue_info("your_lock_name")
 {
   "lock_queue" => "rql:lock_queue:your_lock_name",
   "queue" => [
-    { "acq_id" => "rql:acq:123/456/567/678/fa76df9cc2", "score" => 1711606640.540842, "rw_mode" => "write" },
-    { "acq_id" => "rql:acq:123/567/456/679/c7bfcaf4f9", "score" => 1711606640.540906, "rw_mode" => "write" },
-    { "acq_id" => "rql:acq:555/329/523/127/7329553b11", "score" => 1711606640.540963, "rw_mode" => "write" },
+    # (a lock request of the high priority: ahead of the requests of the default priority)
+    { "acq_id" => "rql:acq:123/456/567/678/fa76df9cc2", "score" => -2583360655.459158, "rw_mode" => "write", "priority" => 1 },
+    { "acq_id" => "rql:acq:123/567/456/679/c7bfcaf4f9", "score" => 1711606640.540906, "rw_mode" => "write", "priority" => 0 },
+    { "acq_id" => "rql:acq:555/329/523/127/7329553b11", "score" => 1711606640.540963, "rw_mode" => "write", "priority" => 0 },
     # ...etc
   ],
   # (when read lock requests exist)
   "read_lock_queue" => "rql:lock_read_queue:your_lock_name",
   "read_queue" => [
-    { "acq_id" => "rql:acq:123/456/567/700/fa76df9cc2", "score" => 1711606640.541011, "rw_mode" => "read" },
+    { "acq_id" => "rql:acq:123/456/567/700/fa76df9cc2", "score" => 1711606640.541011, "rw_mode" => "read", "priority" => 0 },
     # ...etc
   ]
 }
@@ -1972,8 +2011,8 @@ rql.locks_info # or rql.locks_info(scan_size: 123)
 - returns `Set<Hash<Symbol,Any>>` (see [#queue_info](#queue_info) and examples below for details).
   - contained data: `{ queue: String, requests: Array<Hash<String,Any>> }`
   - `:queue` - `String` - lock key queue in Redis;
-  - `:requests` - `Array<Hash<String,Any>>` - lock requests in the que with their acquirer id, score and requested lock mode
-    (`"rw_mode"` - `"write"` for `rql:lock_queue:*`, `"read"` for read lock queues `rql:lock_read_queue:*`).
+  - `:requests` - `Array<Hash<String,Any>>` - lock requests in the que with their acquirer id, score, requested lock mode
+    (`"rw_mode"` - `"write"` for `rql:lock_queue:*`, `"read"` for read lock queues `rql:lock_read_queue:*`) and priority.
 
 ```ruby
 rql.queues_info # or rql.qeuues_info(scan_size: 123)
@@ -1981,13 +2020,13 @@ rql.queues_info # or rql.qeuues_info(scan_size: 123)
 => #<Set:
  {{:queue=>"rql:lock_queue:some-lock-123",
    :requests=>
-    [{"acq_id"=>"rql:acq:38529/4500/4520/4360/66093702f24a3129", "score"=>1711606640.540842, "rw_mode"=>"write"},
-     {"acq_id"=>"rql:acq:38529/4580/4600/4360/66093702f24a3129", "score"=>1711606640.540906, "rw_mode"=>"write"},
-     {"acq_id"=>"rql:acq:38529/4620/4640/4360/66093702f24a3129", "score"=>1711606640.5409632, "rw_mode"=>"write"}]},
+    [{"acq_id"=>"rql:acq:38529/4500/4520/4360/66093702f24a3129", "score"=>1711606640.540842, "rw_mode"=>"write", "priority"=>0},
+     {"acq_id"=>"rql:acq:38529/4580/4600/4360/66093702f24a3129", "score"=>1711606640.540906, "rw_mode"=>"write", "priority"=>0},
+     {"acq_id"=>"rql:acq:38529/4620/4640/4360/66093702f24a3129", "score"=>1711606640.5409632, "rw_mode"=>"write", "priority"=>0}]},
   {:queue=>"rql:lock_read_queue:some-lock-456",
    :requests=>
-    [{"acq_id"=>"rql:acq:38529/4380/4400/4360/66093702f24a3129", "score"=>1711606640.540722, "rw_mode"=>"read"},
-     {"acq_id"=>"rql:acq:38529/4420/4440/4360/66093702f24a3129", "score"=>1711606640.5407748, "rw_mode"=>"read"}]},
+    [{"acq_id"=>"rql:acq:38529/4380/4400/4360/66093702f24a3129", "score"=>1711606640.540722, "rw_mode"=>"read", "priority"=>0},
+     {"acq_id"=>"rql:acq:38529/4420/4440/4360/66093702f24a3129", "score"=>1711606640.5407748, "rw_mode"=>"read", "priority"=>0}]},
   ...}>
 ```
 ---
@@ -2009,7 +2048,8 @@ RQL versions and queues created with the disabled lock index have no TTL: see [#
 In order to help with these dead requests you may periodically call `#clear_dead_requests`
 with corresponding `:dead_ttl` option, that is pre-configured by default via `config['dead_request_ttl']`.
 Lock queues are found via the redis `SCAN` (one pass) or via the [Lock Index](#lock-index) (one `ZSCAN` pass, the keyspace is
-never scanned: the enabled lock index).
+never scanned: the enabled lock index). Each batch of lock queues takes two round trips: the lock requests are read, then the dead
+requests of each [priority](#lock-request-priorities) found in the queues are dropped (no second round trip without dead requests).
 
 `:dead_ttl` option is required because of it is no any **fast** and **resource-free** way to understand which request
 is dead now and is it really dead cuz each request queue can host their requests with
@@ -2022,7 +2062,7 @@ Accepts:
 - `:scan_size` - (optional) `[Integer]`
   - the batch of scanned keys for Redis'es SCAN command;
   - (the enabled lock index) the `ZSCAN` count of the [Lock Index](#lock-index) pass and the number of locks (both lock queues
-    of each lock) processed in one round trip;
+    of each lock) processed in one batch;
   - has a preconfigured valie in `config['lock_release_batch_size']`;
 - `:logger` - (optional) `[::Logger,#debug]`
   - custom logger object;
@@ -2598,10 +2638,87 @@ rql.possible_host_ids
   - can be customized in methods `#lock` and `#lock!` via `:access_strategy` attribute (see method signatures of #lock and #lock! methods);
   - supports different strategies:
     - `:queued` (FIFO): the classic queued behavior (default), your lock will be obitaned if you are first in queue and the required lock is free;
+      the queue is ordered by the [lock request priorities](#lock-request-priorities) (FIFO inside the same priority);
     - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist, retries, timeouts and so on). if lock is free to obtain - it will be obtained;
+      (lock request priorities are ignored too);
   - for current implementation detalis check:
     - [Configuration](#configuration) documentation: see `config['default_access_strategy']` config docs;
     - [#lock](#lock---obtain-a-lock) method documentation: see `access_strategy` attribute docs;
+
+---
+
+## Lock Request Priorities
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
+
+- `priority:` attribute of `#lock`, `#lock!`, `#lock_series` and `#lock_series!` (`config['default_lock_priority']` by default):
+  an Integer from `-100` (the lowest priority) to `100` (the highest priority), `0` - (**default**) normal priority,
+  or a priority name (Symbol) of `config['lock_priorities']`;
+- priority names (`config['lock_priorities']`, a priority name => its Integer priority):
+  - default names: `:lowest` (`-100`), `:low` (`-50`), `:normal` (`0`), `:high` (`50`), `:highest` (`100`);
+  - name the priorities of your application (keep the default names with `merge`; the default value is frozen: assign
+    a new hash);
+  - a name is resolved to its Integer priority on each lock acquirement: the lock request queues, `#queue_info`/`#queues_info`,
+    logs and instrumentation have the Integer priority; an unknown name fails with `RedisQueuedLocks::ArgumentError`;
+  - `config['default_lock_priority']` can be a priority name too;
+- `:queued` access strategy (default): the lock request is placed in the lock request queue after all requests of the same
+  or higher priority and before all requests of the lower priority: strict priority between priorities, FIFO inside the same
+  priority (read and write lock requests too, see [Read/Write Locks](#readwrite-locks));
+
+```ruby
+# a balance operation goes ahead of the email notifications that are already waiting for the lock
+rql.lock("user_#{user.id}", priority: 50) { process_balance }
+
+# a payment goes ahead of the balance operations
+rql.lock("user_#{user.id}", priority: 90) { process_payment }
+
+# email notifications wait for all lock requests of higher priorities
+rql.lock("user_#{user.id}", priority: -10) { send_email }
+
+# normal priority by default
+rql.lock("user_#{user.id}") { update_profile } # priority: 0
+
+# the default priority of the client (for example, in background workers)
+rql.configure { |config| config['default_lock_priority'] = -10 }
+
+# priority names: the default ones (:lowest, :low, :normal, :high, :highest) and the names of your application
+rql.configure do |config|
+  config['lock_priorities'] = config['lock_priorities'].merge(payment: 90, balance: 50, email: -10)
+end
+rql.lock("user_#{user.id}", priority: :payment) { process_payment } # priority: 90
+rql.lock("user_#{user.id}", priority: :email) { send_email } # priority: -10
+rql.lock("user_#{user.id}", priority: :high) { update_profile } # priority: 50
+```
+
+- how it works:
+  - the position of the lock request in the queue (the score) is the request time shifted by the priority band:
+    `request time - priority * 2**32 seconds` (each priority has its own range of positions; the default priority `0` keeps
+    the request time: the positions of RQL versions without priorities);
+  - every lock request drops dead requests (older than `queue_ttl`) of its own priority in both lock queues (in the same round
+    trip as before priorities); a dead request of another priority that blocks it (the head of the queue or the earlier request
+    of the other read/write mode: the priority and the request time are decoded from the position) is dropped with all dead
+    requests of its priority in one more round trip of the same attempt, so a dead request of any priority never blocks the queue
+    and the cost of an attempt does not depend on the number of priorities in use;
+  - dead requests of lower priorities never block: they are dropped by the lock requests of their priority (or lower ones)
+    and by `#clear_dead_requests` (it drops the dead requests of every priority found in the queues);
+  - `#queue_info`/`#queues_info` return the priority of each lock request (`"priority"`), the lock events (`lock_obtained`,
+    `lock_obtaining_failed`, `lock_hold_and_release`) have the `priority` in their logs and instrumentation payloads;
+- limitations and recommendations:
+  - the priority orders the waiting lock requests only: the obtained lock is never taken away (no preemption);
+  - strict priority: a continuous flow of requests of a higher priority can starve the requests of lower priorities (they
+    reach their `timeout`/`retry_count` limits): give them longer limits;
+  - the released lock is passed by polling: the next lock request notices the released lock on its next attempt
+    (`retry_delay`): use a shorter `retry_delay` for the important logic;
+  - the default `retry_count` (`3`) gives a short waiting time: the priority matters for the requests that wait longer
+    (`retry_count: nil` with `timeout`);
+  - requests of the same priority made within ~61 µs of each other are ordered by their acquirer ids (the precision of
+    the shifted positions);
+  - each lock request drops dead requests with its own `queue_ttl`: a longer `queue_ttl` of an important request does not keep
+    it in the queue longer than the shorter `queue_ttl` of other waiting requests (the request is requeued at the end of its priority);
+  - `:random` access strategy ignores the lock request queues and the priority;
+  - all processes that share locks should use RQL versions with priorities before the priorities are used: older versions drop
+    the lock requests of the high priority as dead ones (the order is broken; the mutual exclusion is not affected: lock queues
+    never take part in it);
 
 ---
 
@@ -2627,7 +2744,9 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
 - lock request ordering (`access_strategy`):
   - `:queued` (default) - FIFO between modes: read lock request waits for every earlier write lock request,
     write lock request waits for every earlier read and write lock request (so writers are not starved by a
-    continuous flow of readers and consecutive readers obtain the lock together);
+    continuous flow of readers and consecutive readers obtain the lock together); with
+    [lock request priorities](#lock-request-priorities) "earlier" means "ahead in the queue": a request of a higher
+    priority is ahead of all requests of lower priorities in both modes (FIFO inside the same priority);
   - `:random` - lock queues are ignored: any free lock is obtained (a continuous flow of readers can starve writers);
 - read locks:
   - each read lock has its own `ttl` and is released (after the block execution) or expired independently of other read locks;
@@ -2730,8 +2849,8 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
 "[redis_queued_locks.start_lock_obtaining]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 "[redis_queued_locks.start_try_to_lock_cycle]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 "[redis_queued_locks.dead_score_reached__reset_acquirer_position]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
-"[redis_queued_locks.lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
-"[redis_queued_locks.lock_obtaining_failed]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time", "result");
+"[redis_queued_locks.lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "priority", "acq_time");
+"[redis_queued_locks.lock_obtaining_failed]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "priority", "acq_time", "result");
 "[redis_queued_locks.extendable_reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
 "[redis_queued_locks.reentrant_lock_obtained]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
 "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
@@ -2752,6 +2871,7 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
 "[redis_queued_locks.try_lock.single_process_lock_conflict__lock_upgrade]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_spc_ts");
 "[redis_queued_locks.try_lock.acq_added_to_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 "[redis_queued_locks.try_lock.remove_expired_acqs]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+"[redis_queued_locks.try_lock.dead_request_removed]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "dead_acq_id", "dead_priority");
 "[redis_queued_locks.try_lock.get_first_from_queue]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue");
 "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 "[redis_queued_locks.try_lock.exit__no_first]" # (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue", "<current_lock_data>");
@@ -2811,8 +2931,8 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
 #   - "[redis_queued_locks.start_lock_obtaining]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 #   - "[redis_queued_locks.start_try_to_lock_cycle]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 #   - "[redis_queued_locks.dead_score_reached__reset_acquirer_position]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
-#   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
-#   - "[redis_queued_locks.lock_obtaining_failed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time", "result");
+#   - "[redis_queued_locks.lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "priority", "acq_time");
+#   - "[redis_queued_locks.lock_obtaining_failed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "priority", "acq_time", "result");
 #   - "[redis_queued_locks.extendable_reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
 #   - "[redis_queued_locks.reentrant_lock_obtained]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "acq_time");
 #   - "[redis_queued_locks.fail_fast_or_limits_reached_or_deadlock__dequeue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
@@ -2847,6 +2967,7 @@ config['logger'] = RedisQueuedLocks::Logging::VoidLogger
 #   - "[redis_queued_locks.try_lock.single_process_lock_conflict__lock_upgrade]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "spc_status", "last_spc_ts");
 #   - "[redis_queued_locks.try_lock.acq_added_to_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 #   - "[redis_queued_locks.try_lock.remove_expired_acqs]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
+#   - "[redis_queued_locks.try_lock.dead_request_removed]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "dead_acq_id", "dead_priority");
 #   - "[redis_queued_locks.try_lock.get_first_from_queue]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue");
 #   - "[redis_queued_locks.try_lock.exit__queue_ttl_reached]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode");
 #   - "[redis_queued_locks.try_lock.exit__no_first]" (logs "lock_key", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "first_acq_id_in_queue", "<current_lock_data>");
@@ -2991,6 +3112,7 @@ Detalized event semantics and payload structure:
   - `:hst_id` - `string` - lock's host identifier;
   - `:lock_key` - `string` - lock name;
   - `:rw_mode` - `symbol` - requested lock mode: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+  - `:priority` - `integer` - lock request priority: from `-100` to `100` (a priority name is reported as its integer priority, see [Lock Request Priorities](#lock-request-priorities));
   - `:ts` - `numeric`/`epoch` - the time when the lock was obtaiend;
   - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
   - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
@@ -3003,6 +3125,7 @@ Detalized event semantics and payload structure:
 - payload:
   - `:lock_key` - `string` - lock name;
   - `:rw_mode` - `symbol` - requested lock mode: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+  - `:priority` - `integer` - lock request priority: from `-100` to `100` (a priority name is reported as its integer priority, see [Lock Request Priorities](#lock-request-priorities));
   - `:ttl` - `integer`/`milliseconds` - requested lock ttl;
   - `:acq_id` - `string` - lock acquirer identifier;
   - `:hst_id` - `string` - lock's host identifier;
@@ -3053,6 +3176,7 @@ Detalized event semantics and payload structure:
   - `:hst_id` - `string` - lock's host identifier;
   - `:lock_key` - `string` - lock name;
   - `:rw_mode` - `symbol` - requested lock mode: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+  - `:priority` - `integer` - lock request priority: from `-100` to `100` (a priority name is reported as its integer priority, see [Lock Request Priorities](#lock-request-priorities));
   - `:ts` - `numeric`/`epoch` - the time when lock was obtained;
   - `:acq_time` - `float`/`milliseconds` - time spent on lock acquiring;
   - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock!` method as `:instrument` attribute;
@@ -3203,7 +3327,6 @@ Detalized event semantics and payload structure:
   - isolated timeouts which are independent of internal Ruby's timeout implementation (where all timeouts are hostend inside
     the global "timeout request" queue and managed by a single global "timeout wathcer" thread). it should prevent any logic and timeout intersections,
     some GVL-related things and problem situations when the global watcher thread is "dead";
-  - lock request prioritization;
   - **strict redlock algorithm support** (support for many `RedisClient` instances that are fully independent (distributed redis instances));
   - #lock_series` - acquire a series of locks:
     - (NOTE: "Proof of Concept" implementation is ready to use);

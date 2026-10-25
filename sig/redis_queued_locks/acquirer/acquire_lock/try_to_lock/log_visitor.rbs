@@ -135,6 +135,20 @@ module RedisQueuedLocks
             RQL::readWriteMode rw_mode
           ) -> void
 
+          def self.dead_request_removed: (
+            RQL::loggerObj logger,
+            bool log_sampled,
+            bool log_lock_try,
+            String lock_key,
+            Integer queue_ttl,
+            String acquirer_id,
+            String host_id,
+            RQL::accessStrategy access_strategy,
+            RQL::readWriteMode rw_mode,
+            String dead_acquirer,
+            Integer dead_priority
+          ) -> void
+
           def self.get_first_from_queue: (
             RQL::loggerObj logger,
             bool log_sampled,

@@ -33,7 +33,11 @@ module RedisQueuedLocks
       ) -> Set[String]
 
       private def self.each_lock_queue: (RC::client redis_client, Integer scan_size) { (String lock_queue) -> void } -> void
-      private def self.drop_dead_requests: (RC::client redis_client, Array[String] lock_queues, Float dead_score) -> void
+      private def self.drop_dead_requests: (
+        RC::client redis_client,
+        Array[String] lock_queues,
+        Float dead_score
+      ) -> Array[Array[[String, Float]]]
       private def self.drop_dead_requests_of_locks: (
         RC::client redis_client,
         Array[String] lock_names,

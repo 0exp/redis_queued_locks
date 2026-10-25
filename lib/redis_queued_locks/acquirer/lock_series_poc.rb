@@ -4,7 +4,7 @@
 # rubocop:disable Metrics/ModuleLength, Metrics/ClassLength, Metrics/MethodLength
 # @api private
 # @since 1.16.0
-# @version 1.20.0
+# @version 1.22.0
 module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
   require_relative 'lock_series_poc/log_visitor'
   require_relative 'lock_series_poc/instr_visitor'
@@ -15,7 +15,7 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
   class << self
     # @api private
     # @since 1.16.0
-    # @version 1.21.0
+    # @version 1.22.0
     def lock_series_poc( # steep:ignore
       redis,
       lock_names,
@@ -45,6 +45,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
       conflict_strategy:,
       read_write_mode:,
       access_strategy:,
+      priority:,
+      lock_priorities:,
       log_sampling_enabled:,
       log_sampling_percent:,
       log_sampler:,
@@ -57,6 +59,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
     )
       # NOTE: (RW) the lock mode is the same for all locks of the series
       #   (see RedisQueuedLocks::Acquirer::AcquireLock for read_write_mode validations);
+      # NOTE: the lock request priority is the same for all locks of the series too
+      #   (see RedisQueuedLocks::Acquirer::AcquireLock for priority validations);
 
       case meta
       when Hash, NilClass then nil
@@ -208,6 +212,8 @@ module RedisQueuedLocks::Acquirer::LockSeriesPoC # steep:ignore
               conflict_strategy:,
               read_write_mode:,
               access_strategy:,
+              priority:,
+              lock_priorities:,
               log_sampling_enabled:,
               log_sampling_percent:,
               log_sampler:,

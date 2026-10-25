@@ -1732,30 +1732,30 @@ RSpec.shared_examples 'redis_queued_locks' do
     expect(client.queue_info('kek.dead.lock1')).to match({
       'lock_queue' => 'rql:lock_queue:kek.dead.lock1',
       'queue' => contain_exactly(
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' }
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 }
       )
     })
 
     expect(client.queue_info('kek.dead.lock2')).to match({
       'lock_queue' => 'rql:lock_queue:kek.dead.lock2',
       'queue' => contain_exactly(
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' },
-        { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' }
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 },
+        { 'acq_id' => be_a(String), 'score' => be_a(Float), 'rw_mode' => 'write', 'priority' => 0 }
       )
     })
 
@@ -2617,7 +2617,7 @@ RSpec.shared_examples 'redis_queued_locks' do
     end
     failure_payload = lambda do |lock_key, rw_mode, ttl, result, instrument|
       match({
-        lock_key:, rw_mode:, ttl:, acq_id: client.current_acquirer_id,
+        lock_key:, rw_mode:, priority: 0, ttl:, acq_id: client.current_acquirer_id,
         hst_id: client.current_host_id, ts: be_a(Float), acq_time: be_a(Numeric), result:,
         instrument:
       })
@@ -3012,8 +3012,12 @@ RSpec.shared_examples 'redis_queued_locks' do
     expect(client.queue_info(lock_name)).to match({
       'lock_queue' => "rql:lock_queue:#{lock_name}",
       'queue' => match_array([
-        match({ 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' }),
-        match({ 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' })
+        match({
+          'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write', 'priority' => 0
+        }),
+        match({
+          'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write', 'priority' => 0
+        })
       ])
     })
 
@@ -3430,14 +3434,14 @@ RSpec.shared_examples 'redis_queued_locks' do
     )
     expect(queue_info_a.map { |val| val[:requests].map(&:keys) }).to contain_exactly(
       contain_exactly(
-        contain_exactly(*%w[acq_id score rw_mode]),
-        contain_exactly(*%w[acq_id score rw_mode]),
-        contain_exactly(*%w[acq_id score rw_mode])
+        contain_exactly(*%w[acq_id score rw_mode priority]),
+        contain_exactly(*%w[acq_id score rw_mode priority]),
+        contain_exactly(*%w[acq_id score rw_mode priority])
       ),
       contain_exactly(
-        contain_exactly(*%w[acq_id score rw_mode]),
-        contain_exactly(*%w[acq_id score rw_mode]),
-        contain_exactly(*%w[acq_id score rw_mode])
+        contain_exactly(*%w[acq_id score rw_mode priority]),
+        contain_exactly(*%w[acq_id score rw_mode priority]),
+        contain_exactly(*%w[acq_id score rw_mode priority])
       )
     )
 
@@ -3545,6 +3549,650 @@ RSpec.shared_examples 'redis_queued_locks' do
         config['swarm.flush_zombies.redis_config.pool_config'] = {}
       end
     end.not_to raise_error
+  end
+
+  describe 'lock request priorities' do
+    # NOTE: helpers of the priority examples:
+    #   - the holder takes the lock in a thread and releases it by its block (`#unlock` would drop
+    #     the queued lock requests too: the waiting acquirers would requeue them in any order);
+    #   - lock requests are queued one by one (the next request is started when the previous one
+    #     is in the queue): positions of the same priority follow the start order;
+    #   - each requester is a separate acquirer (thread) that records the moment of the obtaining;
+    let(:prio_client) do
+      RedisQueuedLocks::Client.new(redis) do |config|
+        config['retry_delay'] = 10
+        config['retry_jitter'] = 5
+      end
+    end
+    let(:wait_until) do
+      lambda do |&condition|
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
+        until condition.call
+          if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+            raise 'the awaited condition is not reached'
+          end
+
+          sleep(0.01) # NOTE: polling with a bounded timeout
+        end
+      end
+    end
+    let(:queued_requests) do
+      lambda do |lock_name|
+        info = prio_client.queue_info(lock_name)
+        info ? info['queue'].size + info.fetch('read_queue', []).size : 0
+      end
+    end
+    let(:hold_lock) do
+      lambda do |lock_name, release|
+        holder = Thread.new { prio_client.lock(lock_name, ttl: 30_000) { release.pop } }
+        wait_until.call { prio_client.locked?(lock_name) }
+        holder
+      end
+    end
+    let(:enqueue_requests) do
+      lambda do |lock_name, requests, timeline|
+        timeline_lock = Mutex.new
+        requests.map do |name, read_write_mode, priority|
+          queued_before = queued_requests.call(lock_name)
+          requester = Thread.new do
+            prio_client.lock(
+              lock_name, ttl: 30_000, read_write_mode:, priority:, retry_count: nil, timeout: 20
+            ) do
+              timeline_lock.synchronize { timeline << name }
+              sleep(0.05) # NOTE: other lock requests wait for the release of the lock
+            end
+          end
+          wait_until.call { queued_requests.call(lock_name) > queued_before }
+          requester
+        end
+      end
+    end
+
+    specify 'the lock request position: the priority band and the requeue time limit' do
+      [-100, -37, -1, 0, 1, 42, 100].each do |priority|
+        position = RedisQueuedLocks::Resource.calc_initial_acquirer_position(priority)
+        expect(position).to be_within(1).of(Time.now.to_f - (priority * (2**32)))
+        expect(RedisQueuedLocks::Resource.lock_request_priority(position)).to eq(priority)
+        # NOTE: the band of any priority starts at its lower edge (no special highest band)
+        expect(RedisQueuedLocks::Resource.lock_priority_band_floor(priority)).to eq(
+          -priority * (2**32)
+        )
+        # NOTE: the requeue check decodes the enqueue time from the position of any priority
+        expect(RedisQueuedLocks::Resource.dead_score_reached?(position, priority, 15)).to eq(false)
+        expect(
+          RedisQueuedLocks::Resource.dead_score_reached?(position - 16, priority, 15)
+        ).to eq(true)
+      end
+    end
+
+    specify 'strict priority: higher priorities go first, FIFO inside the same priority' do
+      timeline = []
+      release = Thread::Queue.new
+      holder = hold_lock.call('prio.order', release)
+      requesters = enqueue_requests.call('prio.order', [
+        [:lowest, :write, -100],
+        [:normal_first, :write, 0],
+        [:highest_first, :write, 100],
+        [:low, :write, -50],
+        [:normal_second, :write, 0],
+        [:high, :write, 37],
+        [:highest_second, :write, 100]
+      ], timeline)
+
+      aggregate_failures 'queue: requests of higher priorities are ahead' do
+        queue = prio_client.queue_info('prio.order')['queue']
+        expect(queue.map { |request| request['priority'] }).to eq([100, 100, 37, 0, 0, -50, -100])
+        expect(queue.map { |request| request['score'] }).to eq(
+          queue.map { |request| request['score'] }.sort
+        )
+      end
+
+      release << true
+      [holder, *requesters].each(&:join)
+      expect(timeline).to eq(
+        %i[highest_first highest_second high normal_first normal_second low lowest]
+      )
+      expect(prio_client.keys).to be_empty
+    end
+
+    specify 'strict priority between read and write lock requests' do
+      timeline = []
+      release = Thread::Queue.new
+      holder = hold_lock.call('prio.rw', release)
+      requesters = enqueue_requests.call('prio.rw', [
+        [:write_normal, :write, 0],
+        [:read_high, :read, 60],
+        [:write_high, :write, 60],
+        [:read_low, :read, -1]
+      ], timeline)
+
+      release << true
+      [holder, *requesters].each(&:join)
+      # NOTE:
+      #   - the high read request is ahead of every write request: it obtains the lock first;
+      #   - the high write request is the head of the write lock queue: it waits for the read lock
+      #     of the high read request only, then the normal write request goes;
+      #   - the low read request waits for both write requests (they are ahead of it);
+      expect(timeline).to eq(%i[read_high write_high write_normal read_low])
+      expect(prio_client.keys).to be_empty
+    end
+
+    specify 'dead lock requests of any priority do not block the queues' do
+      dead_position = lambda do |priority|
+        RedisQueuedLocks::Resource.calc_initial_acquirer_position(priority) - 60
+      end
+      obtained = match({ ok: true, result: hash_including(process: :lock_obtaining) })
+
+      aggregate_failures 'a dead request of the same priority: dropped before the queue heads' do
+        redis.call(
+          'ZADD', 'rql:lock_queue:prio.dead', dead_position.call(77), 'rql:acq:1/2/3/4/dead'
+        )
+        expect(
+          prio_client.lock('prio.dead', priority: 77, queue_ttl: 5, retry_count: 1)
+        ).to obtained
+        expect(redis.call('EXISTS', 'rql:lock_queue:prio.dead')).to eq(0)
+        prio_client.unlock('prio.dead')
+      end
+
+      aggregate_failures 'dead write requests of higher priorities: dropped in the same attempt' do
+        redis.call(
+          'ZADD', 'rql:lock_queue:prio.dead',
+          dead_position.call(100), 'rql:acq:1/2/3/4/dead_highest',
+          dead_position.call(1), 'rql:acq:1/2/3/4/dead_high'
+        )
+        expect(
+          prio_client.lock('prio.dead', priority: -1, queue_ttl: 5, retry_count: 1)
+        ).to obtained
+        expect(redis.call('EXISTS', 'rql:lock_queue:prio.dead')).to eq(0)
+        prio_client.unlock('prio.dead')
+      end
+
+      aggregate_failures 'a dead read request of a higher priority does not block writers' do
+        redis.call(
+          'ZADD', 'rql:lock_read_queue:prio.dead', dead_position.call(1), 'rql:acq:1/2/3/4/dead'
+        )
+        expect(prio_client.lock('prio.dead', priority: 0, queue_ttl: 5, retry_count: 1)).to obtained
+        expect(redis.call('EXISTS', 'rql:lock_read_queue:prio.dead')).to eq(0)
+        prio_client.unlock('prio.dead')
+      end
+
+      aggregate_failures 'a dead write request of a higher priority does not block readers' do
+        redis.call(
+          'ZADD', 'rql:lock_queue:prio.dead', dead_position.call(50), 'rql:acq:1/2/3/4/dead'
+        )
+        expect(
+          prio_client.lock(
+            'prio.dead', read_write_mode: :read, priority: 0, queue_ttl: 5, retry_count: 1
+          )
+        ).to obtained
+        expect(redis.call('EXISTS', 'rql:lock_queue:prio.dead')).to eq(0)
+        prio_client.unlock('prio.dead')
+      end
+
+      aggregate_failures 'requests of priorities out of the range (newer RQL versions)' do
+        # NOTE: the band and the enqueue time are decoded from the position of any priority
+        redis.call(
+          'ZADD', 'rql:lock_queue:prio.dead', dead_position.call(150), 'rql:acq:1/2/3/4/dead'
+        )
+        expect(prio_client.lock('prio.dead', queue_ttl: 5, retry_count: 1)).to obtained
+        expect(redis.call('EXISTS', 'rql:lock_queue:prio.dead')).to eq(0)
+        prio_client.unlock('prio.dead')
+
+        # NOTE: an alive request of a higher priority blocks (it is not dropped)
+        redis.call(
+          'ZADD', 'rql:lock_queue:prio.dead',
+          RedisQueuedLocks::Resource.calc_initial_acquirer_position(150), 'rql:acq:1/2/3/4/alive'
+        )
+        expect(prio_client.lock('prio.dead', queue_ttl: 5, retry_count: 1)).to match({
+          ok: false, result: :retry_limit_reached
+        })
+        expect(redis.call('ZRANGE', 'rql:lock_queue:prio.dead', '0', '-1')).to eq(
+          ['rql:acq:1/2/3/4/alive']
+        )
+        redis.call('DEL', 'rql:lock_queue:prio.dead')
+      end
+
+      aggregate_failures 'dead requests of lower priorities never block (dropped by their band)' do
+        redis.call(
+          'ZADD', 'rql:lock_queue:prio.dead', dead_position.call(-1), 'rql:acq:1/2/3/4/dead'
+        )
+        expect(
+          prio_client.lock('prio.dead', priority: 1, queue_ttl: 5, retry_count: 1) { :obtained }
+        ).to eq(:obtained)
+        # NOTE: a request of a lower priority is never ahead: the attempts of higher priorities
+        #   keep it, the attempts of its band drop it (or `#clear_dead_requests`)
+        expect(redis.call('ZRANGE', 'rql:lock_queue:prio.dead', '0', '-1')).to eq(
+          ['rql:acq:1/2/3/4/dead']
+        )
+        expect(
+          prio_client.lock('prio.dead', priority: -1, queue_ttl: 5, retry_count: 1) { :obtained }
+        ).to eq(:obtained)
+        expect(redis.call('EXISTS', 'rql:lock_queue:prio.dead')).to eq(0)
+      end
+    end
+
+    specify 'dead blocking requests: one more round trip per band (attempt and pre-check)' do
+      # NOTE: round trips are observed via a separate pool (the same db, one connection) with
+      #   a recording middleware; `inject` adds lock requests right before a pipeline is sent;
+      round_trips = []
+      inject = nil
+      recorder = Module.new do
+        define_method(:call) do |command, redis_config, &block|
+          round_trips << [command.first]
+          super(command, redis_config, &block)
+        end
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          inject&.call(commands)
+          round_trips << commands.map(&:first)
+          super(commands, redis_config, &block)
+        end
+      end
+      recorded_redis =
+        RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5, size: 1)
+      test_logger = Class.new do
+        attr_reader :logs
+
+        def initialize
+          @logs = []
+        end
+
+        def debug(progname = nil, &block)
+          logs << "#{progname} : #{yield if block_given?}"
+        end
+      end.new
+      client = RedisQueuedLocks::Client.new(recorded_redis) do |config|
+        config['retry_delay'] = 1
+        config['retry_jitter'] = 1
+        config['logger'] = test_logger
+        config['log_lock_try'] = true
+      end
+      holder_client = RedisQueuedLocks::Client.new(redis)
+      queue = 'rql:lock_queue:prio.trips'
+      dead_request = lambda do |priority|
+        [
+          RedisQueuedLocks::Resource.calc_initial_acquirer_position(priority) - 60,
+          "rql:acq:1/2/3/4/dead#{priority}"
+        ]
+      end
+      removal_round_trip = %w[ZREMRANGEBYSCORE ZREMRANGEBYSCORE ZRANGE ZRANGE]
+      # NOTE: the lock data reads of the exit logs (`log_lock_try`: HGETALL) are not counted
+      counted_round_trips = lambda do
+        round_trips.reject { |commands| commands == ['HGETALL'] }
+      end
+      removal_logs = lambda do
+        test_logger.logs.grep(/try_lock\.dead_request_removed\]/)
+      end
+      client.locked?('prio.trips') # NOTE: establish the recorded connection
+
+      aggregate_failures 'the attempt: one round trip per dead band ahead' do
+        redis.call('ZADD', queue, *dead_request.call(100), *dead_request.call(50))
+        round_trips.clear
+        expect(client.lock('prio.trips', ttl: 1_000, retry_count: 1)).to match({
+          ok: true, result: hash_including(process: :lock_obtaining)
+        })
+        # NOTE: WATCH, the lock state with the queueing, two removals, MULTI/EXEC
+        expect(counted_round_trips.call.size).to eq(5)
+        expect(round_trips.count(removal_round_trip)).to eq(2)
+        expect(removal_logs.call).to contain_exactly(
+          a_string_including("dead_acq_id => 'rql:acq:1/2/3/4/dead100' dead_priority => 100"),
+          a_string_including("dead_acq_id => 'rql:acq:1/2/3/4/dead50' dead_priority => 50")
+        )
+        client.unlock('prio.trips')
+      end
+
+      aggregate_failures 'the attempt: no round trips while the blocking request is alive' do
+        redis.call(
+          'ZADD', queue,
+          RedisQueuedLocks::Resource.calc_initial_acquirer_position(50), 'rql:acq:1/2/3/4/alive'
+        )
+        round_trips.clear
+        expect(client.lock('prio.trips', ttl: 1_000, retry_count: 1)).to match({
+          ok: false, result: :retry_limit_reached
+        })
+        # NOTE: WATCH, the lock state with the queueing, MULTI/EXEC, the dequeue (ZREM)
+        expect(counted_round_trips.call.size).to eq(4)
+        expect(round_trips).not_to include(removal_round_trip)
+        redis.call('DEL', queue)
+      end
+
+      aggregate_failures 'the pre-check of a retry: the same removal' do
+        test_logger.logs.clear
+        holder = Thread.new { holder_client.lock('prio.trips', ttl: 10_000) }
+        holder.join
+        # NOTE: the dead request appears after the first attempt (right before the pre-check)
+        lock_state_pipelines = 0
+        inject = lambda do |commands|
+          next unless commands.include?(['TIME'])
+
+          lock_state_pipelines += 1
+          redis.call('ZADD', queue, *dead_request.call(9)) if lock_state_pipelines == 2
+        end
+        round_trips.clear
+        expect(client.lock('prio.trips', ttl: 1_000, retry_count: 2)).to match({
+          ok: false, result: :retry_limit_reached
+        })
+        inject = nil
+        # NOTE: the first attempt (WATCH, the lock state with the queueing, MULTI/EXEC),
+        #   the pre-check, the removal, the dequeue (ZREM)
+        expect(counted_round_trips.call.size).to eq(6)
+        expect(round_trips.count { |commands| commands.include?('WATCH') }).to eq(1)
+        expect(counted_round_trips.call[4]).to eq(removal_round_trip)
+        expect(removal_logs.call).to contain_exactly(
+          a_string_including("dead_acq_id => 'rql:acq:1/2/3/4/dead9' dead_priority => 9")
+        )
+        expect(redis.call('ZSCORE', queue, 'rql:acq:1/2/3/4/dead9')).to eq(nil)
+        holder_client.unlock('prio.trips')
+      end
+
+      aggregate_failures 'up to MAX_DEAD_REQUEST_REMOVALS bands per attempt' do
+        test_logger.logs.clear
+        max_removals =
+          RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::MAX_DEAD_REQUEST_REMOVALS
+        dead_requests = (1..(max_removals + 1)).flat_map { |priority| dead_request.call(priority) }
+        redis.call('ZADD', queue, *dead_requests)
+        round_trips.clear
+        expect(client.lock('prio.trips', ttl: 1_000, retry_count: 2)).to match({
+          ok: true, result: hash_including(process: :lock_obtaining)
+        })
+        # NOTE: the first attempt (WATCH, the lock state with the queueing, removals, MULTI/EXEC),
+        #   the pre-check of the retry with the last removal, the attempt (WATCH, the lock state
+        #   with the queueing, MULTI/EXEC)
+        expect(counted_round_trips.call.size).to eq(3 + max_removals + 2 + 3)
+        expect(round_trips.count(removal_round_trip)).to eq(max_removals + 1)
+        expect(removal_logs.call.size).to eq(max_removals + 1)
+        client.unlock('prio.trips')
+      end
+
+      expect(client.keys).to be_empty
+      recorded_redis.close
+    end
+
+    specify 'clear_dead_requests drops dead requests of all priorities' do
+      position = lambda do |priority, age|
+        RedisQueuedLocks::Resource.calc_initial_acquirer_position(priority) - age
+      end
+      redis.call(
+        'ZADD', 'rql:lock_queue:prio.clear',
+        position.call(150, 60), 'rql:acq:1/2/3/4/dead_out_of_range',
+        position.call(100, 60), 'rql:acq:1/2/3/4/dead_high',
+        position.call(37, 60), 'rql:acq:1/2/3/4/dead_middle',
+        position.call(0, 60), 'rql:acq:1/2/3/4/dead_normal_first',
+        position.call(0, 50), 'rql:acq:1/2/3/4/dead_normal_second',
+        position.call(-100, 60), 'rql:acq:1/2/3/4/dead_low',
+        position.call(100, 1), 'rql:acq:1/2/3/4/alive_high',
+        position.call(-100, 1), 'rql:acq:1/2/3/4/alive_low'
+      )
+      redis.call(
+        'ZADD', 'rql:lock_read_queue:prio.clear', position.call(1, 60), 'rql:acq:1/2/3/4/dead_read'
+      )
+      prio_client.reindex_locks if prio_client.config['lock_index_enabled']
+
+      expect(prio_client.clear_dead_requests(dead_ttl: 30_000)).to match({
+        ok: true,
+        result: {
+          processed_queues: contain_exactly(
+            'rql:lock_queue:prio.clear', 'rql:lock_read_queue:prio.clear'
+          )
+        }
+      })
+      # NOTE: alive requests of the highest and the lowest priority stay (in the queue order)
+      expect(prio_client.queue_info('prio.clear')).to match({
+        'lock_queue' => 'rql:lock_queue:prio.clear',
+        'queue' => [
+          {
+            'acq_id' => 'rql:acq:1/2/3/4/alive_high', 'score' => be_a(Float),
+            'rw_mode' => 'write', 'priority' => 100
+          },
+          {
+            'acq_id' => 'rql:acq:1/2/3/4/alive_low', 'score' => be_a(Float),
+            'rw_mode' => 'write', 'priority' => -100
+          }
+        ]
+      })
+      prio_client.unlock('prio.clear')
+    end
+
+    specify 'queue info, the default priority from config, arguments validation' do
+      high_client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['default_lock_priority'] = 100
+      end
+      release = Thread::Queue.new
+      holder = hold_lock.call('prio.info', release)
+      requesters = [
+        Thread.new { prio_client.lock('prio.info', retry_count: nil, timeout: 20) {} },
+        Thread.new do
+          high_client.lock('prio.info', read_write_mode: :read, retry_count: nil, timeout: 20) {}
+        end
+      ]
+      wait_until.call { queued_requests.call('prio.info') == 2 }
+
+      aggregate_failures 'the priority of the requests in queue info' do
+        info = prio_client.queue_info('prio.info')
+        # NOTE: the default priority keeps the position equal to the enqueue time (the positions of
+        #   older RQL versions), the priority band shifts it down by 2**32 seconds per priority
+        expect(info['queue']).to match([{
+          'acq_id' => be_a(String), 'score' => be_within(5).of(Time.now.to_f),
+          'rw_mode' => 'write', 'priority' => 0
+        }])
+        expect(info['read_queue']).to match([{
+          'acq_id' => be_a(String), 'score' => be_within(5).of(Time.now.to_f - (100 * (2**32))),
+          'rw_mode' => 'read', 'priority' => 100
+        }])
+        expect(prio_client.queues_info).to contain_exactly(
+          { queue: 'rql:lock_queue:prio.info', requests: [hash_including('priority' => 0)] },
+          { queue: 'rql:lock_read_queue:prio.info', requests: [hash_including('priority' => 100)] }
+        )
+      end
+
+      release << true
+      [holder, *requesters].each(&:join)
+
+      aggregate_failures 'arguments validation' do
+        expect { prio_client.lock('prio.info', priority: 101) }.to raise_error(
+          RedisQueuedLocks::ArgumentError,
+          "`:priority` argument should be an Integer from -100 to 100 or a priority name of " \
+          "`config['lock_priorities']` (:lowest, :low, :normal, :high, :highest), got 101."
+        )
+        expect { prio_client.lock!('prio.info', priority: -101) }.to raise_error(
+          RedisQueuedLocks::ArgumentError, /priority/
+        )
+        expect { prio_client.lock_series('prio.a', 'prio.b', priority: 500) }.to raise_error(
+          RedisQueuedLocks::ArgumentError, /priority/
+        )
+        # NOTE: (RBS) type-invalid values can't reach the runtime validation under the RBS runtime
+        #   type checks (the hook raises first)
+        unless RBS_RUNTIME_TEST
+          expect { prio_client.lock('prio.info', priority: 1.0) }.to raise_error(
+            RedisQueuedLocks::ArgumentError, /priority/
+          )
+          expect { prio_client.lock('prio.info', priority: nil) }.to raise_error(
+            RedisQueuedLocks::ArgumentError, /priority/
+          )
+        end
+        expect { prio_client.config['default_lock_priority'] = 101 }.to raise_error(
+          RedisQueuedLocks::ConfigValidationError
+        )
+        expect { prio_client.config['default_lock_priority'] = -101 }.to raise_error(
+          RedisQueuedLocks::ConfigValidationError
+        )
+        expect { prio_client.config['default_lock_priority'] = 0.5 }.to raise_error(
+          RedisQueuedLocks::ConfigValidationError
+        )
+      end
+      expect(prio_client.keys).to be_empty
+    end
+
+    specify 'priority names (config lock_priorities): order, default priority, validation' do
+      timeline = []
+      release = Thread::Queue.new
+      # NOTE: application priority names next to the default ones
+      prio_client.config['lock_priorities'] =
+        prio_client.config['lock_priorities'].merge(payment: 90, email: -10)
+      holder = hold_lock.call('prio.names', release)
+      requesters = enqueue_requests.call('prio.names', [
+        %i[email write email],
+        %i[normal write normal],
+        %i[payment write payment],
+        %i[low read low],
+        %i[high write high],
+        %i[highest read highest]
+      ], timeline)
+
+      aggregate_failures 'names are resolved to their Integer priorities' do
+        info = prio_client.queue_info('prio.names')
+        expect(info['queue'].map { |request| request['priority'] }).to eq([90, 50, 0, -10])
+        expect(info['read_queue'].map { |request| request['priority'] }).to eq([100, -50])
+      end
+
+      release << true
+      [holder, *requesters].each(&:join)
+      # NOTE: the read request of the highest priority goes first, the low read request waits for
+      #   the write requests of higher priorities (strict priority between modes)
+      expect(timeline).to eq(%i[highest payment high normal email low])
+
+      aggregate_failures 'the default priority by name' do
+        low_client = RedisQueuedLocks::Client.new(redis) do |config|
+          config['default_lock_priority'] = :low
+        end
+        release = Thread::Queue.new
+        holder = hold_lock.call('prio.names.default', release)
+        requester = Thread.new do
+          low_client.lock('prio.names.default', retry_count: nil, timeout: 20) {}
+        end
+        wait_until.call { queued_requests.call('prio.names.default') == 1 }
+        expect(prio_client.queue_info('prio.names.default')['queue']).to match(
+          [hash_including('priority' => -50)]
+        )
+        release << true
+        [holder, requester].each(&:join)
+      end
+
+      aggregate_failures 'unknown priority names' do
+        expect { prio_client.lock('prio.names', priority: :urgent) }.to raise_error(
+          RedisQueuedLocks::ArgumentError,
+          "`:priority` argument should be an Integer from -100 to 100 or a priority name of " \
+          "`config['lock_priorities']` (:lowest, :low, :normal, :high, :highest, :payment, " \
+          ":email), got :urgent."
+        )
+        expect { prio_client.lock!('prio.names', priority: :urgent) }.to raise_error(
+          RedisQueuedLocks::ArgumentError, /got :urgent/
+        )
+        expect { prio_client.lock_series('prio.a', 'prio.b', priority: :urgent) }.to raise_error(
+          RedisQueuedLocks::ArgumentError, /got :urgent/
+        )
+        # NOTE: a priority name of the default priority is checked on each lock acquirement (the
+        #   priority names can be configured after the default priority)
+        urgent_client = RedisQueuedLocks::Client.new(redis) do |config|
+          config['default_lock_priority'] = :urgent
+        end
+        expect { urgent_client.lock('prio.names') }.to raise_error(
+          RedisQueuedLocks::ArgumentError, /got :urgent/
+        )
+      end
+
+      aggregate_failures 'config validation' do
+        [{ 'high' => 1 }, { high: 101 }, { high: -101 }, { high: 1.5 }, [[:high, 1]], nil]
+          .each do |invalid_priorities|
+            expect { prio_client.config['lock_priorities'] = invalid_priorities }.to raise_error(
+              RedisQueuedLocks::ConfigValidationError
+            )
+          end
+        expect { prio_client.config['default_lock_priority'] = 'high' }.to raise_error(
+          RedisQueuedLocks::ConfigValidationError
+        )
+        # NOTE: the default priority names (frozen: the default value is shared by all clients)
+        default_priorities = RedisQueuedLocks::Client.new(redis).config['lock_priorities']
+        expect(default_priorities).to eq(
+          { lowest: -100, low: -50, normal: 0, high: 50, highest: 100 }
+        )
+        expect(default_priorities).to be_frozen
+      end
+      expect(prio_client.keys).to be_empty
+    end
+
+    specify 'priority in logs and instrumentation of the lock events' do
+      test_notifier = Class.new do
+        attr_reader :notifications
+
+        def initialize
+          @notifications = []
+        end
+
+        def notify(event, payload = {})
+          notifications << { event:, payload: }
+        end
+      end.new
+      test_logger = Class.new do
+        attr_reader :logs
+
+        def initialize
+          @logs = []
+        end
+
+        def debug(progname = nil, &block)
+          logs << (block ? yield : progname)
+        end
+      end.new
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['instrumenter'] = test_notifier
+        config['logger'] = test_logger
+      end
+
+      client.lock('prio.events', priority: -1) { :ok }
+      client.lock('prio.events.named', priority: :high) { :ok }
+      client.lock_series('prio.events.a', 'prio.events.b', priority: 1) { :ok }
+      client.lock('prio.events.busy', ttl: 30_000)
+      client.lock('prio.events.busy', priority: 1, fail_fast: true)
+
+      expect(test_notifier.notifications).to include(
+        match({
+          event: 'redis_queued_locks.lock_obtained',
+          payload: hash_including(lock_key: 'rql:lock:prio.events', priority: -1)
+        }),
+        match({
+          event: 'redis_queued_locks.lock_hold_and_release',
+          payload: hash_including(lock_key: 'rql:lock:prio.events', priority: -1)
+        }),
+        # NOTE: a priority name is reported as its Integer priority
+        match({
+          event: 'redis_queued_locks.lock_obtained',
+          payload: hash_including(lock_key: 'rql:lock:prio.events.named', priority: 50)
+        }),
+        match({
+          event: 'redis_queued_locks.lock_obtained',
+          payload: hash_including(lock_key: 'rql:lock:prio.events.a', priority: 1)
+        }),
+        match({
+          event: 'redis_queued_locks.lock_obtained',
+          payload: hash_including(lock_key: 'rql:lock:prio.events.b', priority: 1)
+        }),
+        match({
+          event: 'redis_queued_locks.lock_obtained',
+          payload: hash_including(lock_key: 'rql:lock:prio.events.busy', priority: 0)
+        }),
+        match({
+          event: 'redis_queued_locks.lock_obtaining_failed',
+          payload: hash_including(
+            lock_key: 'rql:lock:prio.events.busy', priority: 1, result: :fail_fast_no_try
+          )
+        })
+      )
+      expect(test_logger.logs).to include(
+        a_string_including(
+          '[redis_queued_locks.lock_obtained]', "lock_key => 'rql:lock:prio.events'",
+          "rw_mode => 'write' priority => -1 acq_time => "
+        ),
+        a_string_including(
+          '[redis_queued_locks.lock_obtained]', "lock_key => 'rql:lock:prio.events.named'",
+          "rw_mode => 'write' priority => 50 acq_time => "
+        ),
+        a_string_including(
+          '[redis_queued_locks.lock_obtaining_failed]', "lock_key => 'rql:lock:prio.events.busy'",
+          "rw_mode => 'write' priority => 1 acq_time => "
+        )
+      )
+      client.unlock('prio.events.busy')
+    end
   end
 
   describe 'read/write locks' do
@@ -3930,11 +4578,17 @@ RSpec.shared_examples 'redis_queued_locks' do
         expect(client.queue_info('rw.info')).to match({
           'lock_queue' => 'rql:lock_queue:rw.info',
           'queue' => contain_exactly(
-            { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write' }
+            {
+              'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'write',
+              'priority' => 0
+            }
           ),
           'read_lock_queue' => 'rql:lock_read_queue:rw.info',
           'read_queue' => contain_exactly(
-            { 'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'read' }
+            {
+              'acq_id' => be_a(String), 'score' => be_a(Numeric), 'rw_mode' => 'read',
+              'priority' => 0
+            }
           )
         })
         expect(client.queues).to include('rql:lock_queue:rw.info', 'rql:lock_read_queue:rw.info')
@@ -4036,14 +4690,14 @@ RSpec.shared_examples 'redis_queued_locks' do
           'queue' => [],
           'read_lock_queue' => 'rql:lock_read_queue:rw.read.queue',
           'read_queue' => contain_exactly(
-            { 'acq_id' => reader, 'score' => be_a(Numeric), 'rw_mode' => 'read' }
+            { 'acq_id' => reader, 'score' => be_a(Numeric), 'rw_mode' => 'read', 'priority' => 0 }
           )
         })
         expect(client.queues_info).to contain_exactly(
           match({
             queue: 'rql:lock_read_queue:rw.read.queue',
             requests: contain_exactly(
-              { 'acq_id' => reader, 'score' => be_a(Numeric), 'rw_mode' => 'read' }
+              { 'acq_id' => reader, 'score' => be_a(Numeric), 'rw_mode' => 'read', 'priority' => 0 }
             )
           })
         )
@@ -4153,11 +4807,17 @@ RSpec.shared_examples 'redis_queued_locks' do
       expect(client.queue_info('rw.zombie.queue')).to match({
         'lock_queue' => 'rql:lock_queue:rw.zombie.queue',
         'queue' => contain_exactly(
-          { 'acq_id' => live_acquirer, 'score' => be_a(Numeric), 'rw_mode' => 'write' }
+          {
+            'acq_id' => live_acquirer, 'score' => be_a(Numeric), 'rw_mode' => 'write',
+            'priority' => 0
+          }
         ),
         'read_lock_queue' => 'rql:lock_read_queue:rw.zombie.queue',
         'read_queue' => contain_exactly(
-          { 'acq_id' => live_acquirer, 'score' => be_a(Numeric), 'rw_mode' => 'read' }
+          {
+            'acq_id' => live_acquirer, 'score' => be_a(Numeric), 'rw_mode' => 'read',
+            'priority' => 0
+          }
         )
       })
       expect(client.zombie_locks).to eq(Set.new)
@@ -4174,6 +4834,8 @@ RSpec.shared_examples 'redis_queued_locks' do
       #   - eager queueing (`:wait_for_lock`) sends the lock request queueing commands right after
       #     the head of the lock state pipeline; without eager queueing (`:work_through`) they are
       #     sent in a separate pipeline;
+      #   - the dead requests of the priority band of the request are dropped before the queue
+      #     heads (other bands: only a dead blocking request, in another round trip);
       #   - the enabled lock index adds the lock index commands to the end of the queueing commands
       #     (their replies are not read);
       #   - pipelines are observed via a separate pool (the same db) with a recording middleware;
@@ -4194,9 +4856,9 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       # NOTE: the lock state pipeline (the only one with TIME) and the pipeline with
       #   the lock request queueing (ZADD NX) of an uncontended lock
-      lock_pipelines = lambda do |read_write_mode, conflict_strategy|
+      lock_pipelines = lambda do |read_write_mode, conflict_strategy, priority = 0|
         pipelines.clear
-        client.lock('rw.pipeline', read_write_mode:, conflict_strategy:, ttl: 10_000) {}
+        client.lock('rw.pipeline', read_write_mode:, conflict_strategy:, priority:, ttl: 10_000) {}
         [
           pipelines.find { |commands| commands.include?(['TIME']) },
           pipelines.find do |commands|
@@ -4204,14 +4866,27 @@ RSpec.shared_examples 'redis_queued_locks' do
           end
         ]
       end
-      expect_queueing = lambda do |queueing, request_queue, opposite_request_queue|
+      # NOTE: the dead request removal of the priority band (`(-p * 2**32) .. (now - queue ttl) -
+      #   p * 2**32`); the default queue ttl is 15 seconds
+      expect_band_removal = lambda do |command, band_queue, priority|
+        expect(command[0..2]).to eq(['ZREMRANGEBYSCORE', band_queue, (-priority * (2**32)).to_s])
+        expect(Float(command[3])).to be_within(5).of(Time.now.to_f - 15 - (priority * (2**32)))
+      end
+      expect_queueing = lambda do |queueing, request_queue, opposite_request_queue, priority = 0|
         expect(queueing.map(&:first)).to eq(
           %w[ZADD ZREMRANGEBYSCORE ZREMRANGEBYSCORE ZRANGE ZRANGE] +
           # NOTE: the request queue TTL and the lock index (the enabled lock index only: new
           #   commands go to the end)
           (lock_index_enabled ? %w[PEXPIRE PEXPIRE ZADD ZREMRANGEBYSCORE] : [])
         )
-        expect(queueing[try_to_lock::QUEUE_HEAD_REPLY]).to eq(['ZRANGE', request_queue, '0', '0'])
+        expect(queueing[0]).to match(['ZADD', request_queue, 'NX', be_a(String), be_a(String)])
+        expect(Float(queueing[0][3])).to be_within(5).of(Time.now.to_f - (priority * (2**32)))
+        # NOTE: the priority band of the request (before the queue heads)
+        expect_band_removal.call(queueing[1], request_queue, priority)
+        expect_band_removal.call(queueing[2], opposite_request_queue, priority)
+        expect(queueing[try_to_lock::QUEUE_HEAD_REPLY]).to eq(
+          ['ZRANGE', request_queue, '0', '0', 'WITHSCORES']
+        )
         expect(queueing[try_to_lock::OPPOSITE_QUEUE_HEAD_REPLY]).to eq(
           ['ZRANGE', opposite_request_queue, '0', '0', 'WITHSCORES']
         )
@@ -4254,6 +4929,16 @@ RSpec.shared_examples 'redis_queued_locks' do
             expect_queueing.call(write_queueing, queue, read_queue)
             expect_queueing.call(read_queueing, read_queue, queue)
           end
+        end
+      end
+
+      aggregate_failures 'lock request queueing of other priorities' do
+        [100, 1, -1, -100].each do |priority|
+          write_state, = lock_pipelines.call(:write, :wait_for_lock, priority)
+          read_state, = lock_pipelines.call(:read, :wait_for_lock, priority)
+          queueing_at = try_to_lock::LOCK_STATE_QUEUE_REPLIES_AT
+          expect_queueing.call(write_state[queueing_at, queueing_size], queue, read_queue, priority)
+          expect_queueing.call(read_state[queueing_at, queueing_size], read_queue, queue, priority)
         end
       end
       expect(client.keys).to be_empty

@@ -13,6 +13,7 @@ module RedisQueuedLocks
         LOCK_STATE_QUEUE_REPLIES_AT: Integer
         QUEUE_HEAD_REPLY: Integer
         OPPOSITE_QUEUE_HEAD_REPLY: Integer
+        MAX_DEAD_REQUEST_REMOVALS: Integer
 
         # { ok: bool, result: Symbol }
         # { ok: bool, result: Symbol }
@@ -43,6 +44,7 @@ module RedisQueuedLocks
           String acquirer_id,
           String host_id,
           Integer|Float acquirer_position,
+          Integer priority,
           Integer? ttl,
           Integer queue_ttl,
           bool lock_index_enabled,
@@ -63,12 +65,21 @@ module RedisQueuedLocks
           String request_queue,
           String opposite_request_queue,
           Integer|Float acquirer_position,
+          Integer priority,
           String acquirer_id,
           Float acquirer_dead_score,
           String lock_name,
           Integer queue_ttl,
           bool lock_index_enabled,
           Integer lock_index_grace_period
+        ) -> void
+
+        def pipeline_dead_requests_removal: (
+          RedisClient::Pipeline pipeline,
+          String request_queue,
+          String opposite_request_queue,
+          Float acquirer_dead_score,
+          Integer priority
         ) -> void
 
         def pipeline_lock_state: (
@@ -81,6 +92,7 @@ module RedisQueuedLocks
           String request_queue,
           String opposite_request_queue,
           Integer|Float acquirer_position,
+          Integer priority,
           Float acquirer_dead_score,
           String lock_name,
           Integer queue_ttl,
@@ -129,6 +141,25 @@ module RedisQueuedLocks
           String? current_lock_obtainer
         ) -> void
 
+        def drop_dead_requests_ahead: (
+          RC::client rconn,
+          RQL::loggerObj logger,
+          bool log_sampled,
+          bool log_lock_try,
+          String lock_key,
+          RQL::readWriteMode read_write_mode,
+          String request_queue,
+          String opposite_request_queue,
+          String acquirer_id,
+          String host_id,
+          Integer|Float acquirer_position,
+          Float acquirer_dead_score,
+          Integer queue_ttl,
+          RQL::accessStrategy access_strategy,
+          [String, Float]? waiting_request,
+          [String, Float]? opposite_waiting_request
+        ) -> [[String, Float]?, [String, Float]?]?
+
         def precheck_lock: (
           RC::client rconn,
           RQL::loggerObj logger,
@@ -143,6 +174,7 @@ module RedisQueuedLocks
           String acquirer_id,
           String host_id,
           Integer|Float acquirer_position,
+          Integer priority,
           Float acquirer_dead_score,
           Integer queue_ttl,
           bool lock_index_enabled,

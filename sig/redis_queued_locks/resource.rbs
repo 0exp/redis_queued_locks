@@ -10,6 +10,9 @@ module RedisQueuedLocks
     SWARM_KEY: String
     LOCK_INDEX_KEY: String
     REDIS_TIMESHIFT_ERROR: Integer
+    MIN_LOCK_PRIORITY: Integer
+    MAX_LOCK_PRIORITY: Integer
+    LOCK_PRIORITY_BAND: Integer
 
     def self.calc_uniq_identity: () -> String
     def self.acquirer_identifier: (
@@ -44,10 +47,13 @@ module RedisQueuedLocks
     def self.lock_key_from_readers: (String lock_readers_key) -> String
     %a{rbs:test:skip} def self.host_identifier_from_acquirer: (String acquirer_id) -> String
     def self.redis_time_ms: (Array[String] redis_time) -> Integer
-    def self.calc_initial_acquirer_position: () -> Float
+    def self.calc_initial_acquirer_position: (Integer priority) -> Float
     def self.acquirer_dead_score: (Integer|Float queue_ttl) -> Float
+    def self.lock_priority_band_floor: (Integer priority) -> Integer
+    def self.lock_priority_band_dead_score: (Float dead_score, Integer priority) -> Float
+    def self.lock_request_priority: (Integer|Float acquirer_position) -> Integer
     %a{rbs:test:skip} def self.calc_zombie_score: (Float zombie_ttl) -> Float
-    def self.dead_score_reached?: (Float acquirer_position, Integer queue_ttl) -> bool
+    def self.dead_score_reached?: (Float acquirer_position, Integer priority, Integer queue_ttl) -> bool
     def self.lock_key_from_queue: (String lock_queue) -> String?
     def self.get_thread_id: () -> Integer
     def self.get_fiber_id: () -> Integer

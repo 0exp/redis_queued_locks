@@ -1,5 +1,31 @@
 ## [Unreleased]
+### Added
+- Lock request priorities: the `priority:` option of `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (an Integer from `-100`,
+  the lowest, to `100`, the highest, `0` by default; pre-configured in the new `config['default_lock_priority']`): with the
+  `:queued` access strategy a lock request is placed in the lock request queue after all requests of the same or higher
+  priority and before all requests of the lower priority (strict priority, FIFO inside the same priority; read and write lock
+  requests too); the priority orders the waiting lock requests only (the obtained lock is never taken away), `:random`
+  ignores it:
+  - the position of the lock request (the queue score) is the request time shifted by `-priority * 2**32` seconds: the default
+    priority keeps the request time (the queue data of the default priority is the same as before);
+  - every lock request drops dead lock requests of its own priority in both lock queues (in the same queueing pipeline: no new
+    commands and round trips); a dead lock request of another priority that blocks the lock request (decoded from its position)
+    is dropped with the dead lock requests of its priority in one more round trip of the same attempt (up to 5 priorities per
+    attempt); the cost of an attempt does not depend on the number of priorities;
+  - `#clear_dead_requests` drops the dead lock requests of every priority found in the lock queues (two round trips per batch of
+    lock queues: the lock requests are read, then the dead ones are dropped);
+  - the new `log_lock_try` log event `[redis_queued_locks.try_lock.dead_request_removed]` (`dead_acq_id`, `dead_priority`);
+  - priority names: `priority:` and `config['default_lock_priority']` accept a priority name (Symbol) of the new
+    `config['lock_priorities']` (a priority name => its Integer priority; default names: `:lowest` (`-100`), `:low` (`-50`),
+    `:normal` (`0`), `:high` (`50`), `:highest` (`100`); applications define their own names); a name is resolved to its
+    Integer priority on each lock acquirement (queues, `#queue_info`, logs and instrumentation have the Integer priority),
+    an unknown name fails with `RedisQueuedLocks::ArgumentError`;
+  - all processes that share locks should be upgraded before the priorities are used: older versions drop the lock requests
+    of the high priority as dead ones (the order is broken, the mutual exclusion is not affected);
 ### Changed
+- `#queue_info`/`#queues_info`: each lock request has the `"priority"` field (`Integer`, decoded from its position);
+- logs and instrumentation payloads of the lock events `lock_obtained`, `lock_obtaining_failed` (log and event) and
+  `lock_hold_and_release` (event) have `priority`;
 - RBS: `RedisQueuedLocks::Config#[]` is typed per config key (one overload per key with its value type) instead of
   `(String) -> untyped`: Steep users get precise types of `config['...']` reads and type errors on unknown keys;
   lookups with a dynamic `String` key no longer type-check (the runtime behavior is unchanged).
