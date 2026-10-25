@@ -191,7 +191,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   (it drops alive higher-priority requests and keeps dead lower-priority ones); full clears (`-inf .. +inf`) and
   member removals (`ZREM`) are band-independent.
 - Head-driven cleanup, cost independent of the priority range: the queueing prunes the own band in both queues (in
-  its pipeline), Step 2.2 (`drop_dead_requests_ahead`, attempt and pre-check, `:queued` only) drops the bands of the
+  its pipeline, before `ZADD NX`: a requeued request must not lose its new position to the removal of its old one),
+  Step 2.2 (`drop_dead_requests_ahead`, attempt and pre-check, `:queued` only) drops the bands of the
   dead blocking requests (the write queue head for writers, the earlier opposite-mode request) with the queue heads
   re-read in the same round trip, bounded by `MAX_DEAD_REQUEST_REMOVALS`; `ClearDeadRequests` prunes only the bands
   whose first request is dead. Never enumerate the priority range per attempt or per queue; any band is decoded

@@ -44,6 +44,12 @@
   (`:queued | :random`) and `RedisQueuedLocks::conflictStrategy` (`:wait_for_lock | :work_through |
   :extendable_work_through | :dead_locking`) replace `Symbol` for `read_write_mode`, `access_strategy` and
   `conflict_strategy` in the `Client` signatures (and the config defaults): Steep rejects an invalid strategy/mode value.
+### Fixed
+- a lock request that waits longer than its `queue_ttl` (its position is reset: requeued at the end of its priority) could be
+  missing in the lock queue for one attempt: the queueing kept its old dead position (`ZADD NX`) and dropped it as a dead
+  request right after, so the attempt could fail (`:dead_score_reached`, `:acquirer_is_not_first_in_queue`) and spend
+  a retry; the queueing drops the dead lock requests before the lock request is queued now (the same commands in the same
+  round trip);
 
 ## [1.21.0] - 2026-10-13
 ### Added

@@ -2984,6 +2984,64 @@ RSpec.shared_examples 'redis_queued_locks' do
     end.to raise_error(RedisQueuedLocks::LockAcquirementRetryLimitError)
   end
 
+  specify 'requeue after queue_ttl: the lock request is queued again in the same attempt' do
+    # NOTE: the lock request that waits longer than its `queue_ttl` gets a new position on the next
+    #   attempt (`dead_score_reached__reset_acquirer_position`); the queueing drops the dead
+    #   requests (its old position too) before `ZADD NX`, so the new position is queued in the same
+    #   attempt (each waiter is alone in its lock queue: no other lock request drops its old
+    #   position before it); both modes wait for the write lock of the holder (in parallel: each
+    #   waiter is a separate acquirer);
+    test_logger = Class.new do
+      attr_reader :logs
+
+      def initialize
+        @logs = []
+      end
+
+      def debug(progname = nil, &block)
+        logs << (block ? yield : progname)
+      end
+    end.new
+    client = RedisQueuedLocks::Client.new(redis) do |config|
+      config['logger'] = test_logger
+      config['log_lock_try'] = true
+    end
+    holder_client = RedisQueuedLocks::Client.new(redis)
+    waiters = %i[write read].to_h do |read_write_mode|
+      holder_client.lock("requeue.#{read_write_mode}", ttl: 2_500)
+      waiter = Thread.new do
+        client.lock(
+          "requeue.#{read_write_mode}",
+          read_write_mode:, queue_ttl: 1, retry_count: nil, retry_delay: 100, retry_jitter: 0,
+          timeout: 10
+        )
+      end
+      [read_write_mode, waiter]
+    end
+    logs = lambda do |event, read_write_mode|
+      test_logger.logs.grep(
+        /\A\[redis_queued_locks\.#{event}\] lock_key => 'rql:lock:requeue\.#{read_write_mode}' /
+      )
+    end
+
+    aggregate_failures 'write and read lock requests' do
+      waiters.each do |read_write_mode, waiter|
+        expect(waiter.value).to match({
+          ok: true,
+          result: hash_including(lock_key: "rql:lock:requeue.#{read_write_mode}")
+        })
+        expect(
+          logs.call('dead_score_reached__reset_acquirer_position', read_write_mode)
+        ).not_to be_empty
+        # NOTE: the requeued lock request is never missing in its lock queue
+        expect(logs.call('try_lock\.exit__queue_ttl_reached', read_write_mode)).to be_empty
+      end
+    end
+
+    waiters.each_key { |read_write_mode| client.unlock("requeue.#{read_write_mode}") }
+    expect(client.keys).to be_empty
+  end
+
   specify 'lock_info, queue_info' do
     client = RedisQueuedLocks::Client.new(redis)
     lock_name = "kekpek-#{rand(100_000)}"
@@ -5032,8 +5090,9 @@ RSpec.shared_examples 'redis_queued_locks' do
       #   - eager queueing (`:wait_for_lock`) sends the lock request queueing commands right after
       #     the head of the lock state pipeline; without eager queueing (`:work_through`) they are
       #     sent in a separate pipeline;
-      #   - the dead requests of the priority band of the request are dropped before the queue
-      #     heads (other bands: only a dead blocking request, in another round trip);
+      #   - the dead requests of the priority band of the request are dropped before `ZADD NX`
+      #     (the old position of a requeued request is dropped before its new position is added)
+      #     and the queue heads (other bands: only a dead blocking request, in another round trip);
       #   - the enabled lock index adds the lock index commands to the end of the queueing commands
       #     (their replies are not read);
       #   - pipelines are observed via a separate pool (the same db) with a recording middleware;
@@ -5072,16 +5131,16 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
       expect_queueing = lambda do |queueing, request_queue, opposite_request_queue, priority = 0|
         expect(queueing.map(&:first)).to eq(
-          %w[ZADD ZREMRANGEBYSCORE ZREMRANGEBYSCORE ZRANGE ZRANGE] +
+          %w[ZREMRANGEBYSCORE ZREMRANGEBYSCORE ZADD ZRANGE ZRANGE] +
           # NOTE: the request queue TTL and the lock index (the enabled lock index only: new
           #   commands go to the end)
           (lock_index_enabled ? %w[PEXPIRE PEXPIRE ZADD ZREMRANGEBYSCORE] : [])
         )
-        expect(queueing[0]).to match(['ZADD', request_queue, 'NX', be_a(String), be_a(String)])
-        expect(Float(queueing[0][3])).to be_within(5).of(Time.now.to_f - (priority * (2**32)))
-        # NOTE: the priority band of the request (before the queue heads)
-        expect_band_removal.call(queueing[1], request_queue, priority)
-        expect_band_removal.call(queueing[2], opposite_request_queue, priority)
+        # NOTE: the priority band of the request (before `ZADD NX` and the queue heads)
+        expect_band_removal.call(queueing[0], request_queue, priority)
+        expect_band_removal.call(queueing[1], opposite_request_queue, priority)
+        expect(queueing[2]).to match(['ZADD', request_queue, 'NX', be_a(String), be_a(String)])
+        expect(Float(queueing[2][3])).to be_within(5).of(Time.now.to_f - (priority * (2**32)))
         expect(queueing[try_to_lock::QUEUE_HEAD_REPLY]).to eq(
           ['ZRANGE', request_queue, '0', '0', 'WITHSCORES']
         )

@@ -43,11 +43,11 @@
 #     queues (FIFO inside the same priority), so the queue heads and the order between modes
 #     (`find_opposite_request_ahead`) work with the positions as is;
 #   - dead lock requests are dropped per priority band (each band has its own time barrier):
-#     the band of the current request before the queue heads are read (both queues); a dead
-#     request of another band is dropped when it blocks the current request (the queue head or
-#     the earlier request of the opposite mode): its band and its enqueue time are decoded from
-#     its position, so the cost of an attempt does not depend on the number of priorities (see
-#     `drop_dead_requests_ahead`);
+#     the band of the current request before the request is queued and the queue heads are read
+#     (both queues); a dead request of another band is dropped when it blocks the current request
+#     (the queue head or the earlier request of the opposite mode): its band and its enqueue time
+#     are decoded from its position, so the cost of an attempt does not depend on the number of
+#     priorities (see `drop_dead_requests_ahead`);
 #
 # @api private
 # @since 1.0.0
@@ -282,7 +282,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         #   - read lock expiration of the current acquirer;
         #   - the longest read lock (the last one in the readers registry): write lock requests
         #     only (read lock requests do not wait for other readers);
-        #   - (eager queueing) the lock request queueing: Steps 1, 2.1, 3 (`queue_lock_request`);
+        #   - (eager queueing) the lock request queueing: Steps 2.1, 1, 3 (`queue_lock_request`);
         # NOTE: replies are read by their positions: see "pipeline layout" in `pipeline_lock_state`
         # @type var lock_state: Array[untyped]
         lock_state = rconn.pipelined do |pipeline|
@@ -520,8 +520,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # Fast-Step X1: lock is already obtained. fail fast leads to "no try".
           inter_result = :fail_fast_no_try
         else
-          # Step 1: add an acquirer to the lock acquirement queue
           # Step 2.1: drop expired acquirers from the lock queues
+          # Step 1: add an acquirer to the lock acquirement queue
           # Step 3: get the actual acquirer waiting in the queue
           #   - one round trip for all of them (see `queue_lock_request`);
           #   - eager queueing: already done in the lock state round trip (Step 0.1);
@@ -877,12 +877,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
   private
 
-  # Queues the lock request and reads the lock queue state (Steps 1, 2.1, 3 and 3.2-3.4 of
+  # Queues the lock request and reads the lock queue state (Steps 2.1, 1, 3 and 3.2-3.4 of
   # the attempt): the commands are added to the given pipeline (one round trip with other
   # pipelined commands).
-  # Replies (positions relative to the first one): [0] ZADD NX, [1] ZREMRANGEBYSCORE (request
-  # queue, the priority band of the request), [2] ZREMRANGEBYSCORE (opposite request queue, the
-  # priority band of the request), [QUEUE_HEAD_REPLY] ZRANGE WITHSCORES (the first request of
+  # Replies (positions relative to the first one): [0] ZREMRANGEBYSCORE (request queue, the
+  # priority band of the request), [1] ZREMRANGEBYSCORE (opposite request queue, the priority band
+  # of the request), [2] ZADD NX, [QUEUE_HEAD_REPLY] ZRANGE WITHSCORES (the first request of
   # the request queue), [OPPOSITE_QUEUE_HEAD_REPLY] ZRANGE WITHSCORES (the first request of
   # the opposite request queue); the enabled lock index only: [5] PEXPIRE NX, [6] PEXPIRE GT (the
   # request queue TTL), [7] ZADD GT (the lock index), [8] ZREMRANGEBYSCORE (expired lock names of
@@ -920,6 +920,22 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     lock_index_enabled,
     lock_index_grace_period
   )
+    # Step 2.1: drop expired acquirers from the lock queues
+    #   - (RW) both queues are cleared: an expired request of the opposite mode should not
+    #     block the current request forever;
+    #   - (priorities) the requests of the priority band of the current request (the band has its
+    #     own time barrier, see `RedisQueuedLocks::Resource::LOCK_PRIORITY_BAND`); a dead request of
+    #     another band is dropped when it blocks the current request (`drop_dead_requests_ahead`),
+    #     requests of lower priorities are never ahead of the current request;
+    #   - before the queueing (Step 1): the old (dead) position of the requeued request (its
+    #     position is reset after `queue_ttl`, see `dead_score_reached?`) is dropped first, so
+    #     `ZADD NX` adds its new position in the same round trip (after `ZADD NX` the old position
+    #     would be kept by `NX` and dropped by the removal: the request would be missing in the
+    #     queue in this attempt);
+    pipeline_dead_requests_removal(
+      pipeline, request_queue, opposite_request_queue, acquirer_dead_score, priority
+    )
+
     # Step 1: add an acquirer to the lock acquirement queue
     # NOTE:
     #   'NX' means "Only add new elements. Don't update already existing elements."
@@ -928,17 +944,6 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     #     2. (requeue) or <<add to the right pre-calculated position if you are
     #       not in the queue now>>;
     pipeline.call('ZADD', request_queue, 'NX', acquirer_position, acquirer_id)
-
-    # Step 2.1: drop expired acquirers from the lock queues
-    #   - (RW) both queues are cleared: an expired request of the opposite mode should not
-    #     block the current request forever;
-    #   - (priorities) the requests of the priority band of the current request (the band has its
-    #     own time barrier, see `RedisQueuedLocks::Resource::LOCK_PRIORITY_BAND`); a dead request of
-    #     another band is dropped when it blocks the current request (`drop_dead_requests_ahead`),
-    #     requests of lower priorities are never ahead of the current request;
-    pipeline_dead_requests_removal(
-      pipeline, request_queue, opposite_request_queue, acquirer_dead_score, priority
-    )
 
     # Step 3: get the actual acquirer waiting in the queue (with its position: the band and
     #   the liveness of the queue head are decoded from it, see `drop_dead_requests_ahead`)
