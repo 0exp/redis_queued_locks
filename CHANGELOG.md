@@ -4,8 +4,9 @@
   the lowest, to `100`, the highest, `0` by default; pre-configured in the new `config['default_lock_priority']`): with the
   `:queued` access strategy a lock request is placed in the lock request queue after all requests of the same or higher
   priority and before all requests of the lower priority (strict priority, FIFO inside the same priority; read and write lock
-  requests too); the priority orders the waiting lock requests only (the obtained lock is never taken away), `:random`
-  ignores it:
+  requests too); the priority orders the waiting lock requests only (the obtained lock is never taken away); a `:random` lock
+  request does not wait for its turn (it ignores the priorities of other requests), but it is queued at the position of its
+  priority (`:queued` lock requests wait for it):
   - the position of the lock request (the queue score) is the request time shifted by `-priority * 2**32` seconds: the default
     priority keeps the request time (the queue data of the default priority is the same as before);
   - every lock request drops dead lock requests of its own priority in both lock queues (in the same queueing pipeline: no new

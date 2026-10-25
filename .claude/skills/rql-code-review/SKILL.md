@@ -369,7 +369,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   the polled handoff (`retry_delay`), dead requests pruned with the pruner's `queue_ttl`, dead requests of lower bands
   lingering until an attempt of their band/`clear_dead_requests`/the queue TTL/the swarm (they never block), the
   library-constant range `-100..100` and its ~61 µs FIFO precision inside a band, `MAX_DEAD_REQUEST_REMOVALS` per
-  attempt, `:random` ignoring the priority, `clear_dead_requests` reading the batch queues (2 round trips per batch),
+  attempt, `:random` requests ignoring the order and the priorities of other requests (while their own requests are queued
+  at their priority: `:queued` requests wait for them), `clear_dead_requests` reading the batch queues (2 round trips per batch),
   the order degradation with older versions (no safety impact).
 - Unused `Resource` methods marked `# NOTE: (debug)` (manual runtime checks, `logic.md#17`); report a debug method
   only when it is wrong for a key family it can get.

@@ -135,7 +135,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #     requests of the same or higher priority and before all requests of the lower priority
     #     (strict priority, FIFO inside the same priority; between modes too: the read and write
     #     lock request queues use the same positions);
-    #   - `:random` access strategy ignores the lock request queues (and the priority);
+    #   - `:random` access strategy: the lock request does not wait for its turn (it ignores the
+    #     order of the lock request queues and the priorities of other requests), but it is queued
+    #     at the position of its priority like a `:queued` one: `:queued` lock requests wait for it;
     #   - the obtained lock is never taken away: the priority orders the waiting lock requests only;
     #   - pre-configured in `config['default_lock_priority']`;
     # @option lock_priorities [Hash<Symbol,Integer>]

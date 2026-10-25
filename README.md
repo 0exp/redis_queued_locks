@@ -615,7 +615,9 @@ def lock(
   - `:queued` access strategy: the lock request is placed in the lock request queue after all requests of the same or
     higher priority and before all requests of the lower priority (strict priority, FIFO inside the same priority;
     read and write lock requests too);
-  - `:random` access strategy ignores the lock request queues (and the priority);
+  - `:random` access strategy: the lock request does not wait for its turn (it ignores the order of the lock request queues
+    and the priorities of other requests), but it is queued at the position of its priority like a `:queued` one: `:queued`
+    lock requests wait for it;
   - the obtained lock is never taken away: the priority orders the waiting lock requests only;
   - pre-configured in `config['default_lock_priority']`;
   - See [Lock Request Prioritization](#lock-request-prioritization) documentation section for details;
@@ -2641,7 +2643,8 @@ rql.possible_host_ids
     - `:queued` (FIFO): the classic queued behavior (default), your lock will be obitaned if you are first in queue and the required lock is free;
       the queue is ordered by the [lock request priorities](#lock-request-prioritization) (FIFO inside the same priority);
     - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist, retries, timeouts and so on). if lock is free to obtain - it will be obtained;
-      (lock request priorities are ignored too);
+      (the priorities of other lock requests are ignored too; the lock request itself is queued at the position of its
+      [priority](#lock-request-prioritization) like a `:queued` one: `:queued` lock requests wait for it);
   - for current implementation detalis check:
     - [Configuration](#configuration) documentation: see `config['default_access_strategy']` config docs;
     - [#lock](#lock---obtain-a-lock) method documentation: see `access_strategy` attribute docs;
@@ -2725,7 +2728,10 @@ rql.lock("user_#{user.id}", priority: :high) { update_profile } # priority: 50
     `queue_ttl` don't wait for it: it loses its place (and the advantage of its priority) to them, the lock goes to the request
     whose attempt finds the lock free first; use the same `queue_ttl` for the lock requests of a lock (a longer `queue_ttl` does
     not keep a request in the queue);
-  - `:random` access strategy ignores the lock request queues and the priority;
+  - `:random` access strategy: the lock request does not wait for its turn (the order of the queues and the priorities of other
+    requests are ignored), but it is queued at the position of its priority: `:queued` lock requests wait for it (a `:random`
+    request of a high priority holds back the waiting `:queued` requests of lower priorities until it obtains the lock or
+    leaves the queue);
   - all processes that share locks should use RQL versions with priorities before the priorities are used: older versions drop
     the lock requests of the high priority as dead ones (the order is broken; the mutual exclusion is not affected: lock queues
     never take part in it);

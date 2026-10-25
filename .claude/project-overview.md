@@ -281,7 +281,9 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   logs, events, `queue_info`) sees Integers only; a name in
   `default_lock_priority` is checked at the lock acquirement (validators can't see other keys).
 - Semantics (`:queued`): strict priority, FIFO inside a priority, in both modes (the read and write queues use the same scores);
-  orders waiting requests only (no preemption); `:random` ignores it; the obtained lock is never taken away.
+  orders waiting requests only (no preemption); a `:random` request does not wait for its turn (it ignores the order and the
+  priorities of other requests), but it is queued at the position of its priority (`ZADD NX` like any request): `:queued`
+  requests wait for it; the obtained lock is never taken away.
 - Encoding (`Resource`, the single source of the score layout): position (score) = enqueue time (client `Time.now.to_f`) -
   `priority * Resource::LOCK_PRIORITY_BAND` (2**32 s: bands never overlap until 2106, the priority is decoded by
   `Resource.lock_request_priority(score) = -floor(score / 2**32)`); priority 0 keeps the pre-priority score (old data and old

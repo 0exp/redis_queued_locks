@@ -3742,6 +3742,42 @@ RSpec.shared_examples 'redis_queued_locks' do
       expect(prio_client.keys).to be_empty
     end
 
+    specify ':random lock requests are queued at the position of their priority' do
+      # NOTE: a `:random` lock request does not wait for its turn (it ignores the order of the
+      #   queues and the priorities of other requests), but it is queued at the position of its
+      #   priority like a `:queued` one: `:queued` lock requests wait for it;
+      timeline = []
+      timeline_lock = Mutex.new
+      release = Thread::Queue.new
+      holder = hold_lock.call('prio.random', release)
+      random_requester = Thread.new do
+        prio_client.lock(
+          'prio.random',
+          ttl: 30_000, access_strategy: :random, priority: 100, retry_count: nil, timeout: 20
+        ) do
+          timeline_lock.synchronize { timeline << :random_highest }
+          sleep(0.05) # NOTE: the :queued lock request waits for the release of the lock
+        end
+      end
+      wait_until.call { queued_requests.call('prio.random') == 1 }
+      queued_requester = Thread.new do
+        prio_client.lock('prio.random', ttl: 30_000, retry_count: nil, timeout: 20) do
+          timeline_lock.synchronize { timeline << :queued_normal }
+        end
+      end
+      wait_until.call { queued_requests.call('prio.random') == 2 }
+
+      expect(prio_client.queue_info('prio.random')['queue'].map { |request| request['priority'] })
+        .to eq([100, 0])
+
+      release << true
+      [holder, random_requester, queued_requester].each(&:join)
+      # NOTE: the :queued lock request is not the first in the queue until the :random one obtains
+      #   the lock (its request leaves the queue)
+      expect(timeline).to eq(%i[random_highest queued_normal])
+      expect(prio_client.keys).to be_empty
+    end
+
     specify 'dead lock requests of any priority do not block the queues' do
       dead_position = lambda do |priority|
         RedisQueuedLocks::Resource.calc_initial_acquirer_position(priority) - 60

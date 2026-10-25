@@ -265,7 +265,9 @@ class RedisQueuedLocks::Client
   #   - `:queued` access strategy: the lock request is placed in the lock request queue after all
   #     requests of the same or higher priority and before all requests of the lower priority
   #     (strict priority, FIFO inside the same priority; read and write lock requests too);
-  #   - `:random` access strategy ignores the lock request queues (and the priority);
+  #   - `:random` access strategy: the lock request does not wait for its turn (it ignores the order
+  #     of the lock request queues and the priorities of other requests), but it is queued at the
+  #     position of its priority like a `:queued` one: `:queued` lock requests wait for it;
   #   - the obtained lock is never taken away: the priority orders the waiting lock requests;
   #   - all processes that share the lock should use RQL versions with priorities (older versions
   #     drop lock requests of a higher priority as dead ones: the order is broken, the mutual
