@@ -25,6 +25,8 @@ Client (client.rb)                              public API facade
               │
               ▼
         RedisClient (redis-client gem)          WATCH/MULTI, Lua (EVAL), ZSET, HASH, SCAN
+
+Resource (resource.rb)                          keys, acquirer/host ids, queue score layout (priority bands)
 ```
 
 `Client.new(redis_client) { |config| ... }`:
@@ -41,6 +43,50 @@ cross-calls and no shared RBS types; common logic lives in `Resource`/`Utilities
 duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatting, `Queues` the
 `QueueInfo` request formatting). Known debt: `AcquireLock::WithAcqTimeout` calls
 `LockInfo`/`QueueInfo` for detailed timeout errors.
+
+### Lock request prioritization in the architecture
+
+The lock request priority orders the waiting requests of a lock (`:queued`): strict priority between priorities, FIFO
+inside a priority, in both read/write modes. It is carried by the queue score only (no new keys, fields or commands per
+request) and never takes part in mutual exclusion (WATCH/MULTI on the lock state decides it, as before). The path of the
+priority through the components:
+
+```
+Client#lock / #lock! / #lock_series / #lock_series!     priority: (Integer or a name), default config['default_lock_priority'];
+  │                                                     lock_priorities: config['lock_priorities'] (internal keyword)
+  ▼
+Config (config.rb)                                      lock_priorities (name => Integer) + default_lock_priority validators
+  │
+  ▼
+AcquireLock Step 0.1 / LockSeriesPoC                    name -> Integer, range -100..100 (ArgumentError); Integer only below
+  │
+  ├──▶ Resource                                         the single source of the score layout:
+  │      calc_initial_acquirer_position(priority)       score = enqueue time - priority * 2**32 (one band per priority)
+  │      dead_score_reached?(position, priority, ttl)   requeue check (decodes the enqueue time)
+  │      lock_priority_band_floor / _dead_score         the bounds of the dead requests of a band
+  │      lock_request_priority(score)                   the priority decoded from a score
+  │
+  ├──▶ TryToLock (each attempt and pre-check)           queueing: ZADD NX with the shifted score + the own band pruned in
+  │                                                     both queues (queue_lock_request, no extra round trip); Step 2.2:
+  │                                                     dead blocking requests of other bands dropped with their bands
+  │                                                     (drop_dead_requests_ahead, dead_request_priority: one round trip
+  │                                                     per removal, none while nothing dead blocks); ordering: queue heads
+  │                                                     and the cross-mode (score, acq_id) comparison on shifted scores
+  │
+  ├──▶ ClearDeadRequests                                per-band cleanup of the bands found in the queues (<= 2 round trips/batch)
+  ├──▶ QueueInfo / Queues                               'priority' of each request decoded from its score
+  └──▶ LogVisitor / InstrVisitor (+ series, try-lock)   priority in every lock acquirement log/event; try-lock logs decode
+                                                        the priorities of the requests ahead (first/ahead/dead)
+```
+
+- Unchanged by prioritization: the lock keys and their data, queue members (`acq_id`), dequeue (`ZREM`), `unlock` /
+  `clear_locks` (full queue clears), the swarm (hosts and zombies come from acquirer ids), the lock index, the obtaining
+  transactions.
+- Invariants for any code that touches lock queues: never prune a queue with one `-inf..now-ttl` range (prune bands with
+  the `Resource` bounds); never enumerate the priority range per attempt or per queue (decode the bands from the data);
+  read priorities only through `Resource.lock_request_priority`; the attempt cost must not depend on the priority range.
+- Details (encoding, liveness, cleanup, limitations, mixed versions): "Lock request priorities" below; the public
+  description: README "Lock Request Prioritization".
 
 ### Client → implementation map
 

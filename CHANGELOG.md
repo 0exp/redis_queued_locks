@@ -1,6 +1,6 @@
 ## [Unreleased]
 ### Added
-- Lock request priorities: the `priority:` option of `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (an Integer from `-100`,
+- Lock request prioritization: the `priority:` option of `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (an Integer from `-100`,
   the lowest, to `100`, the highest, `0` by default; pre-configured in the new `config['default_lock_priority']`): with the
   `:queued` access strategy a lock request is placed in the lock request queue after all requests of the same or higher
   priority and before all requests of the lower priority (strict priority, FIFO inside the same priority; read and write lock
