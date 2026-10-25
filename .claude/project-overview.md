@@ -44,6 +44,60 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 `QueueInfo` request formatting). Known debt: `AcquireLock::WithAcqTimeout` calls
 `LockInfo`/`QueueInfo` for detailed timeout errors.
 
+### Read/Write locks in the architecture
+
+`read_write_mode: :write` (default) is the exclusive classic lock (its keys and data are unchanged); `:read` is a shared
+lock: readers share the lock with each other, a writer waits for the write lock and for all live readers, a reader waits
+for the write lock only. Mutual exclusion comes only from WATCH/MULTI on the lock state (no Lua in the RW path); the
+request queues only order the requests (FIFO between modes by `(score, acq_id)`).
+
+Keys of one lock name (all of them match `KEY_PATTERN`, classified by `Resource.lock_key_family`):
+
+```
+rql:lock:<name>                 HASH  write lock: owner + data                      write lock state
+rql:lock_readers:<name>         ZSET  readers registry: acq_id => expiry (Redis ms)  read lock state (the source of truth)
+rql:lock_reader:<name>:<acq_id> HASH  reader data (the write lock format without ids: a data carrier only)
+rql:lock_queue:<name>           ZSET  write lock requests                            ordering only
+rql:lock_read_queue:<name>      ZSET  read lock requests (the same scores)           ordering only
+```
+
+The path of the mode through the components:
+
+```
+Client#lock / #lock! (read_write_mode:)            #lock_series / #lock_series! (one mode per series),
+  │                                                #unlock_read / #release_read_lock, #extend_lock_ttl(read_write_mode:,
+  │                                                all_read_locks:)
+  ▼
+AcquireLock Step 0.1 (RW)                          validates the mode; the keys are computed once (read_lock_key: readers only)
+  ▼
+TryToLock (each attempt and pre-check)             WATCH: writers [lock_key, lock_readers_key], readers [lock_key] only
+  │                                                (readers never abort each other); one state pipeline: HGET acq_id,
+  │                                                TIME, own reader score, longest reader (writers); the conditions:
+  │                                                write = no write lock + no live reader (score > Redis now),
+  │                                                read = no write lock; the order: write = head of the write queue +
+  │                                                no earlier read request, read = no earlier write request; the
+  │                                                obtaining MULTI: write HSET + PEXPIRE, read ZADD expiry + registry
+  │                                                PEXPIRE NX + GT + reader data; same-acquirer conflicts by
+  │                                                conflict_strategy (held mode `sp_conflict_rw_mode`; read->write
+  │                                                upgrade never works through)
+  ▼
+YieldExpire                                        releases the held mode (`held_rw_mode`): write EXPIRE 0, read ZREM +
+                                                   DEL of the own reader data (owner-safe)
+ReleaseLock (unlock)                               write lock + readers + both queues in one MULTI, then one DEL of the
+                                                   released readers' data (only when readers existed)
+ReleaseReadLock / ExtendLockTTL                    one read lock (own or `acquirer_id:`) / own or all live read locks
+Info, iteration, cleanup, swarm                    the read family everywhere: lock_info readers, queue_info read_queue,
+                                                   locks/queues/keys, clear_*, clear_dead_requests, zombies
+LogVisitor / InstrVisitor (+ series, try-lock)     rw_mode in every lock log/event (requested; YieldExpire: held; series)
+```
+
+- Invariants for any lock-touching code: cover the read family next to `rql:lock:*`/`rql:lock_queue:*`; writers WATCH
+  the registry, readers never; reader liveness only by the Redis-time score (`score > now`), never `ZCARD`/`EXISTS`;
+  registry and reader data TTLs keep the max with `PEXPIRE NX` + `PEXPIRE GT`; write-only result shapes stay unchanged
+  (read keys/fields only when read data exists); the lock index covers the read keys (enabled mode).
+- Details (reentrancy matrix, fail_fast, results, release semantics, design decisions): "Read/Write locks" below; the
+  public description: README "Read/Write Locks".
+
 ### Lock request prioritization in the architecture
 
 The lock request priority orders the waiting requests of a lock (`:queued`): strict priority between priorities, FIFO
