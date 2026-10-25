@@ -341,8 +341,10 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - Checks (read-only): a review on request of local changes runs `bundle exec rake rubocop` and
   `bundle exec rbs collection install && bundle exec rake steep:check` (grep the output for `ERROR`/`FATAL`, restore a
   rewritten `rbs_collection.lock.yaml` with `git checkout -- rbs_collection.lock.yaml`); the automatic pre-commit run
-  reports the completion checks instead of re-running them (see "When to run"). Don't run `rake rspec` without
-  asking: it needs a local Redis, `FLUSHDB`s db 0 and db 1 and takes ~6 minutes.
+  reports the completion checks instead of re-running them (see "When to run"). Don't run the specs without
+  asking: they need a local Redis; when asked, run them in parallel processes (`rake rspec:parallel`: ~1 minute,
+  flushes db `0..2n-1` for `n` workers; the serial `rake rspec`, ~6 minutes and db 0/1, only for the one-process checks
+  of `tests.md#1`).
 
 ## 7. Report
 

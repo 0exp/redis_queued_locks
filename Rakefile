@@ -55,4 +55,15 @@ end
 RSpec::Core::RakeTask.new(:rspec)
 Steep::RakeTask.new(:steep)
 
+# NOTE: (parallel specs) the runner: `spec/support/parallel_runner.rb`
+namespace :rspec do
+  desc 'Run the specs in parallel processes (WORKERS=<n>, each worker with its own Redis databases)'
+  task :parallel, [:paths] do |_task, args|
+    require_relative 'spec/support/parallel_runner'
+
+    workers = ENV.key?('WORKERS') ? Integer(ENV.fetch('WORKERS')) : nil
+    RQLParallelSpecs.run(workers, args[:paths].to_s.split)
+  end
+end
+
 task default: :rspec

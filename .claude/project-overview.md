@@ -361,7 +361,7 @@ lib/redis_queued_locks/
   resource.rb                      keys and identities
   data.rb, errors.rb, utilities.rb, utilities/lock.rb, debugger/, version.rb
 sig/                               RBS mirror of lib/ + sig/vendor stubs (redis_client, active_support, semantic_logger)
-spec/                              redis_queued_locks_spec.rb (~5.6k lines, integration: shared examples run with both lock lookup modes), redis_queued_locks/config_spec.rb (Redis-free: `Config#[]` RBS table == `setting` registry), spec_helper.rb, setup_simplecov.rb
+spec/                              redis_queued_locks_spec.rb (~5.6k lines, integration: shared examples run with both lock lookup modes), redis_queued_locks/config_spec.rb (Redis-free: `Config#[]` RBS table == `setting` registry), spec_helper.rb, setup_simplecov.rb, support/parallel_runner.rb (the `rake rspec:parallel` runner, not a spec)
 .github/workflows/                 tests, lint, typecheck-static, typecheck-runtime
 bin/console, bin/setup             dev scripts
 Rakefile, Steepfile, rbs_collection.yaml
@@ -389,7 +389,7 @@ Rakefile, Steepfile, rbs_collection.yaml
 - rake, bundler, pry, pry-doc, reline, activesupport 8.1
 
 ### Rake tasks
-`rspec` (default), `rubocop` (runs `rubocop:ruby` and `rubocop:rbs`, fails if either fails), `steep:check`, plus bundler gem tasks (`build`, `release`, ...).
+`rspec` (default), `rspec:parallel` (`spec/support/parallel_runner.rb`, the `Rakefile` only declares the task: the specs in `WORKERS` processes, ~1 min instead of ~6: each worker gets its own pair of Redis databases via `RQL_SPEC_DB_OFFSET` = worker index * 2, prepended to `RedisClient::Config` in `spec_helper.rb` (the library, swarm and Ractor clients included); examples listed by `rspec --dry-run` and distributed by the durations of the previous runs (`tmp/rspec_parallel/durations.json`, the longest first to the least loaded worker); per-worker logs/JSON in `tmp/rspec_parallel/`; coverage: each worker stores only its SimpleCov result in `coverage/parallel/worker-<n>` (`rspec:worker:<n>` command names, no report), the task collates one report into `coverage/` after all workers (`SimpleCov.collate`) and drops the collated resultset (later `rspec` runs don't merge it); the environment is passed to the workers: the RBS runtime checks and `RSPEC_RETRY_RETRY_COUNT` work as with `rspec`), `rubocop` (runs `rubocop:ruby` and `rubocop:rbs`, fails if either fails), `steep:check`, plus bundler gem tasks (`build`, `release`, ...).
 
 ### CI (GitHub Actions, ubuntu-latest, Ruby 4.0, on every push)
 

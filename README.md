@@ -3399,6 +3399,17 @@ Detalized event semantics and payload structure:
 bundle exec rake rspec
 ```
 
+- Tests in parallel processes (`RSpec`, ~6x faster): each process (worker) works with its own pair of Redis databases
+  (the specs use db 0 and db 1), so `WORKERS=n` flushes db `0..2n-1` of the local Redis (the default number of workers:
+  the Redis `databases` / 2, up to the CPU count); the examples are distributed by their durations of the previous runs
+  (`tmp/rspec_parallel/durations.json`), the output of each worker is in `tmp/rspec_parallel/worker-<n>.log`, the coverage
+  report of the whole run is collated into `coverage/` after all workers:
+```shell
+bundle exec rake rspec:parallel
+WORKERS=4 bundle exec rake rspec:parallel
+bundle exec rake "rspec:parallel[spec/redis_queued_locks_spec.rb]" # spec files/filters
+```
+
 - Linting (`Rubocop`+`RBS`):
 ```shell
 bundle exec rake rubocop
@@ -3412,6 +3423,7 @@ bundle exec rake steep:check
 - `Runtime` TypeChecking (`RBS`):
 ```shell
 bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec
+# or in parallel processes: the same environment with `bundle exec rake rspec:parallel` instead of `bundle exec rspec`
 ```
 
 ---

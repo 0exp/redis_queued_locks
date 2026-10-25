@@ -2,11 +2,35 @@
 
 require_relative 'setup_simplecov'
 
-SimpleCov.start
+# NOTE: (parallel specs) `rake rspec:parallel` (`spec/support/parallel_runner.rb`):
+#   - each worker only stores its coverage result in its own directory (no shared resultset, no
+#     report): the task collates the report of the whole run after all workers
+#     (`SimpleCov.collate`);
+#   - the example listing (`--dry-run`) collects no coverage;
+if ENV.key?('RQL_SPEC_WORKER')
+  SimpleCov.command_name("rspec:worker:#{ENV.fetch('RQL_SPEC_WORKER')}")
+  SimpleCov.coverage_dir("coverage/parallel/worker-#{ENV.fetch('RQL_SPEC_WORKER')}")
+  SimpleCov.at_exit { SimpleCov.result }
+end
+SimpleCov.start unless ENV.key?('RQL_SPEC_LISTING')
 
 require 'rspec/retry'
 require 'pry'
 require 'redis_queued_locks'
+
+# NOTE: (parallel specs) each worker of `rake rspec:parallel` works with its own Redis databases:
+#   the offset is added to the database number of every Redis client (the specs, the library and
+#   the swarm elements, the flusher Ractor too: all of them are configured with
+#   `RedisClient.config`), so the `FLUSHDB` hooks, SCAN passes and swarm keys of the workers never
+#   meet; `0` (the default): the databases of the specs as is;
+RQL_SPEC_DB_OFFSET = Integer(ENV.fetch('RQL_SPEC_DB_OFFSET', '0'))
+unless RQL_SPEC_DB_OFFSET.zero?
+  RedisClient::Config.prepend(Module.new do
+    def initialize(db: nil, **)
+      super(db: (db || 0) + RQL_SPEC_DB_OFFSET, **)
+    end
+  end)
+end
 
 # NOTE: (RBS) true under the RBS runtime type checks (`-rrbs/test/setup`, typecheck-runtime CI):
 #   expectations that pass type-invalid values on purpose are skipped there (the hooks raise first).
