@@ -4038,6 +4038,91 @@ RSpec.shared_examples 'redis_queued_locks' do
       prio_client.unlock('prio.clear')
     end
 
+    specify 'lock requests at infinite positions (manual writes): -inf is dead, +inf is behind' do
+      # NOTE: RQL never writes infinite positions (manual writes of the lock request queues): the
+      #   priority of `-inf` is the highest one, of `+inf` the lowest one; a request at `-inf` is
+      #   dead (like before priorities: it is dropped when it blocks a lock request and by
+      #   `#clear_dead_requests`), a request at `+inf` is behind all requests (never dead);
+      obtained = match({ ok: true, result: hash_including(process: :lock_obtaining) })
+      request = lambda do |acq_id, score, rw_mode, priority|
+        { 'acq_id' => acq_id, 'score' => score, 'rw_mode' => rw_mode, 'priority' => priority }
+      end
+
+      aggregate_failures 'the priority of the infinite positions' do
+        expect(RedisQueuedLocks::Resource.lock_request_priority(-Float::INFINITY)).to eq(100)
+        expect(RedisQueuedLocks::Resource.lock_request_priority(Float::INFINITY)).to eq(-100)
+      end
+
+      aggregate_failures 'queue info' do
+        redis.call(
+          'ZADD', 'rql:lock_queue:prio.inf',
+          '-inf', 'rql:acq:1/2/3/4/first', '+inf', 'rql:acq:1/2/3/4/last'
+        )
+        redis.call('ZADD', 'rql:lock_read_queue:prio.inf', '-inf', 'rql:acq:1/2/3/4/reader')
+        prio_client.reindex_locks if prio_client.config['lock_index_enabled']
+
+        expect(prio_client.queue_info('prio.inf')).to match({
+          'lock_queue' => 'rql:lock_queue:prio.inf',
+          'queue' => [
+            request.call('rql:acq:1/2/3/4/first', -Float::INFINITY, 'write', 100),
+            request.call('rql:acq:1/2/3/4/last', Float::INFINITY, 'write', -100)
+          ],
+          'read_lock_queue' => 'rql:lock_read_queue:prio.inf',
+          'read_queue' => [request.call('rql:acq:1/2/3/4/reader', -Float::INFINITY, 'read', 100)]
+        })
+        expect(prio_client.queues_info).to contain_exactly(
+          {
+            queue: 'rql:lock_queue:prio.inf',
+            requests: [
+              request.call('rql:acq:1/2/3/4/first', -Float::INFINITY, 'write', 100),
+              request.call('rql:acq:1/2/3/4/last', Float::INFINITY, 'write', -100)
+            ]
+          },
+          {
+            queue: 'rql:lock_read_queue:prio.inf',
+            requests: [request.call('rql:acq:1/2/3/4/reader', -Float::INFINITY, 'read', 100)]
+          }
+        )
+      end
+
+      aggregate_failures 'clear_dead_requests drops the requests at -inf' do
+        prio_client.clear_dead_requests(dead_ttl: 30_000)
+        expect(redis.call('ZRANGE', 'rql:lock_queue:prio.inf', '0', '-1')).to eq(
+          ['rql:acq:1/2/3/4/last']
+        )
+        expect(redis.call('EXISTS', 'rql:lock_read_queue:prio.inf')).to eq(0)
+        prio_client.unlock('prio.inf')
+      end
+
+      aggregate_failures 'a request at -inf does not block the write queue (+inf: behind)' do
+        redis.call(
+          'ZADD', 'rql:lock_queue:prio.inf',
+          '-inf', 'rql:acq:1/2/3/4/first', '+inf', 'rql:acq:1/2/3/4/last'
+        )
+        expect(prio_client.lock('prio.inf', retry_count: 1)).to obtained
+        expect(redis.call('ZRANGE', 'rql:lock_queue:prio.inf', '0', '-1')).to eq(
+          ['rql:acq:1/2/3/4/last']
+        )
+        prio_client.unlock('prio.inf')
+      end
+
+      aggregate_failures 'a write request at -inf does not block readers' do
+        redis.call('ZADD', 'rql:lock_queue:prio.inf', '-inf', 'rql:acq:1/2/3/4/first')
+        expect(prio_client.lock('prio.inf', read_write_mode: :read, retry_count: 1)).to obtained
+        expect(redis.call('EXISTS', 'rql:lock_queue:prio.inf')).to eq(0)
+        prio_client.unlock('prio.inf')
+      end
+
+      aggregate_failures 'a read request at -inf does not block writers' do
+        redis.call('ZADD', 'rql:lock_read_queue:prio.inf', '-inf', 'rql:acq:1/2/3/4/reader')
+        expect(prio_client.lock('prio.inf', retry_count: 1)).to obtained
+        expect(redis.call('EXISTS', 'rql:lock_read_queue:prio.inf')).to eq(0)
+        prio_client.unlock('prio.inf')
+      end
+
+      expect(prio_client.keys).to be_empty
+    end
+
     specify 'queue info, the default priority from config, arguments validation' do
       high_client = RedisQueuedLocks::Client.new(redis) do |config|
         config['default_lock_priority'] = 100

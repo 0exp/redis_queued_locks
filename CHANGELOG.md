@@ -15,6 +15,9 @@
     an attempt does not depend on the number of priorities;
   - `#clear_dead_requests` drops the dead lock requests of every priority found in the lock queues (two round trips per batch of
     lock queues: the lock requests are read, then the dead ones are dropped);
+  - lock requests at infinite positions (`-inf`/`+inf`: manual writes of the lock queues) have the bound priorities (`100`/`-100`);
+    a request at `-inf` is dropped as a dead one when it blocks a lock request and by `#clear_dead_requests`, a request at `+inf`
+    is never dropped as a dead one (like before priorities);
   - the new `log_lock_try` log event `[redis_queued_locks.try_lock.dead_request_removed]` (`dead_acq_id`, `dead_priority`);
   - priority names: `priority:` and `config['default_lock_priority']` accept a priority name (Symbol) of the new
     `config['lock_priorities']` (a priority name => its Integer priority; default names: `:lowest` (`-100`), `:low` (`-50`),

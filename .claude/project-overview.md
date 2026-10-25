@@ -303,6 +303,12 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   one round trip reads the batch queues (`ZRANGE 0 -1 WITHSCORES`), one more prunes only the bands whose first request is dead
   (the requests of a band are adjacent and ordered by time), none without dead requests; `processed_queues` of the lock index
   lookup = non-empty queues.
+- Infinite positions (`-inf`/`+inf`: manual writes of the queues, RQL never writes them; out of all bands): the decoding never
+  raises (`Resource.lock_request_priority`: `-inf` => `MAX_LOCK_PRIORITY`, `+inf` => `MIN_LOCK_PRIORITY`: info results and logs);
+  a request at `-inf` is always dead (like before priorities: no enqueue time) and is dropped by its position
+  (`ZREMRANGEBYSCORE <queue> -inf -inf`, both queues) when it blocks an attempt (`drop_dead_requests_ahead`, the same round trip)
+  and by `clear_dead_requests` (the first requests of the queue); a request at `+inf` is never dead and never ahead of an RQL
+  request (kept like before priorities).
 - Unchanged by priorities: keys, members (`acq_id`), `ZADD NX`, `ZRANGE 0 0`, the cross-mode `(score, acq_id)` comparison, dequeue,
   `unlock`/`clear_locks` (`-inf..+inf`), swarm (hosts from acquirer ids), lock index.
 - Info/observability: `queue_info`/`queues_info` requests have `'priority'` (decoded); every lock acquirement log and event

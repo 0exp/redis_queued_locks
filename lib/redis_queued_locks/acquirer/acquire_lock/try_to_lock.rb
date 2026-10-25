@@ -1282,6 +1282,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   #     blocks the current one (the lock state does not matter: the attempt drops the dead blocking
   #     requests even when the lock is obtained by another acquirer);
   #   - up to `MAX_DEAD_REQUEST_REMOVALS` round trips (one or two bands each) per call;
+  #   - (infinite positions) RQL never writes them (manual writes of the queues, see
+  #     `RedisQueuedLocks::Resource.lock_request_priority`): a blocking request at `-inf` is always
+  #     dead (the highest band, no enqueue time) and is dropped with all requests at `-inf` of both
+  #     queues in the same round trip; a request at `+inf` is never ahead of the current request;
   #
   # @param rconn [RedisClient]
   # @param logger [::Logger,#debug]
@@ -1360,8 +1364,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       break unless dead_head_priority || dead_ahead_priority
 
       # NOTE: (pipeline layout) ZREMRANGEBYSCORE of both queues for each dropped band (one or two
-      #   bands), then [-2] ZRANGE WITHSCORES (the head of the request queue) and [-1] ZRANGE
-      #   WITHSCORES (the head of the opposite request queue);
+      #   bands) and for the requests at `-inf` (a dead blocking request at `-inf` only), then [-2]
+      #   ZRANGE WITHSCORES (the head of the request queue) and [-1] ZRANGE WITHSCORES (the head of
+      #   the opposite request queue);
       # @type var queue_state: Array[untyped]
       queue_state = rconn.pipelined do |pipeline|
         if dead_head_priority
@@ -1374,6 +1379,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
             pipeline, request_queue, opposite_request_queue, acquirer_dead_score,
             dead_ahead_priority
           )
+        end
+        # NOTE: (infinite positions) a dead blocking request at `-inf` (a manual write: out of all
+        #   bands, see `RedisQueuedLocks::Resource.lock_request_priority`) is not covered by
+        #   the band removal of its decoded priority (it drops the dead requests of that band
+        #   only): the requests at `-inf` are dropped from both queues by their position;
+        if (dead_head && dead_head[1] == -Float::INFINITY) ||
+           (dead_ahead && dead_ahead[1] == -Float::INFINITY)
+          pipeline.call('ZREMRANGEBYSCORE', request_queue, '-inf', '-inf')
+          pipeline.call('ZREMRANGEBYSCORE', opposite_request_queue, '-inf', '-inf')
         end
         pipeline.call('ZRANGE', request_queue, '0', '0', 'WITHSCORES')
         pipeline.call('ZRANGE', opposite_request_queue, '0', '0', 'WITHSCORES')
@@ -1400,7 +1414,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # rubocop:enable Metrics/MethodLength
 
   # (priorities) The priority band of the dead lock request (see `drop_dead_requests_ahead`): the
-  # band and the enqueue time are decoded from the position of the request.
+  # band and the enqueue time are decoded from the position of the request (infinite positions:
+  # `-inf` is decoded to the highest band and is always dead, `+inf` to the lowest band and is never
+  # dead, see `RedisQueuedLocks::Resource.lock_request_priority`).
   #
   # @param lock_request [Array<String,Float>] The acquirer and the position of the lock request.
   # @param acquirer_dead_score [Float]

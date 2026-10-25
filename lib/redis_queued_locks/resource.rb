@@ -418,13 +418,26 @@ module RedisQueuedLocks::Resource
 
     # Priority of the lock request by its position in the lock request queue (the score).
     #
+    # NOTE: (infinite positions) RQL never writes infinite positions (manual writes of the lock
+    #   request queues): they are out of all bands and are decoded to the bounds of the priority
+    #   range (the floor of an infinite Float raises `FloatDomainError`):
+    #   - `-inf`: `MAX_LOCK_PRIORITY` (ahead of all lock requests; such a request is dead: its
+    #     enqueue time is unknown, it is dropped like before priorities);
+    #   - `+inf`: `MIN_LOCK_PRIORITY` (behind all lock requests; never dead);
+    #
     # @param acquirer_position [Numeric] The position (the score) of the lock request.
     # @return [Integer] See `LOCK_PRIORITY_BAND`.
     #
     # @api private
     # @since 1.22.0
     def lock_request_priority(acquirer_position)
-      -(acquirer_position / LOCK_PRIORITY_BAND).floor
+      if acquirer_position == -Float::INFINITY
+        MAX_LOCK_PRIORITY
+      elsif acquirer_position == Float::INFINITY
+        MIN_LOCK_PRIORITY
+      else
+        -(acquirer_position / LOCK_PRIORITY_BAND).floor
+      end
     end
 
     # @param zombie_ttl [Float] In seconds with milliseconds.

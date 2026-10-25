@@ -189,7 +189,9 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - Dead request pruning per band only: `ZREMRANGEBYSCORE <queue> <lock_priority_band_floor(p)>
   <lock_priority_band_dead_score(dead_score, p)>`; a new `-inf .. now - ttl` range on a request queue is a Blocker
   (it drops alive higher-priority requests and keeps dead lower-priority ones); full clears (`-inf .. +inf`) and
-  member removals (`ZREM`) are band-independent.
+  member removals (`ZREM`) are band-independent; `-inf .. -inf` drops the requests at `-inf` only (manual writes:
+  always dead, out of all bands; `+inf` is never dead), and decoding an infinite score must never raise
+  (`lock_request_priority` maps `-inf`/`+inf` to the range bounds).
 - Head-driven cleanup, cost independent of the priority range: the queueing prunes the own band in both queues (in
   its pipeline, before `ZADD NX`: a requeued request must not lose its new position to the removal of its old one),
   Step 2.2 (`drop_dead_requests_ahead`, attempt and pre-check, `:queued` only) drops the bands of the

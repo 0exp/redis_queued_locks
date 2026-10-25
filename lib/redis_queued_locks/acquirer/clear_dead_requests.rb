@@ -213,6 +213,9 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
     #     requests;
     #   - requests queued (or re-queued) between the round trips are never dropped: they are after
     #     the time barrier of their band;
+    #   - (infinite positions) RQL never writes them (manual writes of the queues, see
+    #     `RedisQueuedLocks::Resource.lock_request_priority`): the requests at `-inf` are dead and
+    #     are dropped by their position (`-inf` .. `-inf`), the requests at `+inf` are never dead;
     #
     # @param redis_client [RedisClient]
     # @param lock_queues [Array<String>]
@@ -224,6 +227,7 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
     # @api private
     # @since 1.20.0
     # @version 1.22.0
+    # rubocop:disable Metrics/MethodLength
     def drop_dead_requests(redis_client, lock_queues, dead_score)
       # NOTE: (pipeline layout) one ZRANGE WITHSCORES per lock queue (the `lock_queues` order)
       # @type var queued_requests: Array[Array[[String, Float]]]
@@ -238,8 +242,18 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
           # @type var checked_band: Integer?
           checked_band = nil
 
+          # NOTE: (infinite positions) the requests at `-inf` (manual writes: out of all bands, see
+          #   `RedisQueuedLocks::Resource.lock_request_priority`) are dead: they are the first
+          #   requests of the queue and are dropped by their position (no band removal covers them);
+          first_request = queued_requests[index].first
+          if first_request && first_request[1] == -Float::INFINITY
+            pipeline.call('ZREMRANGEBYSCORE', lock_queue, '-inf', '-inf')
+          end
+
           queued_requests[index].each do |lock_request|
             position = lock_request[1]
+            next if position == -Float::INFINITY
+
             priority = RedisQueuedLocks::Resource.lock_request_priority(position)
             next if priority == checked_band
 
@@ -259,6 +273,7 @@ module RedisQueuedLocks::Acquirer::ClearDeadRequests
 
       queued_requests
     end
+    # rubocop:enable Metrics/MethodLength
 
     # Drops dead requests of both lock queues of the given lock names (the enabled lock index; the
     # round trips of `drop_dead_requests`).

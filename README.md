@@ -2701,6 +2701,10 @@ rql.lock("user_#{user.id}", priority: :high) { update_profile } # priority: 50
     queue and the cost of an attempt does not depend on the number of priorities in use;
   - dead requests of lower priorities never block: they are dropped by the lock requests of their priority (or lower ones)
     and by `#clear_dead_requests` (it drops the dead requests of every priority found in the queues);
+  - lock requests at infinite positions (`-inf`/`+inf`: manual writes of the lock queues, RQL never writes them) have the
+    bound priorities (`100`/`-100`) in `#queue_info`/`#queues_info` and logs; a request at `-inf` is a dead one (like before
+    priorities): it is dropped when it blocks a lock request and by `#clear_dead_requests`; a request at `+inf` is behind all
+    requests and is never dropped as a dead one;
   - `#queue_info`/`#queues_info` return the priority of each lock request (`"priority"`); the lock acquirement logs and
     instrumentation events (classic, reentrant and lock series ones) have the `priority` of the lock request, the `log_lock_try`
     logs also have the priorities of the requests ahead (`first_priority_in_queue`, `ahead_priority`, `dead_priority`);
