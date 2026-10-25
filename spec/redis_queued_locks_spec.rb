@@ -2726,7 +2726,11 @@ RSpec.shared_examples 'redis_queued_locks' do
       expect(detailed_timeout_error.message).to include('<Queue Data> => <no_data>')
     end
 
-    Thread.new { client.lock('some-long-lock', ttl: 30_000, retry_count: nil) }
+    # NOTE: the waiter gives up on its own (bounded timeout) and is joined at the end:
+    #   an unbounded waiter outlives the example and obtains the lock in the next one;
+    waiter = Thread.new do
+      client.lock('some-long-lock', ttl: 30_000, timeout: 3, retry_count: nil)
+    end
 
     detailed_timeout_error = begin
       client.lock(
@@ -2748,6 +2752,9 @@ RSpec.shared_examples 'redis_queued_locks' do
       expect(detailed_timeout_error.message).to include('<Queue Data>')
       expect(detailed_timeout_error.message).not_to include('<Queue Data> => <no_data>')
     end
+
+    waiter.join
+    redis.close
   end
 
   specify 'timed lock' do
