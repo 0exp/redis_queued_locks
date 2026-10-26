@@ -144,22 +144,29 @@ module RedisQueuedLocks
 
         def drop_dead_requests_ahead: (
           RC::client rconn,
-          RQL::loggerObj logger,
-          bool log_sampled,
-          bool log_lock_try,
-          String lock_key,
           RQL::readWriteMode read_write_mode,
           String request_queue,
           String opposite_request_queue,
           String acquirer_id,
-          String host_id,
           Integer|Float acquirer_position,
           Float acquirer_dead_score,
-          Integer queue_ttl,
           RQL::accessStrategy access_strategy,
           [String, Float]? waiting_request,
           [String, Float]? opposite_waiting_request
-        ) -> [[String, Float]?, [String, Float]?]?
+        ) -> [[String, Float]?, [String, Float]?, Array[[String, Integer]]]?
+
+        def log_dropped_requests: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          bool log_lock_try,
+          String lock_key,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode read_write_mode,
+          Array[[String, Integer]] dropped_requests
+        ) -> void
 
         def dead_request_priority: ([String, Float] lock_request, Float acquirer_dead_score) -> Integer?
 

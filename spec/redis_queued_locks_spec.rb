@@ -3923,9 +3923,18 @@ RSpec.shared_examples 'redis_queued_locks' do
       removal_logs = lambda do
         test_logger.logs.grep(/try_lock\.dead_request_removed\]/)
       end
+      # NOTE: the try-lock log events of the last attempt (the same order in the attempt and in
+      #   the pre-check: the dropped dead requests after the queueing events)
+      last_attempt_events = lambda do
+        events = test_logger.logs.filter_map do |log|
+          log[/\[redis_queued_locks\.try_lock\.(\w+)\]/, 1]
+        end
+        events.drop(events.rindex('start'))
+      end
       client.locked?('prio.trips') # NOTE: establish the recorded connection
 
       aggregate_failures 'the attempt: one round trip per dead band ahead' do
+        test_logger.logs.clear
         redis.call('ZADD', queue, *dead_request.call(100), *dead_request.call(50))
         round_trips.clear
         expect(client.lock('prio.trips', ttl: 1_000, retry_count: 1)).to match({
@@ -3938,6 +3947,10 @@ RSpec.shared_examples 'redis_queued_locks' do
           a_string_including("dead_acq_id => 'rql:acq:1/2/3/4/dead100' dead_priority => 100"),
           a_string_including("dead_acq_id => 'rql:acq:1/2/3/4/dead50' dead_priority => 50")
         )
+        expect(last_attempt_events.call).to eq(%w[
+          start rconn_fetched acq_added_to_queue remove_expired_acqs
+          dead_request_removed dead_request_removed get_first_from_queue obtain__free_to_acquire
+        ])
         client.unlock('prio.trips')
       end
 
@@ -4002,6 +4015,11 @@ RSpec.shared_examples 'redis_queued_locks' do
         expect(removal_logs.call).to contain_exactly(
           a_string_including("dead_acq_id => 'rql:acq:1/2/3/4/dead9' dead_priority => 9")
         )
+        # NOTE: the failed pre-check logs the events of the failed attempt in the same order
+        expect(last_attempt_events.call).to eq(%w[
+          start rconn_fetched acq_added_to_queue remove_expired_acqs
+          dead_request_removed get_first_from_queue exit__lock_still_obtained
+        ])
         expect(redis.call('ZSCORE', queue, 'rql:acq:1/2/3/4/dead9')).to eq(nil)
         holder_client.unlock('prio.trips')
       end

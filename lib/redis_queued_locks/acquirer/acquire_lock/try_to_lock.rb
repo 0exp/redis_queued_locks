@@ -560,14 +560,18 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # Step 2.2: (priorities) drop the dead lock requests of other priority bands that block
           #   the current one (the queue head or the earlier request of the opposite mode) and get
           #   the actual queue heads (no round trips while no dead request blocks the current one);
-          # @type var actual_queue_heads: [[String, Float]?, [String, Float]?]?
           actual_queue_heads = drop_dead_requests_ahead(
-            rconn, logger, log_sampled, log_lock_try, lock_key, read_write_mode,
-            request_queue, opposite_request_queue, acquirer_id, host_id, acquirer_position,
-            acquirer_dead_score, queue_ttl, access_strategy, waiting_request,
+            rconn, read_write_mode, request_queue, opposite_request_queue, acquirer_id,
+            acquirer_position, acquirer_dead_score, access_strategy, waiting_request,
             opposite_waiting_request
           )
-          waiting_request, opposite_waiting_request = actual_queue_heads if actual_queue_heads
+          if actual_queue_heads
+            waiting_request, opposite_waiting_request, dropped_requests = actual_queue_heads
+            log_dropped_requests(
+              logger, log_sampled, log_lock_try, lock_key, queue_ttl, acquirer_id, host_id,
+              access_strategy, read_write_mode, dropped_requests
+            )
+          end
           waiting_acquirer = waiting_request ? waiting_request[0] : nil
           # NOTE: the priority of the first request is decoded for logs only
           waiting_priority =
@@ -1287,46 +1291,38 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   #     `RedisQueuedLocks::Resource.lock_request_priority`): a blocking request at `-inf` is always
   #     dead (the highest band, no enqueue time) and is dropped with all requests at `-inf` of both
   #     queues in the same round trip; a request at `+inf` is never ahead of the current request;
+  #   - the dropped blocking requests are returned, not logged: the attempt and its pre-check log
+  #     them at the same step (after the queueing log events, see `log_dropped_requests`);
   #
   # @param rconn [RedisClient]
-  # @param logger [::Logger,#debug]
-  # @param log_sampled [Boolean]
-  # @param log_lock_try [Boolean]
-  # @param lock_key [String]
   # @param read_write_mode [Symbol]
   # @param request_queue [String]
   # @param opposite_request_queue [String]
   # @param acquirer_id [String]
-  # @param host_id [String]
   # @param acquirer_position [Numeric]
   # @param acquirer_dead_score [Float]
   #   Requests queued before this time are expired (the barrier of the default priority band).
-  # @param queue_ttl [Integer]
   # @param access_strategy [Symbol]
   # @param waiting_request [Array<String,Float>,NilClass] The head of the request queue.
   # @param opposite_waiting_request [Array<String,Float>,NilClass]
   #   The head of the opposite request queue.
-  # @return [Array<Array<String,Float>,NilClass>,NilClass]
-  #   The actual queue heads (`[waiting_request, opposite_waiting_request]`) when at least one
-  #   dead lock request is dropped, `nil` otherwise.
+  # @return [Array<Array<String,Float>,NilClass,Array<Array<String,Integer>>>,NilClass]
+  #   - the actual queue heads and the dropped blocking requests (the acquirer and the priority of
+  #     each one, in the order of the removal): `[waiting_request, opposite_waiting_request,
+  #     dropped_requests]` when at least one dead lock request is dropped;
+  #   - `nil` otherwise;
   #
   # @api private
   # @since 1.22.0
   # rubocop:disable Metrics/MethodLength
   def drop_dead_requests_ahead(
     rconn,
-    logger,
-    log_sampled,
-    log_lock_try,
-    lock_key,
     read_write_mode,
     request_queue,
     opposite_request_queue,
     acquirer_id,
-    host_id,
     acquirer_position,
     acquirer_dead_score,
-    queue_ttl,
     access_strategy,
     waiting_request,
     opposite_waiting_request
@@ -1335,6 +1331,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
     read_mode = (read_write_mode == :read)
     round_trips = 0
+    # NOTE: allocated by the first removal only (no allocations while nothing dead blocks)
+    # @type var dropped_requests: Array[[String, Integer]]?
+    dropped_requests = nil
 
     while round_trips < MAX_DEAD_REQUEST_REMOVALS
       # NOTE: the lock requests that block the current one (the same order as in `lock_obstacle`):
@@ -1393,26 +1392,59 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         pipeline.call('ZRANGE', request_queue, '0', '0', 'WITHSCORES')
         pipeline.call('ZRANGE', opposite_request_queue, '0', '0', 'WITHSCORES')
       end
-      if dead_head && dead_head_priority
-        LogVisitor.dead_request_removed(
-          logger, log_sampled, log_lock_try, lock_key, queue_ttl, acquirer_id, host_id,
-          access_strategy, read_write_mode, dead_head[0], dead_head_priority
-        )
-      end
-      if dead_ahead && dead_ahead_priority
-        LogVisitor.dead_request_removed(
-          logger, log_sampled, log_lock_try, lock_key, queue_ttl, acquirer_id, host_id,
-          access_strategy, read_write_mode, dead_ahead[0], dead_ahead_priority
-        )
-      end
+      # @type var removed_requests: Array[[String, Integer]]
+      removed_requests = dropped_requests || []
+      removed_requests << [dead_head[0], dead_head_priority] if dead_head && dead_head_priority
+      removed_requests << [dead_ahead[0], dead_ahead_priority] if dead_ahead && dead_ahead_priority
+      dropped_requests = removed_requests
       waiting_request = queue_state[-2].first
       opposite_waiting_request = queue_state[-1].first
       round_trips += 1
     end
 
-    [waiting_request, opposite_waiting_request] if round_trips.positive?
+    [waiting_request, opposite_waiting_request, dropped_requests] if dropped_requests
   end
   # rubocop:enable Metrics/MethodLength
+
+  # (priorities) Logs the dead lock requests dropped by `drop_dead_requests_ahead` (the attempt
+  # and its pre-check log them at the same step: after the queueing log events).
+  #
+  # @param logger [::Logger,#debug]
+  # @param log_sampled [Boolean]
+  # @param log_lock_try [Boolean]
+  # @param lock_key [String]
+  # @param queue_ttl [Integer]
+  # @param acquirer_id [String]
+  # @param host_id [String]
+  # @param access_strategy [Symbol]
+  # @param read_write_mode [Symbol]
+  # @param dropped_requests [Array<Array<String,Integer>>]
+  #   The acquirer and the priority of each dropped lock request.
+  # @return [void]
+  #
+  # @api private
+  # @since 1.22.0
+  def log_dropped_requests(
+    logger,
+    log_sampled,
+    log_lock_try,
+    lock_key,
+    queue_ttl,
+    acquirer_id,
+    host_id,
+    access_strategy,
+    read_write_mode,
+    dropped_requests
+  )
+    return unless log_sampled && log_lock_try
+
+    dropped_requests.each do |dead_acquirer_id, dead_priority|
+      LogVisitor.dead_request_removed(
+        logger, log_sampled, log_lock_try, lock_key, queue_ttl, acquirer_id, host_id,
+        access_strategy, read_write_mode, dead_acquirer_id, dead_priority
+      )
+    end
+  end
 
   # (priorities) The priority band of the dead lock request (see `drop_dead_requests_ahead`): the
   # band and the enqueue time are decoded from the position of the request (infinite positions:
@@ -1440,7 +1472,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   #     attempt does not dequeue the request); fails with `:fail_fast_no_try` on the obtained lock;
   #   - retries: the lock state and the lock request queueing (the request is already queued by
   #     the previous attempts); fails with the obstacle of the classic logic (`lock_obstacle`)
-  #     and logs the same events as the failed attempt;
+  #     and logs the same events as the failed attempt in the same order;
   #   - (priorities) retries drop the dead lock requests of other priority bands that block the
   #     request before the decision (Step 2.2 of the attempt: one more round trip per dropped
   #     band, see `drop_dead_requests_ahead`);
@@ -1528,15 +1560,19 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     opposite_waiting_request =
       lock_state[LOCK_STATE_QUEUE_REPLIES_AT + OPPOSITE_QUEUE_HEAD_REPLY].first
     # NOTE: (priorities) Step 2.2 of the attempt: the dead lock requests of other priority bands
-    #   that block the current one are dropped before the obstacle decision (its log event goes
-    #   before the queueing log events of the failed pre-check: they follow the decision);
-    # @type var actual_queue_heads: [[String, Float]?, [String, Float]?]?
+    #   that block the current one are dropped before the obstacle decision; they are logged at
+    #   the step of the attempt (after the queueing log events of the failed pre-check, they
+    #   follow the decision) or before the attempt that continues (it logs its own queueing);
     actual_queue_heads = drop_dead_requests_ahead(
-      rconn, logger, log_sampled, log_lock_try, lock_key, read_write_mode, request_queue,
-      opposite_request_queue, acquirer_id, host_id, acquirer_position, acquirer_dead_score,
-      queue_ttl, access_strategy, waiting_request, opposite_waiting_request
+      rconn, read_write_mode, request_queue, opposite_request_queue, acquirer_id,
+      acquirer_position, acquirer_dead_score, access_strategy, waiting_request,
+      opposite_waiting_request
     )
-    waiting_request, opposite_waiting_request = actual_queue_heads if actual_queue_heads
+    # @type var dropped_requests: Array[[String, Integer]]?
+    dropped_requests = nil
+    if actual_queue_heads
+      waiting_request, opposite_waiting_request, dropped_requests = actual_queue_heads
+    end
     waiting_acquirer = waiting_request ? waiting_request[0] : nil
     # @type var opposite_request_ahead: String?
     opposite_request_ahead = find_opposite_request_ahead(
@@ -1546,7 +1582,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       read_mode, access_strategy, acquirer_id, waiting_acquirer, opposite_request_ahead,
       current_lock_obtainer, read_locked
     )
-    return unless obstacle
+    unless obstacle
+      if dropped_requests
+        log_dropped_requests(
+          logger, log_sampled, log_lock_try, lock_key, queue_ttl, acquirer_id, host_id,
+          access_strategy, read_write_mode, dropped_requests
+        )
+      end
+      return
+    end
 
     # NOTE: the priority of the first request is decoded for logs only
     waiting_priority =
@@ -1554,7 +1598,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         RedisQueuedLocks::Resource.lock_request_priority(waiting_request[1])
       end
 
-    # NOTE: the same log events as the failed attempt (queueing steps + the exit event)
+    # NOTE: the same log events as the failed attempt in the same order (queueing steps, the dropped
+    #   dead requests, the first request, the exit event)
     LogVisitor.acq_added_to_queue(
       logger, log_sampled, log_lock_try, lock_key,
       queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
@@ -1563,6 +1608,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       logger, log_sampled, log_lock_try, lock_key,
       queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
     )
+    if dropped_requests
+      log_dropped_requests(
+        logger, log_sampled, log_lock_try, lock_key, queue_ttl, acquirer_id, host_id,
+        access_strategy, read_write_mode, dropped_requests
+      )
+    end
     LogVisitor.get_first_from_queue(
       logger, log_sampled, log_lock_try, lock_key,
       queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer,
