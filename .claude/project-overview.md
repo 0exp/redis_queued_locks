@@ -7,7 +7,7 @@ priority first: `priority` -100..100) or first-come (`:random`). Requests have T
 and a background "swarm" that detects dead hosts and flushes their locks.
 
 - Repo: https://github.com/0exp/redis_queued_locks (MIT); main branch `master`
-- Runtime dependency: `redis-client ~> 0.20` (locked 0.30.1), nothing else
+- Runtime dependency: `redis-client ~> 0.20` (locked 0.31.0), nothing else
 - Ruby `>= 4.0` (`.ruby-version` = 4.0.7)
 
 ---
