@@ -2740,9 +2740,11 @@ rql.lock("user_#{user.id}", priority: :high) { update_profile } # priority: 50
     requests are ignored), but it is queued at the position of its priority: `:queued` lock requests wait for it (a `:random`
     request of a high priority holds back the waiting `:queued` requests of lower priorities until it obtains the lock or
     leaves the queue);
-  - all processes that share locks should use RQL versions with priorities before the priorities are used: older versions drop
-    the lock requests of the high priority as dead ones (the order is broken; the mutual exclusion is not affected: lock queues
-    never take part in it);
+  - all processes that share locks should use RQL versions with priorities before positive priorities are used (`:high`,
+    `:highest`, any priority above `0`): older versions drop such lock requests as dead ones (the order is broken; the mutual
+    exclusion is not affected: lock queues never take part in it); the default priority (`0`) and negative priorities
+    (`:low`, `:lowest`) work with older versions too: older versions keep such requests behind their own ones and never drop
+    them as dead ones (the dead ones are dropped by the upgraded processes);
 
 ---
 

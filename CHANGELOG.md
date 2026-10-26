@@ -28,8 +28,10 @@
     the configuration with `RedisQueuedLocks::ConfigValidationError` (checked once after a configuration block: the keys can
     be assigned in any order, both keys keep their previous values on a failure; a direct `config[...] =` assignment is
     checked before it is applied);
-  - all processes that share locks should be upgraded before the priorities are used: older versions drop the lock requests
-    of the high priority as dead ones (the order is broken, the mutual exclusion is not affected);
+  - all processes that share locks should be upgraded before positive priorities are used: older versions drop the lock
+    requests of positive priorities as dead ones (the order is broken, the mutual exclusion is not affected); the default
+    priority (`0`) and negative priorities work with older versions too (older versions keep such requests behind their own
+    ones and never drop them as dead ones: the upgraded processes drop the dead ones);
 ### Changed
 - `#queue_info`/`#queues_info`: each lock request has the `"priority"` field (`Integer`, decoded from its position);
 - logs and instrumentation payloads of the lock acquirement have the lock request `priority` (an Integer: a priority name is

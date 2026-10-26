@@ -270,9 +270,9 @@ class RedisQueuedLocks::Client
   #     of the lock request queues and the priorities of other requests), but it is queued at the
   #     position of its priority like a `:queued` one: `:queued` lock requests wait for it;
   #   - the obtained lock is never taken away: the priority orders the waiting lock requests;
-  #   - all processes that share the lock should use RQL versions with priorities (older versions
-  #     drop lock requests of a higher priority as dead ones: the order is broken, the mutual
-  #     exclusion is not affected);
+  #   - positive priorities need all processes that share the lock on RQL versions with priorities
+  #     (older versions drop such lock requests as dead ones: the order is broken, the mutual
+  #     exclusion is not affected); `0` and negative priorities work with older versions too;
   #   - pre-configured in `config['default_lock_priority']`;
   # @option meta [NilClass,Hash<String|Symbol,Any>]
   #   - A custom metadata wich will be passed to the lock data in addition to the existing data;

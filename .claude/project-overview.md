@@ -325,7 +325,7 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 - Limitations: the priority range is a library constant that bounds the score shift (float precision of the shifted positions:
   ~61 µs at ±100, ~0.5 ms at ±1000; requests of the same priority within this interval are ordered by acquirer ids); mixed
   versions: older clients prune high-priority requests as dead ones (`-inf..now-ttl`) and never prune low-priority ones (always
-  behind): the order degrades, no stuck queues, no safety impact (upgrade all processes before using priorities); strict priority
+  behind): the order degrades, no stuck queues, no safety impact (upgrade all processes before using positive priorities; `0` and negative priorities are compatible: older clients keep them behind their own requests and never prune them, the upgraded processes drop the dead ones); strict priority
   can starve lower priorities (bounded by their timeout/retry limits); the handoff is polled (`retry_delay`); dead requests are
   pruned with the pruner's `queue_ttl` (existing behavior: a request that waits longer than the shorter `queue_ttl` of the
   requests of its band or of the requests it blocks is dropped by their attempts and comes back at its old position on its own
