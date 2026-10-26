@@ -202,7 +202,7 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 - Ordering (`:queued`): FIFO between modes by `(score, acq_id)`: read waits for earlier write requests;
   write must be the head of the write queue and waits for earlier read requests. Scores are shifted by the priority
   bands (see "Lock request priorities"), so "earlier" means "ahead": a higher priority is ahead in both modes. Every attempt prunes
-  dead requests of its priority band in both queues (and the dead requests of other bands that block it). `:random` ignores queues (writers can starve). Ordering is best effort
+  dead requests of its priority band in both queues (and the dead requests of other bands that block it). `:random` requests ignore the order of the queues (writers can starve), but they are queued like any request (`:queued` requests wait for them). Ordering is best effort
   (client clocks, `unlock` clears queues); it never affects mutual exclusion.
 - Read lock data: `rql:lock_reader:<name>:<acq_id>` HASH with the write-lock format without `acq_id`/`hst_id`
   (`ts`, `ini_ttl`, `meta`, `spc_*` reentrant counters; acquirer and host are derived from the acquirer id and are

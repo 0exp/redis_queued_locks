@@ -2771,7 +2771,8 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
     continuous flow of readers and consecutive readers obtain the lock together); with
     [lock request priorities](#lock-request-prioritization) "earlier" means "ahead in the queue": a request of a higher
     priority is ahead of all requests of lower priorities in both modes (FIFO inside the same priority);
-  - `:random` - lock queues are ignored: any free lock is obtained (a continuous flow of readers can starve writers);
+  - `:random` - the order of the lock queues is ignored: any free lock is obtained (a continuous flow of readers can starve
+    writers); the lock request itself is queued like any lock request (`:queued` lock requests wait for it);
 - read locks:
   - each read lock has its own `ttl` and is released (after the block execution) or expired independently of other read locks;
   - `ttl` should be a positive `Integer`;

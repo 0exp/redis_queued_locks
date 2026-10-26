@@ -19,8 +19,9 @@
 #     - write lock request should be the first in the write lock queue (the classic lock queue)
 #       and should wait for all earlier read lock requests;
 #     - read lock request should wait for all earlier write lock requests;
-#   - `:random` access strategy ignores both queues (no ordering between modes, so
-#     a continuous flow of readers can starve writers);
+#   - `:random` access strategy ignores the order of both queues (no ordering between modes, so
+#     a continuous flow of readers can starve writers); its own lock request is queued like any
+#     lock request (`:queued` lock requests wait for it);
 #
 # Lock index (`RedisQueuedLocks::Resource::LOCK_INDEX_KEY`): only with the enabled lock index
 # (`lock_index_enabled`, `config['lock_index_enabled']`); with the disabled lock index (default)

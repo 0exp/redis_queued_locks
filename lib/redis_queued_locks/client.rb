@@ -232,8 +232,9 @@ class RedisQueuedLocks::Client
   #   - `:queued` access strategy orders read and write lock requests in FIFO between modes
   #     (read lock request waits for earlier write lock requests, write lock request waits for
   #     earlier read and write lock requests) so writers are not starved by readers;
-  #   - `:random` access strategy ignores lock queues (a continuous flow of readers can starve
-  #     writers);
+  #   - `:random` access strategy: the lock request does not wait for earlier requests (no order
+  #     between modes: a continuous flow of readers can starve writers), but it is queued like any
+  #     lock request (`:queued` lock requests wait for it);
   #   - read lock specifics:
   #     - read lock is released (with a block of code) or expired (by `ttl`) independently
   #       of other read locks; `#unlock` releases all read locks and the write lock;
