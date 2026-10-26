@@ -57,6 +57,10 @@
   request right after, so the attempt could fail (`:dead_score_reached`, `:acquirer_is_not_first_in_queue`) and spend
   a retry; the queueing drops the dead lock requests before the lock request is queued now (the same commands in the same
   round trip);
+- the enabled lock index: the locks indexed with the `+inf` score (keys without TTL adopted by `#reindex_locks`) were skipped
+  as expired ones by `#locks`/`#locks_info`, `#queues`/`#queues_info`, `#keys`, `#clear_locks`, `#clear_locks_of`/
+  `#clear_current_locks`, `#clear_dead_requests` and the zombie info methods (the ZSCAN score `"inf"` was read as `0.0`);
+  such names never expire now;
 
 ## [1.21.0] - 2026-10-13
 ### Added

@@ -234,7 +234,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 
 ### E. Iteration and performance (`acquirer.md#7`, `arguments.md#7`)
 - One pass per operation: one `SCAN` over `KEY_PATTERN`/`ALL_LOCK_QUEUES_PATTERN` classified by
-  `Resource.lock_key_family`, or one `ZSCAN` via `each_lock_name_batch` (expired scores skipped). Never `KEYS`,
+  `Resource.lock_key_family`, or one `ZSCAN` via `each_lock_name_batch` (expired scores skipped by `Resource.lock_index_score_expired?`: the `"inf"` score never expires). Never `KEYS`,
   never one round trip per key; per-key commands in pipelined batches collected across pages, plus the
   remainder batch.
 - A new lock-iterating operation implements both lookups side by side, chooses the lookup in one place

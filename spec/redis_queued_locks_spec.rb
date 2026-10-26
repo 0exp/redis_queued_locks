@@ -6883,6 +6883,52 @@ RSpec.describe RedisQueuedLocks do
       expect(disabled_client.keys).to be_empty
     end
 
+    specify 'names of keys without TTL (the +inf lock index score) are found by every lookup' do
+      # NOTE: `#reindex_locks` indexes a key without TTL (a manual write) with the `+inf` score:
+      #   ZSCAN replies have String scores (`"inf"`), such a name is never expired (every lock
+      #   index lookup visits it: info, cleanups, zombies)
+      client = RedisQueuedLocks::Client.new(redis) { |config| config['lock_index_enabled'] = true }
+      host_id = 'rql:hst:1/2/4/manual'
+      acquirer_id = 'rql:acq:1/2/3/4/manual'
+      write_lock = lambda do
+        redis.call(
+          'HSET', 'rql:lock:idx.inf',
+          'acq_id', acquirer_id, 'hst_id', host_id, 'ts', Time.now.to_f.to_s, 'ini_ttl', '1000'
+        )
+      end
+      write_lock.call
+      # NOTE: a dead lock request (an hour ago)
+      redis.call('ZADD', 'rql:lock_queue:idx.inf', (Time.now.to_f - 3_600).to_s, acquirer_id)
+      client.reindex_locks
+      expect(redis.call('ZSCORE', 'rql:index:locks', 'idx.inf')).to eq(Float::INFINITY)
+
+      aggregate_failures 'info lookups' do
+        expect(client.locks).to contain_exactly('rql:lock:idx.inf')
+        expect(client.queues).to contain_exactly('rql:lock_queue:idx.inf')
+        expect(client.keys).to contain_exactly('rql:lock:idx.inf', 'rql:lock_queue:idx.inf')
+        # NOTE: the host of the lock is a zombie (its last probe is an hour old)
+        redis.call(
+          'HSET', RedisQueuedLocks::Resource::SWARM_KEY, host_id, (Time.now.to_f - 3_600).to_s
+        )
+        expect(client.zombie_locks).to contain_exactly('rql:lock:idx.inf')
+      end
+
+      aggregate_failures 'cleanups' do
+        expect(client.clear_dead_requests(dead_ttl: 60_000)).to match({
+          ok: true, result: { processed_queues: contain_exactly('rql:lock_queue:idx.inf') }
+        })
+        expect(redis.call('EXISTS', 'rql:lock_queue:idx.inf')).to eq(0)
+        expect(client.clear_locks_of(host_id:, acquirer_id:)).to match({
+          ok: true, result: hash_including(rel_key_cnt: 1)
+        })
+        expect(redis.call('EXISTS', 'rql:lock:idx.inf')).to eq(0)
+        write_lock.call
+        expect(client.clear_locks).to match({ ok: true, result: hash_including(rel_key_cnt: 1) })
+        expect(redis.call('EXISTS', 'rql:lock:idx.inf')).to eq(0)
+      end
+      redis.call('DEL', RedisQueuedLocks::Resource::SWARM_KEY)
+    end
+
     specify 'lock index config validation' do
       expect do
         RedisQueuedLocks::Client.new(redis) { |config| config['lock_index_enabled'] = 'true' }

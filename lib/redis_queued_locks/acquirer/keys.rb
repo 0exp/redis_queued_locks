@@ -134,7 +134,8 @@ module RedisQueuedLocks::Acquirer::Keys
 
     # Iterates over the lock names of the lock index (one ZSCAN pass) in batches of `scan_size`
     # lock names (batches are collected across ZSCAN pages). Expired lock names (not dropped from
-    # the index yet) are skipped: all their keys are expired.
+    # the index yet) are skipped: all their keys are expired (`+inf` names, keys without TTL, never
+    # expire: see `RedisQueuedLocks::Resource.lock_index_score_expired?`).
     #
     # NOTE: each operation module iterates over the lock index by itself (duplicated on purpose:
     #   operation modules are independent of each other, see `Locks.each_lock_name_batch`);
@@ -147,6 +148,7 @@ module RedisQueuedLocks::Acquirer::Keys
     #
     # @api private
     # @since 1.20.0
+    # @version 1.22.0
     def each_lock_name_batch(redis_client, scan_size)
       lock_index_time = RedisQueuedLocks::Resource.lock_index_time
       # @type var lock_names: Array[String]
@@ -155,7 +157,9 @@ module RedisQueuedLocks::Acquirer::Keys
       redis_client.zscan(
         RedisQueuedLocks::Resource::LOCK_INDEX_KEY, count: scan_size
       ) do |lock_name, lock_index_score|
-        next if lock_index_score.to_f < lock_index_time
+        next if RedisQueuedLocks::Resource.lock_index_score_expired?(
+          lock_index_score, lock_index_time
+        )
 
         lock_names << lock_name
         next if lock_names.size < scan_size

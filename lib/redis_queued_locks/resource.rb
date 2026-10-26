@@ -314,6 +314,22 @@ module RedisQueuedLocks::Resource
       ::Process.clock_gettime(::Process::CLOCK_REALTIME, :millisecond)
     end
 
+    # Is the lock name of the lock index expired (all the keys of the lock are expired)?
+    #
+    # NOTE: the lock index replies of ZSCAN have String scores: `+inf` (a key without TTL indexed
+    #   by `ReindexLocks`) is `"inf"`, and `String#to_f` turns it into `0.0` (the name would be
+    #   skipped as an expired one by every lock index lookup): it never expires;
+    #
+    # @param lock_index_score [String] The score of the lock name (a ZSCAN reply).
+    # @param lock_index_time [Integer] The current client time (see `lock_index_time`).
+    # @return [Boolean]
+    #
+    # @api private
+    # @since 1.22.0
+    def lock_index_score_expired?(lock_index_score, lock_index_time)
+      lock_index_score != 'inf' && lock_index_score.to_f < lock_index_time
+    end
+
     # @param lock_readers_key [String]
     # @return [String]
     #
