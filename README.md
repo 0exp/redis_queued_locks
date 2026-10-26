@@ -2046,8 +2046,10 @@ rql.queues_info # or rql.qeuues_info(scan_size: 123)
 In some cases your lock requests may become "dead". It means that your lock request lives in lock queue in Redis without
 any processing. It can happen when your processs that are enqueeud to the lock queue is failed unexpectedly (for some reason)
 before the lock acquire moment occurs and when no any other process does not need this lock anymore.
-For this case your lock reuquest will be cleared only when any process will try
-to acquire this lock again (cuz lock acquirement triggers the removement of expired requests).
+For this case your lock request will be cleared only when another lock request meets it: a lock request of the same
+[priority](#lock-request-prioritization) (lock acquirement drops the expired requests of its priority) or a `:queued` lock request
+it blocks (the head of the queue, an earlier request of the other read/write mode); the dead requests of other priorities stay
+in the queue.
 
 NOTE: with the enabled [Lock Index](#lock-index) the lock request queue lives as long as its latest lock request (the queue TTL
 is refreshed with the request `queue_ttl` on each lock request), so the queue of dead requests expires by itself (queues of older
@@ -2740,6 +2742,12 @@ rql.lock("user_#{user.id}", priority: :high) { update_profile } # priority: 50
     requests are ignored), but it is queued at the position of its priority: `:queued` lock requests wait for it (a `:random`
     request of a high priority holds back the waiting `:queued` requests of lower priorities until it obtains the lock or
     leaves the queue);
+  - dead lock requests are dropped by the lock requests that meet them (the requests of their priority and the requests they
+    block): the dead requests of the priorities that no lock request uses any more (and the dead requests met only by `:random`
+    lock requests) stay in the queues; they never block (an accepted trade-off of the head-driven cleanup: the cost of an
+    attempt does not depend on the number of priorities); without the [Lock Index](#lock-index) (its queues expire) and the
+    [swarm](#swarm-mode-and-zombie-locks) (it drops the requests of dead processes) call `#clear_dead_requests` periodically
+    (e.g. from a scheduled job) to drop them;
   - all processes that share locks should use RQL versions with priorities before positive priorities are used (`:high`,
     `:highest`, any priority above `0`): older versions drop such lock requests as dead ones (the order is broken; the mutual
     exclusion is not affected: lock queues never take part in it); the default priority (`0`) and negative priorities

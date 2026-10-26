@@ -372,7 +372,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   library-constant range `-100..100` and its ~61 µs FIFO precision inside a band, `MAX_DEAD_REQUEST_REMOVALS` per
   attempt, `:random` requests ignoring the order and the priorities of other requests (while their own requests are queued
   at their priority: `:queued` requests wait for them), `clear_dead_requests` reading the batch queues (2 round trips per batch),
-  the order degradation with older versions (no safety impact).
+  the order degradation with older versions (no safety impact), the queue score as the only order and liveness of a request
+  (a separate liveness registry of request deadlines was rejected by the user: don't propose it).
 - Unused `Resource` methods marked `# NOTE: (debug)` (manual runtime checks, `logic.md#17`); report a debug method
   only when it is wrong for a key family it can get.
 - Known limitations kept by the user: `YieldExpire` write release (`EXPIRE 0`) and ttl decrease without an owner

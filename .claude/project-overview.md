@@ -309,6 +309,10 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   one round trip reads the batch queues (`ZRANGE 0 -1 WITHSCORES`), one more prunes only the bands whose first request is dead
   (the requests of a band are adjacent and ordered by time), none without dead requests; `processed_queues` of the lock index
   lookup = non-empty queues.
+- Design decision (the user's): the queue score is the only order and liveness of a lock request. A separate liveness registry
+  (the deadlines of the requests in another key next to the queues) was considered and rejected: a new key family for the lock
+  index, reindexing, release and zombie paths, more commands per attempt; the dead requests of other bands are dropped by the
+  head-driven removal, the attempts of their band and `clear_dead_requests` (see Limitations).
 - Infinite positions (`-inf`/`+inf`: manual writes of the queues, RQL never writes them; out of all bands): the decoding never
   raises (`Resource.lock_request_priority`: `-inf` => `MAX_LOCK_PRIORITY`, `+inf` => `MIN_LOCK_PRIORITY`: info results and logs);
   a request at `-inf` is always dead (like before priorities: no enqueue time) and is dropped by its position
@@ -331,7 +335,8 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   requests of its band or of the requests it blocks is dropped by their attempts and comes back at its old position on its own
   ones (its own `queue_ttl` keeps the position): it loses its place and the advantage of its priority to the requests behind it
   with a shorter `queue_ttl`; README recommends one `queue_ttl` for the lock requests of a lock); dead requests of lower
-  priorities can stay in the queues until an attempt of their band (they never block; visible in `queue_info`).
+  priorities can stay in the queues until an attempt of their band (they never block; visible in `queue_info`; an accepted
+  trade-off of the head-driven cleanup: README recommends a periodic `clear_dead_requests` without the lock index and the swarm).
 
 ### Redis data layout (`resource.rb`)
 
