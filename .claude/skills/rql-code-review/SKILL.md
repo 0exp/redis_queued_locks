@@ -210,7 +210,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - Observability: every lock acquirement log line and event (classic, reentrant: the requested priority, lock series:
   the series priority, `lock_obtaining_failed`) carries the Integer `priority` right after `rw_mode`; try-lock logs
   that name another request carry its decoded priority (`first_priority_in_queue`, `ahead_priority`, `dead_priority`)
-  computed at the call site only when `log_sampled && log_lock_try`; info results carry `'priority'` (every copy).
+  computed at the call site only when `log_sampled && log_lock_try` (one helper: `TryToLock#logged_request_priority`); info results carry `'priority'` (every copy).
 - Compatibility: priority `0` keeps the raw timestamp scores of older versions/data; a change of the score layout or
   of the pruning states the rolling-deploy effect in README and CHANGELOG (older versions prune positive-priority
   requests as dead ones).

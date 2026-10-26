@@ -321,7 +321,7 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   carries the Integer `priority` of the request (classic, reentrant: the requested one, they never queue; lock series: the
   priority of the series, resolved and validated by `LockSeriesPoC` before the series events); `log_lock_try` logs that name
   another request carry its decoded priority (`first_priority_in_queue`, `ahead_priority`, `dead_priority`; decoded for logs
-  only: gated by `log_sampled && log_lock_try`; `first_priority_in_queue => nil` without the first request).
+  only: gated by `log_sampled && log_lock_try`, `TryToLock#logged_request_priority`; `first_priority_in_queue => nil` without the first request).
 - Limitations: the priority range is a library constant that bounds the score shift (float precision of the shifted positions:
   ~61 µs at ±100, ~0.5 ms at ±1000; requests of the same priority within this interval are ordered by acquirer ids); mixed
   versions: older clients prune high-priority requests as dead ones (`-inf..now-ttl`) and never prune low-priority ones (always

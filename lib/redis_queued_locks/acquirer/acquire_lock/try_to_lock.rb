@@ -574,10 +574,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           end
           waiting_acquirer = waiting_request ? waiting_request[0] : nil
           # NOTE: the priority of the first request is decoded for logs only
-          waiting_priority =
-            if log_sampled && log_lock_try && waiting_request
-              RedisQueuedLocks::Resource.lock_request_priority(waiting_request[1])
-            end
+          waiting_priority = logged_request_priority(log_sampled, log_lock_try, waiting_request)
 
           LogVisitor.get_first_from_queue(
             logger, log_sampled, log_lock_try, lock_key,
@@ -1227,30 +1224,23 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         # NOTE: lock data is extracted for logs only
         ((log_sampled && log_lock_try) ? rconn.call('HGETALL', lock_key).to_h : NO_LOCK_DATA)
       )
-    when :write_request_is_ahead
+    when :write_request_is_ahead, :read_request_is_ahead
       ahead_request = opposite_waiting_request #: [String, Float]
       # NOTE: the priority of the request ahead is decoded for logs only
-      ahead_priority =
-        if log_sampled && log_lock_try
-          RedisQueuedLocks::Resource.lock_request_priority(ahead_request[1])
-        end
-      LogVisitor.exit__write_request_ahead(
-        logger, log_sampled, log_lock_try, lock_key,
-        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
-        ahead_request[0], ahead_priority
-      )
-    when :read_request_is_ahead
-      ahead_request = opposite_waiting_request #: [String, Float]
-      # NOTE: the priority of the request ahead is decoded for logs only
-      ahead_priority =
-        if log_sampled && log_lock_try
-          RedisQueuedLocks::Resource.lock_request_priority(ahead_request[1])
-        end
-      LogVisitor.exit__read_request_ahead(
-        logger, log_sampled, log_lock_try, lock_key,
-        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
-        ahead_request[0], ahead_priority
-      )
+      ahead_priority = logged_request_priority(log_sampled, log_lock_try, ahead_request)
+      if obstacle == :write_request_is_ahead
+        LogVisitor.exit__write_request_ahead(
+          logger, log_sampled, log_lock_try, lock_key,
+          queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
+          ahead_request[0], ahead_priority
+        )
+      else
+        LogVisitor.exit__read_request_ahead(
+          logger, log_sampled, log_lock_try, lock_key,
+          queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
+          ahead_request[0], ahead_priority
+        )
+      end
     when :lock_is_still_acquired
       LogVisitor.exit__lock_still_obtained(
         logger, log_sampled, log_lock_try, lock_key,
@@ -1269,6 +1259,24 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     end
   end
   # rubocop:enable Metrics/MethodLength
+
+  # (priorities) The priority of the lock request for the try-lock logs (the first request of
+  # the queue, the request ahead): decoded only when the try-lock logs are written (log-only values
+  # are never computed without the logs: `log_sampled && log_lock_try`).
+  #
+  # @param log_sampled [Boolean]
+  # @param log_lock_try [Boolean]
+  # @param lock_request [Array<String,Float>,NilClass]
+  #   The acquirer and the position of the lock request.
+  # @return [Integer,NilClass] `nil` without the try-lock logs or without the lock request.
+  #
+  # @api private
+  # @since 1.22.0
+  def logged_request_priority(log_sampled, log_lock_try, lock_request)
+    return unless log_sampled && log_lock_try && lock_request
+
+    RedisQueuedLocks::Resource.lock_request_priority(lock_request[1])
+  end
 
   # (priorities) Drops the dead lock requests of other priority bands that block the current lock
   # request (`:queued` access strategy: the head of the write lock queue for write lock requests,
@@ -1593,10 +1601,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     end
 
     # NOTE: the priority of the first request is decoded for logs only
-    waiting_priority =
-      if log_sampled && log_lock_try && waiting_request
-        RedisQueuedLocks::Resource.lock_request_priority(waiting_request[1])
-      end
+    waiting_priority = logged_request_priority(log_sampled, log_lock_try, waiting_request)
 
     # NOTE: the same log events as the failed attempt in the same order (queueing steps, the dropped
     #   dead requests, the first request, the exit event)
