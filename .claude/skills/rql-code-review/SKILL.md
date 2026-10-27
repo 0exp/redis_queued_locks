@@ -68,6 +68,7 @@ priorities", key layout, "Lock index", lock lookup modes, events, errors, conven
 | `logging/**`, `instrument/**` | + `visitors.md` |
 | `sig/**`, `Steepfile`, `rbs_collection.yaml` | `type-checking.md` |
 | `spec/**` | `tests.md` (coverage expectations only, see §3) |
+| `CHANGELOG.md` | `changelog.md` |
 | commits / messages | `git.md` |
 
 - Read every changed method in full, its callers, its RBS signature and every copy of duplicated logic. Copies
@@ -356,6 +357,10 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - The same change updates `.claude/project-overview.md` and the affected `.claude/rules/*.md` for every new/changed
   key, option, result shape, event, algorithm step or limitation (`logic.md#12`), README and CHANGELOG
   `[Unreleased]` for user-visible behavior, and the YARD of the touched `Client` methods.
+- CHANGELOG entries are compact (`changelog.md`): one 1-2 line bullet per subject-level change, no implementation
+  details (algorithm steps, Redis commands, round trips, internals, full event lists), no entries for internal-only
+  changes; one entry per feature, released sections untouched; a fundamentally new feature or globally new support
+  (Read/Write locks, Lock Index, Garnet support) is a separate `*Brand New Feature*` entry first in `### Added`.
 - Commits under review (`git.md`): subject only `[<scope>] <summary>`, lowercase, imperative, no trailing period,
   no body except the attribution trailer, never on `master`.
 
