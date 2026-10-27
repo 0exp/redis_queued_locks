@@ -1,335 +1,118 @@
 ## [Unreleased]
 ### Added
-- *Brand New Feature*: **Lock Request Prioritization**: the `priority:` option of `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (an Integer from `-100`,
-  the lowest, to `100`, the highest, `0` by default; pre-configured in the new `config['default_lock_priority']`): with the
-  `:queued` access strategy a lock request is placed in the lock request queue after all requests of the same or higher
-  priority and before all requests of the lower priority (strict priority, FIFO inside the same priority; read and write lock
-  requests too); the priority orders the waiting lock requests only (the obtained lock is never taken away); a `:random` lock
-  request does not wait for its turn (it ignores the priorities of other requests), but it is queued at the position of its
-  priority (`:queued` lock requests wait for it):
-  - the position of the lock request (the queue score) is the request time shifted by `-priority * 2**32` seconds: the default
-    priority keeps the request time (the queue data of the default priority is the same as before);
-  - every lock request drops dead lock requests of its own priority in both lock queues (in the same queueing pipeline: no new
-    commands and round trips); dead lock requests of other priorities that block the lock request (the head of the lock queue
-    and the earlier lock request of the other read/write mode, decoded from their positions) are dropped with the dead lock
-    requests of their priorities in one more round trip of the same attempt (up to 5 such round trips per attempt); the cost of
-    an attempt does not depend on the number of priorities;
-  - `#clear_dead_requests` drops the dead lock requests of every priority found in the lock queues (two round trips per batch of
-    lock queues: the lock requests are read, then the dead ones are dropped);
-  - the new `by_priority:` option of `#clear_dead_requests` (`false` by default): only the first lock request of each priority
-    is read instead of all lock requests (the dead requests of a priority are found by its first lock request): a batch of lock
-    queues takes one round trip per priority of its lock queue with the most priorities + 1, the transfer does not depend on the
-    length of the lock queues (for long lock queues with few priorities); a non-boolean value fails with
-    `RedisQueuedLocks::ArgumentError`;
-  - lock requests at infinite positions (`-inf`/`+inf`: manual writes of the lock queues) have the bound priorities (`100`/`-100`);
-    a request at `-inf` is dropped as a dead one when it blocks a lock request and by `#clear_dead_requests`, a request at `+inf`
-    is never dropped as a dead one (like before priorities);
-  - the new `log_lock_try` log event `[redis_queued_locks.try_lock.dead_request_removed]` (`dead_acq_id`, `dead_priority`);
-  - priority names: `priority:` and `config['default_lock_priority']` accept a priority name (Symbol) of the new
-    `config['lock_priorities']` (a priority name => its Integer priority; default names: `:lowest` (`-100`), `:low` (`-50`),
-    `:normal` (`0`), `:high` (`50`), `:highest` (`100`); applications define their own names); a name is resolved to its
-    Integer priority on each lock acquirement (queues, `#queue_info`, logs and instrumentation have the Integer priority),
-    an unknown name fails with `RedisQueuedLocks::ArgumentError`; an unknown name in `config['default_lock_priority']` fails
-    the configuration with `RedisQueuedLocks::ConfigValidationError` (checked once after a configuration block: the keys can
-    be assigned in any order, both keys keep their previous values on a failure; a direct `config[...] =` assignment is
-    checked before it is applied);
-  - all processes that share locks should be upgraded before positive priorities are used: older versions drop the lock
-    requests of positive priorities as dead ones (the order is broken, the mutual exclusion is not affected); the default
-    priority (`0`) and negative priorities work with older versions too (older versions keep such requests behind their own
-    ones and never drop them as dead ones: the upgraded processes drop the dead ones);
+- *Brand New Feature*: **Lock Request Prioritization**: the `priority:` option of `#lock`/`#lock!`/`#lock_series`/`#lock_series!`
+  (`-100..100`, `0` by default) orders the waiting `:queued` lock requests of both modes: strict priority, FIFO inside
+  a priority; the obtained lock is never taken away (see README "Lock Request Prioritization"):
+  - `config['default_lock_priority']`: the default priority of the client;
+  - priority names: `config['lock_priorities']` (`:lowest`, `:low`, `:normal`, `:high`, `:highest` by default, custom names
+    allowed), accepted by `priority:` and `config['default_lock_priority']`;
+  - `#clear_dead_requests`: drops the dead lock requests of all priorities; the new `by_priority:` option reads only the first
+    lock request of each priority (long lock queues with few priorities);
+  - the new `log_lock_try` log `[redis_queued_locks.try_lock.dead_request_removed]`;
+  - upgrade all processes that share locks before using positive priorities: older versions drop such lock requests as dead
+    ones (the order breaks, the mutual exclusion is not affected);
 ### Changed
-- `#queue_info`/`#queues_info`: each lock request has the `"priority"` field (`Integer`, decoded from its position);
-- logs and instrumentation payloads of the lock acquirement have the lock request `priority` (an Integer: a priority name is
-  reported as its priority): the events `lock_obtained`, `lock_obtaining_failed`, `lock_hold_and_release`,
-  `reentrant_lock_obtained`, `extendable_reentrant_lock_obtained`, `reentrant_lock_hold_completes`, `lock_series_obtained`,
-  `lock_series_hold_and_release` and the logs `start_lock_obtaining`, `start_try_to_lock_cycle`,
-  `dead_score_reached__reset_acquirer_position`, `lock_obtained`, `lock_obtaining_failed`, `reentrant_lock_obtained`,
-  `extendable_reentrant_lock_obtained`, `start_lock_series_obtaining`, `lock_series_obtained`, `expire_lock_series`,
-  `try_lock.acq_added_to_queue`; the `log_lock_try` logs that name another lock request have its priority too:
-  `first_priority_in_queue` (`try_lock.get_first_from_queue`, `try_lock.exit__no_first`, `try_lock.exit__lock_still_obtained`,
-  `try_lock.exit__read_lock_still_obtained`; `nil` when the lock queue has no requests) and `ahead_priority`
-  (`try_lock.exit__write_request_ahead`, `try_lock.exit__read_request_ahead`);
-- `#lock_series`/`#lock_series!`: the `priority:` is validated (and a priority name is resolved) before the series is
-  acquired;
-- RBS: `RedisQueuedLocks::Config#[]` is typed per config key (one overload per key with its value type) instead of
-  `(String) -> untyped`: Steep users get precise types of `config['...']` reads and type errors on unknown keys;
-  lookups with a dynamic `String` key no longer type-check (the runtime behavior is unchanged).
-- RBS: the option literal unions `RedisQueuedLocks::readWriteMode` (`:read | :write`), `RedisQueuedLocks::accessStrategy`
-  (`:queued | :random`) and `RedisQueuedLocks::conflictStrategy` (`:wait_for_lock | :work_through |
-  :extendable_work_through | :dead_locking`) replace `Symbol` for `read_write_mode`, `access_strategy` and
-  `conflict_strategy` in the `Client` signatures (and the config defaults): Steep rejects an invalid strategy/mode value.
+- `#queue_info`/`#queues_info`: each lock request has the `"priority"` field;
+- the lock acquirement logs and instrumentation events carry the Integer `priority`, the try-lock logs that name another lock
+  request carry its priority (see README `## Logging` / `### Instrumentation Events`);
+- RBS: `RedisQueuedLocks::Config#[]` is typed per config key (unknown keys are type errors, dynamic `String` keys no longer
+  type-check);
+- RBS: `read_write_mode`, `access_strategy` and `conflict_strategy` of `Client` are typed as literal unions;
 ### Fixed
-- a lock request that waits longer than its `queue_ttl` (its position is reset: requeued at the end of its priority) could be
-  missing in the lock queue for one attempt: the queueing kept its old dead position (`ZADD NX`) and dropped it as a dead
-  request right after, so the attempt could fail (`:dead_score_reached`, `:acquirer_is_not_first_in_queue`) and spend
-  a retry; the queueing drops the dead lock requests before the lock request is queued now (the same commands in the same
-  round trip);
-- the enabled lock index: the locks indexed with the `+inf` score (keys without TTL adopted by `#reindex_locks`) were skipped
-  as expired ones by `#locks`/`#locks_info`, `#queues`/`#queues_info`, `#keys`, `#clear_locks`, `#clear_locks_of`/
-  `#clear_current_locks`, `#clear_dead_requests` and the zombie info methods (the ZSCAN score `"inf"` was read as `0.0`);
-  such names never expire now;
+- a lock request requeued after waiting longer than its `queue_ttl` could lose its next attempt (a spent retry);
+- the enabled lock index: locks without TTL adopted by `#reindex_locks` were skipped by all lock-iterating operations;
 
 ## [1.21.0] - 2026-10-13
 ### Added
-- Logging and instrumentation of all operations that change Redis keys (the swarm is not covered yet):
-  - the lock acquirement: the new `redis_queued_locks.lock_obtaining_failed` instrumentation event and log
-    (`#lock`/`#lock!` and each lock of `#lock_series`/`#lock_series!`: the lock is not obtained, the failure `result`
-    (`:timeout_reached`, `:retry_limit_reached`, `:fail_fast_no_try`, `:fail_fast_after_try`, `:conflict_dead_lock`,
-    `:conflict_lock_upgrade`) is in the payload; with `raise_errors: true` it is reported before the error is raised);
-  - each lock mutation operation is reported with one log line and one instrumentation event with the time of the whole
-    operation (the same name and data; the payload ends with `instrument`): the new `redis_queued_locks.extend_lock_ttl`
-    (`#extend_lock_ttl`), `redis_queued_locks.clear_dead_requests` (`#clear_dead_requests`), `redis_queued_locks.reindex_locks`
-    (`#reindex_locks`) events, and the new log lines of the existing `explicit_lock_release` (`#unlock`),
-    `explicit_read_lock_release` (`#unlock_read`), `explicit_all_locks_release` (`#clear_locks`), `release_locks_of`
-    (`#clear_locks_of`/`#clear_current_locks`) events (the `logger:` option of these methods was not used);
+- Logging and instrumentation of all operations that change Redis keys (the swarm is not covered yet; see README `## Logging` /
+  `### Instrumentation Events`):
+  - the `redis_queued_locks.lock_obtaining_failed` event and log (with the failure `result`);
+  - the `redis_queued_locks.extend_lock_ttl`, `redis_queued_locks.clear_dead_requests` and `redis_queued_locks.reindex_locks`
+    events and logs;
+  - logs of the existing `explicit_lock_release`, `explicit_read_lock_release`, `explicit_all_locks_release` and
+    `release_locks_of` events;
   - `#reindex_locks`: `logger:`, `instrumenter:`, `instrument:` and the log/instrumentation sampling options;
 ### Changed
-- stricter validation (the details are in "Fixed"): invalid values raise `RedisQueuedLocks::ArgumentError`
-  (`RedisQueuedLocks::SwarmArgumentError` for the swarm methods, `RedisQueuedLocks::ConfigValidationError` for the config)
-  instead of the previous silent misbehavior:
-  - `ttl` of `#lock`/`#lock!`/`#lock_series`/`#lock_series!` should be a positive `Integer` in both modes (`ttl: 0` was
-    accepted in the write mode);
-  - `#extend_lock_ttl`: `milliseconds` should be a positive `Integer` (`extend_lock_ttl(name, 0)` was a successful no-op);
-  - the per-call numeric options should be `Integer`s in the ranges of their config keys: `Float` values (e.g.
-    `timeout: 0.5`, `retry_delay: 10.0`) are rejected now;
-  - the config: positive TTLs, periods and batch/scan sizes;
+- stricter validation: invalid values raise `RedisQueuedLocks::ArgumentError` (`RedisQueuedLocks::SwarmArgumentError` for
+  the swarm methods, `RedisQueuedLocks::ConfigValidationError` for the config) instead of a silent misbehavior:
+  - `ttl` of the lock methods and `milliseconds` of `#extend_lock_ttl`: positive `Integer`s;
+  - the per-call numeric options: `Integer`s in the ranges of their config keys (`Float`s like `timeout: 0.5` are rejected);
+  - the config: positive `Integer` TTLs, periods and batch/scan sizes;
   - `:meta`: reserved lock data keys are rejected as Symbol keys too;
-- the internal timeout errors of `timed: true` and `timeout` inherit from `RedisQueuedLocks::Exception < ::Exception`
-  (were `Timeout::Error`s): a `rescue Timeout::Error` (or `rescue => e`) inside the block does not catch the lock timeout
-  anymore; the public errors/results are the same;
-- `#locks_info`: the info of write locks has the `"lock_key"` field (like `#lock_info`);
-- instrumentation payloads: `explicit_lock_release`, `explicit_all_locks_release` and `release_locks_of` have `instrument`;
+- the internal timeout errors of `timed: true` and `timeout` are not `StandardError`s anymore: `rescue => e` /
+  `rescue Timeout::Error` inside the block does not catch them (the public errors and results are the same);
 ### Fixed
-- the `instrument:` option of `#unlock`, `#clear_locks`, `#clear_locks_of`/`#clear_current_locks` (README: "passed to
-  the instrumenter's payload") was not passed to the payload (`#unlock` did not even forward it); the payloads of
-  `explicit_lock_release`, `explicit_all_locks_release` and `release_locks_of` have `instrument` now; `#extend_lock_ttl` and
-  `#clear_dead_requests` had no instrumentation events at all (see "Added");
-- `#lock`/`#lock!` with a non-positive `ttl` in the write mode: the lock was reported as obtained, but `PEXPIRE` with
-  a non-positive ttl deleted the lock key in the obtaining transaction, so other acquirers could obtain the same lock
-  at the same time (no mutual exclusion); `ttl` should be a positive `Integer` in both modes now
-  (`RedisQueuedLocks::ArgumentError`, previously validated for read locks only); `ttl: nil` was never supported
-  (the YARD docs described it as "without timeout");
-- `#lock_series`/`#lock_series!` (PoC) with a non-positive `ttl` (both modes): the locks of the series were obtained with
-  the ttl made of the retry delay and jitter only; the series `ttl` should be a positive `Integer` now
-  (`RedisQueuedLocks::ArgumentError`);
-- `config['default_lock_ttl']` should be a positive `Integer` (`RedisQueuedLocks::ConfigValidationError`);
-- the config validation accepted zero and negative TTLs, periods and batch/scan sizes: `config['default_queue_ttl'] = 0`
-  dropped the own lock request in the queueing pipeline (endless `:dead_score_reached`), zero batch/scan sizes failed
-  `SCAN`/`ZSCAN` (`COUNT 0`: `ERR syntax error`) and `each_slice(0)`, zero/negative swarm periods killed the swarm main loops
-  and the supervisor (`sleep` with a negative value) or made them busy loops, a non-positive `zombie_ttl` made all hosts
-  zombies; these keys should be positive `Integer`s now (`RedisQueuedLocks::ConfigValidationError`): `default_queue_ttl`,
-  `lock_release_batch_size`, `clear_locks_of__lock_scan_size`, `clear_locks_of__queue_scan_size`, `key_extraction_batch_size`,
-  `swarm.supervisor.liveness_probing_period`, `swarm.probe_hosts.probe_period`, `swarm.flush_zombies.zombie_ttl`,
-  `swarm.flush_zombies.zombie_flush_period`, `swarm.flush_zombies.zombie_lock_scan_size`,
-  `swarm.flush_zombies.zombie_queue_scan_size`;
-- `#extend_lock_ttl` with a non-positive `milliseconds` decreased the lock TTL (or deleted the lock) and reported a successful
-  extension: `milliseconds` should be a positive `Integer` now (`RedisQueuedLocks::ArgumentError`);
-- `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (both modes): reserved lock data keys were rejected in `:meta` only as
-  String keys, while Symbol keys (`meta: { acq_id: '...' }`) passed the validation and overwrote the lock data fields
-  (`acq_id`, `hst_id`, `ts`, `ini_ttl`, `spc_*`, ...: reentrant locks, owner checks of lock releases and lock info were
-  broken while the lock lived); Symbol keys are validated too now (`RedisQueuedLocks::ArgumentError`);
-- `timed: true` and `timeout`: the internal timeout errors inherited from `Timeout::Error` (a `StandardError`), so `rescue => e`,
-  `rescue StandardError`, `rescue Timeout::Error` and `rescue nil` of the interrupted code swallowed them: a `timed` block with
-  such a `rescue` continued after the lock TTL (another acquirer could obtain the expired lock, and the write lock release
-  after the block deleted the lock of that acquirer), and the acquirement timeout that interrupted a logger/instrumenter
-  call (`rescue nil` of the log/instrumentation events) was lost (with `retry_count: nil` the acquirement waited without
-  the timeout); the internal timeouts inherit from the new private base `RedisQueuedLocks::Exception < ::Exception` now
-  (like `Timeout::ExitException`): only `rescue Exception` catches them, `ensure` still runs, the public errors/results
-  are the same (`RedisQueuedLocks::TimedLockTimeoutError`, `RedisQueuedLocks::LockAcquirementTimeoutError`,
-  `:timeout_reached`); a connection interrupted inside a `WATCH` block is closed (redis-client sends `UNWATCH` only on
-  `StandardError`s: the next transaction on the connection would be aborted);
-- `#lock_series`/`#lock_series!` (PoC): the log events and the `redis_queued_locks.lock_series_hold_and_release`
-  instrumentation event raised the errors of the logger/instrumenter: a failing logger broke the series call (after
-  obtaining all the locks of the series the locks were not released till their ttl), a failing instrumenter replaced
-  the block result with its error; the logger/instrumenter errors are swallowed now (like in all other events);
-- `#locks_info` (and `#locks(with_info: true)`): the info of write locks had no `"lock_key"` field (the info of read locks and
-  `#lock_info` have it), so the info shape depended on the lock mode; the write lock info has `"lock_key"` now (the same
-  fields as `#lock_info`);
-- `RedisQueuedLocks::Logging::Sampler` and `RedisQueuedLocks::Instrument::Sampler` (the default log/instrumentation samplers)
-  sampled `sampling_percent` of 101 values (`SecureRandom.rand(0..100)`): `0%` sampled ~1% of the cases (instead of none),
-  `15%` sampled ~15.8%; they sample exactly `sampling_percent` of 100 values now (`0%` - never, `100%` - always);
-  the private `SAMPLING_PERCENT_RANGE` constants are removed;
-- swarm: the Redis client builder of the swarm elements mutated the `swarm.*.redis_config.config`/`pool_config` hashes of
-  the client config (`transform_keys!`): with frozen hashes each start of the host probing and zombie flushing main loops
-  failed with `FrozenError` (the hosts were not probed, zombie locks were not flushed); the hashes are not mutated now;
-- RBS: the `RedisQueuedLocks::Client#current_acq_id` alias was declared as `ccurrent_acq_id` (a typo: the public method was
-  missing in the signatures); `RedisQueuedLocks::Client#queues_info` returned the `queues` union (`queueList | queuesInfo`)
-  instead of `queuesInfo`;
-- `RedisQueuedLocks::Resource.lock_key_from_queue` (a private debug helper for manual checks in a console, not used by
-  the library) returned a wrong key for the read lock request queues (`rql:lock:ueue:<name>`); it supports the write and
-  read lock request queues now and returns `nil` for other keys;
-- a connection interrupted inside a `WATCH` block by a `Timeout.timeout` of your code without an exception class
-  (`Timeout::ExitException`, e.g. `Timeout.timeout(5) { rql.lock("x") { ... } }`) returned to the connection pool with
-  the active `WATCH` (redis-client sends `UNWATCH` only on `StandardError`s): the next transaction on the connection could
-  be aborted (e.g. a lock release); the connection is closed now (like with the internal timeouts);
-- the per-call numeric options were not validated (zero/negative values broke the operations like the same config values
-  before the config validation fix): they are validated with the same ranges as their config keys now
-  (`RedisQueuedLocks::ArgumentError`; `RedisQueuedLocks::SwarmArgumentError` for the swarm methods), before any Redis
-  command; the values should be `Integer`s (like the config values: `Float` values such as `timeout: 0.5` or
-  `retry_delay: 10.0` are rejected now):
-  - `#lock`/`#lock!`/`#lock_series`/`#lock_series!`: `queue_ttl` > 0, `timeout` and `retry_count` - `nil` or >= 0,
-    `retry_delay`, `retry_jitter` and `lock_index_grace_period` >= 0;
-  - `#locks`, `#locks_info`, `#queues`, `#queues_info`, `#keys`, `#clear_dead_requests`, `#reindex_locks`: `scan_size` > 0;
-    `#clear_locks`: `batch_size` > 0; `#clear_locks_of`/`#clear_current_locks`: `lock_scan_size`, `queue_scan_size` > 0;
-    `#clear_dead_requests`: `dead_ttl` > 0; `#reindex_locks`: `queue_ttl` > 0, `lock_index_grace_period` >= 0;
-  - `#swarm_info`, `#flush_zombies`, `#zombie_locks`, `#zombie_acquirers`, `#zombie_hosts`, `#zombies_info`: `zombie_ttl`
-    and the scan sizes > 0;
-- README/YARD documentation that did not match the code:
-  - config keys: `config['instr_sampling_enabled']` in the configuration example (was `nstr_sampling_enabled`),
-    `config['log_sampling_enabled']` (was `log_samplign_enabled`), `*_sampling_enabled` (was `*_sampling_enalbed`);
-  - `#lock` results: `:retry_limit_reached` (was `:retry_count_reached`), `:conflict_lock_upgrade` is listed, `:unknown`
-    is not returned, `:dead_locking` is not a `:process` value (it fails with `:conflict_dead_lock`), the result has `hst_id`;
-  - `#lock_info`: `"ini_ttl"` (was `"init_ttl"`), `"spc_cnt"` (was `"spc_count"`), host ids `rql:hst:...` in the examples;
-  - `#unlock`: `rel_time` is in milliseconds (was "in seconds");
-  - `#clear_dead_requests` returns `{ ok: true, result: { processed_queues: Set<String> } }` (write and read request queues);
-  - `#extend_lock_ttl`: the write lock TTL is extended atomically by one Lua script, without the lock owner check
-    (was "non-atomic, two commands");
-  - the log lists of the `### Configuration` section: `rw_mode`, the key order, the read/write and lock series logs
-    (the same as in the `## Logging` section);
-  - the `#lock!` link of the Usage list and the `#lock` link of `#lock_info`, the Usage list and the table of contents: `unlock_read`, `clear_locks_of`,
-    `clear_current_locks`, `reindex_locks`;
-  - YARD: the `#clear_current_locks` options (`lock_scan_size`, `queue_scan_size` instead of the missing `batch_size`), the tag
-    typos (`@sine`, `@since ?.?.?`, `@since 19.0.0`, `@api ppublic`/`pulic`/`pub;ic`); the inert `# steep:ingore` comments
-    are removed;
-  - YARD: the `@version` tags of the classes/modules (versions >= 1.17.0) follow the interface changes only (method
-    signatures, added/removed methods, `extend`/`include`/`prepend`, the superclass), not the behavior changes inside
-    the methods;
+- write locks with a non-positive `ttl` were reported as obtained without the mutual exclusion;
+- non-positive config and per-call values broke the operations (endless `:dead_score_reached`, failing scans, stopped swarm
+  loops, all hosts as zombies, `#extend_lock_ttl` shortening the lock, `#lock_series` locks with a near-zero ttl);
+- Symbol keys of `:meta` overwrote the reserved lock data (broken reentrant locks, owner checks and lock info);
+- a `rescue` inside a `timed` block or in a logger/instrumenter swallowed the lock timeouts: the block could run past
+  the lock TTL, the acquirement timeout could be lost;
+- a connection interrupted inside `WATCH` (lock timeouts, `Timeout.timeout` of your code) could abort the next transaction
+  on it (e.g. a lock release); it is closed now;
+- the `instrument:` option of `#unlock`, `#clear_locks`, `#clear_locks_of`/`#clear_current_locks` was not passed to the payload;
+- `#lock_series` (PoC): logger/instrumenter errors broke the series call (the locks were kept till their ttl);
+- `#locks_info`: the write lock info had no `"lock_key"` field (unlike `#lock_info`);
+- the default log/instrumentation samplers were off by one percent (`0%` sampled ~1% of the cases);
+- swarm: frozen `swarm.*.redis_config` hashes failed the swarm main loops with `FrozenError`;
+- RBS: the missing `Client#current_acq_id` alias and the wrong `Client#queues_info` return type;
+- README/YARD descriptions that did not match the code (config key names, `#lock` statuses, `#lock_info` fields, results of
+  `#unlock`, `#clear_dead_requests` and `#extend_lock_ttl`);
 
 ## [1.20.0] - 2026-10-12
 ### Added
-- **Lock index** (opt-in: `config['lock_index_enabled']`, `false` by default: lock-iterating operations scan the keyspace as before):
-  `rql:index:locks` (`ZSET`: lock name => the upper bound of the lifetime of all lock keys in client time, ms); with the enabled
-  lock index all lock-iterating operations find locks without the full keyspace `SCAN` (see the "Lock Index" README section):
-  - the client-wide mode (not a per-call option): the lock acquirement maintains the lock index and lock-iterating operations
-    read it only when it is enabled; use the same mode on all processes that share the Redis database (enable it everywhere,
-    then invoke `#reindex_locks` once); the swarm reads the mode when it is started;
-  - maintained by the lock acquirement itself without new Redis round trips: each lock request adds the lock name (`ZADD GT`
-    with the queue ttl), sets the request queue TTL and drops the expired lock names (`ZREMRANGEBYSCORE`) in the queueing pipeline
-    (4 more commands per attempt), each lock obtaining (write and read) adds the lock name with the lock ttl in the same
-    transaction (1 more command), each extension (`#extend_lock_ttl`, `:extendable_work_through` reentrant locks) increases
-    the score by the extension (`ZADD XX INCR`; `#extend_lock_ttl` of write locks sends `EVAL` and the index update in one
-    transaction);
-  - `#unlock` and `#clear_locks` drop the lock names from the index in the same transaction with the lock keys;
-  - lock request queues have TTL: the queue lives as long as its latest lock request (`PEXPIRE NX` + `GT` with the queue ttl on
-    each lock request), queues of dead acquirers expire by themselves;
-  - lock-iterating operations find locks and lock queues via one `ZSCAN` pass over the lock names (lock keys are derived from
-    the lock names): the cost depends on the number of locks only, keys of other applications are never visited; locks without
-    the lock index entry (older RQL versions, the disabled lock index) are not found until `#reindex_locks`:
-    - swarm (`#flush_zombies`, the zombie flusher, `#zombie_locks`/`#zombie_acquirers`/`#zombies_info`): `zombie_lock_scan_size` is
-      the `ZSCAN` count and the batch size of locks, `zombie_queue_scan_size` - the batch size of lock queues (both processed during
-      the same pass); `#flush_zombies` drops the expired lock names from the index;
-    - `#locks`/`#locks_info`, `#queues`/`#queues_info`, `#keys`: `scan_size` is the `ZSCAN` count and the batch size of locks;
-      `#keys` returns the existing keys of the lock key families of the indexed locks (other `rql:lock*` keys are not listed);
-    - `#clear_locks`: the keys of each batch of locks are deleted with one `DEL` in one transaction with the removal of their lock
-      names from the lock index; `batch_size` is the number of locks;
-    - `#clear_locks_of`/`#clear_current_locks`: `clear_locks_of__lock_scan_size` is the `ZSCAN` count and the batch size of locks,
-      `clear_locks_of__queue_scan_size` - the number of lock queues processed in one round trip;
-    - `#clear_dead_requests`: `scan_size` is the `ZSCAN` count and the number of locks (both lock queues of each lock) processed in
-      one round trip; the expired lock names are dropped from the index;
-  - `config['lock_index_grace_period']` (`60_000` ms by default) and `lock_index_grace_period:` option of `#lock`/`#lock!`/
-    `#lock_series`/`#lock_series!`: the lock name stays in the index for this period after the expiration of all its keys
-    (the client clock skew and network latency tolerance);
-- `#reindex_locks`: adds the lock keys without the lock index entry (keys of older RQL versions and keys created with the disabled
-  lock index) to the lock index (one `SCAN` pass, lock queues without TTL get the queue ttl); **invoke it once after the lock index
-  is enabled on all your processes**;
+- *Brand New Feature*: **Lock Index** (opt-in: `config['lock_index_enabled']`, `false` by default): lock-iterating operations
+  (`#locks`, `#queues`, `#keys`, `#clear_*`, the swarm) find locks through the `rql:index:locks` index instead of the keyspace
+  `SCAN` (see README "Lock Index"):
+  - a client-wide mode: use the same mode on all processes that share the Redis database;
+  - `config['lock_index_grace_period']` and the `lock_index_grace_period:` lock option (`60_000` ms by default): the clock
+    skew tolerance of the index;
+  - lock request queues have TTL in the enabled mode (queues of dead acquirers expire by themselves);
+  - `#reindex_locks`: adds the existing lock keys to the lock index (keys of older versions and of the disabled lock index
+    are not found until then); **invoke it once after the lock index is enabled on all your processes**;
 ### Changed
-- `#flush_zombies` (and the zombie flusher of the swarm): zombie lock requests are dropped with one `ZREM` per lock queue
-  (previously one `ZREM` per zombie acquirer and lock queue);
-- `#queue_info` / `#queues_info`: lock queues are read without `EXISTS` checks (Redis does not keep empty sorted sets);
-- Lock acquirement attempt: read lock requests do not fetch the longest read lock (it is used by write lock requests only),
-  write lock requests do not build the read lock data key, disabled try-lock logs get a shared frozen hash instead of a new one;
-- Lock acquirement attempt: the lock request queueing (`ZADD NX`, expired requests pruning, queue heads) is one pipelined
-  round trip instead of three; with `:wait_for_lock`/`:dead_locking` conflict strategies (without `fail_fast`) it is sent
-  in the lock state round trip: `#lock` with a block takes 4 Redis round trips instead of 7, a failed attempt - 3 instead of 6;
-- SCAN-based operations (`#clear_locks`, `#clear_locks_of`/`#clear_current_locks`, `#clear_dead_requests`, `#locks`/`#locks_info`,
-  `#queues`/`#queues_info`, `#flush_zombies`, `#zombie_locks`/`#zombie_acquirers`/`#zombies_info`) make one `SCAN` pass instead
-  of 2-5 passes (one per key family) and send per-key commands in pipelined batches instead of one round trip per key:
-  - `#clear_locks` deletes the found keys during the scan with one `DEL` per batch (previously all keys were expired at the end,
-    lock queues first);
-  - `#clear_locks_of`/`#clear_current_locks` (`clear_locks_of__queue_scan_size`) and `#flush_zombies` (`zombie_queue_scan_size`):
-    the queue scan size is the number of lock queues processed in one round trip (queues are found by the same pass as locks);
-  - `#zombie_locks`/`#zombie_acquirers`/`#zombies_info` do not scan the keyspace when there are no zombie hosts;
-- Read lock data (`rql:lock_reader:<lock_name>:<acquirer_id>`) does not store `acq_id`/`hst_id` (both are derived from the acquirer id):
-  ~40% less memory per read lock (`MEMORY USAGE` 280 -> 168 bytes without `:meta`); `#lock_info`/`#locks_info` report them as before
-  (the first fields of each reader; read lock data of older versions is supported);
-- `#unlock`: one Redis round trip when there are no read locks (the readers registry is read in the release transaction;
-  the read lock data is dropped with one more `DEL` only when read locks existed);
-- `#lock_series` (PoC): write locks of the series are released (compare-and-delete) in one transaction for the whole series
-  (three round trips per series instead of three round trips per lock);
-- `#flush_zombies` (and the zombie flusher of the swarm): requests of zombie hosts are dropped from the lock queues by the host
-  of the request (derived from its acquirer id): requests of dead hosts that hold no locks are dropped too (previously they stayed
-  until the queue ttl) and their acquirers are reported in `deleted_zombie_acquirers`;
-- Lock acquirement: retries and `fail_fast` attempts pre-check the lock state without `WATCH` (one round trip): a retry that can not
-  obtain the lock takes 1 Redis round trip instead of 3 and a `fail_fast` attempt on an obtained lock - 1 instead of 3 (an attempt
-  that can obtain the lock continues with `WATCH`/`MULTI`: one more round trip); mutual exclusion still relies on `WATCH`/`MULTI` only;
+- fewer Redis round trips of the lock acquirement: `#lock` with a block takes 4 instead of 7, a failed attempt - 3 instead
+  of 6, a failed retry or a `fail_fast` attempt on an obtained lock - 1 instead of 3;
+- `#unlock` (without read locks) and the `#lock_series` release take fewer round trips;
+- SCAN-based operations make one keyspace pass with pipelined batches instead of a pass per key family and a round trip per key;
+- `clear_locks_of__queue_scan_size` and `zombie_queue_scan_size` are the number of lock queues processed in one round trip;
+- read lock data takes ~40% less memory (read locks of older versions are still supported);
+- `#flush_zombies` (and the zombie flusher): lock requests of zombie hosts without locks are dropped too and reported in
+  `deleted_zombie_acquirers`;
 
 ## [1.19.0] - 2026-10-11
 ### Added
-- `#unlock_read` (aka `#release_read_lock`): an ability to unlock the read lock of any acquirer
-  - `acquirer_id:` option (`nil` by default: the current acquirer) to release the read lock of a different acquirer
-    (`identity:` is ignored when `acquirer_id:` is passed: the acquirer id already contains its own identity);
+- `#unlock_read` (aka `#release_read_lock`): the `acquirer_id:` option releases the read lock of another acquirer
+  (`nil` by default: the current acquirer);
 
 ## [1.18.0] - 2026-10-11
 ### Added
-- Brand new feature - **Read/Write locks**: `read_write_mode:` attribute of `#lock`/`#lock!`/`#lock_series`/`#lock_series!` (`:write` by default):
-  - `:write` - exclusive lock (the classic RQL lock): waits for the write lock and for all read locks;
-  - `:read` - shared lock: waits for the write lock only (read locks of different acquirers work in parallel);
-  - `:queued` access strategy orders read and write lock requests in FIFO between modes (writers are not starved by readers);
-  - `:random` access strategy ignores lock queues (a continuous flow of readers can starve writers);
-  - read locks are stored in `rql:lock_readers:<lock_name>` (`ZSET`: acquirer id => expiration time in Redis time),
-    read lock requests - in `rql:lock_read_queue:<lock_name>`, read lock data - in `rql:lock_reader:<lock_name>:<acquirer_id>`
-    (the same structure as the write lock: acquirer, host, timestamp, ttl, `:meta`, reentrant lock data);
-    write locks and write lock requests use the classic keys;
-  - mutual exclusion is based on optimistic transactions (`WATCH`/`MULTI`, no Lua): readers watch the write lock key,
-    writers watch the write lock key and the read locks key (readers never invalidate transactions of each other);
-  - reentrant locks: read lock request under the obtained lock works as a reentrant lock of the obtained lock;
-    read-to-write lock upgrade fails with `RedisQueuedLocks::ConflictLockObtainError` (`:conflict_lock_upgrade`)
-    for `:work_through`/`:extendable_work_through` conflict strategies;
-  - `#unlock`, `#clear_locks`, `#clear_locks_of`, `#clear_current_locks`, `#clear_dead_requests`, `#flush_zombies`,
-    `#zombie_locks`, `#zombie_acquirers`, `#zombies_info`, `#locked?`, `#queued?`, `#lock_info`, `#queue_info`,
-    `#locks`, `#locks_info`, `#queues`, `#queues_info` support read locks and read lock requests;
-  - logs: `rw_mode` in the lock logs and in the lock series logs (`start_lock_series_obtaining`, `lock_series_obtained`,
-    `expire_lock_series`: the mode of the series); new try-lock log events: `exit__write_request_ahead`, `exit__read_request_ahead`,
-    `exit__read_lock_still_obtained`, `single_process_lock_conflict__lock_upgrade`;
-  - instrumentation: `rw_mode` in `lock_obtained`, `reentrant_lock_obtained`, `extendable_reentrant_lock_obtained`,
-    `lock_hold_and_release`, `reentrant_lock_hold_completes` payloads and in the lock series payloads
-    (`lock_series_obtained`, `lock_series_hold_and_release`: the mode of the series);
-  - `:meta` for read locks (stored in the read lock data of each reader, returned by `#lock_info`/`#locks_info`);
-  - `#lock_series` with `read_write_mode: :read` (PoC): a series of read locks; only read locks obtained by the series
-    are released (reentrant read locks of the outer logic are kept);
-  - `#unlock_read` (aka `#release_read_lock`): releases the read lock of the current acquirer only
-    (new instrumentation event: `redis_queued_locks.explicit_read_lock_release`);
-  - `#extend_lock_ttl`: `read_write_mode:` (`:write` by default) and `identity:` options; `:read` mode extends the read lock
-    of the current acquirer only (an expired read lock or a read lock replaced by a writer is not extended);
-  - `#extend_lock_ttl`: `all_read_locks:` option (`false` by default, `:read` mode only, ignored in `:write` mode):
-    extends all live read locks of the lock (expired read locks are not revived);
+- *Brand New Feature*: **Read/Write locks**: `read_write_mode:` of `#lock`/`#lock!`/`#lock_series`/`#lock_series!`
+  (`:write` by default; `:read` is a shared lock that waits for the write lock only; see README "Read/Write Locks"):
+  - `:queued` orders read and write lock requests in FIFO between modes (`:random` can starve writers);
+  - reentrant read locks; a read-to-write upgrade fails with `:conflict_lock_upgrade` for `:work_through` /
+    `:extendable_work_through`;
+  - all lock operations (releases, cleanups, zombies, lock info, `#lock_series`) and `:meta` support read locks;
+  - `#unlock_read` (aka `#release_read_lock`) with the `redis_queued_locks.explicit_read_lock_release` event;
+  - `#extend_lock_ttl`: `read_write_mode:`, `identity:` and `all_read_locks:` options;
+  - `rw_mode` in the lock logs and instrumentation payloads, `#lock_info`/`#locks_info` and `#queue_info`/`#queues_info`;
+    new try-lock logs (see README `## Logging`);
+  - `:meta`: `"rw_mode"` is a reserved lock data key;
   - RBS: `read_write_mode` is typed as `:read | :write`;
-  - `#queue_info` / `#queues_info`: each lock request has `"rw_mode"` (`"write"` / `"read"`);
-  - `#lock_info` / `#locks_info`: write lock info has `"rw_mode" => "write"` (read locks info - `"rw_mode" => "read"`);
-  - `:meta`: `"rw_mode"` is a reserved lock data key (`RedisQueuedLocks::ArgumentError`), for write and read locks and lock series;
-  - **all processes should use the RQL version with read/write locks** before read locks are used
-    (write locks of older RQL versions do not check read locks);
+  - **all processes should use the RQL version with read/write locks** before read locks are used (write locks of older
+    versions do not check read locks);
 ### Changed
-- `lock_series_obtained` instrumentation event (`#lock_series`, PoC): `:ts` is an epoch timestamp (`Float`)
-  like in all other instrumentation events (previously a `Time#to_s` string);
-- **Breaking**: `#extend_lock_ttl` success result is `{ ok: true, result: { extended_locks_count: Integer } }`
-  instead of `{ ok: true, result: :ttl_extended }` (the number of locks whose TTL is extended: `1` for the write lock
-  and for the own read lock, the number of extended read locks for `all_read_locks: true`);
-  the failure result is unchanged (`{ ok: false, result: :async_expire_or_no_lock }`);
-- Lock acquirement attempt: the lock state is fetched in one pipelined round trip; lock data for
-  `exit__no_first`/`exit__lock_still_obtained` try-lock logs is extracted only when these logs are enabled
-  (previously `HGETALL` was called on every unsuccessful attempt);
+- [**Breaking**] `#extend_lock_ttl` success result is `{ ok: true, result: { extended_locks_count: Integer } }` instead of
+  `{ ok: true, result: :ttl_extended }`;
+- `lock_series_obtained` instrumentation event (`#lock_series`, PoC): `:ts` is an epoch `Float` (was a `Time#to_s` string);
+- a lock acquirement attempt makes fewer Redis calls;
 ### Fixed
-- `dequeue_from_lock_queue` log: unclosed quote in the `acs_strat` value;
-- `extendable_reentrant_lock_obtained` log: the host identifier is logged as `hst_id` (was `host_id`), like in all other logs;
-- `start_lock_series_obtaining` log: missing space between the `lock_keys` and `queue_ttl` values;
-- `lock_series` PoC:
-  - locks obtained by the failed series are released when the series fails without an exception
-    (`raise_errors: false`); previously they lived till their TTL;
-  - reentrant locks of the series (already obtained by the outer logic of the same acquirer) are not released
-    by the series anymore (previously the outer logic continued to work without its lock);
-  - the series releases only write locks that are still owned by the current acquirer (compare-and-delete):
-    a lock expired during the block and obtained by another acquirer is not deleted anymore;
+- logs: an unclosed quote in `dequeue_from_lock_queue`, a missing space in `start_lock_series_obtaining`, `host_id` instead of
+  `hst_id` in `extendable_reentrant_lock_obtained`;
+- `#lock_series` (PoC):
+  - a series failed without an exception (`raise_errors: false`) kept its obtained locks till their TTL;
+  - the series released the reentrant locks of the outer logic of the same acquirer;
+  - the series could delete a lock that expired during the block and was obtained by another acquirer;
 
 ## [1.17.0] - 2026-10-04
 ### Changed

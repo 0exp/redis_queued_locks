@@ -359,7 +359,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   `[Unreleased]` for user-visible behavior, and the YARD of the touched `Client` methods.
 - CHANGELOG entries are compact (`changelog.md`): one 1-2 line bullet per subject-level change, no implementation
   details (algorithm steps, Redis commands, round trips, internals, full event lists), no entries for internal-only
-  changes; one entry per feature, released sections untouched.
+  changes; one entry per feature, released sections untouched; a fundamentally new feature or globally new support
+  (Read/Write locks, Lock Index, Garnet support) is a separate `*Brand New Feature*` entry first in `### Added`.
 - Commits under review (`git.md`): subject only `[<scope>] <summary>`, lowercase, imperative, no trailing period,
   no body except the attribution trailer, never on `master`.
 
