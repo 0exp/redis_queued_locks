@@ -232,7 +232,8 @@ module RedisQueuedLocks::Swarm::ZombieInfo
     # names, the full keyspace is never scanned): write locks and readers registries are processed
     # in batches of `lock_scan_size` locks with one round trip per batch and per key family
     # (batches are collected across ZSCAN pages). Expired lock names of the index are skipped
-    # (all their keys are expired).
+    # (all their keys are expired; `+inf` names, keys without TTL, never expire: see
+    # `RedisQueuedLocks::Resource.lock_index_score_expired?`).
     #
     # @param rconn [RedisClient] redis connection obtained via `#with` from RedisClient instance;
     # @param zombie_hosts [Set<String>]
@@ -244,6 +245,7 @@ module RedisQueuedLocks::Swarm::ZombieInfo
     #
     # @api private
     # @since 1.20.0
+    # @version 1.22.0
     def each_lock_index_zombie_lock(rconn, zombie_hosts, lock_scan_size, &block)
       # @type var lock_keys: Array[String]
       lock_keys = []
@@ -255,7 +257,9 @@ module RedisQueuedLocks::Swarm::ZombieInfo
         RedisQueuedLocks::Resource::LOCK_INDEX_KEY, count: lock_scan_size
       ) do |lock_name, lock_index_score|
         # NOTE: the expired lock name (not dropped from the index yet): its keys are expired
-        next if lock_index_score.to_f < lock_index_time
+        next if RedisQueuedLocks::Resource.lock_index_score_expired?(
+          lock_index_score, lock_index_time
+        )
 
         lock_keys << RedisQueuedLocks::Resource.prepare_lock_key(lock_name)
         lock_readers_keys << RedisQueuedLocks::Resource.prepare_lock_readers(lock_name)

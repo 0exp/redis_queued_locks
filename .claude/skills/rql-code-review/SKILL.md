@@ -84,7 +84,8 @@ priorities", key layout, "Lock index", lock lookup modes, events, errors, conven
   - reserved `meta` keys validation in `AcquireLock` and `LockSeriesPoC`; the `priority` resolution and range check
     in `AcquireLock` Step 0.1 and `LockSeriesPoC` (the same message);
   - the band liveness rule (a request is dead when its score is `<= Resource.lock_priority_band_dead_score(dead_score,
-    band)`): `TryToLock#dead_request_priority` / `pipeline_dead_requests_removal` and `ClearDeadRequests.drop_dead_requests`;
+    band)`): `TryToLock#dead_request_priority` / `pipeline_dead_requests_removal` and `ClearDeadRequests.drop_dead_requests` /
+    `drop_dead_requests_by_priority`;
   - the `'priority'` field of a request (`Resource.lock_request_priority`) in `QueueInfo.queue_info` and
     `Queues.extract_queues_info`;
   - lock-family options in `Client#lock`, `#lock!`, `#lock_series`, `#lock_series!` and their forwarding in
@@ -189,9 +190,12 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - Dead request pruning per band only: `ZREMRANGEBYSCORE <queue> <lock_priority_band_floor(p)>
   <lock_priority_band_dead_score(dead_score, p)>`; a new `-inf .. now - ttl` range on a request queue is a Blocker
   (it drops alive higher-priority requests and keeps dead lower-priority ones); full clears (`-inf .. +inf`) and
-  member removals (`ZREM`) are band-independent.
+  member removals (`ZREM`) are band-independent; `-inf .. -inf` drops the requests at `-inf` only (manual writes:
+  always dead, out of all bands; `+inf` is never dead), and decoding an infinite score must never raise
+  (`lock_request_priority` maps `-inf`/`+inf` to the range bounds).
 - Head-driven cleanup, cost independent of the priority range: the queueing prunes the own band in both queues (in
-  its pipeline), Step 2.2 (`drop_dead_requests_ahead`, attempt and pre-check, `:queued` only) drops the bands of the
+  its pipeline, before `ZADD NX`: a requeued request must not lose its new position to the removal of its old one),
+  Step 2.2 (`drop_dead_requests_ahead`, attempt and pre-check, `:queued` only) drops the bands of the
   dead blocking requests (the write queue head for writers, the earlier opposite-mode request) with the queue heads
   re-read in the same round trip, bounded by `MAX_DEAD_REQUEST_REMOVALS`; `ClearDeadRequests` prunes only the bands
   whose first request is dead. Never enumerate the priority range per attempt or per queue; any band is decoded
@@ -202,11 +206,12 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   `MIN_LOCK_PRIORITY..MAX_LOCK_PRIORITY` or a name of `config['lock_priorities']` (the client-wide registry is
   forwarded as the internal keyword `lock_priorities:`, never a public keyword); the name is resolved and the range
   checked in `AcquireLock` Step 0.1 and before a lock series (`LockSeriesPoC`): code below sees Integers only (RBS
-  `RQL::lockPriority` at the boundary, `Integer` below); config validators for both keys.
+  `RQL::lockPriority` at the boundary, `Integer` below); config validators for both keys, and a name of
+  `default_lock_priority` checked against `lock_priorities` by `Config` (after a `configure` block, before a direct `[]=`).
 - Observability: every lock acquirement log line and event (classic, reentrant: the requested priority, lock series:
   the series priority, `lock_obtaining_failed`) carries the Integer `priority` right after `rw_mode`; try-lock logs
   that name another request carry its decoded priority (`first_priority_in_queue`, `ahead_priority`, `dead_priority`)
-  computed at the call site only when `log_sampled && log_lock_try`; info results carry `'priority'` (every copy).
+  computed at the call site only when `log_sampled && log_lock_try` (one helper: `TryToLock#logged_request_priority`); info results carry `'priority'` (every copy).
 - Compatibility: priority `0` keeps the raw timestamp scores of older versions/data; a change of the score layout or
   of the pruning states the rolling-deploy effect in README and CHANGELOG (older versions prune positive-priority
   requests as dead ones).
@@ -230,7 +235,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 
 ### E. Iteration and performance (`acquirer.md#7`, `arguments.md#7`)
 - One pass per operation: one `SCAN` over `KEY_PATTERN`/`ALL_LOCK_QUEUES_PATTERN` classified by
-  `Resource.lock_key_family`, or one `ZSCAN` via `each_lock_name_batch` (expired scores skipped). Never `KEYS`,
+  `Resource.lock_key_family`, or one `ZSCAN` via `each_lock_name_batch` (expired scores skipped by `Resource.lock_index_score_expired?`: the `"inf"` score never expires). Never `KEYS`,
   never one round trip per key; per-key commands in pipelined batches collected across pages, plus the
   remainder batch.
 - A new lock-iterating operation implements both lookups side by side, chooses the lookup in one place
@@ -366,8 +371,11 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   the polled handoff (`retry_delay`), dead requests pruned with the pruner's `queue_ttl`, dead requests of lower bands
   lingering until an attempt of their band/`clear_dead_requests`/the queue TTL/the swarm (they never block), the
   library-constant range `-100..100` and its ~61 µs FIFO precision inside a band, `MAX_DEAD_REQUEST_REMOVALS` per
-  attempt, `:random` ignoring the priority, `clear_dead_requests` reading the batch queues (2 round trips per batch),
-  the order degradation with older versions (no safety impact).
+  attempt, `:random` requests ignoring the order and the priorities of other requests (while their own requests are queued
+  at their priority: `:queued` requests wait for them), `clear_dead_requests` reading the batch queues (2 round trips per batch; `by_priority: true`: the first
+  request of each band only, the most bands of a batch queue + 1 round trips),
+  the order degradation with older versions (no safety impact), the queue score as the only order and liveness of a request
+  (a separate liveness registry of request deadlines was rejected by the user: don't propose it).
 - Unused `Resource` methods marked `# NOTE: (debug)` (manual runtime checks, `logic.md#17`); report a debug method
   only when it is wrong for a key family it can get.
 - Known limitations kept by the user: `YieldExpire` write release (`EXPIRE 0`) and ttl decrease without an owner

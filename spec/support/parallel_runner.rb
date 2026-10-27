@@ -14,8 +14,9 @@ require 'redis_client'
 #     previous runs (`tmp/rspec_parallel/durations.json`, `durations-rbs.json` for the RBS runtime
 #     checks: some examples are much slower there): the longest example first, each to the least
 #     loaded worker (examples without a recorded duration count as the median one);
-#   - each worker writes its output to `tmp/rspec_parallel/worker-<n>.log`; the task prints the
-#     summary, the failures with the rerun command, and fails when any worker fails;
+#   - each worker writes its output to `tmp/rspec_parallel/worker-<n>.log` (and its results to
+#     `worker-<n>.json`; the worker files of the previous run are deleted first); the task prints
+#     the summary, the failures with the rerun command, and fails when any worker fails;
 #   - coverage: each worker stores its result in `coverage/parallel/worker-<n>` (see
 #     `spec/spec_helper.rb`), the task collates the report of the whole run into `coverage/` once
 #     all workers are finished (`SimpleCov.collate`: no report is built from partial results);
@@ -47,6 +48,9 @@ module RQLParallelSpecs
     groups = distribute(examples, load_durations, workers)
     # NOTE: the coverage results of the previous parallel run
     FileUtils.rm_rf('coverage/parallel')
+    # NOTE: the results and logs of the previous run: a worker that dies before RSpec writes its
+    #   JSON output (e.g. a boot failure) is reported as a broken worker, not with stale results
+    FileUtils.rm_f(Dir[File.join(DIR, 'worker-*.{json,log}')])
     started_at = clock
     statuses = run_workers(groups, examples.size, started_at)
     collate_coverage

@@ -4,8 +4,9 @@
   the lowest, to `100`, the highest, `0` by default; pre-configured in the new `config['default_lock_priority']`): with the
   `:queued` access strategy a lock request is placed in the lock request queue after all requests of the same or higher
   priority and before all requests of the lower priority (strict priority, FIFO inside the same priority; read and write lock
-  requests too); the priority orders the waiting lock requests only (the obtained lock is never taken away), `:random`
-  ignores it:
+  requests too); the priority orders the waiting lock requests only (the obtained lock is never taken away); a `:random` lock
+  request does not wait for its turn (it ignores the priorities of other requests), but it is queued at the position of its
+  priority (`:queued` lock requests wait for it):
   - the position of the lock request (the queue score) is the request time shifted by `-priority * 2**32` seconds: the default
     priority keeps the request time (the queue data of the default priority is the same as before);
   - every lock request drops dead lock requests of its own priority in both lock queues (in the same queueing pipeline: no new
@@ -15,14 +16,27 @@
     an attempt does not depend on the number of priorities;
   - `#clear_dead_requests` drops the dead lock requests of every priority found in the lock queues (two round trips per batch of
     lock queues: the lock requests are read, then the dead ones are dropped);
+  - the new `by_priority:` option of `#clear_dead_requests` (`false` by default): only the first lock request of each priority
+    is read instead of all lock requests (the dead requests of a priority are found by its first lock request): a batch of lock
+    queues takes one round trip per priority of its lock queue with the most priorities + 1, the transfer does not depend on the
+    length of the lock queues (for long lock queues with few priorities); a non-boolean value fails with
+    `RedisQueuedLocks::ArgumentError`;
+  - lock requests at infinite positions (`-inf`/`+inf`: manual writes of the lock queues) have the bound priorities (`100`/`-100`);
+    a request at `-inf` is dropped as a dead one when it blocks a lock request and by `#clear_dead_requests`, a request at `+inf`
+    is never dropped as a dead one (like before priorities);
   - the new `log_lock_try` log event `[redis_queued_locks.try_lock.dead_request_removed]` (`dead_acq_id`, `dead_priority`);
   - priority names: `priority:` and `config['default_lock_priority']` accept a priority name (Symbol) of the new
     `config['lock_priorities']` (a priority name => its Integer priority; default names: `:lowest` (`-100`), `:low` (`-50`),
     `:normal` (`0`), `:high` (`50`), `:highest` (`100`); applications define their own names); a name is resolved to its
     Integer priority on each lock acquirement (queues, `#queue_info`, logs and instrumentation have the Integer priority),
-    an unknown name fails with `RedisQueuedLocks::ArgumentError`;
-  - all processes that share locks should be upgraded before the priorities are used: older versions drop the lock requests
-    of the high priority as dead ones (the order is broken, the mutual exclusion is not affected);
+    an unknown name fails with `RedisQueuedLocks::ArgumentError`; an unknown name in `config['default_lock_priority']` fails
+    the configuration with `RedisQueuedLocks::ConfigValidationError` (checked once after a configuration block: the keys can
+    be assigned in any order, both keys keep their previous values on a failure; a direct `config[...] =` assignment is
+    checked before it is applied);
+  - all processes that share locks should be upgraded before positive priorities are used: older versions drop the lock
+    requests of positive priorities as dead ones (the order is broken, the mutual exclusion is not affected); the default
+    priority (`0`) and negative priorities work with older versions too (older versions keep such requests behind their own
+    ones and never drop them as dead ones: the upgraded processes drop the dead ones);
 ### Changed
 - `#queue_info`/`#queues_info`: each lock request has the `"priority"` field (`Integer`, decoded from its position);
 - logs and instrumentation payloads of the lock acquirement have the lock request `priority` (an Integer: a priority name is
@@ -33,8 +47,8 @@
   `extendable_reentrant_lock_obtained`, `start_lock_series_obtaining`, `lock_series_obtained`, `expire_lock_series`,
   `try_lock.acq_added_to_queue`; the `log_lock_try` logs that name another lock request have its priority too:
   `first_priority_in_queue` (`try_lock.get_first_from_queue`, `try_lock.exit__no_first`, `try_lock.exit__lock_still_obtained`,
-  `try_lock.exit__read_lock_still_obtained`) and `ahead_priority` (`try_lock.exit__write_request_ahead`,
-  `try_lock.exit__read_request_ahead`);
+  `try_lock.exit__read_lock_still_obtained`; `nil` when the lock queue has no requests) and `ahead_priority`
+  (`try_lock.exit__write_request_ahead`, `try_lock.exit__read_request_ahead`);
 - `#lock_series`/`#lock_series!`: the `priority:` is validated (and a priority name is resolved) before the series is
   acquired;
 - RBS: `RedisQueuedLocks::Config#[]` is typed per config key (one overload per key with its value type) instead of
@@ -44,6 +58,16 @@
   (`:queued | :random`) and `RedisQueuedLocks::conflictStrategy` (`:wait_for_lock | :work_through |
   :extendable_work_through | :dead_locking`) replace `Symbol` for `read_write_mode`, `access_strategy` and
   `conflict_strategy` in the `Client` signatures (and the config defaults): Steep rejects an invalid strategy/mode value.
+### Fixed
+- a lock request that waits longer than its `queue_ttl` (its position is reset: requeued at the end of its priority) could be
+  missing in the lock queue for one attempt: the queueing kept its old dead position (`ZADD NX`) and dropped it as a dead
+  request right after, so the attempt could fail (`:dead_score_reached`, `:acquirer_is_not_first_in_queue`) and spend
+  a retry; the queueing drops the dead lock requests before the lock request is queued now (the same commands in the same
+  round trip);
+- the enabled lock index: the locks indexed with the `+inf` score (keys without TTL adopted by `#reindex_locks`) were skipped
+  as expired ones by `#locks`/`#locks_info`, `#queues`/`#queues_info`, `#keys`, `#clear_locks`, `#clear_locks_of`/
+  `#clear_current_locks`, `#clear_dead_requests` and the zombie info methods (the ZSCAN score `"inf"` was read as `0.0`);
+  such names never expire now;
 
 ## [1.21.0] - 2026-10-13
 ### Added

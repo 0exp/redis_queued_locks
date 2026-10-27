@@ -477,7 +477,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
     # @param waiting_acquirer [String,NilClass]
     # @param waiting_priority [Integer,NilClass]
     #   The priority of the first request (decoded for logs only: `nil` without logs and
-    #   without the first request).
+    #   without the first request; logged as `nil` without the first request).
     # @return [void]
     #
     # @api private
@@ -507,7 +507,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
         "first_acq_id_in_queue => '#{waiting_acquirer}' " \
-        "first_priority_in_queue => #{waiting_priority}"
+        "first_priority_in_queue => #{waiting_priority.inspect}"
       end rescue nil
     end
 
@@ -592,7 +592,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
         "first_acq_id_in_queue => '#{waiting_acquirer}' " \
-        "first_priority_in_queue => #{waiting_priority} " \
+        "first_priority_in_queue => #{waiting_priority.inspect} " \
         "<current_lock_data> => <<#{current_lock_data}>>"
       end rescue nil
     end
@@ -642,7 +642,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
         "first_acq_id_in_queue => '#{waiting_acquirer}' " \
-        "first_priority_in_queue => #{waiting_priority} " \
+        "first_priority_in_queue => #{waiting_priority.inspect} " \
         "locked_by_acq_id => '#{locked_by_acquirer}' " \
         "<current_lock_data> => <<#{current_lock_data}>>"
       end rescue nil
@@ -786,7 +786,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "acs_strat => '#{access_strategy}' " \
         "rw_mode => '#{rw_mode}' " \
         "first_acq_id_in_queue => '#{waiting_acquirer}' " \
-        "first_priority_in_queue => #{waiting_priority}"
+        "first_priority_in_queue => #{waiting_priority.inspect}"
       end rescue nil
     end
 

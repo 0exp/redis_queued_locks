@@ -232,8 +232,9 @@ class RedisQueuedLocks::Client
   #   - `:queued` access strategy orders read and write lock requests in FIFO between modes
   #     (read lock request waits for earlier write lock requests, write lock request waits for
   #     earlier read and write lock requests) so writers are not starved by readers;
-  #   - `:random` access strategy ignores lock queues (a continuous flow of readers can starve
-  #     writers);
+  #   - `:random` access strategy: the lock request does not wait for earlier requests (no order
+  #     between modes: a continuous flow of readers can starve writers), but it is queued like any
+  #     lock request (`:queued` lock requests wait for it);
   #   - read lock specifics:
   #     - read lock is released (with a block of code) or expired (by `ttl`) independently
   #       of other read locks; `#unlock` releases all read locks and the write lock;
@@ -260,15 +261,18 @@ class RedisQueuedLocks::Client
   #     `0` by default (`RedisQueuedLocks::Resource::MIN_LOCK_PRIORITY`..`MAX_LOCK_PRIORITY`),
   #     or a priority name of `config['lock_priorities']` (`:lowest` (-100), `:low` (-50),
   #     `:normal` (0), `:high` (50), `:highest` (100) by default; the application can define its
-  #     own names: `config['lock_priorities'] = { payment: 90, email: -10 }`);
+  #     own names, `merge` keeps the default ones:
+  #     `config['lock_priorities'] = config['lock_priorities'].merge(payment: 90, email: -10)`);
   #   - `:queued` access strategy: the lock request is placed in the lock request queue after all
   #     requests of the same or higher priority and before all requests of the lower priority
   #     (strict priority, FIFO inside the same priority; read and write lock requests too);
-  #   - `:random` access strategy ignores the lock request queues (and the priority);
+  #   - `:random` access strategy: the lock request does not wait for its turn (it ignores the order
+  #     of the lock request queues and the priorities of other requests), but it is queued at the
+  #     position of its priority like a `:queued` one: `:queued` lock requests wait for it;
   #   - the obtained lock is never taken away: the priority orders the waiting lock requests;
-  #   - all processes that share the lock should use RQL versions with priorities (older versions
-  #     drop lock requests of a higher priority as dead ones: the order is broken, the mutual
-  #     exclusion is not affected);
+  #   - positive priorities need all processes that share the lock on RQL versions with priorities
+  #     (older versions drop such lock requests as dead ones: the order is broken, the mutual
+  #     exclusion is not affected); `0` and negative priorities work with older versions too;
   #   - pre-configured in `config['default_lock_priority']`;
   # @option meta [NilClass,Hash<String|Symbol,Any>]
   #   - A custom metadata wich will be passed to the lock data in addition to the existing data;
@@ -1331,6 +1335,13 @@ class RedisQueuedLocks::Client
   #   - the batch of scanned keys for Redis'es SCAN command (or the number of locks in one batch of
   #     the lock index ZSCAN pass: the enabled `config['lock_index_enabled']`);
   #   - `config['lock_release_batch_size']` is used by default;
+  # @option by_priority [Boolean]
+  #   - read only the first lock request of each priority in the lock queues instead of all lock
+  #     requests (the dead requests of a priority are found by its first lock request): the
+  #     transfer does not depend on the length of the lock queues, a batch of lock queues takes
+  #     one round trip per priority of its lock queue with the most priorities + 1 (instead of two
+  #     round trips): for long lock queues with few priorities;
+  #   - `false` by default (all lock requests are read);
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify]
   # @option instrument [NilClass,Any]
@@ -1351,6 +1362,7 @@ class RedisQueuedLocks::Client
   def clear_dead_requests(
     dead_ttl: config['dead_request_ttl'],
     scan_size: config['lock_release_batch_size'],
+    by_priority: false,
     logger: config['logger'],
     instrumenter: config['instrumenter'],
     instrument: nil,
@@ -1367,6 +1379,7 @@ class RedisQueuedLocks::Client
       redis_client,
       scan_size,
       dead_ttl,
+      by_priority,
       config['lock_index_enabled'],
       logger,
       instrumenter,

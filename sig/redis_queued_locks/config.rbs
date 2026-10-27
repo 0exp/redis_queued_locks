@@ -7,6 +7,7 @@ module RedisQueuedLocks
     type configState = Hash[String,untyped]
 
     @config_state: configState
+    @configuring: bool
     attr_reader config_state: configState
 
     def initialize: () ?{ (RedisQueuedLocks::Config) -> void } -> void
@@ -67,5 +68,9 @@ module RedisQueuedLocks
 
     def prevent_key__non_existent: (String config_key) -> void
     def prevent_key__invalid_type: (String config_key, untyped config_value) -> void
+    def prevent_default_priority__unknown_name: (
+      Hash[Symbol, Integer] lock_priorities,
+      RedisQueuedLocks::lockPriority default_lock_priority
+    ) -> void
   end
 end

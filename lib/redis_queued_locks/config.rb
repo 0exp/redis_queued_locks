@@ -2,6 +2,7 @@
 
 # @api private
 # @since 1.13.0
+# @version 1.22.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Config
   require_relative 'config/dsl'
@@ -126,8 +127,10 @@ class RedisQueuedLocks::Config
       # rubocop:enable Layout/MultilineOperationIndentation
     end
   end
-  # NOTE: a Symbol is a priority name of `config['lock_priorities']`: it is checked on each lock
-  #   acquirement (the priority names can be configured after the default priority);
+  # NOTE: a Symbol is a priority name of `config['lock_priorities']`: a validator gets one value,
+  #   so the name is checked by the configuration itself (`prevent_default_priority__unknown_name`:
+  #   once after a configuration block, the keys can be assigned in any order; before a direct
+  #   assignment is applied);
   validate('default_lock_priority') do |val|
     val.is_a?(Symbol) || (
       val.is_a?(Integer) &&
@@ -144,10 +147,14 @@ class RedisQueuedLocks::Config
 
   # @return [void]
   #
+  # @raise [RedisQueuedLocks::ConfigValidationError]
+  #
   # @api private
   # @since 1.13.0
+  # @version 1.22.0
   def initialize(&configuration)
     @config_state = {}
+    @configuring = false
     config_setters.each_value { |setter| setter.call(@config_state) }
     configure(&configuration)
   end
@@ -157,10 +164,40 @@ class RedisQueuedLocks::Config
   # @yieldparam [?]
   # @return [void]
   #
+  # @raise [RedisQueuedLocks::ConfigValidationError]
+  #
   # @api private
   # @since 1.13.0
+  # @version 1.22.0
   def configure(&configuration)
-    yield(self) if block_given?
+    return unless block_given?
+
+    # NOTE: (priorities) the keys of the block can be assigned in any order: the priority name of
+    #   `default_lock_priority` is checked against `lock_priorities` once, after the block (after
+    #   the outer block for nested blocks); an inconsistent pair is never applied: both keys keep
+    #   their values from before the block (also when the block fails: its error is raised);
+    lock_priorities = config_state['lock_priorities']
+    default_lock_priority = config_state['default_lock_priority']
+    nested = @configuring
+    completed = false
+    @configuring = true
+    begin
+      yield(self)
+      completed = true
+    ensure
+      @configuring = nested
+      unless nested
+        begin
+          prevent_default_priority__unknown_name(
+            config_state['lock_priorities'], config_state['default_lock_priority']
+          )
+        rescue RedisQueuedLocks::ConfigValidationError
+          config_state['lock_priorities'] = lock_priorities
+          config_state['default_lock_priority'] = default_lock_priority
+          raise if completed
+        end
+      end
+    end
   end
 
   # @param config_key [String]
@@ -184,9 +221,21 @@ class RedisQueuedLocks::Config
   #
   # @api public
   # @since 1.13.0
+  # @version 1.22.0
   def []=(config_key, config_value)
     prevent_key__non_existent(config_key)
     prevent_key__invalid_type(config_key, config_value)
+    # NOTE: (priorities) a direct assignment (out of a configuration block) keeps the priority name
+    #   of `default_lock_priority` a key of `lock_priorities` (a configuration block checks it once
+    #   after the block, see `configure`);
+    unless @configuring
+      case config_key
+      when 'lock_priorities'
+        prevent_default_priority__unknown_name(config_value, config_state['default_lock_priority'])
+      when 'default_lock_priority'
+        prevent_default_priority__unknown_name(config_state['lock_priorities'], config_value)
+      end
+    end
     config_state[config_key] = config_value
   end
 
@@ -254,6 +303,28 @@ class RedisQueuedLocks::Config
       raise(
         RedisQueuedLocks::ConfigValidationError,
         "Trying to assing an invalid value to the '#{config_key}' config key."
+      )
+    end
+  end
+
+  # A priority name of the default lock request priority should be a priority name of
+  # `lock_priorities` (an unknown name would fail each lock acquirement with the default priority).
+  #
+  # @param lock_priorities [Hash<Symbol,Integer>] The priority names.
+  # @param default_lock_priority [Integer,Symbol] The default lock request priority.
+  # @return [void]
+  #
+  # @raise [RedisQueuedLocks::ConfigValidationError]
+  #
+  # @api private
+  # @since 1.22.0
+  def prevent_default_priority__unknown_name(lock_priorities, default_lock_priority)
+    if default_lock_priority.is_a?(Symbol) && !lock_priorities.key?(default_lock_priority)
+      raise(
+        RedisQueuedLocks::ConfigValidationError,
+        "The priority name #{default_lock_priority.inspect} of the 'default_lock_priority' " \
+        "config key is not a key of the 'lock_priorities' config key " \
+        "(#{lock_priorities.keys.map(&:inspect).join(', ')})."
       )
     end
   end

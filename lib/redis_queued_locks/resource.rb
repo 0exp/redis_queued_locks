@@ -314,6 +314,22 @@ module RedisQueuedLocks::Resource
       ::Process.clock_gettime(::Process::CLOCK_REALTIME, :millisecond)
     end
 
+    # Is the lock name of the lock index expired (all the keys of the lock are expired)?
+    #
+    # NOTE: the lock index replies of ZSCAN have String scores: `+inf` (a key without TTL indexed
+    #   by `ReindexLocks`) is `"inf"`, and `String#to_f` turns it into `0.0` (the name would be
+    #   skipped as an expired one by every lock index lookup): it never expires;
+    #
+    # @param lock_index_score [String] The score of the lock name (a ZSCAN reply).
+    # @param lock_index_time [Integer] The current client time (see `lock_index_time`).
+    # @return [Boolean]
+    #
+    # @api private
+    # @since 1.22.0
+    def lock_index_score_expired?(lock_index_score, lock_index_time)
+      lock_index_score != 'inf' && lock_index_score.to_f < lock_index_time
+    end
+
     # @param lock_readers_key [String]
     # @return [String]
     #
@@ -418,13 +434,26 @@ module RedisQueuedLocks::Resource
 
     # Priority of the lock request by its position in the lock request queue (the score).
     #
+    # NOTE: (infinite positions) RQL never writes infinite positions (manual writes of the lock
+    #   request queues): they are out of all bands and are decoded to the bounds of the priority
+    #   range (the floor of an infinite Float raises `FloatDomainError`):
+    #   - `-inf`: `MAX_LOCK_PRIORITY` (ahead of all lock requests; such a request is dead: its
+    #     enqueue time is unknown, it is dropped like before priorities);
+    #   - `+inf`: `MIN_LOCK_PRIORITY` (behind all lock requests; never dead);
+    #
     # @param acquirer_position [Numeric] The position (the score) of the lock request.
     # @return [Integer] See `LOCK_PRIORITY_BAND`.
     #
     # @api private
     # @since 1.22.0
     def lock_request_priority(acquirer_position)
-      -(acquirer_position / LOCK_PRIORITY_BAND).floor
+      if acquirer_position == -Float::INFINITY
+        MAX_LOCK_PRIORITY
+      elsif acquirer_position == Float::INFINITY
+        MIN_LOCK_PRIORITY
+      else
+        -(acquirer_position / LOCK_PRIORITY_BAND).floor
+      end
     end
 
     # @param zombie_ttl [Float] In seconds with milliseconds.

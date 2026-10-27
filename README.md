@@ -206,7 +206,8 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   config['default_lock_ttl'] = 5_000
 
   # (seconds) (default: 15)
-  # - lock request timeout. after this timeout your lock request in queue will be requeued with new position (at the end of the queue);
+  # - lock request timeout. after this timeout your lock request in queue will be requeued with new position (at the end of the
+  #   lock requests of its priority);
   # - (the enabled lock index) the lock request queue lives as long as its latest lock request (the queue TTL is refreshed with
   #   the queue ttl on each lock request): queues of dead acquirers expire by themselves;
   # - should be a positive Integer
@@ -262,7 +263,12 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
 
   # (integer/symbol) (default: 0)
   # - The default lock request priority: an Integer from `-100` (the lowest) to `100` (the highest)
-  #   or a priority name of `config['lock_priorities']` (the name is checked on each lock acquirement);
+  #   or a priority name of `config['lock_priorities']`;
+  # - The priority name should be a key of `config['lock_priorities']` (`RedisQueuedLocks::ConfigValidationError` otherwise):
+  #   it is checked once after the configuration block (`Client.new { ... }`, `#configure { ... }`: the keys can be assigned
+  #   in any order; an inconsistent pair is never applied: both keys keep their previous values, also when the block fails)
+  #   and on a direct `config[...] =` assignment (before the value is applied: change the priority names and the default
+  #   name together in a configuration block);
   # - Can be customized in methods `#lock`, `#lock!`, `#lock_series` and `#lock_series!` via `:priority` attribute;
   # - `:queued` access strategy: the lock request is placed in the lock request queue after all requests of the same
   #   or higher priority and before all requests of the lower priority (FIFO inside the same priority);
@@ -614,7 +620,9 @@ def lock(
   - `:queued` access strategy: the lock request is placed in the lock request queue after all requests of the same or
     higher priority and before all requests of the lower priority (strict priority, FIFO inside the same priority;
     read and write lock requests too);
-  - `:random` access strategy ignores the lock request queues (and the priority);
+  - `:random` access strategy: the lock request does not wait for its turn (it ignores the order of the lock request queues
+    and the priorities of other requests), but it is queued at the position of its priority like a `:queued` one: `:queued`
+    lock requests wait for it;
   - the obtained lock is never taken away: the priority orders the waiting lock requests only;
   - pre-configured in `config['default_lock_priority']`;
   - See [Lock Request Prioritization](#lock-request-prioritization) documentation section for details;
@@ -867,7 +875,7 @@ rql.lock_info("my_lock")
 
 - (`:queue_ttl`) setting a short limit of time to the lock request queue position (if a process fails to acquire
   the lock within this period of time (and before timeout/retry_count limits occurs of course) -
-  its lock request will be moved to the end of queue):
+  its lock request will be moved to the end of queue: the end of the lock requests of its priority):
 
 ```ruby
 rql.lock("my_lock", queue_ttl: 5, timeout: 10_000, retry_count: nil)
@@ -2038,8 +2046,10 @@ rql.queues_info # or rql.qeuues_info(scan_size: 123)
 In some cases your lock requests may become "dead". It means that your lock request lives in lock queue in Redis without
 any processing. It can happen when your processs that are enqueeud to the lock queue is failed unexpectedly (for some reason)
 before the lock acquire moment occurs and when no any other process does not need this lock anymore.
-For this case your lock reuquest will be cleared only when any process will try
-to acquire this lock again (cuz lock acquirement triggers the removement of expired requests).
+For this case your lock request will be cleared only when another lock request meets it: a lock request of the same
+[priority](#lock-request-prioritization) (lock acquirement drops the expired requests of its priority) or a `:queued` lock request
+it blocks (the head of the queue, an earlier request of the other read/write mode); the dead requests of other priorities stay
+in the queue.
 
 NOTE: with the enabled [Lock Index](#lock-index) the lock request queue lives as long as its latest lock request (the queue TTL
 is refreshed with the request `queue_ttl` on each lock request), so the queue of dead requests expires by itself (queues of older
@@ -2050,6 +2060,10 @@ with corresponding `:dead_ttl` option, that is pre-configured by default via `co
 Lock queues are found via the redis `SCAN` (one pass) or via the [Lock Index](#lock-index) (one `ZSCAN` pass, the keyspace is
 never scanned: the enabled lock index). Each batch of lock queues takes two round trips: the lock requests are read, then the dead
 requests of each [priority](#lock-request-prioritization) found in the queues are dropped (no second round trip without dead requests).
+With `by_priority: true` the lock requests are not read: only the first lock request of each priority is read (the dead requests
+of a priority are found by its first lock request): a batch takes one round trip per priority of its lock queue with the most
+priorities + 1 (the dead requests of a priority are dropped in the round trip that reads the next priority), so the transfer does not
+depend on the length of the lock queues: use it for long lock queues with few priorities.
 
 `:dead_ttl` option is required because of it is no any **fast** and **resource-free** way to understand which request
 is dead now and is it really dead cuz each request queue can host their requests with
@@ -2064,6 +2078,12 @@ Accepts:
   - (the enabled lock index) the `ZSCAN` count of the [Lock Index](#lock-index) pass and the number of locks (both lock queues
     of each lock) processed in one batch;
   - has a preconfigured valie in `config['lock_release_batch_size']`;
+- `:by_priority` - (optional) `[Boolean]`
+  - read only the first lock request of each [priority](#lock-request-prioritization) in the lock queues instead of all lock
+    requests: a batch of lock queues takes one round trip per priority of its lock queue with the most priorities + 1 (instead
+    of two round trips), the transfer does not depend on the length of the lock queues (for long lock queues with few
+    priorities);
+  - `false` by default (all lock requests are read);
 - `:logger` - (optional) `[::Logger,#debug]`
   - custom logger object;
   - pre-configured in `config['logger']`;
@@ -2119,6 +2139,9 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
     }>
   }
 }
+
+# long lock queues with few priorities: only the first lock request of each priority is read
+rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000, by_priority: true)
 ```
 
 ---
@@ -2640,7 +2663,8 @@ rql.possible_host_ids
     - `:queued` (FIFO): the classic queued behavior (default), your lock will be obitaned if you are first in queue and the required lock is free;
       the queue is ordered by the [lock request priorities](#lock-request-prioritization) (FIFO inside the same priority);
     - `:random` (RANDOM): obtain a lock without checking the positions in the queue (but with checking the limist, retries, timeouts and so on). if lock is free to obtain - it will be obtained;
-      (lock request priorities are ignored too);
+      (the priorities of other lock requests are ignored too; the lock request itself is queued at the position of its
+      [priority](#lock-request-prioritization) like a `:queued` one: `:queued` lock requests wait for it);
   - for current implementation detalis check:
     - [Configuration](#configuration) documentation: see `config['default_access_strategy']` config docs;
     - [#lock](#lock---obtain-a-lock) method documentation: see `access_strategy` attribute docs;
@@ -2660,7 +2684,9 @@ rql.possible_host_ids
     a new hash);
   - a name is resolved to its Integer priority on each lock acquirement: the lock request queues, `#queue_info`/`#queues_info`,
     logs and instrumentation have the Integer priority; an unknown name fails with `RedisQueuedLocks::ArgumentError`;
-  - `config['default_lock_priority']` can be a priority name too;
+  - `config['default_lock_priority']` can be a priority name too: an unknown one fails the configuration with
+    `RedisQueuedLocks::ConfigValidationError` (checked after the configuration block, the keys can be assigned in any order,
+    and on a direct `config[...] =` assignment);
 - `:queued` access strategy (default): the lock request is placed in the lock request queue after all requests of the same
   or higher priority and before all requests of the lower priority: strict priority between priorities, FIFO inside the same
   priority (read and write lock requests too, see [Read/Write Locks](#readwrite-locks));
@@ -2701,9 +2727,14 @@ rql.lock("user_#{user.id}", priority: :high) { update_profile } # priority: 50
     queue and the cost of an attempt does not depend on the number of priorities in use;
   - dead requests of lower priorities never block: they are dropped by the lock requests of their priority (or lower ones)
     and by `#clear_dead_requests` (it drops the dead requests of every priority found in the queues);
+  - lock requests at infinite positions (`-inf`/`+inf`: manual writes of the lock queues, RQL never writes them) have the
+    bound priorities (`100`/`-100`) in `#queue_info`/`#queues_info` and logs; a request at `-inf` is a dead one (like before
+    priorities): it is dropped when it blocks a lock request and by `#clear_dead_requests`; a request at `+inf` is behind all
+    requests and is never dropped as a dead one;
   - `#queue_info`/`#queues_info` return the priority of each lock request (`"priority"`); the lock acquirement logs and
     instrumentation events (classic, reentrant and lock series ones) have the `priority` of the lock request, the `log_lock_try`
-    logs also have the priorities of the requests ahead (`first_priority_in_queue`, `ahead_priority`, `dead_priority`);
+    logs also have the priorities of the requests ahead (`first_priority_in_queue`, `ahead_priority`, `dead_priority`;
+    `first_priority_in_queue => nil` when the lock queue has no requests);
 - limitations and recommendations:
   - the priority orders the waiting lock requests only: the obtained lock is never taken away (no preemption);
   - strict priority: a continuous flow of requests of a higher priority can starve the requests of lower priorities (they
@@ -2714,12 +2745,28 @@ rql.lock("user_#{user.id}", priority: :high) { update_profile } # priority: 50
     (`retry_count: nil` with `timeout`);
   - requests of the same priority made within ~61 µs of each other are ordered by their acquirer ids (the precision of
     the shifted positions);
-  - each lock request drops dead requests with its own `queue_ttl`: a longer `queue_ttl` of an important request does not keep
-    it in the queue longer than the shorter `queue_ttl` of other waiting requests (the request is requeued at the end of its priority);
-  - `:random` access strategy ignores the lock request queues and the priority;
-  - all processes that share locks should use RQL versions with priorities before the priorities are used: older versions drop
-    the lock requests of the high priority as dead ones (the order is broken; the mutual exclusion is not affected: lock queues
-    never take part in it);
+  - each lock request drops dead requests with its own `queue_ttl` (the requests of its priority and the requests that block it):
+    a request that waits longer than the shorter `queue_ttl` of such requests is dropped by their attempts and comes back at its
+    old position on its own attempts (its own `queue_ttl` is not reached yet), so the requests behind it with a shorter
+    `queue_ttl` don't wait for it: it loses its place (and the advantage of its priority) to them, the lock goes to the request
+    whose attempt finds the lock free first; use the same `queue_ttl` for the lock requests of a lock (a longer `queue_ttl` does
+    not keep a request in the queue);
+  - `:random` access strategy: the lock request does not wait for its turn (the order of the queues and the priorities of other
+    requests are ignored), but it is queued at the position of its priority: `:queued` lock requests wait for it (a `:random`
+    request of a high priority holds back the waiting `:queued` requests of lower priorities until it obtains the lock or
+    leaves the queue);
+  - dead lock requests are dropped by the lock requests that meet them (the requests of their priority and the requests they
+    block): the dead requests of the priorities that no lock request uses any more (and the dead requests met only by `:random`
+    lock requests) stay in the queues; they never block (an accepted trade-off of the head-driven cleanup: the cost of an
+    attempt does not depend on the number of priorities); without the [Lock Index](#lock-index) (its queues expire) and the
+    [swarm](#swarm-mode-and-zombie-locks) (it drops the requests of dead processes) call `#clear_dead_requests` periodically
+    (e.g. from a scheduled job) to drop them (`by_priority: true` for long lock queues: only the first lock request of each
+    priority is read);
+  - all processes that share locks should use RQL versions with priorities before positive priorities are used (`:high`,
+    `:highest`, any priority above `0`): older versions drop such lock requests as dead ones (the order is broken; the mutual
+    exclusion is not affected: lock queues never take part in it); the default priority (`0`) and negative priorities
+    (`:low`, `:lowest`) work with older versions too: older versions keep such requests behind their own ones and never drop
+    them as dead ones (the dead ones are dropped by the upgraded processes);
 
 ---
 
@@ -2748,7 +2795,8 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
     continuous flow of readers and consecutive readers obtain the lock together); with
     [lock request priorities](#lock-request-prioritization) "earlier" means "ahead in the queue": a request of a higher
     priority is ahead of all requests of lower priorities in both modes (FIFO inside the same priority);
-  - `:random` - lock queues are ignored: any free lock is obtained (a continuous flow of readers can starve writers);
+  - `:random` - the order of the lock queues is ignored: any free lock is obtained (a continuous flow of readers can starve
+    writers); the lock request itself is queued like any lock request (`:queued` lock requests wait for it);
 - read locks:
   - each read lock has its own `ttl` and is released (after the block execution) or expired independently of other read locks;
   - `ttl` should be a positive `Integer`;

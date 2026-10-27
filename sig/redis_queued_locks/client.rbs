@@ -244,6 +244,7 @@ module RedisQueuedLocks
     def clear_dead_requests: (
       ?dead_ttl: Integer,
       ?scan_size: Integer,
+      ?by_priority: bool,
       ?logger: RQL::loggerObj,
       ?instrumenter: RQL::instrObj,
       ?instrument: untyped?,

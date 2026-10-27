@@ -23,11 +23,14 @@ require 'redis_queued_locks'
 #   the swarm elements, the flusher Ractor too: all of them are configured with
 #   `RedisClient.config`), so the `FLUSHDB` hooks, SCAN passes and swarm keys of the workers never
 #   meet; `0` (the default): the databases of the specs as is;
+#   - the offset is prepended to `RedisClient::Config::Common#initialize`: `Config#initialize`
+#     calls it with the resolved database (the `db:` option or the database of the `url:`), so
+#     a database of a URL gets the offset too (not the default one);
 RQL_SPEC_DB_OFFSET = Integer(ENV.fetch('RQL_SPEC_DB_OFFSET', '0'))
 unless RQL_SPEC_DB_OFFSET.zero?
-  RedisClient::Config.prepend(Module.new do
+  RedisClient::Config::Common.prepend(Module.new do
     def initialize(db: nil, **)
-      super(db: (db || 0) + RQL_SPEC_DB_OFFSET, **)
+      super(db: Integer(db || 0) + RQL_SPEC_DB_OFFSET, **)
     end
   end)
 end
