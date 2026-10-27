@@ -1,4 +1,6 @@
 ## [Unreleased]
+
+## [1.22.0] - 2026-10-27
 ### Added
 - *Brand New Feature*: **Lock Request Prioritization**: the `priority:` option of `#lock`/`#lock!`/`#lock_series`/`#lock_series!`
   (`-100..100`, `0` by default) orders the waiting `:queued` lock requests of both modes: strict priority, FIFO inside
