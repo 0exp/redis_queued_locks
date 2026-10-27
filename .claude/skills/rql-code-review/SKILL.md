@@ -84,7 +84,8 @@ priorities", key layout, "Lock index", lock lookup modes, events, errors, conven
   - reserved `meta` keys validation in `AcquireLock` and `LockSeriesPoC`; the `priority` resolution and range check
     in `AcquireLock` Step 0.1 and `LockSeriesPoC` (the same message);
   - the band liveness rule (a request is dead when its score is `<= Resource.lock_priority_band_dead_score(dead_score,
-    band)`): `TryToLock#dead_request_priority` / `pipeline_dead_requests_removal` and `ClearDeadRequests.drop_dead_requests`;
+    band)`): `TryToLock#dead_request_priority` / `pipeline_dead_requests_removal` and `ClearDeadRequests.drop_dead_requests` /
+    `drop_dead_requests_by_priority`;
   - the `'priority'` field of a request (`Resource.lock_request_priority`) in `QueueInfo.queue_info` and
     `Queues.extract_queues_info`;
   - lock-family options in `Client#lock`, `#lock!`, `#lock_series`, `#lock_series!` and their forwarding in
@@ -371,7 +372,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   lingering until an attempt of their band/`clear_dead_requests`/the queue TTL/the swarm (they never block), the
   library-constant range `-100..100` and its ~61 µs FIFO precision inside a band, `MAX_DEAD_REQUEST_REMOVALS` per
   attempt, `:random` requests ignoring the order and the priorities of other requests (while their own requests are queued
-  at their priority: `:queued` requests wait for them), `clear_dead_requests` reading the batch queues (2 round trips per batch),
+  at their priority: `:queued` requests wait for them), `clear_dead_requests` reading the batch queues (2 round trips per batch; `by_priority: true`: the first
+  request of each band only, the most bands of a batch queue + 1 round trips),
   the order degradation with older versions (no safety impact), the queue score as the only order and liveness of a request
   (a separate liveness registry of request deadlines was rejected by the user: don't propose it).
 - Unused `Resource` methods marked `# NOTE: (debug)` (manual runtime checks, `logic.md#17`); report a debug method

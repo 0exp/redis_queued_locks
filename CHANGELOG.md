@@ -16,6 +16,11 @@
     an attempt does not depend on the number of priorities;
   - `#clear_dead_requests` drops the dead lock requests of every priority found in the lock queues (two round trips per batch of
     lock queues: the lock requests are read, then the dead ones are dropped);
+  - the new `by_priority:` option of `#clear_dead_requests` (`false` by default): only the first lock request of each priority
+    is read instead of all lock requests (the dead requests of a priority are found by its first lock request): a batch of lock
+    queues takes one round trip per priority of its lock queue with the most priorities + 1, the transfer does not depend on the
+    length of the lock queues (for long lock queues with few priorities); a non-boolean value fails with
+    `RedisQueuedLocks::ArgumentError`;
   - lock requests at infinite positions (`-inf`/`+inf`: manual writes of the lock queues) have the bound priorities (`100`/`-100`);
     a request at `-inf` is dropped as a dead one when it blocks a lock request and by `#clear_dead_requests`, a request at `+inf`
     is never dropped as a dead one (like before priorities);

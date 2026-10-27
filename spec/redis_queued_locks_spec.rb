@@ -4051,45 +4051,182 @@ RSpec.shared_examples 'redis_queued_locks' do
       position = lambda do |priority, age|
         RedisQueuedLocks::Resource.calc_initial_acquirer_position(priority) - age
       end
-      redis.call(
-        'ZADD', 'rql:lock_queue:prio.clear',
-        position.call(150, 60), 'rql:acq:1/2/3/4/dead_out_of_range',
-        position.call(100, 60), 'rql:acq:1/2/3/4/dead_high',
-        position.call(37, 60), 'rql:acq:1/2/3/4/dead_middle',
-        position.call(0, 60), 'rql:acq:1/2/3/4/dead_normal_first',
-        position.call(0, 50), 'rql:acq:1/2/3/4/dead_normal_second',
-        position.call(-100, 60), 'rql:acq:1/2/3/4/dead_low',
-        position.call(100, 1), 'rql:acq:1/2/3/4/alive_high',
-        position.call(-100, 1), 'rql:acq:1/2/3/4/alive_low'
-      )
-      redis.call(
-        'ZADD', 'rql:lock_read_queue:prio.clear', position.call(1, 60), 'rql:acq:1/2/3/4/dead_read'
-      )
-      prio_client.reindex_locks if prio_client.config['lock_index_enabled']
 
-      expect(prio_client.clear_dead_requests(dead_ttl: 30_000)).to match({
+      # NOTE: all lock requests are read (default) or the first request of each priority
+      [false, true].each do |by_priority|
+        aggregate_failures "by_priority: #{by_priority}" do
+          redis.call(
+            'ZADD', 'rql:lock_queue:prio.clear',
+            position.call(150, 60), 'rql:acq:1/2/3/4/dead_out_of_range',
+            position.call(100, 60), 'rql:acq:1/2/3/4/dead_high',
+            position.call(37, 60), 'rql:acq:1/2/3/4/dead_middle',
+            position.call(0, 60), 'rql:acq:1/2/3/4/dead_normal_first',
+            position.call(0, 50), 'rql:acq:1/2/3/4/dead_normal_second',
+            position.call(-100, 60), 'rql:acq:1/2/3/4/dead_low',
+            position.call(100, 1), 'rql:acq:1/2/3/4/alive_high',
+            position.call(-100, 1), 'rql:acq:1/2/3/4/alive_low'
+          )
+          redis.call(
+            'ZADD', 'rql:lock_read_queue:prio.clear',
+            position.call(1, 60), 'rql:acq:1/2/3/4/dead_read'
+          )
+          prio_client.reindex_locks if prio_client.config['lock_index_enabled']
+
+          expect(prio_client.clear_dead_requests(dead_ttl: 30_000, by_priority:)).to match({
+            ok: true,
+            result: {
+              processed_queues: contain_exactly(
+                'rql:lock_queue:prio.clear', 'rql:lock_read_queue:prio.clear'
+              )
+            }
+          })
+          # NOTE: alive requests of the highest and the lowest priority stay (in the queue order)
+          expect(prio_client.queue_info('prio.clear')).to match({
+            'lock_queue' => 'rql:lock_queue:prio.clear',
+            'queue' => [
+              {
+                'acq_id' => 'rql:acq:1/2/3/4/alive_high', 'score' => be_a(Float),
+                'rw_mode' => 'write', 'priority' => 100
+              },
+              {
+                'acq_id' => 'rql:acq:1/2/3/4/alive_low', 'score' => be_a(Float),
+                'rw_mode' => 'write', 'priority' => -100
+              }
+            ]
+          })
+          prio_client.unlock('prio.clear')
+        end
+      end
+    end
+
+    specify 'clear_dead_requests by priority: the first request of each priority is read' do
+      # NOTE: the pipelines are observed via a separate pool (the same db) with a recording
+      #   middleware (the lookup commands are single calls: SCAN, ZSCAN, the lock index prune;
+      #   the connection prelude, `HELLO`, is not recorded)
+      pipelines = []
+      recorder = Module.new do
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          pipelines << commands.map(&:dup) unless commands.first.first == 'HELLO'
+          super(commands, redis_config, &block)
+        end
+      end
+      recorded_redis =
+        RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5, size: 1)
+      client = RedisQueuedLocks::Client.new(recorded_redis)
+      position = lambda do |priority, age|
+        RedisQueuedLocks::Resource.calc_initial_acquirer_position(priority) - age
+      end
+      first_request_read = lambda do |command|
+        command[0] == 'ZRANGE' && command[-5..] == %w[BYSCORE LIMIT 0 1 WITHSCORES]
+      end
+      # NOTE: three priorities of the write queue (`walk.a`): 100 (dead + alive), 0 (alive), -50
+      #   (dead + alive); one priority of the read queue (`walk.b`): 0 (dead); requests at
+      #   positions out of the float precision of the priority bands (manual writes) never stop
+      #   the walk (`walk.c`)
+      queue_data = lambda do
+        redis.call(
+          'ZADD', 'rql:lock_queue:walk.a',
+          position.call(100, 60), 'rql:acq:1/2/3/4/dead_high',
+          position.call(100, 1), 'rql:acq:1/2/3/4/alive_high',
+          position.call(0, 2), 'rql:acq:1/2/3/4/alive_normal_first',
+          position.call(0, 1), 'rql:acq:1/2/3/4/alive_normal_second',
+          position.call(-50, 60), 'rql:acq:1/2/3/4/dead_low_first',
+          position.call(-50, 50), 'rql:acq:1/2/3/4/dead_low_second',
+          position.call(-50, 1), 'rql:acq:1/2/3/4/alive_low'
+        )
+        redis.call(
+          'ZADD', 'rql:lock_read_queue:walk.b', position.call(0, 60), 'rql:acq:1/2/3/4/dead_read'
+        )
+        client.reindex_locks if client.config['lock_index_enabled']
+      end
+      remaining_requests = lambda do
+        [
+          redis.call('ZRANGE', 'rql:lock_queue:walk.a', '0', '-1'),
+          redis.call('ZRANGE', 'rql:lock_read_queue:walk.b', '0', '-1')
+        ]
+      end
+      alive_requests = [
+        %w[
+          rql:acq:1/2/3/4/alive_high rql:acq:1/2/3/4/alive_normal_first
+          rql:acq:1/2/3/4/alive_normal_second rql:acq:1/2/3/4/alive_low
+        ],
+        []
+      ]
+      processed_queues = match({
         ok: true,
         result: {
-          processed_queues: contain_exactly(
-            'rql:lock_queue:prio.clear', 'rql:lock_read_queue:prio.clear'
-          )
+          processed_queues: contain_exactly('rql:lock_queue:walk.a', 'rql:lock_read_queue:walk.b')
         }
       })
-      # NOTE: alive requests of the highest and the lowest priority stay (in the queue order)
-      expect(prio_client.queue_info('prio.clear')).to match({
-        'lock_queue' => 'rql:lock_queue:prio.clear',
-        'queue' => [
-          {
-            'acq_id' => 'rql:acq:1/2/3/4/alive_high', 'score' => be_a(Float),
-            'rw_mode' => 'write', 'priority' => 100
-          },
-          {
-            'acq_id' => 'rql:acq:1/2/3/4/alive_low', 'score' => be_a(Float),
-            'rw_mode' => 'write', 'priority' => -100
-          }
-        ]
-      })
-      prio_client.unlock('prio.clear')
+
+      aggregate_failures 'by_priority: false (default): all lock requests, two round trips' do
+        queue_data.call
+        pipelines.clear
+        expect(client.clear_dead_requests(dead_ttl: 30_000)).to processed_queues
+        expect(remaining_requests.call).to eq(alive_requests)
+        expect(pipelines.size).to eq(2)
+        expect(pipelines[0]).to all(match(['ZRANGE', be_a(String), '0', '-1', 'WITHSCORES']))
+        expect(pipelines[1].map(&:first)).to eq(%w[ZREMRANGEBYSCORE] * 3)
+      end
+
+      aggregate_failures 'by_priority: true: one round trip per priority + 1' do
+        queue_data.call
+        pipelines.clear
+        expect(client.clear_dead_requests(dead_ttl: 30_000, by_priority: true)).to processed_queues
+        expect(remaining_requests.call).to eq(alive_requests)
+        # NOTE: the most priorities of a queue (3) + 1 (the last read finds nothing); the dead
+        #   requests of a priority are dropped by the next round trip (after its reads): 100 and the
+        #   read queue by the 2nd one, -50 by the 4th one (no separate removal round trip)
+        #   (the lock index lookup reads both queues of each lock: the missing ones too)
+        expect(pipelines.map { |commands| commands.map(&:first) }).to eq(
+          [
+            %w[ZRANGE] * (client.config['lock_index_enabled'] ? 4 : 2),
+            %w[ZRANGE ZRANGE ZREMRANGEBYSCORE ZREMRANGEBYSCORE],
+            %w[ZRANGE],
+            %w[ZRANGE ZREMRANGEBYSCORE]
+          ]
+        )
+        expect(pipelines.flatten(1).select { |command| command[0] == 'ZRANGE' }).to all(
+          satisfy(&first_request_read)
+        )
+      end
+
+      aggregate_failures 'by_priority: true: positions out of the float precision of the bands' do
+        # NOTE: the lower edge of the next band rounds to such a position: the walk goes on after
+        #   it (an exclusive bound); both ways of reading drop the same requests
+        garbage = ['-1e30', 'rql:acq:1/2/3/4/g1', '1e30', 'rql:acq:1/2/3/4/g2',
+                   (2.0**85).to_s, 'rql:acq:1/2/3/4/g3', '+inf', 'rql:acq:1/2/3/4/last']
+        remaining = [false, true].map do |by_priority|
+          redis.call('ZADD', 'rql:lock_queue:walk.c', *garbage)
+          redis.call(
+            'ZADD', 'rql:lock_queue:walk.c',
+            position.call(0, 60), 'rql:acq:1/2/3/4/dead',
+            position.call(0, 1), 'rql:acq:1/2/3/4/alive'
+          )
+          client.reindex_locks if client.config['lock_index_enabled']
+          client.clear_dead_requests(dead_ttl: 30_000, by_priority:)
+          redis.call('ZRANGE', 'rql:lock_queue:walk.c', '0', '-1')
+        end
+        expect(remaining[1]).to eq(remaining[0])
+        expect(remaining[1]).to include('rql:acq:1/2/3/4/alive', 'rql:acq:1/2/3/4/last')
+        expect(remaining[1]).not_to include('rql:acq:1/2/3/4/dead')
+      end
+
+      aggregate_failures 'by_priority: a boolean' do
+        # NOTE: (RBS) type-invalid values can't reach the runtime validation under the RBS runtime
+        #   type checks (the hook raises first)
+        unless RBS_RUNTIME_TEST
+          [nil, 1, 'true'].each do |value|
+            expect { client.clear_dead_requests(by_priority: value) }.to raise_error(
+              RedisQueuedLocks::ArgumentError,
+              "`:by_priority` argument should be a boolean, got #{value.inspect}."
+            )
+          end
+        end
+      end
+
+      client.clear_locks
+      recorded_redis.close
     end
 
     specify 'lock requests at infinite positions (manual writes): -inf is dead, +inf is behind' do
@@ -4140,12 +4277,23 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'clear_dead_requests drops the requests at -inf' do
-        prio_client.clear_dead_requests(dead_ttl: 30_000)
-        expect(redis.call('ZRANGE', 'rql:lock_queue:prio.inf', '0', '-1')).to eq(
-          ['rql:acq:1/2/3/4/last']
-        )
-        expect(redis.call('EXISTS', 'rql:lock_read_queue:prio.inf')).to eq(0)
-        prio_client.unlock('prio.inf')
+        # NOTE: all lock requests are read (default) or the first request of each priority (the
+        #   requests at `-inf` are the first ones, the walk stops at `+inf`)
+        [false, true].each do |by_priority|
+          redis.call(
+            'ZADD', 'rql:lock_queue:prio.inf',
+            '-inf', 'rql:acq:1/2/3/4/first', '+inf', 'rql:acq:1/2/3/4/last'
+          )
+          redis.call('ZADD', 'rql:lock_read_queue:prio.inf', '-inf', 'rql:acq:1/2/3/4/reader')
+          prio_client.reindex_locks if prio_client.config['lock_index_enabled']
+
+          prio_client.clear_dead_requests(dead_ttl: 30_000, by_priority:)
+          expect(redis.call('ZRANGE', 'rql:lock_queue:prio.inf', '0', '-1')).to eq(
+            ['rql:acq:1/2/3/4/last']
+          )
+          expect(redis.call('EXISTS', 'rql:lock_read_queue:prio.inf')).to eq(0)
+          prio_client.unlock('prio.inf')
+        end
       end
 
       aggregate_failures 'a request at -inf does not block the write queue (+inf: behind)' do
@@ -5637,15 +5785,20 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       aggregate_failures 'clear_dead_requests' do
         # NOTE: 6 queues (keyspace) or 9 lock names (6 queues, lock index): full batches and
-        #   the rest
-        expect(client.clear_dead_requests(dead_ttl: 30_000, scan_size: 4)).to match({
-          ok: true,
-          result: match({ processed_queues: contain_exactly(*queues) })
-        })
-        queues.each do |lock_queue|
-          expect(redis.call('ZRANGE', lock_queue, '0', '-1')).to contain_exactly(
-            live_acquirer, acquirer_id
-          )
+        #   the rest; all lock requests are read (default) or the first request of each priority
+        [false, true].each do |by_priority|
+          queues.each { |lock_queue| redis.call('ZADD', lock_queue, now - 60, dead_acquirer) }
+          expect(
+            client.clear_dead_requests(dead_ttl: 30_000, scan_size: 4, by_priority:)
+          ).to match({
+            ok: true,
+            result: match({ processed_queues: contain_exactly(*queues) })
+          })
+          queues.each do |lock_queue|
+            expect(redis.call('ZRANGE', lock_queue, '0', '-1')).to contain_exactly(
+              live_acquirer, acquirer_id
+            )
+          end
         end
       end
 

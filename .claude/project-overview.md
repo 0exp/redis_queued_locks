@@ -128,7 +128,9 @@ AcquireLock Step 0.1 / LockSeriesPoC                    name -> Integer, range -
   │                                                     per removal, none while nothing dead blocks); ordering: queue heads
   │                                                     and the cross-mode (score, acq_id) comparison on shifted scores
   │
-  ├──▶ ClearDeadRequests                                per-band cleanup of the bands found in the queues (<= 2 round trips/batch)
+  ├──▶ ClearDeadRequests                                per-band cleanup of the bands found in the queues (<= 2 round trips/batch;
+  │                                                     by_priority: a walk over the first request of each band, the most
+  │                                                     bands of a batch queue + 1 round trips, no full queue read)
   ├──▶ QueueInfo / Queues                               'priority' of each request decoded from its score
   └──▶ LogVisitor / InstrVisitor (+ series, try-lock)   priority in every lock acquirement log/event; try-lock logs decode
                                                         the priorities of the requests ahead (first/ahead/dead)
@@ -157,7 +159,7 @@ AcquireLock Step 0.1 / LockSeriesPoC                    name -> Integer, range -
 | `locks`, `locks_info`, `queues`, `queues_info`, `keys` | `acquirer/locks.rb`, `queues.rb`, `keys.rb` (keyspace SCAN or lock index: `lock_index_enabled`) |
 | `clear_locks` | `acquirer/release_all_locks.rb` |
 | `clear_locks_of`, `clear_current_locks` | `acquirer/release_locks_of.rb` |
-| `clear_dead_requests` | `acquirer/clear_dead_requests.rb` |
+| `clear_dead_requests` | `acquirer/clear_dead_requests.rb` (`by_priority: true` reads the first request of each priority band instead of all requests) |
 | `reindex_locks` | `acquirer/reindex_locks.rb` (adds keys without lock index entries to the lock index: one SCAN pass; works in both modes) |
 | `current_acquirer_id`, `current_host_id`, `possible_host_ids` | `resource.rb` |
 | `swarmize!`, `deswarmize!`, `swarm_status`, `swarm_info`, `probe_hosts`, `flush_zombies`, `zombie_locks`, `zombie_acquirers`, `zombie_hosts`, `zombies_info` | `swarm.rb` + `swarm/*` |
@@ -308,7 +310,16 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   `clear_dead_requests`, the queue TTL (enabled lock index) or the swarm. `ClearDeadRequests.drop_dead_requests` (both lookups):
   one round trip reads the batch queues (`ZRANGE 0 -1 WITHSCORES`), one more prunes only the bands whose first request is dead
   (the requests of a band are adjacent and ordered by time), none without dead requests; `processed_queues` of the lock index
-  lookup = non-empty queues.
+  lookup = non-empty queues. `clear_dead_requests(by_priority: true)` (`false` by default; `drop_dead_requests_by_priority`)
+  never reads a whole queue: a walk over the bands, each round trip reads the first request of the next band of each walked
+  queue (`ZRANGE <queue> <bound> +inf BYSCORE LIMIT 0 1 WITHSCORES`, from `-inf`, the next bound is
+  `lock_priority_band_floor(p - 1)`) and prunes the dead bands found by the previous one (the same removal commands, after the
+  reads); a queue is walked till a read finds nothing: the most bands of a batch queue + 1 round trips per batch, with or
+  without dead requests, the transfer depends on the bands, not on the requests (for long queues with few priorities);
+  `-inf` requests are dropped by their position (the walk goes on with `(-inf`), the walk of a queue stops at `+inf`; a
+  position out of the float precision of the band edges (manual writes) is passed with an exclusive bound (`(<position>`:
+  the next band edge rounds to the position itself); `processed_queues` of the lock index lookup = the queues with a first
+  request (non-empty).
 - Design decision (the user's): the queue score is the only order and liveness of a lock request. A separate liveness registry
   (the deadlines of the requests in another key next to the queues) was considered and rejected: a new key family for the lock
   index, reindexing, release and zombie paths, more commands per attempt; the dead requests of other bands are dropped by the

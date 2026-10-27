@@ -2060,6 +2060,10 @@ with corresponding `:dead_ttl` option, that is pre-configured by default via `co
 Lock queues are found via the redis `SCAN` (one pass) or via the [Lock Index](#lock-index) (one `ZSCAN` pass, the keyspace is
 never scanned: the enabled lock index). Each batch of lock queues takes two round trips: the lock requests are read, then the dead
 requests of each [priority](#lock-request-prioritization) found in the queues are dropped (no second round trip without dead requests).
+With `by_priority: true` the lock requests are not read: only the first lock request of each priority is read (the dead requests
+of a priority are found by its first lock request): a batch takes one round trip per priority of its lock queue with the most
+priorities + 1 (the dead requests of a priority are dropped in the round trip that reads the next priority), so the transfer does not
+depend on the length of the lock queues: use it for long lock queues with few priorities.
 
 `:dead_ttl` option is required because of it is no any **fast** and **resource-free** way to understand which request
 is dead now and is it really dead cuz each request queue can host their requests with
@@ -2074,6 +2078,12 @@ Accepts:
   - (the enabled lock index) the `ZSCAN` count of the [Lock Index](#lock-index) pass and the number of locks (both lock queues
     of each lock) processed in one batch;
   - has a preconfigured valie in `config['lock_release_batch_size']`;
+- `:by_priority` - (optional) `[Boolean]`
+  - read only the first lock request of each [priority](#lock-request-prioritization) in the lock queues instead of all lock
+    requests: a batch of lock queues takes one round trip per priority of its lock queue with the most priorities + 1 (instead
+    of two round trips), the transfer does not depend on the length of the lock queues (for long lock queues with few
+    priorities);
+  - `false` by default (all lock requests are read);
 - `:logger` - (optional) `[::Logger,#debug]`
   - custom logger object;
   - pre-configured in `config['logger']`;
@@ -2129,6 +2139,9 @@ rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000) # 1 hour in milliseconds
     }>
   }
 }
+
+# long lock queues with few priorities: only the first lock request of each priority is read
+rql.clear_dead_requests(dead_ttl: 60 * 60 * 1000, by_priority: true)
 ```
 
 ---
@@ -2747,7 +2760,8 @@ rql.lock("user_#{user.id}", priority: :high) { update_profile } # priority: 50
     lock requests) stay in the queues; they never block (an accepted trade-off of the head-driven cleanup: the cost of an
     attempt does not depend on the number of priorities); without the [Lock Index](#lock-index) (its queues expire) and the
     [swarm](#swarm-mode-and-zombie-locks) (it drops the requests of dead processes) call `#clear_dead_requests` periodically
-    (e.g. from a scheduled job) to drop them;
+    (e.g. from a scheduled job) to drop them (`by_priority: true` for long lock queues: only the first lock request of each
+    priority is read);
   - all processes that share locks should use RQL versions with priorities before positive priorities are used (`:high`,
     `:highest`, any priority above `0`): older versions drop such lock requests as dead ones (the order is broken; the mutual
     exclusion is not affected: lock queues never take part in it); the default priority (`0`) and negative priorities

@@ -1335,6 +1335,13 @@ class RedisQueuedLocks::Client
   #   - the batch of scanned keys for Redis'es SCAN command (or the number of locks in one batch of
   #     the lock index ZSCAN pass: the enabled `config['lock_index_enabled']`);
   #   - `config['lock_release_batch_size']` is used by default;
+  # @option by_priority [Boolean]
+  #   - read only the first lock request of each priority in the lock queues instead of all lock
+  #     requests (the dead requests of a priority are found by its first lock request): the
+  #     transfer does not depend on the length of the lock queues, a batch of lock queues takes
+  #     one round trip per priority of its lock queue with the most priorities + 1 (instead of two
+  #     round trips): for long lock queues with few priorities;
+  #   - `false` by default (all lock requests are read);
   # @option logger [::Logger,#debug]
   # @option instrumenter [#notify]
   # @option instrument [NilClass,Any]
@@ -1355,6 +1362,7 @@ class RedisQueuedLocks::Client
   def clear_dead_requests(
     dead_ttl: config['dead_request_ttl'],
     scan_size: config['lock_release_batch_size'],
+    by_priority: false,
     logger: config['logger'],
     instrumenter: config['instrumenter'],
     instrument: nil,
@@ -1371,6 +1379,7 @@ class RedisQueuedLocks::Client
       redis_client,
       scan_size,
       dead_ttl,
+      by_priority,
       config['lock_index_enabled'],
       logger,
       instrumenter,

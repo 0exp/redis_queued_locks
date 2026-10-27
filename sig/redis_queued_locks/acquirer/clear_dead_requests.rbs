@@ -11,6 +11,7 @@ module RedisQueuedLocks
         RC::client redis_client,
         Integer scan_size,
         Integer dead_ttl,
+        bool by_priority,
         bool lock_index_enabled,
         RQL::loggerObj logger,
         RQL::instrObj instrumenter,
@@ -29,11 +30,18 @@ module RedisQueuedLocks
         RC::client redis_client,
         Integer scan_size,
         Integer dead_ttl,
+        bool by_priority,
         bool lock_index_enabled
       ) -> Set[String]
 
       private def self.each_lock_queue: (RC::client redis_client, Integer scan_size) { (String lock_queue) -> void } -> void
       private def self.drop_dead_requests: (
+        RC::client redis_client,
+        Array[String] lock_queues,
+        Float dead_score,
+        bool by_priority
+      ) -> Array[Array[[String, Float]]]
+      private def self.drop_dead_requests_by_priority: (
         RC::client redis_client,
         Array[String] lock_queues,
         Float dead_score
@@ -42,6 +50,7 @@ module RedisQueuedLocks
         RC::client redis_client,
         Array[String] lock_names,
         Float dead_score,
+        bool by_priority,
         Set[String] processed_queues
       ) -> void
       private def self.each_lock_name_batch: (RC::client redis_client, Integer scan_size) { (Array[String] lock_names) -> void } -> void
