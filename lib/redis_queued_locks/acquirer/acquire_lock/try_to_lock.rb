@@ -52,7 +52,7 @@
 #
 # @api private
 # @since 1.0.0
-# @version 1.22.0
+# @version 1.23.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   require_relative 'try_to_lock/log_visitor'
@@ -132,6 +132,33 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @api private
   # @since 1.20.0
   OPPOSITE_QUEUE_HEAD_REPLY = 4
+
+  # The number of the replies of the lock request queueing commands (`queue_lock_request`) with
+  # the disabled lock index.
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.23.0
+  QUEUE_REPLIES = 5
+
+  # The number of the replies of the lock index commands of the lock request queueing
+  # (`queue_lock_request`, the enabled lock index only).
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.23.0
+  QUEUE_LOCK_INDEX_REPLIES = 4
+
+  # The number of the commands of the read lock extension (`transact_read_lock_extension`) without
+  # the lock index command (the enabled lock index only: the last command).
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.23.0
+  READ_LOCK_EXTENSION_COMMANDS = 8
 
   # The maximum number of the round trips of one call of `drop_dead_requests_ahead` (the attempt or
   # its pre-check; each round trip drops the dead blocking requests, the head of the write lock
@@ -334,27 +361,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
           # SP-Conflict Step X2: self-process dead lock moment started.
           # SP-Conflict CHECK (Step CHECK): check chosen strategy and flag the current status
-          case conflict_strategy
-          when :work_through
-            # <SP-Conflict Moment>: work through => exit
-            sp_conflict_status = lock_upgrade ? :conflict_lock_upgrade : :conflict_work_through
-          when :extendable_work_through
-            # <SP-Conflict Moment>: extendable_work_through => extend the lock pttl and exit
-            sp_conflict_status =
-              lock_upgrade ? :conflict_lock_upgrade : :extendable_conflict_work_through
-          when :wait_for_lock
-            # <SP-Conflict Moment>: wait_for_lock => obtain a lock in classic way
-            sp_conflict_status = :conflict_wait_for_lock
-          when :dead_locking
-            # <SP-Conflict Moment>: dead_locking => exit and fail
-            sp_conflict_status = :conflict_dead_lock
-          else
-            # <SP-Conflict Moment>:
-            #   - unknown status => work in classic way <wait_for_lock>
-            #   - it is a case when the new status is added to the code base in the past
-            #     but is forgotten to be added here;
-            sp_conflict_status = :conflict_wait_for_lock
-          end
+          sp_conflict_status = same_process_conflict_status(conflict_strategy, lock_upgrade)
           LogVisitor.same_process_conflict_analyzed(
             logger, log_sampled, log_lock_try, lock_key,
             queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, sp_conflict_status
@@ -366,71 +373,17 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # SP-Conflict-Step FINAL (SPCF): extend the lock and work through
           #   - extend the lock ttl;
           #   - store extensions in lock metadata;
+          spc_processed_timestamp = Time.now.to_f
           if sp_conflict_rw_mode == :write
             held_rw_mode = :write
-
-            # SPCF Step 1: extend the lock pttl
-            #   - [REDIS RESULT]: in normal cases should return the last script command value
-            #     - for the current script should return:
-            #       <1> => timeout was set;
-            #       <0> => timeount was not set;
-            transact.call('EVAL', EXTEND_LOCK_PTTL, 1, lock_key, ttl)
-            # SPCF Step <Meta>: store conflict-state additionals in lock metadata:
-            # SPCF Step 2: (lock meta-data)
-            #   - add the added ttl to reflect the real lock TTL in info;
-            #   - [REDIS RESULT]: in normal cases should return the value of <ttl> key
-            #     - for non-existent key value starts from <0> (zero)
-            transact.call('HINCRBY', lock_key, 'spc_ext_ttl', ttl)
-            # SPCF Step 3: (lock meta-data)
-            #   - increment the conflcit counter in order to remember
-            #     how many times dead lock happened;
-            #   - [REDIS RESULT]: in normal cases should return the value of <spc_cnt> key
-            #     - for non-existent key starts from 0
-            transact.call('HINCRBY', lock_key, 'spc_cnt', 1)
-            # SPCF Step 4: (lock meta-data)
-            #   - remember the last ext-timestamp and the last ext-initial ttl;
-            #   - [REDIS RESULT]: for normal cases should return the number of fields
-            #     were added/changed;
-            transact.call(
-              'HSET',
-              lock_key,
-              'l_spc_ext_ts', spc_processed_timestamp = Time.now.to_f,
-              'l_spc_ext_ini_ttl', ttl
+            transact_write_lock_extension(
+              transact, lock_key, lock_name, ttl, lock_index_enabled, spc_processed_timestamp
             )
           else
             held_rw_mode = :read
-            # SPCF Step 1 (read lock): extend the read lock of the current acquirer
-            #   - [REDIS RESULT]: the new read lock expiration time
-            #     (or nil if the read lock has been removed from the registry);
-            transact.call('ZADD', lock_readers_key, 'XX', 'INCR', ttl, acquirer_id)
-            # SPCF Step 2 (read lock): the registry should live as long as the longest read lock
-            #   - NX + GT => sets the registry TTL to max(current TTL, extended read lock TTL);
-            extended_read_lock_ttl = (own_read_lock_expiration.to_f + ttl.to_i - redis_time).ceil
-            transact.call('PEXPIRE', lock_readers_key, extended_read_lock_ttl, 'NX')
-            transact.call('PEXPIRE', lock_readers_key, extended_read_lock_ttl, 'GT')
-            # SPCF Step 3 (read lock data): the same reentrant lock data as for the write lock
-            transact.call('HINCRBY', read_lock_key, 'spc_ext_ttl', ttl)
-            transact.call('HINCRBY', read_lock_key, 'spc_cnt', 1)
-            transact.call(
-              'HSET',
-              read_lock_key,
-              'l_spc_ext_ts', spc_processed_timestamp = Time.now.to_f,
-              'l_spc_ext_ini_ttl', ttl
-            )
-            # SPCF Step 4 (read lock data): the read lock data lives as long as the read lock
-            transact.call('PEXPIRE', read_lock_key, extended_read_lock_ttl, 'NX')
-            transact.call('PEXPIRE', read_lock_key, extended_read_lock_ttl, 'GT')
-          end
-          # SPCF Step 5: (lock index) the lock (write or read) lives longer by the extension:
-          #   - the lock index score is increased by the extension (the upper bound of the lock
-          #     lifetime stays the upper bound);
-          #   - XX => locks without the index entry (of older RQL versions) are not indexed with
-          #     a wrong score (see `reindex_locks`);
-          #   - [REDIS RESULT]: the new lock index score (nil for the lock without the index entry);
-          #   - only with the enabled lock index (the last command of the transaction);
-          if lock_index_enabled
-            transact.call(
-              'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, 'XX', 'INCR', ttl, lock_name
+            transact_read_lock_extension(
+              transact, lock_readers_key, read_lock_key, lock_name, acquirer_id, ttl,
+              lock_index_enabled, own_read_lock_expiration, redis_time, spc_processed_timestamp
             )
           end
           inter_result = :extendable_conflict_work_through
@@ -445,39 +398,15 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         elsif sp_conflict_status == :conflict_work_through
           inter_result = :conflict_work_through
 
+          spc_processed_timestamp = Time.now.to_f
+
           if sp_conflict_rw_mode == :write
             held_rw_mode = :write
-
-            # SPCF Step X: (lock meta-data)
-            #   - increment the conflcit counter in order to remember
-            #     how many times dead lock happened;
-            #   - [REDIS RESULT]: in normal cases should return the value of <spc_cnt> key
-            #     - for non-existent key starts from 0
-            transact.call('HINCRBY', lock_key, 'spc_cnt', 1)
-            # SPCF Step 4: (lock meta-data)
-            #   - remember the last ext-timestamp and the last ext-initial ttl;
-            #   - [REDIS RESULT]: for normal cases should return the number of fields
-            #     were added/changed;
-            transact.call(
-              'HSET',
-              lock_key,
-              'l_spc_ts', spc_processed_timestamp = Time.now.to_f
-            )
+            transact_write_lock_work_through(transact, lock_key, spc_processed_timestamp)
           else
             held_rw_mode = :read
-
-            # SPCF Step X (read lock data): the same reentrant lock data as for the write lock
-            transact.call('HINCRBY', read_lock_key, 'spc_cnt', 1)
-            transact.call(
-              'HSET', read_lock_key, 'l_spc_ts', spc_processed_timestamp = Time.now.to_f
-            )
-            # SPCF Step X (read lock data): (NX) the read lock data should not outlive the read lock
-            #   (it is the case when the read lock data is dropped during the read lock life);
-            transact.call(
-              'PEXPIRE',
-              read_lock_key,
-              (own_read_lock_expiration.to_f - redis_time).ceil,
-              'NX'
+            transact_read_lock_work_through(
+              transact, read_lock_key, own_read_lock_expiration, redis_time, spc_processed_timestamp
             )
           end
 
@@ -605,49 +534,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           elsif read_mode
             # NOTE: required lock is free and ready to be acquired! acquire! (read lock)
 
-            # Step 6.1: remove our acquirer from waiting queue
-            transact.call('ZREM', request_queue, acquirer_id)
-
-            # Step 6.2 (RW): drop expired read locks from the readers registry
-            transact.call('ZREMRANGEBYSCORE', lock_readers_key, '-inf', "(#{redis_time}")
-
-            # Step 6.3 (RW): register the read lock (expiration time in redis time)
-            transact.call('ZADD', lock_readers_key, redis_time + ttl.to_i, acquirer_id)
-
-            # Step 6.4 (RW): the registry should live as long as the longest read lock
-            #   - NX + GT => sets the registry TTL to max(current TTL, read lock TTL);
-            #   - in order to prevent "infinite registries" after process crashes;
-            transact.call('PEXPIRE', lock_readers_key, ttl, 'NX')
-            transact.call('PEXPIRE', lock_readers_key, ttl, 'GT')
-
-            # Step 6.5 (RW): store the read lock data (the same structure as the write lock data
-            #   without `acq_id`/`hst_id`: both are derived from the read lock acquirer id that is
-            #   a part of the data key and the registry member, so the info adds them on formatting)
-            #   - drop the data of the expired read lock of the current acquirer (if any);
-            #   - the read lock data lives as long as the read lock;
-            transact.call('DEL', read_lock_key)
-            transact.call(
-              'HSET',
-              read_lock_key,
-              'ts', timestamp = Time.now.to_f,
-              'ini_ttl', ttl,
-              *(meta.to_a if meta != nil) # steep:ignore
+            # Steps 6.1-6.6 (RW): see `transact_read_lock_obtaining`
+            timestamp = Time.now.to_f
+            # @type var timestamp: Float
+            transact_read_lock_obtaining(
+              transact, request_queue, lock_readers_key, read_lock_key, lock_name, acquirer_id, ttl,
+              lock_index_enabled, lock_index_grace_period, meta, redis_time, timestamp
             )
-            transact.call('PEXPIRE', read_lock_key, ttl)
-
-            # Step 6.6 (lock index): the lock name lives in the lock index as long as the read lock
-            #   (the upper bound of the read lock lifetime: client time + ttl + grace period);
-            #   - in the same transaction: an index entry dropped between the queueing and this
-            #     transaction (`#unlock`, `#clear_locks`) is restored with the read lock;
-            #   - GT => the score is never decreased (other keys of the lock can live longer);
-            #   - only with the enabled lock index (the last command of the transaction);
-            if lock_index_enabled
-              transact.call(
-                'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, 'GT',
-                RedisQueuedLocks::Resource.lock_index_time + ttl.to_i + lock_index_grace_period,
-                lock_name
-              )
-            end
 
             inter_result = :lock_obtaining
 
@@ -658,36 +551,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           else
             # NOTE: required lock is free and ready to be acquired! acquire! (write lock)
 
-            # Step 6.1: remove our acquirer from waiting queue
-            transact.call('ZREM', request_queue, acquirer_id)
-
-            # Step 6.2: acquire a lock and store an info about the acquirer and host
-            transact.call(
-              'HSET',
-              lock_key,
-              'acq_id', acquirer_id,
-              'hst_id', host_id,
-              'ts', timestamp = Time.now.to_f,
-              'ini_ttl', ttl,
-              *(meta.to_a if meta != nil) # steep:ignore
+            # Steps 6.1-6.4: see `transact_write_lock_obtaining`
+            timestamp = Time.now.to_f
+            # @type var timestamp: Float
+            transact_write_lock_obtaining(
+              transact, lock_key, request_queue, lock_name, acquirer_id, host_id, ttl,
+              lock_index_enabled, lock_index_grace_period, meta, timestamp
             )
-
-            # Step 6.3: set the lock expiration time in order to prevent "infinite locks"
-            transact.call('PEXPIRE', lock_key, ttl) # NOTE: in milliseconds
-
-            # Step 6.4 (lock index): the lock name lives in the lock index as long as the lock
-            #   (the upper bound of the lock lifetime: client time + ttl + grace period);
-            #   - in the same transaction: an index entry dropped between the queueing and this
-            #     transaction (`#unlock`, `#clear_locks`) is restored with the lock;
-            #   - GT => the score is never decreased (other keys of the lock can live longer);
-            #   - only with the enabled lock index (the last command of the transaction);
-            if lock_index_enabled
-              transact.call(
-                'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, 'GT',
-                RedisQueuedLocks::Resource.lock_index_time + ttl.to_i + lock_index_grace_period,
-                lock_name
-              )
-            end
 
             inter_result = :lock_obtaining
 
@@ -878,6 +748,374 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # rubocop:enable Metrics/MethodLength
 
   private
+
+  # (SP-Conflict) The status of the conflict of the lock request with the lock that is already
+  # obtained by the current acquirer (Step CHECK of the attempt).
+  #
+  # @param conflict_strategy [Symbol]
+  # @param lock_upgrade [Boolean]
+  #   The conflict is a read-to-write lock upgrade: it can not "work through" (the read lock is not
+  #   exclusive, so the "work through" logic will work without an exclusive lock).
+  # @return [Symbol]
+  #
+  # @api private
+  # @since 1.23.0
+  def same_process_conflict_status(conflict_strategy, lock_upgrade)
+    case conflict_strategy
+    when :work_through
+      # <SP-Conflict Moment>: work through => exit
+      lock_upgrade ? :conflict_lock_upgrade : :conflict_work_through
+    when :extendable_work_through
+      # <SP-Conflict Moment>: extendable_work_through => extend the lock pttl and exit
+      lock_upgrade ? :conflict_lock_upgrade : :extendable_conflict_work_through
+    when :dead_locking
+      # <SP-Conflict Moment>: dead_locking => exit and fail
+      :conflict_dead_lock
+    else
+      # <SP-Conflict Moment>: wait_for_lock => obtain a lock in classic way
+      #   - unknown status => work in classic way <wait_for_lock>
+      #   - it is a case when the new status is added to the code base in the past
+      #     but is forgotten to be added here;
+      :conflict_wait_for_lock
+    end
+  end
+
+  # (SP-Conflict) Adds the commands of the write lock extension (reentrant
+  # `:extendable_work_through`) to the given transaction.
+  #
+  # NOTE: (transaction layout) 4 commands (5 with the enabled lock index): EVAL, HINCRBY, HINCRBY,
+  #   HSET (+ ZADD XX INCR); the replies are read by the attempt (`try_to_lock` Step 7);
+  #
+  # @param transact [RedisClient::Multi]
+  # @param lock_key [String]
+  # @param lock_name [String] The lock name (the member of the lock index).
+  # @param ttl [Integer] The extension (in milliseconds).
+  # @param lock_index_enabled [Boolean]
+  # @param spc_processed_timestamp [Float]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.23.0
+  def transact_write_lock_extension(
+    transact,
+    lock_key,
+    lock_name,
+    ttl,
+    lock_index_enabled,
+    spc_processed_timestamp
+  )
+    # SPCF Step 1: extend the lock pttl
+    #   - [REDIS RESULT]: in normal cases should return the last script command value
+    #     - for the current script should return:
+    #       <1> => timeout was set;
+    #       <0> => timeount was not set;
+    transact.call('EVAL', EXTEND_LOCK_PTTL, 1, lock_key, ttl)
+    # SPCF Step <Meta>: store conflict-state additionals in lock metadata:
+    # SPCF Step 2: (lock meta-data)
+    #   - add the added ttl to reflect the real lock TTL in info;
+    #   - [REDIS RESULT]: in normal cases should return the value of <ttl> key
+    #     - for non-existent key value starts from <0> (zero)
+    transact.call('HINCRBY', lock_key, 'spc_ext_ttl', ttl)
+    # SPCF Step 3: (lock meta-data)
+    #   - increment the conflcit counter in order to remember
+    #     how many times dead lock happened;
+    #   - [REDIS RESULT]: in normal cases should return the value of <spc_cnt> key
+    #     - for non-existent key starts from 0
+    transact.call('HINCRBY', lock_key, 'spc_cnt', 1)
+    # SPCF Step 4: (lock meta-data)
+    #   - remember the last ext-timestamp and the last ext-initial ttl;
+    #   - [REDIS RESULT]: for normal cases should return the number of fields
+    #     were added/changed;
+    transact.call(
+      'HSET',
+      lock_key,
+      'l_spc_ext_ts', spc_processed_timestamp,
+      'l_spc_ext_ini_ttl', ttl
+    )
+    # SPCF Step 5: (lock index), see `transact_lock_index_extension`
+    transact_lock_index_extension(transact, lock_name, ttl, lock_index_enabled)
+  end
+
+  # (SP-Conflict) Adds the commands of the read lock extension (reentrant
+  # `:extendable_work_through`) to the given transaction.
+  #
+  # NOTE: (transaction layout) `READ_LOCK_EXTENSION_COMMANDS` commands (+ one command with
+  #   the enabled lock index): ZADD XX INCR is the first one (its `nil` reply = the read lock is
+  #   expired and removed from the registry during the extension);
+  #
+  # @param transact [RedisClient::Multi]
+  # @param lock_readers_key [String]
+  # @param read_lock_key [String,NilClass]
+  # @param lock_name [String] The lock name (the member of the lock index).
+  # @param acquirer_id [String]
+  # @param ttl [Integer,NilClass] The extension (in milliseconds).
+  # @param lock_index_enabled [Boolean]
+  # @param own_read_lock_expiration [Float,NilClass]
+  # @param redis_time [Integer] Redis server time (in milliseconds).
+  # @param spc_processed_timestamp [Float]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.23.0
+  def transact_read_lock_extension(
+    transact,
+    lock_readers_key,
+    read_lock_key,
+    lock_name,
+    acquirer_id,
+    ttl,
+    lock_index_enabled,
+    own_read_lock_expiration,
+    redis_time,
+    spc_processed_timestamp
+  )
+    # SPCF Step 1 (read lock): extend the read lock of the current acquirer
+    #   - [REDIS RESULT]: the new read lock expiration time
+    #     (or nil if the read lock has been removed from the registry);
+    transact.call('ZADD', lock_readers_key, 'XX', 'INCR', ttl, acquirer_id)
+    # SPCF Step 2 (read lock): the registry should live as long as the longest read lock
+    #   - NX + GT => sets the registry TTL to max(current TTL, extended read lock TTL);
+    extended_read_lock_ttl = (own_read_lock_expiration.to_f + ttl.to_i - redis_time).ceil
+    transact.call('PEXPIRE', lock_readers_key, extended_read_lock_ttl, 'NX')
+    transact.call('PEXPIRE', lock_readers_key, extended_read_lock_ttl, 'GT')
+    # SPCF Step 3 (read lock data): the same reentrant lock data as for the write lock
+    transact.call('HINCRBY', read_lock_key, 'spc_ext_ttl', ttl)
+    transact.call('HINCRBY', read_lock_key, 'spc_cnt', 1)
+    transact.call(
+      'HSET',
+      read_lock_key,
+      'l_spc_ext_ts', spc_processed_timestamp,
+      'l_spc_ext_ini_ttl', ttl
+    )
+    # SPCF Step 4 (read lock data): the read lock data lives as long as the read lock
+    transact.call('PEXPIRE', read_lock_key, extended_read_lock_ttl, 'NX')
+    transact.call('PEXPIRE', read_lock_key, extended_read_lock_ttl, 'GT')
+    # SPCF Step 5: (lock index), see `transact_lock_index_extension`
+    transact_lock_index_extension(transact, lock_name, ttl, lock_index_enabled)
+  end
+
+  # (SP-Conflict) (lock index) The lock (write or read) lives longer by the extension:
+  #   - the lock index score is increased by the extension (the upper bound of the lock
+  #     lifetime stays the upper bound);
+  #   - XX => locks without the index entry (of older RQL versions) are not indexed with
+  #     a wrong score (see `reindex_locks`);
+  #   - [REDIS RESULT]: the new lock index score (nil for the lock without the index entry);
+  #   - only with the enabled lock index (the last command of the transaction);
+  #
+  # @param transact [RedisClient::Multi]
+  # @param lock_name [String]
+  # @param ttl [Integer,NilClass] The extension (in milliseconds).
+  # @param lock_index_enabled [Boolean]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.23.0
+  def transact_lock_index_extension(transact, lock_name, ttl, lock_index_enabled)
+    return unless lock_index_enabled
+
+    transact.call(
+      'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, 'XX', 'INCR', ttl, lock_name
+    )
+  end
+
+  # (SP-Conflict) Adds the commands of the write lock "work through" (reentrant `:work_through`)
+  # to the given transaction: the reentrant lock data only.
+  #
+  # @param transact [RedisClient::Multi]
+  # @param lock_key [String]
+  # @param spc_processed_timestamp [Float]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.23.0
+  def transact_write_lock_work_through(transact, lock_key, spc_processed_timestamp)
+    # SPCF Step X: (lock meta-data)
+    #   - increment the conflcit counter in order to remember
+    #     how many times dead lock happened;
+    #   - [REDIS RESULT]: in normal cases should return the value of <spc_cnt> key
+    #     - for non-existent key starts from 0
+    transact.call('HINCRBY', lock_key, 'spc_cnt', 1)
+    # SPCF Step 4: (lock meta-data)
+    #   - remember the last ext-timestamp and the last ext-initial ttl;
+    #   - [REDIS RESULT]: for normal cases should return the number of fields
+    #     were added/changed;
+    transact.call(
+      'HSET',
+      lock_key,
+      'l_spc_ts', spc_processed_timestamp
+    )
+  end
+
+  # (SP-Conflict) Adds the commands of the read lock "work through" (reentrant `:work_through`)
+  # to the given transaction: the reentrant lock data only.
+  #
+  # @param transact [RedisClient::Multi]
+  # @param read_lock_key [String,NilClass]
+  # @param own_read_lock_expiration [Float,NilClass]
+  # @param redis_time [Integer] Redis server time (in milliseconds).
+  # @param spc_processed_timestamp [Float]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.23.0
+  def transact_read_lock_work_through(
+    transact,
+    read_lock_key,
+    own_read_lock_expiration,
+    redis_time,
+    spc_processed_timestamp
+  )
+    # SPCF Step X (read lock data): the same reentrant lock data as for the write lock
+    transact.call('HINCRBY', read_lock_key, 'spc_cnt', 1)
+    transact.call('HSET', read_lock_key, 'l_spc_ts', spc_processed_timestamp)
+    # SPCF Step X (read lock data): (NX) the read lock data should not outlive the read lock
+    #   (it is the case when the read lock data is dropped during the read lock life);
+    transact.call(
+      'PEXPIRE',
+      read_lock_key,
+      (own_read_lock_expiration.to_f - redis_time).ceil,
+      'NX'
+    )
+  end
+
+  # Adds the commands of the read lock obtaining to the given transaction.
+  #
+  # @param transact [RedisClient::Multi]
+  # @param request_queue [String]
+  # @param lock_readers_key [String]
+  # @param read_lock_key [String,NilClass]
+  # @param lock_name [String] The lock name (the member of the lock index).
+  # @param acquirer_id [String]
+  # @param ttl [Integer,NilClass]
+  # @param lock_index_enabled [Boolean]
+  # @param lock_index_grace_period [Integer] In milliseconds.
+  # @param meta [NilClass,Hash<String|Symbol,Any>]
+  # @param redis_time [Integer] Redis server time (in milliseconds).
+  # @param timestamp [Float]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.23.0
+  def transact_read_lock_obtaining(
+    transact,
+    request_queue,
+    lock_readers_key,
+    read_lock_key,
+    lock_name,
+    acquirer_id,
+    ttl,
+    lock_index_enabled,
+    lock_index_grace_period,
+    meta,
+    redis_time,
+    timestamp
+  )
+    # Step 6.1: remove our acquirer from waiting queue
+    transact.call('ZREM', request_queue, acquirer_id)
+
+    # Step 6.2 (RW): drop expired read locks from the readers registry
+    transact.call('ZREMRANGEBYSCORE', lock_readers_key, '-inf', "(#{redis_time}")
+
+    # Step 6.3 (RW): register the read lock (expiration time in redis time)
+    transact.call('ZADD', lock_readers_key, redis_time + ttl.to_i, acquirer_id)
+
+    # Step 6.4 (RW): the registry should live as long as the longest read lock
+    #   - NX + GT => sets the registry TTL to max(current TTL, read lock TTL);
+    #   - in order to prevent "infinite registries" after process crashes;
+    transact.call('PEXPIRE', lock_readers_key, ttl, 'NX')
+    transact.call('PEXPIRE', lock_readers_key, ttl, 'GT')
+
+    # Step 6.5 (RW): store the read lock data (the same structure as the write lock data
+    #   without `acq_id`/`hst_id`: both are derived from the read lock acquirer id that is
+    #   a part of the data key and the registry member, so the info adds them on formatting)
+    #   - drop the data of the expired read lock of the current acquirer (if any);
+    #   - the read lock data lives as long as the read lock;
+    transact.call('DEL', read_lock_key)
+    transact.call(
+      'HSET',
+      read_lock_key,
+      'ts', timestamp,
+      'ini_ttl', ttl,
+      *(meta.to_a if meta != nil) # steep:ignore
+    )
+    transact.call('PEXPIRE', read_lock_key, ttl)
+
+    # Step 6.6 (lock index): the lock name lives in the lock index as long as the read lock
+    #   (the upper bound of the read lock lifetime: client time + ttl + grace period);
+    #   - in the same transaction: an index entry dropped between the queueing and this
+    #     transaction (`#unlock`, `#clear_locks`) is restored with the read lock;
+    #   - GT => the score is never decreased (other keys of the lock can live longer);
+    #   - only with the enabled lock index (the last command of the transaction);
+    if lock_index_enabled
+      transact.call(
+        'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, 'GT',
+        RedisQueuedLocks::Resource.lock_index_time + ttl.to_i + lock_index_grace_period,
+        lock_name
+      )
+    end
+  end
+
+  # Adds the commands of the write lock obtaining to the given transaction.
+  #
+  # @param transact [RedisClient::Multi]
+  # @param lock_key [String]
+  # @param request_queue [String]
+  # @param lock_name [String] The lock name (the member of the lock index).
+  # @param acquirer_id [String]
+  # @param host_id [String]
+  # @param ttl [Integer,NilClass]
+  # @param lock_index_enabled [Boolean]
+  # @param lock_index_grace_period [Integer] In milliseconds.
+  # @param meta [NilClass,Hash<String|Symbol,Any>]
+  # @param timestamp [Float]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.23.0
+  def transact_write_lock_obtaining(
+    transact,
+    lock_key,
+    request_queue,
+    lock_name,
+    acquirer_id,
+    host_id,
+    ttl,
+    lock_index_enabled,
+    lock_index_grace_period,
+    meta,
+    timestamp
+  )
+    # Step 6.1: remove our acquirer from waiting queue
+    transact.call('ZREM', request_queue, acquirer_id)
+
+    # Step 6.2: acquire a lock and store an info about the acquirer and host
+    transact.call(
+      'HSET',
+      lock_key,
+      'acq_id', acquirer_id,
+      'hst_id', host_id,
+      'ts', timestamp,
+      'ini_ttl', ttl,
+      *(meta.to_a if meta != nil) # steep:ignore
+    )
+
+    # Step 6.3: set the lock expiration time in order to prevent "infinite locks"
+    transact.call('PEXPIRE', lock_key, ttl) # NOTE: in milliseconds
+
+    # Step 6.4 (lock index): the lock name lives in the lock index as long as the lock
+    #   (the upper bound of the lock lifetime: client time + ttl + grace period);
+    #   - in the same transaction: an index entry dropped between the queueing and this
+    #     transaction (`#unlock`, `#clear_locks`) is restored with the lock;
+    #   - GT => the score is never decreased (other keys of the lock can live longer);
+    #   - only with the enabled lock index (the last command of the transaction);
+    if lock_index_enabled
+      transact.call(
+        'ZADD', RedisQueuedLocks::Resource::LOCK_INDEX_KEY, 'GT',
+        RedisQueuedLocks::Resource.lock_index_time + ttl.to_i + lock_index_grace_period,
+        lock_name
+      )
+    end
+  end
 
   # Queues the lock request and reads the lock queue state (Steps 2.1, 1, 3 and 3.2-3.4 of
   # the attempt): the commands are added to the given pipeline (one round trip with other
@@ -1344,59 +1582,23 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     dropped_requests = nil
 
     while round_trips < MAX_DEAD_REQUEST_REMOVALS
-      # NOTE: the lock requests that block the current one (the same order as in `lock_obstacle`):
-      #   the head of the write lock queue (write lock requests only) and the earlier lock request
-      #   of the opposite mode; a live head of the write lock queue stops the removal (the attempt
-      #   waits for it), the dead blocking requests are dropped in one round trip (both bands);
-      # @type var dead_head: [String, Float]?
-      dead_head = nil
-      # @type var dead_head_priority: Integer?
-      dead_head_priority = nil
-      if !read_mode && waiting_request && waiting_request[0] != acquirer_id
-        dead_head_priority = dead_request_priority(waiting_request, acquirer_dead_score)
-        break unless dead_head_priority
-
-        dead_head = waiting_request
-      end
-      # @type var dead_ahead: [String, Float]?
-      dead_ahead = nil
-      # @type var dead_ahead_priority: Integer?
-      dead_ahead_priority = nil
-      if find_opposite_request_ahead(
-        access_strategy, opposite_waiting_request, acquirer_position, acquirer_id
+      dead_requests = find_dead_requests_ahead(
+        read_mode, access_strategy, acquirer_id, acquirer_position, acquirer_dead_score,
+        waiting_request, opposite_waiting_request
       )
-        ahead_request = opposite_waiting_request #: [String, Float]
-        dead_ahead_priority = dead_request_priority(ahead_request, acquirer_dead_score)
-        dead_ahead = ahead_request if dead_ahead_priority
-      end
-      break unless dead_head_priority || dead_ahead_priority
+      break unless dead_requests
 
-      # NOTE: (pipeline layout) ZREMRANGEBYSCORE of both queues for each dropped band (one or two
-      #   bands) and for the requests at `-inf` (a dead blocking request at `-inf` only), then [-2]
-      #   ZRANGE WITHSCORES (the head of the request queue) and [-1] ZRANGE WITHSCORES (the head of
+      dead_head, dead_head_priority, dead_ahead, dead_ahead_priority = dead_requests
+
+      # NOTE: (pipeline layout) see `pipeline_dead_requests_ahead_removal`, then [-2] ZRANGE
+      #   WITHSCORES (the head of the request queue) and [-1] ZRANGE WITHSCORES (the head of
       #   the opposite request queue);
       # @type var queue_state: Array[untyped]
       queue_state = rconn.pipelined do |pipeline|
-        if dead_head_priority
-          pipeline_dead_requests_removal(
-            pipeline, request_queue, opposite_request_queue, acquirer_dead_score, dead_head_priority
-          )
-        end
-        if dead_ahead_priority && dead_ahead_priority != dead_head_priority
-          pipeline_dead_requests_removal(
-            pipeline, request_queue, opposite_request_queue, acquirer_dead_score,
-            dead_ahead_priority
-          )
-        end
-        # NOTE: (infinite positions) a dead blocking request at `-inf` (a manual write: out of all
-        #   bands, see `RedisQueuedLocks::Resource.lock_request_priority`) is not covered by
-        #   the band removal of its decoded priority (it drops the dead requests of that band
-        #   only): the requests at `-inf` are dropped from both queues by their position;
-        if (dead_head && dead_head[1] == -Float::INFINITY) ||
-           (dead_ahead && dead_ahead[1] == -Float::INFINITY)
-          pipeline.call('ZREMRANGEBYSCORE', request_queue, '-inf', '-inf')
-          pipeline.call('ZREMRANGEBYSCORE', opposite_request_queue, '-inf', '-inf')
-        end
+        pipeline_dead_requests_ahead_removal(
+          pipeline, request_queue, opposite_request_queue, acquirer_dead_score,
+          dead_head, dead_head_priority, dead_ahead, dead_ahead_priority
+        )
         pipeline.call('ZRANGE', request_queue, '0', '0', 'WITHSCORES')
         pipeline.call('ZRANGE', opposite_request_queue, '0', '0', 'WITHSCORES')
       end
@@ -1413,6 +1615,110 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     [waiting_request, opposite_waiting_request, dropped_requests] if dropped_requests
   end
   # rubocop:enable Metrics/MethodLength
+
+  # (priorities) The dead lock requests that block the current lock request (see
+  # `drop_dead_requests_ahead`, the same order as in `lock_obstacle`): the head of the write lock
+  # queue (write lock requests only) and the earlier lock request of the opposite mode; a live head
+  # of the write lock queue stops the removal (the attempt waits for it).
+  #
+  # @param read_mode [Boolean]
+  # @param access_strategy [Symbol]
+  # @param acquirer_id [String]
+  # @param acquirer_position [Numeric]
+  # @param acquirer_dead_score [Float]
+  #   Requests queued before this time are expired (the barrier of the default priority band).
+  # @param waiting_request [Array<String,Float>,NilClass] The head of the request queue.
+  # @param opposite_waiting_request [Array<String,Float>,NilClass]
+  #   The head of the opposite request queue.
+  # @return [Array<Array<String,Float>,Integer,NilClass>,NilClass]
+  #   `[dead_head, dead_head_priority, dead_ahead, dead_ahead_priority]` (one of the pairs can be
+  #   `nil`) or `nil` when no dead lock request blocks the current one.
+  #
+  # @api private
+  # @since 1.23.0
+  def find_dead_requests_ahead(
+    read_mode,
+    access_strategy,
+    acquirer_id,
+    acquirer_position,
+    acquirer_dead_score,
+    waiting_request,
+    opposite_waiting_request
+  )
+    # @type var dead_head: [String, Float]?
+    dead_head = nil
+    # @type var dead_head_priority: Integer?
+    dead_head_priority = nil
+    if !read_mode && waiting_request && waiting_request[0] != acquirer_id
+      dead_head_priority = dead_request_priority(waiting_request, acquirer_dead_score)
+      return unless dead_head_priority
+
+      dead_head = waiting_request
+    end
+    # @type var dead_ahead: [String, Float]?
+    dead_ahead = nil
+    # @type var dead_ahead_priority: Integer?
+    dead_ahead_priority = nil
+    if find_opposite_request_ahead(
+      access_strategy, opposite_waiting_request, acquirer_position, acquirer_id
+    )
+      ahead_request = opposite_waiting_request #: [String, Float]
+      dead_ahead_priority = dead_request_priority(ahead_request, acquirer_dead_score)
+      dead_ahead = ahead_request if dead_ahead_priority
+    end
+    return unless dead_head_priority || dead_ahead_priority
+
+    [dead_head, dead_head_priority, dead_ahead, dead_ahead_priority]
+  end
+
+  # (priorities) Adds the removal of the dead blocking lock requests (see
+  # `find_dead_requests_ahead`) to the given pipeline: ZREMRANGEBYSCORE of both queues for each
+  # dropped band (one or two bands) and for the requests at `-inf` (a dead blocking request at
+  # `-inf` only).
+  #
+  # @param pipeline [RedisClient::Pipeline]
+  # @param request_queue [String]
+  # @param opposite_request_queue [String]
+  # @param acquirer_dead_score [Float]
+  #   Requests queued before this time are expired (the barrier of the default priority band).
+  # @param dead_head [Array<String,Float>,NilClass]
+  # @param dead_head_priority [Integer,NilClass]
+  # @param dead_ahead [Array<String,Float>,NilClass]
+  # @param dead_ahead_priority [Integer,NilClass]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.23.0
+  def pipeline_dead_requests_ahead_removal(
+    pipeline,
+    request_queue,
+    opposite_request_queue,
+    acquirer_dead_score,
+    dead_head,
+    dead_head_priority,
+    dead_ahead,
+    dead_ahead_priority
+  )
+    if dead_head_priority
+      pipeline_dead_requests_removal(
+        pipeline, request_queue, opposite_request_queue, acquirer_dead_score, dead_head_priority
+      )
+    end
+    if dead_ahead_priority && dead_ahead_priority != dead_head_priority
+      pipeline_dead_requests_removal(
+        pipeline, request_queue, opposite_request_queue, acquirer_dead_score, dead_ahead_priority
+      )
+    end
+    # NOTE: (infinite positions) a dead blocking request at `-inf` (a manual write: out of all
+    #   bands, see `RedisQueuedLocks::Resource.lock_request_priority`) is not covered by
+    #   the band removal of its decoded priority (it drops the dead requests of that band
+    #   only): the requests at `-inf` are dropped from both queues by their position;
+    if (dead_head && dead_head[1] == -Float::INFINITY) ||
+       (dead_ahead && dead_ahead[1] == -Float::INFINITY)
+      pipeline.call('ZREMRANGEBYSCORE', request_queue, '-inf', '-inf')
+      pipeline.call('ZREMRANGEBYSCORE', opposite_request_queue, '-inf', '-inf')
+    end
+  end
 
   # (priorities) Logs the dead lock requests dropped by `drop_dead_requests_ahead` (the attempt
   # and its pre-check log them at the same step: after the queueing log events).

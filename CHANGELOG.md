@@ -1,4 +1,28 @@
 ## [Unreleased]
+### Added
+- `#lock_series` instrumentation events and logs: `lock_series_obtaining_failed` of the series and the events of each lock of the series:
+  `lock_series_intermediate_lock_obtained`, `lock_series_lock_obtained`, `lock_series_lock_obtaining_failed`;
+- `reentrant_lock_keys` key of the `lock_series_obtained` and `lock_series_hold_and_release` events and logs;
+- the logs of the series acquirement: `start_try_to_lock_series_cycle`, `dead_score_reached__reset_series_position`,
+  `dequeue_from_lock_series_queues`, `decrease_lock_series`;
+- RBS signatures of `#lock_series`/`#lock_series!`;
+### Changed
+- [**Breaking**] `#lock_series`/`#lock_series!` are no longer a proof of concept: all locks are obtained atomically with the same
+  TTL, nothing is held while the series waits, any order of the lock names is deadlock-free (see README "lock_series"):
+  - each lock gets exactly `ttl:` (it was `position * (ttl + retry_delay + retry_jitter)`);
+  - `timeout:`, `retry_count:` and `queue_ttl:` limit the whole series (they limited each lock of the series);
+  - a series without a block returns `{ ok: true, result: { lock_series:, rql_lock_series:, acq_id:, hst_id:, ts:, ttl: } }` (it returned `nil`);
+  - a failed series has empty `acquired_locks:` and all locks in `missing_locks:`, `failed_on_lock:` can be `nil`;
+  - the events and logs of `#lock` are not raised for the locks of the series: they are replaced by the `lock_series_*` events of each lock
+    (`log_lock_try` logs stay per lock);
+  - the messages of the retry limit and timeout errors name the series and the lock that blocks it;
+  - an empty series raises `RedisQueuedLocks::ArgumentError`, duplicated lock names are one lock;
+  - upgrade all processes that share these locks: older versions obtain a series lock by lock;
+### Fixed
+- `#lock_series`: the first locks of the series could expire before the last one was obtained;
+- `#lock_series`: series with the opposite order of the lock names blocked each other till the timeout;
+- `#lock_series`: an interrupted acquirement (`Timeout.timeout` of your logic, a Redis error) kept the obtained locks and lock requests;
+- `#lock_series`: reentrant locks (`:extendable_work_through`) kept the extended TTL after the block;
 
 ## [1.22.0] - 2026-10-27
 ### Added

@@ -1,0 +1,154 @@
+use RedisQueuedLocks as RQL
+
+module RedisQueuedLocks
+  module Acquirer
+    module LockSeries
+      module LogVisitor
+        def self.start_lock_series_obtaining: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          Array[String] lock_keys,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode rw_mode,
+          Integer priority
+        ) -> void
+
+        def self.start_try_to_lock_series_cycle: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          Array[String] lock_keys,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode rw_mode,
+          Integer priority
+        ) -> void
+
+        def self.dead_score_reached__reset_series_position: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          Array[String] lock_keys,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode rw_mode,
+          Integer priority
+        ) -> void
+
+        def self.dequeue_from_lock_series_queues: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          Array[String] lock_keys,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode rw_mode,
+          Integer priority
+        ) -> void
+
+        def self.expire_lock_series: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          Array[String] lock_keys,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode rw_mode,
+          Integer priority
+        ) -> void
+
+        def self.lock_series_intermediate_lock_obtained: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          String lock_key,
+          Array[String] lock_keys,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          Integer|Float acq_time,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode rw_mode,
+          Integer priority
+        ) -> void
+
+        def self.lock_series_lock_obtained: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          String lock_key,
+          Array[String] lock_keys,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          Integer|Float acq_time,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode rw_mode,
+          Integer priority
+        ) -> void
+
+        def self.lock_series_lock_obtaining_failed: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          String lock_key,
+          Array[String] lock_keys,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          Integer|Float acq_time,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode rw_mode,
+          Integer priority,
+          Symbol result
+        ) -> void
+
+        def self.lock_series_obtained: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          Array[String] lock_keys,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          Integer|Float acq_time,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode rw_mode,
+          Integer priority,
+          Array[String] reentrant_lock_keys
+        ) -> void
+
+        def self.lock_series_obtaining_failed: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          Array[String] lock_keys,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          Integer|Float acq_time,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode rw_mode,
+          Integer priority,
+          Symbol result,
+          String? failed_lock_key
+        ) -> void
+
+        def self.decrease_lock_series: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          Array[String] lock_keys,
+          Integer decreased_ttl,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode rw_mode,
+          Integer priority
+        ) -> void
+      end
+    end
+  end
+end

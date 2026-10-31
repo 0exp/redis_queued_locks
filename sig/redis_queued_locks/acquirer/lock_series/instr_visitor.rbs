@@ -1,0 +1,102 @@
+use RedisQueuedLocks as RQL
+
+module RedisQueuedLocks
+  module Acquirer
+    module LockSeries
+      module InstrVisitor
+        def self.lock_series_intermediate_lock_obtained: (
+          RQL::instrObj instrumenter,
+          bool instr_sampled,
+          String lock_key,
+          Array[String] lock_keys,
+          RQL::readWriteMode rw_mode,
+          Integer priority,
+          Integer ttl,
+          String acq_id,
+          String hst_id,
+          Integer|Float ts,
+          Integer|Float acq_time,
+          untyped? instrument
+        ) -> void
+
+        def self.lock_series_lock_obtained: (
+          RQL::instrObj instrumenter,
+          bool instr_sampled,
+          String lock_key,
+          Array[String] lock_keys,
+          RQL::readWriteMode rw_mode,
+          Integer priority,
+          Integer ttl,
+          String acq_id,
+          String hst_id,
+          Integer|Float ts,
+          Integer|Float acq_time,
+          untyped? instrument
+        ) -> void
+
+        def self.lock_series_lock_obtaining_failed: (
+          RQL::instrObj instrumenter,
+          bool instr_sampled,
+          String lock_key,
+          Array[String] lock_keys,
+          RQL::readWriteMode rw_mode,
+          Integer priority,
+          Integer ttl,
+          String acq_id,
+          String hst_id,
+          Integer|Float ts,
+          Integer|Float acq_time,
+          Symbol result,
+          untyped? instrument
+        ) -> void
+
+        def self.lock_series_obtained: (
+          RQL::instrObj instrumenter,
+          bool instr_sampled,
+          Array[String] lock_keys,
+          RQL::readWriteMode rw_mode,
+          Integer priority,
+          Integer ttl,
+          String acq_id,
+          String hst_id,
+          Integer|Float ts,
+          Integer|Float acq_time,
+          Array[String] reentrant_lock_keys,
+          untyped? instrument
+        ) -> void
+
+        def self.lock_series_hold_and_release: (
+          RQL::instrObj instrumenter,
+          bool instr_sampled,
+          Array[String] lock_keys,
+          RQL::readWriteMode rw_mode,
+          Integer priority,
+          Integer ttl,
+          String acq_id,
+          String hst_id,
+          Integer|Float ts,
+          Integer|Float acq_time,
+          Integer|Float hold_time,
+          Array[String] reentrant_lock_keys,
+          untyped? instrument
+        ) -> void
+
+        def self.lock_series_obtaining_failed: (
+          RQL::instrObj instrumenter,
+          bool instr_sampled,
+          Array[String] lock_keys,
+          RQL::readWriteMode rw_mode,
+          Integer priority,
+          Integer ttl,
+          String acq_id,
+          String hst_id,
+          Integer|Float ts,
+          Integer|Float acq_time,
+          Symbol result,
+          String? failed_lock_key,
+          untyped? instrument
+        ) -> void
+      end
+    end
+  end
+end

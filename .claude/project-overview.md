@@ -37,8 +37,8 @@ Resource (resource.rb)                          keys, acquirer/host ids, queue s
 Every other public method is a thin wrapper: it fills option defaults from `config[...]` and calls
 an `Acquirer::*` module function with `redis_client`.
 
-Operation modules are independent of each other (all `Acquirer::*` except the `AcquireLock` core
-and PoC modules such as `LockSeriesPoC`, which may reuse other modules and `AcquireLock`): no
+Operation modules are independent of each other (all `Acquirer::*` except the lock acquisition core:
+`AcquireLock` and `LockSeries`, which reuses the `AcquireLock` mixins): no
 cross-calls and no shared RBS types; common logic lives in `Resource`/`Utilities`, similar logic is
 duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatting, `Queues` the
 `QueueInfo` request formatting). Known debt: `AcquireLock::WithAcqTimeout` calls
@@ -113,7 +113,7 @@ Config (config.rb)                                      lock_priorities (name =>
   │                                                     the default name checked against the names (configure / []=)
   │
   ▼
-AcquireLock Step 0.1 / LockSeriesPoC                    name -> Integer, range -100..100 (ArgumentError); Integer only below
+AcquireLock Step 0.1 / LockSeries Step 0.1              name -> Integer, range -100..100 (ArgumentError); Integer only below
   │
   ├──▶ Resource                                         the single source of the score layout:
   │      calc_initial_acquirer_position(priority)       score = enqueue time - priority * 2**32 (one band per priority)
@@ -150,7 +150,7 @@ AcquireLock Step 0.1 / LockSeriesPoC                    name -> Integer, range -
 | Client method | Implementation |
 |---|---|
 | `lock` / `lock!` | `acquirer/acquire_lock.rb` + `acquirer/acquire_lock/*` |
-| `lock_series` / `lock_series!` | `acquirer/lock_series_poc.rb` (proof of concept; one `read_write_mode` for the whole series) |
+| `lock_series` / `lock_series!` | `acquirer/lock_series.rb` + `acquirer/lock_series/*` (atomic, see "Lock series"; one `read_write_mode`, `priority` and `ttl` for the whole series) |
 | `unlock` | `acquirer/release_lock.rb` |
 | `unlock_read` / `release_read_lock` | `acquirer/release_read_lock.rb` (own read lock or `acquirer_id:` read lock only) |
 | `extend_lock_ttl` | `acquirer/extend_lock_ttl.rb` (`read_write_mode: :read` extends own read lock, `+ all_read_locks: true` all live read locks) |
@@ -176,6 +176,59 @@ AcquireLock Step 0.1 / LockSeriesPoC                    name -> Integer, range -
 | `DequeueFromLockQueue` | Removes the acquirer from the queue of the requested mode on timeout/failure. |
 | `YieldExpire` | Runs the user block (optionally `timed`), then releases/expires the lock of the held mode (write: `EXPIRE 0`; read: `ZREM` own reader + `DEL` own read lock data; extendable reentrant: decrease). Known limitation (kept by the user's decision, documented in README): the write release and the write ttl decrease have no owner check, so a block longer than the ttl can delete/shorten the lock of another acquirer. |
 | `LogVisitor` / `InstrVisitor` | One method per lifecycle event for logs and instrumentation. |
+
+### Lock series (`acquirer/lock_series.rb`)
+
+The second part of the lock acquisition core (not an operation module): `LockSeries` extends `TryToLockSeries` (it includes
+`AcquireLock::TryToLock` and `ReleaseLockSeries`), `AcquireLock::DelayExecution` and `AcquireLock::YieldExpire` (`yield_with_timeout`).
+
+- Semantics: all or nothing; all locks are obtained by one transaction with the same `ttl` at the same moment; nothing is held while
+  the series waits (no hold-and-wait, no ttl staircase); `timeout`, `retry_count`, `queue_ttl` are limits of the whole series; one
+  `read_write_mode`, `priority`, `ttl`, `meta` per series; lock names: at least one (`ArgumentError`), `uniq(&:to_s)`.
+- Deadlock freedom: one `acquirer_position` in all request queues of the series, reset for all queues at once when the dead score is
+  reached: all requests of a lock are ordered by `(score, acq_id)` in the same way in all queues, a request waits only for earlier
+  requests, so a wait cycle is impossible for any order of the lock names (nested holders of the user's logic are out of it).
+- Attempt (`TryToLockSeries#try_to_lock_series`): the single lock attempt for N locks, built from its helpers: `multi(watch: watched_keys)`
+  (write: all lock keys + all registries, read: all lock keys) → one pipeline with `pipeline_lock_state` of each lock (`pipeline_series_lock_state`,
+  each lock has the same number of replies: `series_lock_state_replies`, read by the `LOCK_STATE_*` constants: `series_lock_states`) →
+  conflicts per lock (`same_process_conflict_status`: `:conflict_dead_lock`/`:conflict_lock_upgrade` fail the series, work through locks are
+  not queued and not obtained) → fail-fast check → the queueing of the other locks (eager queueing or `queue_series_lock_requests`) →
+  `drop_series_dead_requests_ahead` (batch Step 2.2: one round trip for all locks, up to `MAX_DEAD_REQUEST_REMOVALS`, none while nothing dead
+  blocks) → `find_series_lock_obstacle` (the first obstacle in the order of the lock names, `lock_obstacle` per lock) → one `MULTI`:
+  (transaction layout) read lock extensions first (`READ_LOCK_EXTENSION_COMMANDS` + 1 with the lock index, `ZADD XX INCR` first: its `nil` reply =
+  expired during the extension, the transaction is applied and can not be rolled back: the series releases its locks and fails the
+  attempt with `:read_lock_is_expired_during_extension`), then the commands of the other locks (`transact_*` helpers of `TryToLock`, shared with the single lock attempt;
+  reentrant locks also `ZREM` their request: the pre-check of a retry queues all locks).
+- Pre-check (`precheck_lock_series`): retries and `fail_fast`, the lock state of all locks without `WATCH` in one round trip (with the queueing
+  for retries); a same-process conflict of any lock continues the attempt (no decision), an obstacle fails it; never obtains locks.
+- Round trips (any number of locks): obtained series with a block: write = 6 (`WATCH`, state + queueing, `MULTI/EXEC`, release: `WATCH`, owners,
+  `MULTI/EXEC`), read = 4; failed attempt = 3; failed retry = 1 (pre-check); `fail_fast` on an obtained lock = 1; the dequeue of a failed series = 1.
+- Failures: `drop_failed_lock_series` runs in `ensure` for every series that is not obtained (a failure, the `timeout`, `Timeout.timeout` of the
+  outer logic, Redis errors, `Thread#kill`): best effort (`run_non_critical`, never replaces the original error): the locks of the obtaining
+  transaction whose reply is lost (`acq_process[:lock_processes]`, set before `EXEC`: owner-checked release of the `:lock_obtaining` locks) and the
+  requests in all queues (one pipeline of `ZREM`, except `:fail_fast_no_try`: nothing is queued). The result is built after it, in one place
+  (`lock_series_obtaining_failed` log + event, then `raise_lock_series_error` with `raise_errors` or the failure result). Both releases go through
+  `complete_lock_series_release`: an interrupted release is repeated once (`ensure`, `run_non_critical`: an interruption is delivered once, the release is idempotent). All of it is best
+  effort: an interruption right at the entry of `ensure`, a second interruption or a dead process leave the locks till their ttl (the safe direction).
+- Release (`ReleaseLockSeries#release_lock_series`): by `lock_processes` and `held_rw_modes`: `:lock_obtaining` write locks: compare-and-delete in
+  one transaction (`WATCH` own keys + pipelined `HGET acq_id` + `DEL`, retried on abort with the keys still owned), read locks: `ZREM` + `DEL` of
+  the reader data; `:extendable_conflict_work_through`: the ttl is decreased by `ttl - spent time - REDIS_TIMESHIFT_ERROR` (write: `EVAL DECREASE_LOCK_PTTL`
+  in the same owner-checked transaction, read: `ZADD XX INCR`); `:conflict_work_through` locks are kept as is.
+- Results: with a block: the block result; without: `{ ok: true, result: { lock_series:, rql_lock_series:, acq_id:, hst_id:, ts:, ttl: } }`;
+  `detailed_result: true`: `yield_result`, `locks_release_strategy`, `locks_released_at`, `locks_acq_time`, `locks_hold_time`, `lock_series`, `rql_lock_series`;
+  failure: `{ ok: false, result: { error: :failed_to_acquire_lock_series, detailed_errors:, lock_series:, acquired_locks: [], missing_locks:, failed_on_lock: } }`
+  (`failed_on_lock`: the first lock that blocked the last attempt with a known lock, `nil` without such an attempt).
+- Observability (`logic.md#16`, `visitors.md`): the `AcquireLock` events are not raised, the series has its own events, with the series context in their names:
+  of the series: `lock_series_obtained`, `lock_series_hold_and_release`, `lock_series_obtaining_failed`; of each lock (`lock_key` + `lock_keys`):
+  `lock_series_intermediate_lock_obtained` (the lock passed all checks of an attempt: `ready_locks` of the attempt, added by `find_series_lock_obstacle`, reported by
+  `lock_series` out of the WATCH block; nothing is held; once per lock, never per attempt: `reported_ready_locks`; in the order of the lock names up to the blocking lock, so a failed
+  attempt shows the same picture as the old sequential series; a failed conflict or `fail_fast` check reports nothing: these attempts fail before the checks), `lock_series_lock_obtained` (after the
+  transaction is applied, before `lock_series_obtained`, `:lock_obtaining` locks only), `lock_series_lock_obtaining_failed` (the blocking lock, once per failed series, before
+  `lock_series_obtaining_failed`; not raised without a known blocking lock). `log_lock_try` logs of each attempt are the `try_lock.*` logs of `TryToLock::LogVisitor`, one per lock
+  (per the blocking lock for the exit events); the detailed timeout error reads the raw state of the blocking lock (`blocking_lock_details`: no dependency on `LockInfo`/`QueueInfo`).
+- Design decisions: a waiting series reserves its turn in the queues of its free locks (`:queued`: these locks stay free, new requests wait for the
+  series, bounded by its limits); `:random` needs all locks free at the same moment; a retry of a series with a reentrant lock has no one round
+  trip failure (the attempt decides conflicts); no Lua (WATCH/MULTI only).
 
 ### Main `lock` options (defaults from config)
 
@@ -221,15 +274,14 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 - Validation (`AcquireLock`): `read_write_mode` must be `:read`/`:write`; `ttl` must be a positive
   Integer in both modes (`RedisQueuedLocks::ArgumentError`; write: `PEXPIRE` with a non-positive ttl would
   delete the lock key in the obtaining `MULTI`, read: the reader expiration is computed from it);
-  `LockSeriesPoC` checks the series `ttl` the same way before computing the lock ttls (they include
-  the retry delay and jitter); `config['default_lock_ttl']` must be positive too; `extend_lock_ttl`
+  `LockSeries` checks the same arguments itself (duplicated on purpose); `config['default_lock_ttl']` must be positive too; `extend_lock_ttl`
   `milliseconds` must be a positive Integer (a non-positive one would decrease/delete the lock);
   `meta` keys must not be reserved lock data keys, String or Symbol (Symbol keys are written as
-  Strings: `Symbol#name`; the same check in `AcquireLock` and `LockSeriesPoC`); the other per-call
+  Strings: `Symbol#name`; the same check in `AcquireLock` and `LockSeries`); the other per-call
   numeric options are validated with the ranges of their config keys (`logic.md#7`): `priority` Integer from
   `Resource::MIN_LOCK_PRIORITY` (-100) to `MAX_LOCK_PRIORITY` (100), `queue_ttl` > 0,
   `timeout`/`retry_count` nil or >= 0, `retry_delay`/`retry_jitter`/`lock_index_grace_period` >= 0
-  (`AcquireLock`; `LockSeriesPoC` checks the retry delay/jitter before the lock ttl calculation),
+  (`AcquireLock`, `LockSeries`),
   scan/batch sizes, `dead_ttl`, reindexing `queue_ttl` > 0 (operation modules), `zombie_ttl` and the
   zombie scan sizes > 0 (`Swarm` facade: `SwarmArgumentError`).
 - RW-aware operations: `unlock` (write lock + readers + reader data + both queues + the lock index entry (the enabled lock index), same result shape; one release
@@ -241,14 +293,10 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   `'rw_mode' => 'read'`, `'rem_ttl'`, `'readers' => [reader data + rem_ttl]` when no write lock),
   `queue_info` (`'read_lock_queue'`/`'read_queue'` when present), `locks`/`locks_info`, `queues`/`queues_info`;
   write lock info in `lock_info`/`locks_info` has `'lock_key'` and `'rw_mode' => 'write'` (computed on formatting,
-  not stored), so `'rw_mode'` is a reserved `meta` key (validated in `AcquireLock` and `LockSeriesPoC`);
+  not stored), so `'rw_mode'` is a reserved `meta` key (validated in `AcquireLock` and `LockSeries`);
   every request in `queue_info`/`queues_info` is `{ 'acq_id', 'score', 'rw_mode' => 'write'|'read' }`
   (`queues_info` derives the mode from the queue key via `Resource.lock_queue_rw_mode`).
-- `lock_series` (both modes): one mode per series; `release_lock_series` releases only locks the series
-  obtained itself (`process == :lock_obtaining`, reentrant ones are kept) and only the current acquirer's:
-  write = compare-and-delete in one transaction per series (`WATCH` the own lock keys + pipelined `HGET acq_id` + `DEL`,
-  retried on abort with the keys still owned at the last check), read = `ZREM` + `DEL` reader data. It runs
-  after the block and on any failure (exception or `raise_errors: false`), once per failed series.
+- `lock_series` (both modes): one mode per series, see "Lock series".
 - Own read lock operations (current acquirer via `current_acquirer_id(identity:)`): `unlock_read` /
   `release_read_lock` (`ZREM` + `DEL` reader data, event `explicit_read_lock_release`, result
   `{ rel_time:, rel_key:, rel_acq_id:, lock_res: }`; `acquirer_id:` (default `nil` => current acquirer;
@@ -273,14 +321,14 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 - Option `priority` of `lock`/`lock!`/`lock_series`/`lock_series!` (one value per series): Integer from
   `Resource::MIN_LOCK_PRIORITY` (-100, the lowest) to `Resource::MAX_LOCK_PRIORITY` (100, the highest) or a priority
   name (Symbol, RBS `RQL::lockPriority`), default `config['default_lock_priority']` (0, a name allowed); validated in
-  `AcquireLock` (Step 0.1), in `LockSeriesPoC` (before the series: the same check, duplicated like its ttl checks) and by the
+  `AcquireLock` (Step 0.1), in `LockSeries` (Step 0.1: the same check, duplicated like its ttl checks) and by the
   config validators.
 - Priority names: `config['lock_priorities']` (Hash Symbol => Integer in the range, default frozen
   `{ lowest: -100, low: -50, normal: 0, high: 50, highest: 100 }`, validated by the config) is read by `Client#lock` /
-  `#lock_series` and forwarded as the internal keyword `lock_priorities:` (`AcquireLock`, `LockSeriesPoC`; not a public
+  `#lock_series` and forwarded as the internal keyword `lock_priorities:` (`AcquireLock`, `LockSeries`; not a public
   keyword: a client-wide registry); `AcquireLock` Step 0.1 resolves a Symbol `priority` to its Integer
   (`lock_priorities.fetch(priority, priority)`, an unknown name stays a Symbol and fails the range check with
-  `ArgumentError`; `LockSeriesPoC` resolves it the same way before the series events), so everything after Step 0.1 (scores,
+  `ArgumentError`; `LockSeries` resolves it the same way), so everything after Step 0.1 (scores,
   logs, events, `queue_info`) sees Integers only; a name in `default_lock_priority` must be a key of `lock_priorities`
   (validators see one value: `Config#prevent_default_priority__unknown_name`, `ConfigValidationError`): `Config#configure`
   checks the pair once after the block (the keys can be assigned in any order; on a failure both keys keep their values from
@@ -334,7 +382,7 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   `unlock`/`clear_locks` (`-inf..+inf`), swarm (hosts from acquirer ids), lock index.
 - Info/observability: `queue_info`/`queues_info` requests have `'priority'` (decoded); every lock acquirement log and event
   carries the Integer `priority` of the request (classic, reentrant: the requested one, they never queue; lock series: the
-  priority of the series, resolved and validated by `LockSeriesPoC` before the series events); `log_lock_try` logs that name
+  priority of the series); `log_lock_try` logs that name
   another request carry its decoded priority (`first_priority_in_queue`, `ahead_priority`, `dead_priority`; decoded for logs
   only: gated by `log_sampled && log_lock_try`, `TryToLock#logged_request_priority`; `first_priority_in_queue => nil` without the first request).
 - Limitations: the priority range is a library constant that bounds the score shift (float precision of the shifted positions:
@@ -410,7 +458,8 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 
 `redis_queued_locks.` + `lock_obtained`, `reentrant_lock_obtained`,
 `extendable_reentrant_lock_obtained`, `lock_hold_and_release`, `reentrant_lock_hold_completes`,
-`lock_obtaining_failed`, `lock_series_obtained`, `lock_series_hold_and_release`, `explicit_lock_release`,
+`lock_obtaining_failed`, `lock_series_intermediate_lock_obtained`, `lock_series_lock_obtained`, `lock_series_lock_obtaining_failed`, `lock_series_obtained`,
+`lock_series_hold_and_release`, `lock_series_obtaining_failed`, `explicit_lock_release`,
 `explicit_all_locks_release`, `release_locks_of`, `explicit_read_lock_release`, `extend_lock_ttl`, `clear_dead_requests`,
 `reindex_locks`. Observability rule (`logic.md#16`): logic that changes keys is logged and instrumented, the lock
 acquirement per meaningful outcome (visitors; `lock_obtaining_failed` with the failure `result` also before a raised
@@ -418,10 +467,12 @@ acquirement error), each mutation operation with one log line + one event of the
 `instrument` last in the payload, inline in the module); lock info queries are neither; the swarm is known debt.
 Lock events (`lock_obtained`, `reentrant_lock_obtained`, `extendable_reentrant_lock_obtained`,
 `lock_hold_and_release`, `reentrant_lock_hold_completes`) carry `rw_mode` (requested mode) in the payload;
-lock series events (`lock_series_obtained`, `lock_series_hold_and_release`) carry the mode of the series;
+lock series events (`lock_series_*`) carry the mode of the series (`lock_series_obtained` and `lock_series_hold_and_release` also `reentrant_lock_keys`,
+`lock_series_obtaining_failed` `result` and `failed_lock_key`, the events of each lock `lock_key` and `lock_keys`, `lock_series_lock_obtaining_failed` `result`),
+the `AcquireLock` events are not raised for the locks of a series;
 all lock acquirement events (the lock events above, `lock_obtaining_failed` and the lock series events) carry `priority`
 after `rw_mode` (the Integer lock request priority: a priority name is resolved before; the series events: the priority of
-the series); all lock acquirement log lines of `AcquireLock` and `LockSeriesPoC` (not the release logs of `YieldExpire`)
+the series); all lock acquirement log lines of `AcquireLock` and `LockSeries` (not the release logs of `YieldExpire`)
 log `priority => N` after `rw_mode`, `try_lock.acq_added_to_queue` too; the try-lock logs that name another request log
 its priority (`first_priority_in_queue` after `first_acq_id_in_queue`, `ahead_priority` after `ahead_acq_id`);
 lock log lines (incl. lock series logs) carry `rw_mode => '...'`. RW try-lock log events: `exit__write_request_ahead`,
@@ -439,7 +490,7 @@ hierarchy: `LockAlreadyObtainedError`, `LockAcquirementTimeoutError`, `LockAcqui
 `rescue => e`/`rescue StandardError`/`rescue Timeout::Error`/`rescue nil` of the interrupted code (the user
 block, logger and instrumenter calls) can not swallow them; the library converts them to the public errors/results).
 redis-client sends `UNWATCH` on an interrupted `multi(watch:)` only for `StandardError`s, so every `with` block
-around a `multi(watch:)` (`TryToLock`, `ExtendLockTTL` read extensions, `LockSeriesPoC` write release) rescues
+around a `multi(watch:)` (`TryToLock`, `TryToLockSeries`, `ExtendLockTTL` read extensions, `ReleaseLockSeries` write release) rescues
 both internal timeouts and `Timeout::ExitException` (the user's `Timeout.timeout` without an exception class), closes
 the connection (drops the WATCH state, reconnected on the next use) and re-raises.
 
@@ -487,6 +538,7 @@ lib/redis_queued_locks/
   config.rb, config/dsl.rb         settings DSL + defaults
   acquirer/*.rb                    one operation per file
   acquirer/acquire_lock/*          lock algorithm mixins + visitors
+  acquirer/lock_series/*           lock series attempt and release mixins + visitors
   swarm.rb, swarm/*                supervisor, swarm elements, zombie logic, redis client builder
   logging/, instrument/            void defaults, samplers, ActiveSupport adapter
   resource.rb                      keys and identities
@@ -536,7 +588,7 @@ Rakefile, Steepfile, rbs_collection.yaml
 ## 6. Conventions
 
 - `# frozen_string_literal: true` in every Ruby file.
-- YARD tags on every class/method: `@api public|private`, `@since`, `@version` (methods: bump on a behavior/signature change; classes/modules: only on an interface change: signatures, added/removed methods, `extend`/`include`/`prepend` or the superclass; `logic.md#2`).
+- YARD tags on every class/method: `@api public|private`, `@since`, `@version` (methods: bump on a behavior/signature change; classes/modules: only on an interface change: signatures, added/removed methods, `extend`/`include`/`prepend` or the superclass; `logic.md#2`); `# @since` right above each `include`/`extend`/`prepend` line (the version that added the mixin).
 - Every `lib/` change gets a matching `sig/` RBS update; use `# steep:ignore` only where Steep can't infer types.
 - New operation: new `Acquirer::*` module, thin `Client` method (+ `!` variant if it should raise), RBS, spec.
 - New config option: `setting` (+ `validate`) in `config.rb` + the typed `Config#[]` overload line in `sig/redis_queued_locks/config.rbs`, read via `config['key']`, document defaults.

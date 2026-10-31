@@ -1,0 +1,37 @@
+use RedisQueuedLocks as RQL
+use RedisClient as RC
+
+module RedisQueuedLocks
+  module Acquirer
+    module LockSeries
+      module ReleaseLockSeries
+        def release_lock_series: (
+          RC::client redis,
+          Array[String] lock_names,
+          Array[Symbol?] lock_processes,
+          Array[RQL::readWriteMode] held_rw_modes,
+          String acquirer_id,
+          Integer decreased_ttl
+        ) -> void
+
+        private
+
+        def release_write_lock_series: (
+          RC::client redis,
+          Array[String] lock_names,
+          Array[String] extended_lock_names,
+          String acquirer_id,
+          Integer decreased_ttl
+        ) -> void
+
+        def release_read_lock_series: (
+          RC::client redis,
+          Array[String] lock_names,
+          Array[String] extended_lock_names,
+          String acquirer_id,
+          Integer decreased_ttl
+        ) -> void
+      end
+    end
+  end
+end
