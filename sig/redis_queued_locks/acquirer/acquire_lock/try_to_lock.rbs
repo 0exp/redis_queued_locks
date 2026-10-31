@@ -13,6 +13,9 @@ module RedisQueuedLocks
         LOCK_STATE_QUEUE_REPLIES_AT: Integer
         QUEUE_HEAD_REPLY: Integer
         OPPOSITE_QUEUE_HEAD_REPLY: Integer
+        QUEUE_REPLIES: Integer
+        QUEUE_LOCK_INDEX_REPLIES: Integer
+        READ_LOCK_EXTENSION_COMMANDS: Integer
         MAX_DEAD_REQUEST_REMOVALS: Integer
 
         # { ok: bool, result: Symbol }
@@ -59,6 +62,83 @@ module RedisQueuedLocks
         ) -> { ok: bool, result: Symbol|Hash[Symbol,untyped] }
 
         private
+
+        def same_process_conflict_status: (
+          RQL::conflictStrategy conflict_strategy,
+          bool lock_upgrade
+        ) -> Symbol
+
+        def transact_write_lock_extension: (
+          RedisClient::Multi transact,
+          String lock_key,
+          String lock_name,
+          Integer? ttl,
+          bool lock_index_enabled,
+          Float spc_processed_timestamp
+        ) -> void
+
+        def transact_read_lock_extension: (
+          RedisClient::Multi transact,
+          String lock_readers_key,
+          String? read_lock_key,
+          String lock_name,
+          String acquirer_id,
+          Integer? ttl,
+          bool lock_index_enabled,
+          Float? own_read_lock_expiration,
+          Integer redis_time,
+          Float spc_processed_timestamp
+        ) -> void
+
+        def transact_lock_index_extension: (
+          RedisClient::Multi transact,
+          String lock_name,
+          Integer? ttl,
+          bool lock_index_enabled
+        ) -> void
+
+        def transact_write_lock_work_through: (
+          RedisClient::Multi transact,
+          String lock_key,
+          Float spc_processed_timestamp
+        ) -> void
+
+        def transact_read_lock_work_through: (
+          RedisClient::Multi transact,
+          String? read_lock_key,
+          Float? own_read_lock_expiration,
+          Integer redis_time,
+          Float spc_processed_timestamp
+        ) -> void
+
+        def transact_read_lock_obtaining: (
+          RedisClient::Multi transact,
+          String request_queue,
+          String lock_readers_key,
+          String? read_lock_key,
+          String lock_name,
+          String acquirer_id,
+          Integer? ttl,
+          bool lock_index_enabled,
+          Integer lock_index_grace_period,
+          Hash[String|Symbol,untyped]? meta,
+          Integer redis_time,
+          Float timestamp
+        ) -> void
+
+        def transact_write_lock_obtaining: (
+          RedisClient::Multi transact,
+          String lock_key,
+          String request_queue,
+          String lock_name,
+          String acquirer_id,
+          String host_id,
+          Integer? ttl,
+          bool lock_index_enabled,
+          Integer lock_index_grace_period,
+          Hash[String|Symbol,untyped]? meta,
+          Float timestamp
+        ) -> void
 
         def queue_lock_request: (
           RedisClient::Pipeline pipeline,
@@ -160,6 +240,27 @@ module RedisQueuedLocks
           [String, Float]? waiting_request,
           [String, Float]? opposite_waiting_request
         ) -> [[String, Float]?, [String, Float]?, Array[[String, Integer]]]?
+
+        def find_dead_requests_ahead: (
+          bool read_mode,
+          RQL::accessStrategy access_strategy,
+          String acquirer_id,
+          Integer|Float acquirer_position,
+          Float acquirer_dead_score,
+          [String, Float]? waiting_request,
+          [String, Float]? opposite_waiting_request
+        ) -> [[String, Float]?, Integer?, [String, Float]?, Integer?]?
+
+        def pipeline_dead_requests_ahead_removal: (
+          RedisClient::Pipeline pipeline,
+          String request_queue,
+          String opposite_request_queue,
+          Float acquirer_dead_score,
+          [String, Float]? dead_head,
+          Integer? dead_head_priority,
+          [String, Float]? dead_ahead,
+          Integer? dead_ahead_priority
+        ) -> void
 
         def log_dropped_requests: (
           RQL::loggerObj logger,

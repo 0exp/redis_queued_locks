@@ -1,0 +1,106 @@
+use RedisQueuedLocks as RQL
+use RedisClient as RC
+
+module RedisQueuedLocks
+  module Acquirer
+    module LockSeries
+      extend RQL::Utilities
+      extend RQL::Acquirer::AcquireLock::DelayExecution
+      extend RQL::Acquirer::AcquireLock::YieldExpire
+      extend RQL::Acquirer::LockSeries::TryToLockSeries
+
+      type lockSeriesResult = ({ ok: bool, result: untyped }|untyped)
+      def self.lock_series: (
+        RC::client redis,
+        Array[String] lock_names,
+        detailed_result: bool,
+        process_id: Integer|String,
+        thread_id: Integer|String,
+        fiber_id: Integer|String,
+        ractor_id: Integer|String,
+        ttl: Integer,
+        queue_ttl: Integer,
+        lock_index_enabled: bool,
+        lock_index_grace_period: Integer,
+        timeout: Integer?,
+        timed: bool,
+        retry_count: Integer?,
+        retry_delay: Integer,
+        retry_jitter: Integer,
+        raise_errors: bool,
+        instrumenter: RQL::instrObj,
+        identity: String,
+        fail_fast: bool,
+        meta: Hash[String|Symbol,untyped]?,
+        detailed_acq_timeout_error: bool,
+        instrument: untyped?,
+        logger: RQL::loggerObj,
+        log_lock_try: bool,
+        conflict_strategy: RQL::conflictStrategy,
+        read_write_mode: Symbol, # NOTE: (rbs test) validated at runtime (Step 0.1 (RW)): any Symbol is accepted here
+        access_strategy: RQL::accessStrategy,
+        priority: RQL::lockPriority,
+        lock_priorities: Hash[Symbol, Integer],
+        log_sampling_enabled: bool,
+        log_sampling_percent: Integer,
+        log_sampler: RQL::Logging::samplerObj,
+        log_sample_this: bool,
+        instr_sampling_enabled: bool,
+        instr_sampling_percent: Integer,
+        instr_sampler: RQL::Instrument::samplerObj,
+        instr_sample_this: bool
+      ) ?{ (?) -> untyped } -> lockSeriesResult
+
+      private def self.yield_lock_series: (
+        Array[String] lock_keys,
+        String acquirer_id,
+        String host_id,
+        bool timed,
+        Integer|Float ttl_shift,
+        Integer ttl,
+        Hash[String|Symbol,untyped]? meta
+      ) ?{ (?) -> untyped } -> untyped?
+
+      private def self.complete_lock_series_release: (
+        RC::client redis,
+        Array[String] lock_names,
+        Array[Symbol?] lock_processes,
+        Array[RQL::readWriteMode] held_rw_modes,
+        String acquirer_id,
+        Integer decreased_ttl
+      ) -> void
+
+      private def self.drop_failed_lock_series: (
+        RC::client redis,
+        RQL::loggerObj logger,
+        Array[String] lock_keys,
+        RQL::readWriteMode read_write_mode,
+        Array[String] lock_key_queues,
+        Array[String] read_lock_key_queues,
+        Array[String] lock_names,
+        Integer queue_ttl,
+        String acquirer_id,
+        String host_id,
+        RQL::accessStrategy access_strategy,
+        Integer priority,
+        Hash[Symbol,untyped] acq_process,
+        bool log_sampled
+      ) -> void
+
+      private def self.raise_lock_series_error: (
+        RC::client redis,
+        Symbol failure_result,
+        Array[String] lock_keys,
+        String? failed_lock_name,
+        String? failed_lock_key,
+        String acquirer_id,
+        RQL::conflictStrategy conflict_strategy,
+        Integer? retry_count,
+        Integer? timeout,
+        bool detailed_acq_timeout_error
+      ) -> void
+
+      private def self.blocking_lock_details: (RC::client redis, String failed_lock_name) -> String
+    end
+  end
+end

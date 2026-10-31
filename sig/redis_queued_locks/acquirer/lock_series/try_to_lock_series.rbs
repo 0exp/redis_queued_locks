@@ -1,0 +1,198 @@
+use RedisQueuedLocks as RQL
+use RedisClient as RC
+
+module RedisQueuedLocks
+  module Acquirer
+    module LockSeries
+      module TryToLockSeries
+        include RQL::Acquirer::AcquireLock::TryToLock
+        include RQL::Acquirer::LockSeries::ReleaseLockSeries
+
+        type attemptResult = { ok: bool, result: Symbol, lock_name: String?, ready_locks: Array[Integer] }
+        type seriesObstacle = [Symbol, Integer]
+        type deadRequests = [Integer, [[String, Float]?, Integer?, [String, Float]?, Integer?]]
+        type lockState = {
+          obtainer: String?,
+          redis_time: Integer,
+          own_read_lock_expiration: Float?,
+          read_locked: bool,
+          conflict_rw_mode: RQL::readWriteMode?,
+          queued: bool,
+          waiting_request: [String, Float]?,
+          opposite_waiting_request: [String, Float]?,
+          dropped_requests: Array[[String, Integer]]?
+        }
+
+        def try_to_lock_series: (
+          RC::client redis,
+          RQL::loggerObj logger,
+          bool log_lock_try,
+          Array[String] lock_keys,
+          RQL::readWriteMode read_write_mode,
+          Array[String] lock_key_queues,
+          Array[String] read_lock_key_queues,
+          Array[String] lock_readers_keys,
+          Array[String?] read_lock_keys,
+          Array[String] lock_names,
+          Array[String] watched_keys,
+          String acquirer_id,
+          String host_id,
+          Integer|Float acquirer_position,
+          Integer priority,
+          Integer ttl,
+          Integer queue_ttl,
+          bool lock_index_enabled,
+          Integer lock_index_grace_period,
+          bool fail_fast,
+          RQL::conflictStrategy conflict_strategy,
+          RQL::accessStrategy access_strategy,
+          Hash[String|Symbol,untyped]? meta,
+          bool retry_attempt,
+          Hash[Symbol,untyped] acq_process,
+          bool log_sampled
+        ) -> attemptResult
+
+        private
+
+        def pipeline_series_lock_state: (
+          RedisClient::Pipeline pipeline,
+          Array[String] lock_keys,
+          Array[String] lock_readers_keys,
+          String acquirer_id,
+          bool read_mode,
+          bool queueing,
+          Array[String] request_queues,
+          Array[String] opposite_request_queues,
+          Integer|Float acquirer_position,
+          Integer priority,
+          Float acquirer_dead_score,
+          Array[String] lock_names,
+          Integer queue_ttl,
+          bool lock_index_enabled,
+          Integer lock_index_grace_period
+        ) -> void
+
+        def series_lock_state_replies: (
+          bool read_mode,
+          bool queueing,
+          bool lock_index_enabled
+        ) -> Integer
+
+        def series_queue_replies: (bool lock_index_enabled) -> Integer
+
+        def series_lock_states: (
+          Array[untyped] state_replies,
+          Integer locks_count,
+          String acquirer_id,
+          bool read_mode,
+          bool queueing,
+          bool lock_index_enabled
+        ) -> Array[lockState]
+
+        def queue_series_lock_requests: (
+          RC::client rconn,
+          Array[lockState] lock_states,
+          Array[Symbol?] lock_processes,
+          Array[String] request_queues,
+          Array[String] opposite_request_queues,
+          Integer|Float acquirer_position,
+          Integer priority,
+          String acquirer_id,
+          Float acquirer_dead_score,
+          Array[String] lock_names,
+          Integer queue_ttl,
+          bool lock_index_enabled,
+          Integer lock_index_grace_period
+        ) -> void
+
+        def drop_series_dead_requests_ahead: (
+          RC::client rconn,
+          bool read_mode,
+          Array[String] request_queues,
+          Array[String] opposite_request_queues,
+          Array[lockState] lock_states,
+          String acquirer_id,
+          Integer|Float acquirer_position,
+          Float acquirer_dead_score,
+          RQL::accessStrategy access_strategy
+        ) -> void
+
+        def find_series_lock_obstacle: (
+          Array[lockState] lock_states,
+          bool read_mode,
+          RQL::accessStrategy access_strategy,
+          String acquirer_id,
+          Integer|Float acquirer_position,
+          Array[Integer] ready_locks
+        ) -> seriesObstacle?
+
+        def log_series_queueing: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          bool log_lock_try,
+          Array[String] lock_keys,
+          Array[lockState] lock_states,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode read_write_mode,
+          Integer priority
+        ) -> void
+
+        def log_series_dropped_requests: (
+          RQL::loggerObj logger,
+          bool log_sampled,
+          bool log_lock_try,
+          Array[String] lock_keys,
+          Array[lockState] lock_states,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode read_write_mode
+        ) -> void
+
+        def log_series_lock_obstacle: (
+          RC::client rconn,
+          Symbol obstacle,
+          Integer lock_index,
+          Array[lockState] lock_states,
+          RQL::loggerObj logger,
+          bool log_sampled,
+          bool log_lock_try,
+          Array[String] lock_keys,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          RQL::accessStrategy access_strategy,
+          RQL::readWriteMode read_write_mode
+        ) -> void
+
+        def precheck_lock_series: (
+          RC::client rconn,
+          RQL::loggerObj logger,
+          bool log_sampled,
+          bool log_lock_try,
+          Array[String] lock_keys,
+          RQL::readWriteMode read_write_mode,
+          Array[String] lock_readers_keys,
+          Array[String] request_queues,
+          Array[String] opposite_request_queues,
+          Array[String] lock_names,
+          String acquirer_id,
+          String host_id,
+          Integer|Float acquirer_position,
+          Integer priority,
+          Float acquirer_dead_score,
+          Integer queue_ttl,
+          bool lock_index_enabled,
+          Integer lock_index_grace_period,
+          bool fail_fast,
+          RQL::accessStrategy access_strategy,
+          Array[Integer] ready_locks
+        ) -> seriesObstacle?
+      end
+    end
+  end
+end

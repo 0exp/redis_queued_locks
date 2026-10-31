@@ -82,16 +82,18 @@ priorities", key layout, "Lock index", lock lookup modes, events, errors, conven
   - `EXTEND_LOCK_PTTL` in `TryToLock` and `ExtendLockTTL`;
   - lock state reply reading in `try_to_lock` Step 0.1 and `precheck_lock` (shared `pipeline_lock_state`,
     position constants, `lock_obstacle`, `log_lock_obstacle`);
-  - reserved `meta` keys validation in `AcquireLock` and `LockSeriesPoC`; the `priority` resolution and range check
-    in `AcquireLock` Step 0.1 and `LockSeriesPoC` (the same message);
+  - the argument validations of `AcquireLock` Step 0 and `LockSeries` Step 0 (reserved `meta` keys, numeric ranges, the
+    `priority` resolution and range check: the same messages);
+  - the attempt flow of `TryToLock#try_to_lock`/`precheck_lock` and `TryToLockSeries#try_to_lock_series`/`precheck_lock_series`
+    (the commands and decisions are shared helpers, the flow exists twice), `drop_dead_requests_ahead` and
+    `drop_series_dead_requests_ahead`;
   - the band liveness rule (a request is dead when its score is `<= Resource.lock_priority_band_dead_score(dead_score,
     band)`): `TryToLock#dead_request_priority` / `pipeline_dead_requests_removal` and `ClearDeadRequests.drop_dead_requests` /
     `drop_dead_requests_by_priority`;
   - the `'priority'` field of a request (`Resource.lock_request_priority`) in `QueueInfo.queue_info` and
     `Queues.extract_queues_info`;
-  - lock-family options in `Client#lock`, `#lock!`, `#lock_series`, `#lock_series!` and their forwarding in
-    `LockSeriesPoC.lock_series_poc`.
-- Mirror path exception: `lock_series_poc*` has no RBS.
+  - lock-family options in `Client#lock`, `#lock!`, `#lock_series`, `#lock_series!` and the keyword lists of
+    `AcquireLock.acquire_lock` and `LockSeries.lock_series`.
 - Next version for `@since`/`@version`: the version the unreleased work already uses (`git diff <base> -- lib |
   grep -oE '^\+.*@(since|version) [0-9.]+'`, the CHANGELOG `[Unreleased]` code), otherwise the next minor of
   `RedisQueuedLocks::VERSION` (`version.rb`); don't take the maximum over `lib/` (old tags can be wrong).
@@ -173,8 +175,10 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   lock and only while no write lock exists, never revives an expired reader; `all_read_locks: true` extends every
   live reader (`ZADD XX INCR`), the registry/reader data TTLs keep the max (`PEXPIRE NX` + `GT`).
 - `fail_fast`: write fails on a write holder or live readers, read fails on a write holder (or the own live read);
-  lock series: one mode for the whole series, `release_lock_series` releases only the locks the series obtained and
-  only the current acquirer's (write: compare-and-delete in one transaction, read: `ZREM` + `DEL`).
+  lock series: one mode for the whole series, one `acquirer_position` in all its queues, all locks in one transaction,
+  nothing held between attempts, `release_lock_series` releases only the locks the series obtained and only the current
+  acquirer's (write: compare-and-delete in one transaction, read: `ZREM` + `DEL`), extended reentrant locks get their
+  ttl back (overview "Lock series").
 - Write-only result shapes stay unchanged; read keys/fields appear only when read data exists.
 - `read_lock_key` is `nil` for write requests; reader data is a data carrier only (the registry decides existence),
   without `acq_id`/`hst_id`; don't store derivable values; a new lock field updates every formatting copy (§2,
@@ -206,7 +210,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - The option: `priority:` in all four lock `Client` methods (default `config['default_lock_priority']`), an Integer
   `MIN_LOCK_PRIORITY..MAX_LOCK_PRIORITY` or a name of `config['lock_priorities']` (the client-wide registry is
   forwarded as the internal keyword `lock_priorities:`, never a public keyword); the name is resolved and the range
-  checked in `AcquireLock` Step 0.1 and before a lock series (`LockSeriesPoC`): code below sees Integers only (RBS
+  checked in `AcquireLock` Step 0.1 and `LockSeries` Step 0.1: code below sees Integers only (RBS
   `RQL::lockPriority` at the boundary, `Integer` below); config validators for both keys, and a name of
   `default_lock_priority` checked against `lock_priorities` by `Config` (after a `configure` block, before a direct `[]=`).
 - Observability: every lock acquirement log line and event (classic, reentrant: the requested priority, lock series:
@@ -260,7 +264,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   acquirer_id, host_id, ...`, TTL params `ttl, queue_ttl, lock_index_enabled, lock_index_grace_period`
   (`arguments.md#5`); every call site and the RBS updated with the signature.
 - Operation modules are independent (`acquirer.md#14`): no calls to another `Acquirer::*` module and no references to
-  its RBS types (exceptions: the `AcquireLock` core, `*PoC` modules); shared logic only via `Resource`/`Utilities`;
+  its RBS types (exception: the acquisition core, `AcquireLock` and `LockSeries`); shared logic only via `Resource`/`Utilities`;
   a duplicate keeps the original name and shape with a `NOTE` that it is duplicated on purpose; every copy changes
   in the same change. Don't copy the `WithAcqTimeout` → `LockInfo`/`QueueInfo` debt.
 - New operation: `acquirer/<snake_name>.rb` with one public `class << self` entry named after the file and private
@@ -282,8 +286,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   `Exception`: super exceptional cases only, with the reason in the comment; `logic.md#15`). Runtime dependencies:
   `redis-client` only; dev gems in `Gemfile`.
 - `AcquireLock`: new behavior as a new step or mixin with `# Step N.x` numbering and consistent `acq_process` keys
-  (`acquirer.md#10`); `lock_series_poc.rb` is experimental: don't accept new features built on it without the
-  user's request.
+  (`acquirer.md#10`).
 
 ### G. Swarm, Ractors, threads (`swarm.md`)
 - Redis work in stateless class functions shared by the main loop and the manual API (`#1`); main loops build
@@ -300,7 +303,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   status shapes `{ running:, state: }` with `'non_initialized'` and their RBS (`#10`).
 
 ### H. Logging and instrumentation (`visitors.md`)
-- Logs/events of `AcquireLock` and its mixins and of `LockSeriesPoC` go through visitor methods (`#1`); mutation
+- Logs/events of `AcquireLock`, `LockSeries` and their mixins go through visitor methods (`#1`); mutation
   modules write one log line and one event inline inside `run_non_critical`, gated by `log_sampled`/`instr_sampled`
   (`acquirer.md#9`).
 - Observability coverage (`logic.md#16`): a new or changed logic that creates/changes/deletes keys without logs and
@@ -313,7 +316,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   `instrumenter.notify('redis_queued_locks.<event>', { ... }) rescue nil` with shorthand Symbol keys (`#5`-`#9`).
 - Parameter order: port, sampled flag, extra gates, `lock_key`, data; `rw_mode` after `access_strategy` (logs) or
   after `lock_key` (instrumentation), user `instrument` last (`#6`). `rw_mode` is the requested mode in
-  `AcquireLock`/`TryToLock`/`DequeueFromLockQueue`, the held mode in `YieldExpire`, the series mode in `LockSeriesPoC`.
+  `AcquireLock`/`TryToLock`/`DequeueFromLockQueue`, the held mode in `YieldExpire`, the series mode in `LockSeries`.
 - Sampling decided once per operation (`Logging.should_log?` / `Instrument.should_instrument?`) and passed down (`#7`).
 - Event names and payload keys are public API: no rename/removal without the user's request; no new event on
   the default write success path (`#13`); new or changed log keys/payload keys go to README `## Logging` /
@@ -333,9 +336,11 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - `# frozen_string_literal: true`; compact constant paths (`module RedisQueuedLocks::Acquirer::Keys`); namespace
   files only `require_relative` (`logic.md#1`).
 - YARD on every class, module, constant, attr and method: `@param`/`@option`/`@return` (`Format: { ... }` for hash
-  results), blank `#`, `@api public|private`, `@since <next>`; behavior/signature changes bump `@version <next>` on
-  the method; the module/class header `@version` changes only with the interface (signatures, added/removed methods,
-  `extend`/`include`/`prepend`, the superclass), never for behavior changes inside the methods (`logic.md#2`).
+  results), blank `#`, `@api public|private`, `@since <next>`; a new `include`/`extend`/`prepend` line has
+  `# @since <next>` right above it (no YARD block; the version that added the mixin); behavior/signature changes bump
+  `@version <next>` on the method; the module/class header `@version` changes only with the interface (signatures,
+  added/removed methods, `extend`/`include`/`prepend`, the superclass), never for behavior changes inside the methods
+  (`logic.md#2`).
 - Comments: `# NOTE:` with `#   - item;` lists, `# Step N.x` in algorithms, `(RW)`/`(lock index)`/`(keyspace)`
   tags, `NOTE: (pipeline layout)`/`(transaction layout)` for positional replies.
 - Redis: uppercase String commands, String numeric args (`'0'`, `'-1'`, `'-inf'`, `'+inf'`), `redis.with do |rconn|`
@@ -410,7 +415,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   - `git grep -n LOCK_INDEX_KEY -- lib`: every use reachable only with `lock_index_enabled` (an `if`/`return unless`
     guard or a lock index lookup branch), except `ReindexLocks` and `Resource`;
   - cross-module calls: `git grep -n "RedisQueuedLocks::Acquirer::" -- lib/redis_queued_locks/acquirer` (only the
-    known `WithAcqTimeout` debt and `LockSeriesPoC` are allowed);
+    known `WithAcqTimeout` debt and the `LockSeries` uses of the `AcquireLock` mixins are allowed);
   - `git diff --name-only <base>` against the `sig/` mirror (§2 exceptions); `git diff --check <base>`.
 - Checks (read-only): a review on request of local changes runs `bundle exec rake rubocop` and
   `bundle exec rbs collection install && bundle exec rake steep:check` (grep the output for `ERROR`/`FATAL`, restore a

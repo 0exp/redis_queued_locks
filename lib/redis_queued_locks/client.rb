@@ -444,12 +444,41 @@ class RedisQueuedLocks::Client
   end
   # rubocop:enable Metrics/MethodLength
 
-  # NOTE: Lock Series PoC
+  # Obtains a series of locks atomically: all locks of the series are obtained at the same moment
+  # with the same ttl or none of them (nothing is held while the series waits for its locks).
+  # Lock series are deadlock-free for any order of the lock names.
+  #
+  # @param lock_names [Array<String>]
+  #   Lock names to be obtained (at least one; a duplicated name is the same lock).
+  # @option detailed_result [Boolean]
+  #   Return the detailed result of the series (the block result, times, lock keys).
+  # @option ttl [Integer]
+  #   The time to live of each lock of the series (in milliseconds). See `#lock`.
+  # @option timeout [Integer,NilClass]
+  #   Time period whe should try to acquire the whole series (in seconds). See `#lock`.
+  # @option retry_count [Integer,NilClass]
+  #   How many times we should try to acquire the whole series. See `#lock`.
+  # @option read_write_mode [Symbol]
+  #   The mode of all locks of the series. See `#lock`.
+  # @option priority [Integer,Symbol]
+  #   The lock request priority of the series. See `#lock`.
+  # @yield A block of code that should be executed under all obtained locks.
+  # @yieldreturn [Any]
+  # @return [Hash<Symbol,Any>,yield]
+  #   - the result of the block when the series is obtained with a block;
+  #   - `{ ok: true, result: { lock_series:, rql_lock_series:, acq_id:, hst_id:, ts:, ttl: } }`
+  #     when the series is obtained without a block (the locks live till their ttl);
+  #   - the detailed result of the series with `detailed_result: true`;
+  #   - `{ ok: false, result: { error:, detailed_errors:, lock_series:, acquired_locks:,
+  #     missing_locks:, failed_on_lock: } }` when the series is not obtained;
+  #
+  # @note See #lock method signature for all other options.
+  #
   # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.16.0
-  # @version 1.22.0
-  def lock_series( # steep:ignore
+  # @version 1.23.0
+  def lock_series(
     *lock_names,
     detailed_result: false,
     ttl: config['default_lock_ttl'],
@@ -483,7 +512,7 @@ class RedisQueuedLocks::Client
     instr_sample_this: false,
     &block
   )
-    RedisQueuedLocks::Acquirer::LockSeriesPoC.lock_series_poc( # steep:ignore
+    RedisQueuedLocks::Acquirer::LockSeries.lock_series(
       redis_client,
       lock_names,
       detailed_result:,
@@ -527,12 +556,13 @@ class RedisQueuedLocks::Client
   end
   # rubocop:enable Metrics/MethodLength
 
-  # NOTE: Lock Series PoC
+  # @note See #lock_series method signature.
+  #
   # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.16.0
-  # @version 1.22.0
-  def lock_series!( # steep:ignore
+  # @version 1.23.0
+  def lock_series!(
     *lock_names,
     detailed_result: false,
     ttl: config['default_lock_ttl'],
@@ -565,8 +595,8 @@ class RedisQueuedLocks::Client
     instr_sample_this: false,
     &block
   )
-    lock_series( # steep:ignore
-      *lock_names, # steep:ignore
+    lock_series(
+      *lock_names,
       detailed_result:,
       ttl:,
       queue_ttl:,
