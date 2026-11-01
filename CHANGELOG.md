@@ -1,6 +1,7 @@
 ## [Unreleased]
 ### Changed
-- [**Breaking**] `#lock_series`/`#lock_series!` are no longer a proof of concept: all locks are obtained atomically with the same
+- [**Breaking**] `#lock_series`/`#lock_series!` are no longer a proof of concept. The final feature design:
+  - all locks are obtained atomically with the same;
   TTL, nothing is held while the series waits, any order of the lock names is deadlock-free (see README "lock_series"):
   - each lock gets exactly `ttl:` (it was `position * (ttl + retry_delay + retry_jitter)`);
   - `timeout:`, `retry_count:` and `queue_ttl:` limit the whole series (they limited each lock of the series);
