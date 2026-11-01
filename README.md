@@ -3528,6 +3528,12 @@ Detalized event semantics and payload structure:
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
 - **Major**:
+  - **Experimental feature**: (non-`timed` locks): per-ruby-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
+    the acquired lock for long-running blocks of code (that invoked "under" the lock
+    whose ttl may expire before the block execution completes). It makes sense for non-`timed` locks *only*;
+  - think about "thread priority" configuration :thinking:;
+  - add `hst_id` to all methods that works with queues info;
+  - try to return the `fiber object id` to the lock host identifier (we cant use fiber object id cuz `ObjectSpace` has no access to the fiber object space after the any ractor object initialization)
   - Swarm:
     - circuit-breaker for long-living failures of your infrastructure inside the swarm elements and supervisor:
       the supervisor will stop (for some period of time or while the some factor will return `true`)
@@ -3553,9 +3559,6 @@ Detalized event semantics and payload structure:
   - an ability to return all insturmentation metrics from the `lock` invocation (and after block `yield`ing);
   - think about a PG-like `stats`-data/table, that should be helpful for lock history acquirement analyzation :thinking: (suitable for cases when we want
     to check if the lock was acquired by some different parallel process durign the some period of time in the past or not);
-  - think about "thread priority" configuration :thinking:;
-  - add `hst_id` to all methods that works with queues info;
-  - try to return the `fiber object id` to the lock host identifier (we cant use fiber object id cuz `ObjectSpace` has no access to the fiber object space after the any ractor object initialization)
   - named RQL's threads (`Thread#name`) and RQL's ractors (`Ractor#name`) in order to have an ability to find and work with RQL's threads and ractors outside of RQL logic (stop threads before process forking, for example);
   - `#lock`/`#lock!` - `timeout:` option: support for granular periods (it supports only `seconds` at the moment, but we need `milliseconds`);
   - Add `after timeout hook` ability for timeout errors with an ability to access the binding context (if it possibly) of the thread where it failed;
@@ -3567,9 +3570,6 @@ Detalized event semantics and payload structure:
   - support for `Dragonfly` database backend (https://github.com/dragonflydb/dragonfly) (https://www.dragonflydb.io/);
   - (_research_) GVL-isolation for lock acquirement logic (try to bypass Ruby's "context-switching" in order to prevent any time-based affects on lock-acquirement logic);
   - Semantic error objects for unexpected Redis errors;
-  - **Experimental feature**: (non-`timed` locks): per-ruby-block-holding-the-lock sidecar `Ractor` and `in progress queue` in RedisDB that will extend
-    the acquired lock for long-running blocks of code (that invoked "under" the lock
-    whose ttl may expire before the block execution completes). It makes sense for non-`timed` locks *only*;
   - sized lock queues (with an ability of dynamically growing size);
   - better code stylization (+ some refactorings);
   - `RedisQueuedLocks::Acquirer::Try.try_to_lock` - detailed successful result analization;
