@@ -1,4 +1,6 @@
 ## [Unreleased]
+### Fixed
+- `timed: true` of `#lock`/`#lock_series`: in some cases the time budget of the block could have been a little bit longer than the lock lifetime (2ms);
 
 ## [1.23.0] - 2026-11-01
 ### Changed

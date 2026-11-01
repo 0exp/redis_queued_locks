@@ -161,13 +161,18 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   #
   # @api private
   # @since 1.3.0
-  # @version 1.21.0
+  # @version 1.23.1
   def yield_with_timeout(timeout, lock_key, lock_ttl, acquirer_id, host_id, meta, &block)
+    failure = 'was not invoked: the time budget of the lock TTL is spent'
+    # NOTE: no budget left => the block is not invoked (`Timeout.timeout(0)` means "no timeout")
+    raise(RedisQueuedLocks::TimedLockIntermediateTimeoutError) if timeout == 0.0
+
+    failure = 'exceeded the lock TTL'
     ::Timeout.timeout(timeout, RedisQueuedLocks::TimedLockIntermediateTimeoutError, &block)
   rescue RedisQueuedLocks::TimedLockIntermediateTimeoutError
     raise(
       RedisQueuedLocks::TimedLockTimeoutError,
-      "Passed <timed> block of code exceeded the lock TTL " \
+      "Passed <timed> block of code #{failure} " \
       "(lock: \"#{lock_key}\", " \
       "ttl: #{lock_ttl}, " \
       "meta: #{meta ? meta.inspect : '<no-meta>'}, " \

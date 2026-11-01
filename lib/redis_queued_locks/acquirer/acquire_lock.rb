@@ -193,7 +193,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.23.0
+    # @version 1.23.1
     def acquire_lock(
       redis,
       lock_name,
@@ -412,6 +412,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         tries: 0,
         acquired: false,
         result: nil,
+        try_start_time: nil,
         acq_time: nil, # NOTE: in milliseconds
         hold_time: nil, # NOTE: in milliseconds
         rel_time: nil # NOTE: in milliseconds
@@ -471,6 +472,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock
               queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
             )
           end
+
+          acq_process[:try_start_time] = clock_gettime
 
           # NOTE: (steep ignorance) pattern matching is not supported in steep
           # steep:ignore:start
@@ -662,8 +665,14 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           begin
             yield_time = clock_gettime
 
+            # NOTE: the budget of a `timed` block (see `Resource::REDIS_TIMESHIFT_ERROR`):
+            #   - the lock ttl starts inside the attempt (write: `EXEC` of the transaction,
+            #     read: `TIME` of the lock state read), this moment is unknown on the client:
+            #     the time is counted from the start of the successful attempt (it is
+            #     earlier, the budget can only be shorter than the real lifetime of the lock);
+            #   - the Redis time error is a margin: it decreases the budget;
             ttl_shift = (
-              (yield_time - acq_process[:acq_end_time]) / 1_000.0 -
+              (yield_time - acq_process[:try_start_time]) / 1_000.0 +
               RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
             ).ceil(2)
 

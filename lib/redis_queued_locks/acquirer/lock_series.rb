@@ -126,7 +126,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
     #
     # @api private
     # @since 1.23.0
-    # @version 1.23.0
+    # @version 1.23.1
     # rubocop:disable Metrics/MethodLength
     def lock_series(
       redis,
@@ -356,6 +356,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
         ts: nil, # NOTE: see `try_to_lock_series`
         lock_processes: nil, # NOTE: see `try_to_lock_series`
         held_rw_modes: nil, # NOTE: see `try_to_lock_series`
+        try_start_time: nil,
         acq_time: nil, # NOTE: in milliseconds
         acq_end_time: nil,
         rel_ts: nil,
@@ -403,6 +404,8 @@ module RedisQueuedLocks::Acquirer::LockSeries
                   queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
                 )
               end
+
+              acq_process[:try_start_time] = clock_gettime
 
               attempt = try_to_lock_series(
                 redis,
@@ -536,8 +539,14 @@ module RedisQueuedLocks::Acquirer::LockSeries
             host_id, acq_process[:ts], acq_process[:acq_time], reentrant_lock_keys, instrument
           )
 
+          # NOTE: the budget of a `timed` block (see `Resource::REDIS_TIMESHIFT_ERROR`):
+          #   - the lock ttl starts inside the attempt (write: `EXEC` of the transaction,
+          #     read: `TIME` of the lock state read), this moment is unknown on the client:
+          #     the time is counted from the start of the successful attempt (it is
+          #     earlier, the budget can only be shorter than the real lifetime of the lock);
+          #   - the Redis time error is a margin: it decreases the budget;
           ttl_shift = (
-            (clock_gettime - acq_process[:acq_end_time]) / 1_000.0 -
+            (clock_gettime - acq_process[:try_start_time]) / 1_000.0 +
             RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
           ).ceil(2)
 
