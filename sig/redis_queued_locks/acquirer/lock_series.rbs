@@ -37,7 +37,7 @@ module RedisQueuedLocks
         logger: RQL::loggerObj,
         log_lock_try: bool,
         conflict_strategy: RQL::conflictStrategy,
-        read_write_mode: Symbol, # NOTE: (rbs test) validated at runtime (Step 0.1 (RW)): any Symbol is accepted here
+        rw_mode: Symbol, # NOTE: (rbs test) validated at runtime (Step 0.1 (RW)): any Symbol is accepted here
         access_strategy: RQL::accessStrategy,
         priority: RQL::lockPriority,
         lock_priorities: Hash[Symbol, Integer],
@@ -74,7 +74,7 @@ module RedisQueuedLocks
         RC::client redis,
         RQL::loggerObj logger,
         Array[String] lock_keys,
-        RQL::readWriteMode read_write_mode,
+        RQL::readWriteMode rw_mode,
         Array[String] lock_key_queues,
         Array[String] read_lock_key_queues,
         Array[String] lock_names,

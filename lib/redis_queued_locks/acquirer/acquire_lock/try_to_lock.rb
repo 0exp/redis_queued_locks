@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Read/Write locks (`read_write_mode`):
+# Read/Write locks (`rw_mode`):
 #   - `:write` lock is exclusive: it is obtained when there is no write lock and no live read lock;
 #   - `:read` lock is shared: it is obtained when there is no write lock;
 #   - read locks are stored in the readers registry: a sorted set where the member is an acquirer
@@ -175,7 +175,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param logger [::Logger,#debug]
   # @param log_lock_try [Boolean]
   # @param lock_key [String]
-  # @param read_write_mode [Symbol] `:read` or `:write`
+  # @param rw_mode [Symbol] `:read` or `:write`
   # @param lock_key_queue [String] Queue of write lock requests.
   # @param read_lock_key_queue [String] Queue of read lock requests.
   # @param lock_readers_key [String] Registry of read lock holders.
@@ -215,7 +215,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     logger,
     log_lock_try,
     lock_key,
-    read_write_mode,
+    rw_mode,
     lock_key_queue,
     read_lock_key_queue,
     lock_readers_key,
@@ -247,9 +247,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     # Step RW: the mode of the lock that is really held by the acquirer after the attempt
     #   (the requested mode or the mode of the already obtained lock for same-process conflicts);
     # @type var held_rw_mode: Symbol
-    held_rw_mode = read_write_mode
+    held_rw_mode = rw_mode
     # Step RW: read lock request flag
-    read_mode = (read_write_mode == :read)
+    read_mode = (rw_mode == :read)
     # Step RW: request queue of the current mode and the queue of the opposite mode
     request_queue = read_mode ? read_lock_key_queue : lock_key_queue
     opposite_request_queue = read_mode ? lock_key_queue : read_lock_key_queue
@@ -270,14 +270,14 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
     LogVisitor.start(
       logger, log_sampled, log_lock_try, lock_key,
-      queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+      queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
     )
 
     # Step X: start to work with lock acquiring
     result = redis.with do |rconn|
       LogVisitor.rconn_fetched(
         logger, log_sampled, log_lock_try, lock_key,
-        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+        queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
       )
 
       # Step PRE: (pre-check) the lock state without WATCH: the attempt that can not obtain
@@ -287,7 +287,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       #   - see `precheck_lock` for details;
       if precheck
         inter_result = precheck_lock(
-          rconn, logger, log_sampled, log_lock_try, lock_key, read_write_mode, lock_readers_key,
+          rconn, logger, log_sampled, log_lock_try, lock_key, rw_mode, lock_readers_key,
           request_queue, opposite_request_queue, lock_name, acquirer_id, host_id,
           acquirer_position, priority, acquirer_dead_score, queue_ttl, lock_index_enabled,
           lock_index_grace_period, fail_fast, access_strategy
@@ -351,7 +351,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
         if sp_conflict_rw_mode != nil
           LogVisitor.same_process_conflict_detected(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+            queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
           )
 
           # NOTE:
@@ -364,7 +364,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           sp_conflict_status = same_process_conflict_status(conflict_strategy, lock_upgrade)
           LogVisitor.same_process_conflict_analyzed(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, sp_conflict_status
+            queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, sp_conflict_status
           )
         end
 
@@ -391,7 +391,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # @type var spc_processed_timestamp: Float
           LogVisitor.reentrant_lock__extend_and_work_through(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
+            queue_ttl, acquirer_id, host_id, access_strategy, rw_mode,
             sp_conflict_status, ttl, spc_processed_timestamp
           )
         # SP-Conflict-Step X2: switch to dead lock logic or not
@@ -413,7 +413,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # @type var spc_processed_timestamp: Float
           LogVisitor.reentrant_lock__work_through(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
+            queue_ttl, acquirer_id, host_id, access_strategy, rw_mode,
             sp_conflict_status, spc_processed_timestamp
           )
         # SP-Conflict-Step X2: switch to dead lock logic or not
@@ -424,7 +424,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # @type var spc_processed_timestamp: Float
           LogVisitor.single_process_lock_conflict__dead_lock(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
+            queue_ttl, acquirer_id, host_id, access_strategy, rw_mode,
             sp_conflict_status, spc_processed_timestamp
           )
         # SP-Conflict-Step X2 (RW): read-to-write lock upgrade is not supported => exit and fail
@@ -435,7 +435,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           # @type var spc_processed_timestamp: Float
           LogVisitor.single_process_lock_conflict__lock_upgrade(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
+            queue_ttl, acquirer_id, host_id, access_strategy, rw_mode,
             sp_conflict_status, spc_processed_timestamp
           )
         # Reached the SP-Non-Conflict Mode (NOTE):
@@ -479,18 +479,18 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
           LogVisitor.acq_added_to_queue(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
+            queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
           )
           LogVisitor.remove_expired_acqs(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+            queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
           )
 
           # Step 2.2: (priorities) drop the dead lock requests of other priority bands that block
           #   the current one (the queue head or the earlier request of the opposite mode) and get
           #   the actual queue heads (no round trips while no dead request blocks the current one);
           actual_queue_heads = drop_dead_requests_ahead(
-            rconn, read_write_mode, request_queue, opposite_request_queue, acquirer_id,
+            rconn, rw_mode, request_queue, opposite_request_queue, acquirer_id,
             acquirer_position, acquirer_dead_score, access_strategy, waiting_request,
             opposite_waiting_request
           )
@@ -498,7 +498,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
             waiting_request, opposite_waiting_request, dropped_requests = actual_queue_heads
             log_dropped_requests(
               logger, log_sampled, log_lock_try, lock_key, queue_ttl, acquirer_id, host_id,
-              access_strategy, read_write_mode, dropped_requests
+              access_strategy, rw_mode, dropped_requests
             )
           end
           waiting_acquirer = waiting_request ? waiting_request[0] : nil
@@ -507,7 +507,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
           LogVisitor.get_first_from_queue(
             logger, log_sampled, log_lock_try, lock_key,
-            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer,
+            queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, waiting_acquirer,
             waiting_priority
           )
 
@@ -527,7 +527,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
             # Step ROLLBACK: the lock can not be obtained now. retry!
             log_lock_obstacle(
               rconn, obstacle, logger, log_sampled, log_lock_try, lock_key, queue_ttl,
-              acquirer_id, host_id, access_strategy, read_write_mode,
+              acquirer_id, host_id, access_strategy, rw_mode,
               waiting_acquirer, waiting_priority, opposite_waiting_request, current_lock_obtainer
             )
             inter_result = obstacle
@@ -546,7 +546,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
             LogVisitor.obtain__free_to_acquire(
               logger, log_sampled, log_lock_try, lock_key,
-              queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+              queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
             )
           else
             # NOTE: required lock is free and ready to be acquired! acquire! (write lock)
@@ -563,7 +563,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
 
             LogVisitor.obtain__free_to_acquire(
               logger, log_sampled, log_lock_try, lock_key,
-              queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+              queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
             )
           end
         end
@@ -1417,7 +1417,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param access_strategy [Symbol]
-  # @param read_write_mode [Symbol]
+  # @param rw_mode [Symbol]
   # @param waiting_acquirer [String,NilClass]
   # @param waiting_priority [Integer,NilClass]
   #   The priority of the first request (decoded for logs only: `nil` without logs).
@@ -1442,7 +1442,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     acquirer_id,
     host_id,
     access_strategy,
-    read_write_mode,
+    rw_mode,
     waiting_acquirer,
     waiting_priority,
     opposite_waiting_request,
@@ -1452,12 +1452,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     when :dead_score_reached
       LogVisitor.exit__queue_ttl_reached(
         logger, log_sampled, log_lock_try, lock_key,
-        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+        queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
       )
     when :acquirer_is_not_first_in_queue
       LogVisitor.exit__no_first(
         logger, log_sampled, log_lock_try, lock_key,
-        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer,
+        queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, waiting_acquirer,
         waiting_priority,
         # NOTE: lock data is extracted for logs only
         ((log_sampled && log_lock_try) ? rconn.call('HGETALL', lock_key).to_h : NO_LOCK_DATA)
@@ -1469,20 +1469,20 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       if obstacle == :write_request_is_ahead
         LogVisitor.exit__write_request_ahead(
           logger, log_sampled, log_lock_try, lock_key,
-          queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
+          queue_ttl, acquirer_id, host_id, access_strategy, rw_mode,
           ahead_request[0], ahead_priority
         )
       else
         LogVisitor.exit__read_request_ahead(
           logger, log_sampled, log_lock_try, lock_key,
-          queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
+          queue_ttl, acquirer_id, host_id, access_strategy, rw_mode,
           ahead_request[0], ahead_priority
         )
       end
     when :lock_is_still_acquired
       LogVisitor.exit__lock_still_obtained(
         logger, log_sampled, log_lock_try, lock_key,
-        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode,
+        queue_ttl, acquirer_id, host_id, access_strategy, rw_mode,
         waiting_acquirer, waiting_priority,
         current_lock_obtainer, #: String
         # NOTE: lock data is extracted for logs only
@@ -1491,7 +1491,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     when :read_lock_is_still_acquired
       LogVisitor.exit__read_lock_still_obtained(
         logger, log_sampled, log_lock_try, lock_key,
-        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer,
+        queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, waiting_acquirer,
         waiting_priority
       )
     end
@@ -1541,7 +1541,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   #     them at the same step (after the queueing log events, see `log_dropped_requests`);
   #
   # @param rconn [RedisClient]
-  # @param read_write_mode [Symbol]
+  # @param rw_mode [Symbol]
   # @param request_queue [String]
   # @param opposite_request_queue [String]
   # @param acquirer_id [String]
@@ -1563,7 +1563,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # rubocop:disable Metrics/MethodLength
   def drop_dead_requests_ahead(
     rconn,
-    read_write_mode,
+    rw_mode,
     request_queue,
     opposite_request_queue,
     acquirer_id,
@@ -1575,7 +1575,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   )
     return unless access_strategy == :queued
 
-    read_mode = (read_write_mode == :read)
+    read_mode = (rw_mode == :read)
     round_trips = 0
     # NOTE: allocated by the first removal only (no allocations while nothing dead blocks)
     # @type var dropped_requests: Array[[String, Integer]]?
@@ -1731,7 +1731,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param access_strategy [Symbol]
-  # @param read_write_mode [Symbol]
+  # @param rw_mode [Symbol]
   # @param dropped_requests [Array<Array<String,Integer>>]
   #   The acquirer and the priority of each dropped lock request.
   # @return [void]
@@ -1747,7 +1747,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     acquirer_id,
     host_id,
     access_strategy,
-    read_write_mode,
+    rw_mode,
     dropped_requests
   )
     return unless log_sampled && log_lock_try
@@ -1755,7 +1755,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     dropped_requests.each do |dead_acquirer_id, dead_priority|
       LogVisitor.dead_request_removed(
         logger, log_sampled, log_lock_try, lock_key, queue_ttl, acquirer_id, host_id,
-        access_strategy, read_write_mode, dead_acquirer_id, dead_priority
+        access_strategy, rw_mode, dead_acquirer_id, dead_priority
       )
     end
   end
@@ -1799,7 +1799,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param log_sampled [Boolean]
   # @param log_lock_try [Boolean]
   # @param lock_key [String]
-  # @param read_write_mode [Symbol]
+  # @param rw_mode [Symbol]
   # @param lock_readers_key [String]
   # @param request_queue [String]
   # @param opposite_request_queue [String]
@@ -1826,7 +1826,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     log_sampled,
     log_lock_try,
     lock_key,
-    read_write_mode,
+    rw_mode,
     lock_readers_key,
     request_queue,
     opposite_request_queue,
@@ -1842,7 +1842,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     fail_fast,
     access_strategy
   )
-    read_mode = (read_write_mode == :read)
+    read_mode = (rw_mode == :read)
     # NOTE: the same pipeline layout and the same reply reading as in Step 0.1 of the attempt
     # @type var lock_state: Array[untyped]
     lock_state = rconn.pipelined do |pipeline|
@@ -1878,7 +1878,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     #   the step of the attempt (after the queueing log events of the failed pre-check, they
     #   follow the decision) or before the attempt that continues (it logs its own queueing);
     actual_queue_heads = drop_dead_requests_ahead(
-      rconn, read_write_mode, request_queue, opposite_request_queue, acquirer_id,
+      rconn, rw_mode, request_queue, opposite_request_queue, acquirer_id,
       acquirer_position, acquirer_dead_score, access_strategy, waiting_request,
       opposite_waiting_request
     )
@@ -1900,7 +1900,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
       if dropped_requests
         log_dropped_requests(
           logger, log_sampled, log_lock_try, lock_key, queue_ttl, acquirer_id, host_id,
-          access_strategy, read_write_mode, dropped_requests
+          access_strategy, rw_mode, dropped_requests
         )
       end
       return
@@ -1913,26 +1913,26 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     #   dead requests, the first request, the exit event)
     LogVisitor.acq_added_to_queue(
       logger, log_sampled, log_lock_try, lock_key,
-      queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
+      queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
     )
     LogVisitor.remove_expired_acqs(
       logger, log_sampled, log_lock_try, lock_key,
-      queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode
+      queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
     )
     if dropped_requests
       log_dropped_requests(
         logger, log_sampled, log_lock_try, lock_key, queue_ttl, acquirer_id, host_id,
-        access_strategy, read_write_mode, dropped_requests
+        access_strategy, rw_mode, dropped_requests
       )
     end
     LogVisitor.get_first_from_queue(
       logger, log_sampled, log_lock_try, lock_key,
-      queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, waiting_acquirer,
+      queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, waiting_acquirer,
       waiting_priority
     )
     log_lock_obstacle(
       rconn, obstacle, logger, log_sampled, log_lock_try, lock_key, queue_ttl,
-      acquirer_id, host_id, access_strategy, read_write_mode,
+      acquirer_id, host_id, access_strategy, rw_mode,
       waiting_acquirer, waiting_priority, opposite_waiting_request, current_lock_obtainer
     )
     obstacle

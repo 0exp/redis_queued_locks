@@ -171,7 +171,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   `yield_expire` (a read request that works through the own write lock holds the write lock); a reader is released
   owner-safe (`ZREM` of the own member + `DEL` of the own reader data), `unlock` releases everything; the internal
   `rw_mode` never appears in the public `lock` result.
-- Read lock extension (`extend_lock_ttl(..., read_write_mode: :read)`): `multi(watch: [lock_key])`, only a live read
+- Read lock extension (`extend_lock_ttl(..., rw_mode: :read)`): `multi(watch: [lock_key])`, only a live read
   lock and only while no write lock exists, never revives an expired reader; `all_read_locks: true` extends every
   live reader (`ZADD XX INCR`), the registry/reader data TTLs keep the max (`PEXPIRE NX` + `GT`).
 - `fail_fast`: write fails on a write holder or live readers, read fails on a write holder (or the own live read);
@@ -260,7 +260,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   (`arguments.md#2`, `#10`) and is forwarded by name with shorthand; defaults live only in `Client`, internal
   params are required (`arguments.md#4`); positional order: subject → domain data → observability tail
   `logger, instrumenter, instrument, log_sampling_*, log_sample_this, instr_sampling_*, instr_sample_this`, lock key
-  params `lock_key, read_write_mode, lock_key_queue, read_lock_key_queue, lock_readers_key, read_lock_key, lock_name,
+  params `lock_key, rw_mode, lock_key_queue, read_lock_key_queue, lock_readers_key, read_lock_key, lock_name,
   acquirer_id, host_id, ...`, TTL params `ttl, queue_ttl, lock_index_enabled, lock_index_grace_period`
   (`arguments.md#5`); every call site and the RBS updated with the signature.
 - Operation modules are independent (`acquirer.md#14`): no calls to another `Acquirer::*` module and no references to
@@ -404,7 +404,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 
 - Confirm it in the code (call sites, copies, RBS, specs), not by pattern match: concurrency claims name the
   interleaving (acquirer A at step X, B at step Y) and why `WATCH` doesn't catch it; layout claims count the
-  commands and positions; mode claims check both `lock_index_enabled` values and both `read_write_mode` values;
+  commands and positions; mode claims check both `lock_index_enabled` values and both `rw_mode` values;
   priority claims check a positive, the default (`0`) and a negative band, a request of another band ahead (alive and
   dead) and requests in both queues.
 - Drop findings contradicted by §5, by a design `NOTE` in the code or by the overview. Mark the rest

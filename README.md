@@ -540,7 +540,7 @@ def lock(
   raise_errors: false,
   fail_fast: false,
   conflict_strategy: config['default_conflict_strategy'],
-  read_write_mode: :write,
+  rw_mode: :write,
   access_strategy: config['default_access_strategy'],
   priority: config['default_lock_priority'],
   identity: uniq_identity, # (attr_accessor) calculated during client instantiation via config['uniq_identifier'] proc;
@@ -649,7 +649,7 @@ def lock(
     - `:wait_for_lock` - (default) - work in classic way (with timeouts, retry delays, retry limits, etc - in classic way :));
     - `:dead_locking` - fail with deadlock exception;
   - See [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks) documentation section for details;
-- `read_write_mode` - (optional) - `[Symbol]`
+- `rw_mode` - (optional) - `[Symbol]`
   - The lock mode (read/write lock semantics);
   - `:write` by default;
   - Modes:
@@ -811,7 +811,7 @@ Return value:
     { ok: false, result: :timeout_reached } # see <timeout> option
     { ok: false, result: :retry_limit_reached } # see <retry_count> option
     { ok: false, result: :conflict_dead_lock } # see <conflict_strategy> option for details (:dead_locking strategy)
-    { ok: false, result: :conflict_lock_upgrade } # read-to-write lock upgrade (see <read_write_mode> and <conflict_strategy> options)
+    { ok: false, result: :conflict_lock_upgrade } # read-to-write lock upgrade (see <rw_mode> and <conflict_strategy> options)
     { ok: false, result: :fail_fast_no_try } # see <fail_fast> option
     { ok: false, result: :fail_fast_after_try } # see <fail_fast> option
     ```
@@ -1001,7 +1001,7 @@ def lock!(
   access_strategy: config['default_access_strategy'],
   priority: config['default_lock_priority'],
   conflict_strategy: config['default_conflict_strategy'],
-  read_write_mode: :write,
+  rw_mode: :write,
   log_sampling_enabled: config['log_sampling_enabled'],
   log_sampling_percent: config['log_sampling_percent'],
   log_sampler: config['log_sampler'],
@@ -1043,7 +1043,7 @@ and are held together while your block of code is executing (or, if a block is n
 - limits are the limits of **the whole series**, not of each lock: `timeout:` is one time period for all locks, `retry_count:` is
   the number of attempts to obtain all locks, `queue_ttl:` is the lifetime of the lock request of the series;
 - `ttl:` is the TTL of each lock of the series (the same value for all locks);
-- `read_write_mode:` is the same for all locks of the series (see [Read/Write Locks](#readwrite-locks));
+- `rw_mode:` is the same for all locks of the series (see [Read/Write Locks](#readwrite-locks));
 - `priority:` is the same for all locks of the series (see [Lock Request Prioritization](#lock-request-prioritization)):
   the lock request of the series has this priority in all its lock queues;
 - `conflict_strategy:` works per lock: reentrant locks (already obtained by your outer logic, `:work_through`/`:extendable_work_through`)
@@ -1145,7 +1145,7 @@ client.lock_series('c', 'a', 'b') # ... `a` is still obtained
 
 ###### Instrumentation events:
 
-- `rw_mode` is the mode of the series (`read_write_mode`, the same for all locks of the series);
+- `rw_mode` is the mode of the series (the same for all locks of the series);
 - `#lock` events (`lock_obtained`, `lock_obtaining_failed`, ...) are not raised for the locks of the series, each lock has its own series events
   with the series context in the name (`lock_key` is the lock, `lock_keys` are all locks of the series):
   - `lock_series_intermediate_lock_obtained` - intermediate obtaining: the lock passed all checks of an attempt of the series (the lock is
@@ -1169,7 +1169,7 @@ client.lock_series('c', 'a', 'b') # ... `a` is still obtained
 
 ###### Logs:
 
-- `rw_mode` is the mode of the series (`read_write_mode`, the same for all locks of the series);
+- `rw_mode` is the mode of the series (the same for all locks of the series);
 - see [Logging](#logging) for the logged keys;
 
 ```shell
@@ -1291,18 +1291,18 @@ rql.lock_info("your_lock_name")
 
 ```ruby
 # <for read/write locks>
-# (see `read_write_mode:` kwarg attribute of #lock/#lock! methods and "Read/Write Locks" documentation section)
+# (see `rw_mode:` kwarg attribute of #lock/#lock! methods and "Read/Write Locks" documentation section)
 # (lock requests are not included: use #queue_info to see the queued readers and writers)
 
 # -> case 1: the lock is held by readers, writers and readers are waiting in the lock queues;
 
 # process#1 and process#2 (readers, work in parallel):
-rql.lock("your_lock_name", read_write_mode: :read, ttl: 5_000, meta: { "kek" => "pek" }) { ... }
-rql.lock("your_lock_name", read_write_mode: :read, ttl: 3_000) { ... }
+rql.lock("your_lock_name", rw_mode: :read, ttl: 5_000, meta: { "kek" => "pek" }) { ... }
+rql.lock("your_lock_name", rw_mode: :read, ttl: 3_000) { ... }
 # process#3 (writer, waits for all readers in the write lock queue):
-rql.lock("your_lock_name", read_write_mode: :write) { ... }
+rql.lock("your_lock_name", rw_mode: :write) { ... }
 # process#4 (reader, waits for the earlier writer in the read lock queue):
-rql.lock("your_lock_name", read_write_mode: :read) { ... }
+rql.lock("your_lock_name", rw_mode: :read) { ... }
 
 rql.lock_info("your_lock_name")
 
@@ -1507,7 +1507,7 @@ rql.unlock("your_lock_name")
 
 - releases the read lock of the current acquirer only (see [Read/Write Locks](#readwrite-locks)):
   other read locks, the write lock and lock requests are not affected (`#unlock` releases the lock entirely);
-- suitable for read locks obtained without a block of code (`lock(..., read_write_mode: :read)` without a block);
+- suitable for read locks obtained without a block of code (`lock(..., rw_mode: :read)` without a block);
 - the current acquirer is calculated in the same way as for `#lock` (`#current_acquirer_id`: process, thread, fiber, ractor, identity),
   so call it from the same thread/fiber that obtained the read lock;
 - the read lock of a different acquirer can be released via `:acquirer_id` (for example, extracted from `#lock_info`/`#locks_info`);
@@ -1525,7 +1525,7 @@ rql.unlock("your_lock_name")
 - raises the `"redis_queued_locks.explicit_read_lock_release"` instrumentation event;
 
 ```ruby
-rql.lock('report', read_write_mode: :read, ttl: 30_000) # => obtained without a block
+rql.lock('report', rw_mode: :read, ttl: 30_000) # => obtained without a block
 # ...
 rql.unlock_read('report')
 # =>
@@ -1841,7 +1841,7 @@ rql.release_locks_of(host_id: rql.current_host_id, acquirer_id: rql.current_acqu
   - `milliseconds` - (required) `[Integer]`
     - how many milliseconds should be added to the lock's TTL;
     - should be a positive `Integer`;
-  - `:read_write_mode` - (optional) `[Symbol]`
+  - `:rw_mode` - (optional) `[Symbol]`
     - `:write` (default) - extends the write lock (the behavior described below);
     - `:read` - extends the read lock of the current acquirer only (see [Read/Write Locks](#readwrite-locks)):
       - the read lock expiration, the read locks registry TTL and the read lock data TTL are extended;
@@ -2836,19 +2836,19 @@ rql.lock("user_#{user.id}", priority: :high) { update_profile } # priority: 50
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
-- `read_write_mode:` attribute of `#lock` and `#lock!`:
+- `rw_mode:` attribute of `#lock` and `#lock!`:
   - `:write` (**default**) - exclusive lock (the classic RQL lock): waits for the write lock and for all read locks;
   - `:read` - shared lock: waits for the write lock only (read locks of different acquirers work in parallel);
 
 ```ruby
 # readers work in parallel
-rql.lock('report', read_write_mode: :read) { read_report }
+rql.lock('report', rw_mode: :read) { read_report }
 
 # writer waits for all readers (and readers wait for the writer)
-rql.lock('report', read_write_mode: :write) { rebuild_report }
+rql.lock('report', rw_mode: :write) { rebuild_report }
 
 # write mode is default:
-rql.lock('report') { rebuild_report } # read_write_mode: :write by default
+rql.lock('report') { rebuild_report } # rw_mode: :write by default
 ```
 
 - lock request ordering (`access_strategy`):
@@ -2869,9 +2869,9 @@ rql.lock('report') { rebuild_report } # read_write_mode: :write by default
   - `#unlock` releases the lock entirely: the write lock, all read locks (with their data) and all lock requests;
   - `#unlock_read` (aka `#release_read_lock`) releases the read lock of the current acquirer
     (suitable for read locks obtained without a block), or the read lock of the acquirer passed via `acquirer_id:`;
-  - `#extend_lock_ttl(lock_name, milliseconds, read_write_mode: :read)` extends the read lock of the current acquirer only;
+  - `#extend_lock_ttl(lock_name, milliseconds, rw_mode: :read)` extends the read lock of the current acquirer only;
     `all_read_locks: true` extends all live read locks of the lock;
-- `#lock_series` with `read_write_mode: :read` obtains a series of read locks (the mode is the same for all locks of the series):
+- `#lock_series` with `rw_mode: :read` obtains a series of read locks (the mode is the same for all locks of the series):
   - read lock series of different acquirers work in parallel, writers wait for them;
   - after the block only the read locks of the current acquirer are released;
   - reentrant read locks of the series (already obtained by the outer logic of the same acquirer) are not released by the series;
@@ -3341,7 +3341,7 @@ Detalized event semantics and payload structure:
 - payload:
   - `:lock_key` - `string` - the lock of the series;
   - `:lock_keys` - `array<string>` - all locks of the series;
-  - `:rw_mode` - `symbol` - the mode of the series (`read_write_mode`): `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+  - `:rw_mode` - `symbol` - the mode of the series: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
   - `:priority` - `integer` - the lock request priority of the series (`priority`): from `-100` to `100` (a priority name is reported as its integer priority, see [Lock Request Prioritization](#lock-request-prioritization));
   - `:ttl` - `integer`/`milliseconds` - the ttl of each lock of the series;
   - `:acq_id` - `string` - lock acquirer identifier;
@@ -3358,7 +3358,7 @@ Detalized event semantics and payload structure:
 - payload:
   - `:lock_key` - `string` - the lock of the series;
   - `:lock_keys` - `array<string>` - all locks of the series;
-  - `:rw_mode` - `symbol` - the mode of the series (`read_write_mode`): `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+  - `:rw_mode` - `symbol` - the mode of the series: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
   - `:priority` - `integer` - the lock request priority of the series (`priority`): from `-100` to `100` (a priority name is reported as its integer priority, see [Lock Request Prioritization](#lock-request-prioritization));
   - `:ttl` - `integer`/`milliseconds` - the ttl of each lock of the series;
   - `:acq_id` - `string` - lock acquirer identifier;
@@ -3375,7 +3375,7 @@ Detalized event semantics and payload structure:
 - payload:
   - `:lock_key` - `string` - the lock that blocked the series;
   - `:lock_keys` - `array<string>` - all locks of the series;
-  - `:rw_mode` - `symbol` - the mode of the series (`read_write_mode`): `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+  - `:rw_mode` - `symbol` - the mode of the series: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
   - `:priority` - `integer` - the lock request priority of the series (`priority`): from `-100` to `100` (a priority name is reported as its integer priority, see [Lock Request Prioritization](#lock-request-prioritization));
   - `:ttl` - `integer`/`milliseconds` - the ttl of each lock of the series;
   - `:acq_id` - `string` - lock acquirer identifier;
@@ -3391,7 +3391,7 @@ Detalized event semantics and payload structure:
 - raised from `#lock_series`/`#lock_series!`;
 - payload:
   - `:lock_keys` - `array<string>` - lock names of the series;
-  - `:rw_mode` - `symbol` - the mode of the series (`read_write_mode`): `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+  - `:rw_mode` - `symbol` - the mode of the series: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
   - `:priority` - `integer` - the lock request priority of the series (`priority`): from `-100` to `100` (a priority name is reported as its integer priority, see [Lock Request Prioritization](#lock-request-prioritization));
   - `:ttl` - `integer`/`milliseconds` - the ttl of each lock of the series (see [lock_series](#lock_series---acquire-a-series-of-locks));
   - `:acq_id` - `string` - lock acquirer identifier;
@@ -3408,7 +3408,7 @@ Detalized event semantics and payload structure:
 - raised from `#lock_series`/`#lock_series!` when invoked with a block of code;
 - payload:
   - `:lock_keys` - `array<string>` - lock names of the series;
-  - `:rw_mode` - `symbol` - the mode of the series (`read_write_mode`): `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+  - `:rw_mode` - `symbol` - the mode of the series: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
   - `:priority` - `integer` - the lock request priority of the series (`priority`): from `-100` to `100` (a priority name is reported as its integer priority, see [Lock Request Prioritization](#lock-request-prioritization));
   - `:hold_time` - `float`/`milliseconds` - the series hold time;
   - `:ttl` - `integer`/`milliseconds` - the ttl of each lock of the series;
@@ -3426,7 +3426,7 @@ Detalized event semantics and payload structure:
 - raised from `#lock_series`/`#lock_series!` (with `raise_errors: true` - before the error is raised);
 - payload:
   - `:lock_keys` - `array<string>` - lock names of the series;
-  - `:rw_mode` - `symbol` - the mode of the series (`read_write_mode`): `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
+  - `:rw_mode` - `symbol` - the mode of the series: `:write` or `:read` (see [Read/Write Locks](#readwrite-locks));
   - `:priority` - `integer` - the lock request priority of the series (`priority`): from `-100` to `100` (a priority name is reported as its integer priority, see [Lock Request Prioritization](#lock-request-prioritization));
   - `:ttl` - `integer`/`milliseconds` - the ttl of each lock of the series;
   - `:acq_id` - `string` - lock acquirer identifier;

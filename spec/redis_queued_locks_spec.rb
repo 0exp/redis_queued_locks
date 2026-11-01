@@ -286,7 +286,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         holder.join
         %i[write read].each do |mode|
           result = client.lock_series(
-            'ls.first', 'ls.busy', read_write_mode: mode, fail_fast: true, ttl: 10_000
+            'ls.first', 'ls.busy', rw_mode: mode, fail_fast: true, ttl: 10_000
           ) { :never }
           expect(result).to match({
             ok: false,
@@ -324,7 +324,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
         modes.each do |mode|
           result = client.lock_series(
-            'ls.observed.a', 'ls.observed.b', read_write_mode: mode, ttl: 10_000
+            'ls.observed.a', 'ls.observed.b', rw_mode: mode, ttl: 10_000
           ) { :done }
           expect(result).to eq(:done)
           expect(client.locked?('ls.observed.a')).to eq(false)
@@ -408,7 +408,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'read locks' do
-        result = client.lock_series(*lock_names, ttl: 10_000, read_write_mode: :read)
+        result = client.lock_series(*lock_names, ttl: 10_000, rw_mode: :read)
         expect(result).to match({ ok: true, result: hash_including(ttl: 10_000) })
         lock_infos = lock_names.map { |lock_name| client.lock_info(lock_name) }
         expect(lock_infos).to all(
@@ -442,7 +442,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           # NOTE: the waiting time is longer than the ttl of the series: the old sequential logic
           #   lost the first lock (it was obtained first and expired before the last one)
           client.lock_series(
-            'hold.a', 'hold.b', ttl: 200, timeout: 10, read_write_mode: mode
+            'hold.a', 'hold.b', ttl: 200, timeout: 10, rw_mode: mode
           ) do
             locks_in_block = [client.locked?('hold.a'), client.locked?('hold.b')]
           end
@@ -471,7 +471,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           [lock_names, lock_names.reverse].map do |series_lock_names|
             Thread.new do
               client.lock_series(
-                *series_lock_names, ttl: 10_000, timeout: 10, read_write_mode: mode
+                *series_lock_names, ttl: 10_000, timeout: 10, rw_mode: mode
               ) do
                 sleep(0.05) # NOTE: both series of the pair are in progress
                 :done
@@ -498,10 +498,10 @@ RSpec.shared_examples 'redis_queued_locks' do
           client = RedisQueuedLocks::Client.new(redis)
           10.times do
             lock_names = resources.sample(random.rand(1..3), random:)
-            read_write_mode = random.rand(3).zero? ? :read : :write
+            rw_mode = random.rand(3).zero? ? :read : :write
             result = client.lock_series(
               *lock_names,
-              read_write_mode:,
+              rw_mode:,
               ttl: 30_000,
               timeout: 30,
               retry_count: nil,
@@ -511,7 +511,7 @@ RSpec.shared_examples 'redis_queued_locks' do
               state_lock.synchronize do
                 lock_names.each do |lock_name|
                   counters = state[lock_name]
-                  if read_write_mode == :read
+                  if rw_mode == :read
                     violations << [lock_name, counters.dup] if counters[:writers] > 0
                     counters[:readers] += 1
                   else
@@ -523,7 +523,7 @@ RSpec.shared_examples 'redis_queued_locks' do
               sleep(0.002)
               state_lock.synchronize do
                 lock_names.each do |lock_name|
-                  state[lock_name][(read_write_mode == :read) ? :readers : :writers] -= 1
+                  state[lock_name][(rw_mode == :read) ? :readers : :writers] -= 1
                 end
               end
               :done
@@ -617,7 +617,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       %i[write read].each do |mode|
         expect do
           client.lock_series(
-            'timed.a', 'timed.b', ttl: 100, timed: true, read_write_mode: mode
+            'timed.a', 'timed.b', ttl: 100, timed: true, rw_mode: mode
           ) { sleep(2) }
         end.to raise_error(
           RedisQueuedLocks::TimedLockTimeoutError,
@@ -643,30 +643,30 @@ RSpec.shared_examples 'redis_queued_locks' do
         end.flatten
       end
 
-      %i[write read].each do |read_write_mode|
-        aggregate_failures "retry limit, timeout (#{read_write_mode})" do
+      %i[write read].each do |rw_mode|
+        aggregate_failures "retry limit, timeout (#{rw_mode})" do
           holder = Thread.new { holder_client.lock('clean.b', ttl: 60_000) }
           holder.join
 
-          client.lock_series('clean.a', 'clean.b', 'clean.c', read_write_mode:, retry_count: 2)
+          client.lock_series('clean.a', 'clean.b', 'clean.c', rw_mode:, retry_count: 2)
           expect(queues.call).to eq([])
 
           client.lock_series(
-            'clean.a', 'clean.b', 'clean.c', read_write_mode:, retry_count: nil, timeout: 1
+            'clean.a', 'clean.b', 'clean.c', rw_mode:, retry_count: nil, timeout: 1
           )
           expect(queues.call).to eq([])
 
           holder_client.unlock('clean.b')
         end
 
-        aggregate_failures "fail fast after the try (#{read_write_mode})" do
+        aggregate_failures "fail fast after the try (#{rw_mode})" do
           # NOTE: free locks, but an earlier lock request of the opposite mode should go first
           opposite_queue =
-            (read_write_mode == :read) ? 'rql:lock_queue:clean.c' : 'rql:lock_read_queue:clean.c'
+            (rw_mode == :read) ? 'rql:lock_queue:clean.c' : 'rql:lock_read_queue:clean.c'
           redis.call('ZADD', opposite_queue, Time.now.to_f - 1, other_request)
 
           expect(
-            client.lock_series('clean.a', 'clean.c', read_write_mode:, fail_fast: true) { :never }
+            client.lock_series('clean.a', 'clean.c', rw_mode:, fail_fast: true) { :never }
           ).to match({
             ok: false,
             result: hash_including(
@@ -691,8 +691,8 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
       interrupted_error = Class.new(StandardError)
 
-      %i[write read].each do |read_write_mode|
-        aggregate_failures "the waiting series (#{read_write_mode})" do
+      %i[write read].each do |rw_mode|
+        aggregate_failures "the waiting series (#{rw_mode})" do
           holder = Thread.new { holder_client.lock('intr.b', ttl: 60_000) }
           holder.join
 
@@ -700,7 +700,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           [interrupted_error, nil].each do |error_class|
             expect do
               Timeout.timeout(0.2, error_class) do
-                client.lock_series('intr.a', 'intr.b', read_write_mode:, timeout: 10)
+                client.lock_series('intr.a', 'intr.b', rw_mode:, timeout: 10)
               end
             end.to raise_error(error_class || Timeout::Error)
             expect(client.locked?('intr.a')).to eq(false)
@@ -711,7 +711,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           holder_client.unlock('intr.b')
         end
 
-        aggregate_failures "an applied transaction without its reply (#{read_write_mode})" do
+        aggregate_failures "an applied transaction without its reply (#{rw_mode})" do
           # NOTE: the connection is lost after the obtaining transaction is applied by Redis
           is_failure_required = true
           connection_failure = Module.new do
@@ -729,7 +729,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           failing_client = RedisQueuedLocks::Client.new(failing_redis)
 
           expect do
-            failing_client.lock_series('intr.a', 'intr.b', read_write_mode:, ttl: 60_000)
+            failing_client.lock_series('intr.a', 'intr.b', rw_mode:, ttl: 60_000)
           end.to raise_error(interrupted_error)
           expect(is_failure_required).to eq(false)
           expect(client.locked?('intr.a')).to eq(false)
@@ -764,9 +764,9 @@ RSpec.shared_examples 'redis_queued_locks' do
       client = RedisQueuedLocks::Client.new(interrupted_redis)
 
       # NOTE: the first command of the release: WATCH (write locks) and MULTI (read locks)
-      { write: 'WATCH', read: 'MULTI' }.each do |read_write_mode, first_release_command|
+      { write: 'WATCH', read: 'MULTI' }.each do |rw_mode, first_release_command|
         expect do
-          client.lock_series('rel.a', 'rel.b', read_write_mode:, ttl: 60_000) do
+          client.lock_series('rel.a', 'rel.b', rw_mode:, ttl: 60_000) do
             interrupted_command = first_release_command
           end
         end.to raise_error(interrupted_error)
@@ -785,14 +785,14 @@ RSpec.shared_examples 'redis_queued_locks' do
         config['retry_jitter'] = 1
       end
 
-      %i[write read].each do |read_write_mode|
-        aggregate_failures "extended locks get their ttl back (#{read_write_mode})" do
+      %i[write read].each do |rw_mode|
+        aggregate_failures "extended locks get their ttl back (#{rw_mode})" do
           client.lock(
-            're.outer', ttl: 10_000, read_write_mode:, conflict_strategy: :extendable_work_through
+            're.outer', ttl: 10_000, rw_mode:, conflict_strategy: :extendable_work_through
           ) do
             client.lock_series(
               're.outer', 're.inner',
-              ttl: 20_000, read_write_mode:, conflict_strategy: :extendable_work_through
+              ttl: 20_000, rw_mode:, conflict_strategy: :extendable_work_through
             ) do
               expect(client.lock_info('re.outer')['rem_ttl']).to be_between(20_000, 30_000)
             end
@@ -802,12 +802,12 @@ RSpec.shared_examples 'redis_queued_locks' do
           expect(client.keys).to be_empty
         end
 
-        aggregate_failures "work through locks are kept as is (#{read_write_mode})" do
+        aggregate_failures "work through locks are kept as is (#{rw_mode})" do
           client.lock(
-            're.outer', ttl: 10_000, read_write_mode:, conflict_strategy: :work_through
+            're.outer', ttl: 10_000, rw_mode:, conflict_strategy: :work_through
           ) do
             client.lock_series(
-              're.outer', 're.inner', read_write_mode:, conflict_strategy: :work_through
+              're.outer', 're.inner', rw_mode:, conflict_strategy: :work_through
             ) do
               expect(client.locked?('re.inner')).to eq(true)
               expect(client.lock_info('re.outer')['rem_ttl']).to be <= 10_000
@@ -818,7 +818,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           expect(client.keys).to be_empty
         end
 
-        aggregate_failures "the lock requests of the retries are dropped (#{read_write_mode})" do
+        aggregate_failures "the lock requests of the retries are dropped (#{rw_mode})" do
           # NOTE: the pre-check of a retry queues the lock requests of all locks (the lock state is
           #   not known before the queueing): the reentrant lock should not keep its request
           holder_client = RedisQueuedLocks::Client.new(redis)
@@ -826,11 +826,11 @@ RSpec.shared_examples 'redis_queued_locks' do
           holder.join
 
           client.lock(
-            're.outer', ttl: 10_000, read_write_mode:, conflict_strategy: :work_through
+            're.outer', ttl: 10_000, rw_mode:, conflict_strategy: :work_through
           ) do
             client.lock_series(
               're.outer', 're.busy',
-              read_write_mode:, conflict_strategy: :work_through, retry_count: nil, timeout: 5
+              rw_mode:, conflict_strategy: :work_through, retry_count: nil, timeout: 5
             ) { :ok }
             expect(client.queued?('re.outer')).to eq(false)
             expect(client.queued?('re.busy')).to eq(false)
@@ -842,7 +842,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       aggregate_failures 'a read lock series under the own write lock' do
         client.lock('re.outer', ttl: 10_000) do
           client.lock_series(
-            're.outer', 're.inner', read_write_mode: :read, conflict_strategy: :work_through
+            're.outer', 're.inner', rw_mode: :read, conflict_strategy: :work_through
           ) { :ok }
           expect(client.lock_info('re.outer')['acq_id']).to eq(client.current_acquirer_id)
           expect(client.locked?('re.inner')).to eq(false)
@@ -879,7 +879,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       %i[work_through extendable_work_through dead_locking].each do |conflict_strategy|
         aggregate_failures "read-to-write lock upgrade (#{conflict_strategy})" do
-          client.lock('conflict.r', read_write_mode: :read, ttl: 60_000)
+          client.lock('conflict.r', rw_mode: :read, ttl: 60_000)
           result = client.lock_series('conflict.b', 'conflict.r', conflict_strategy:)
           expect(result[:result]).to include(failed_on_lock: 'conflict.r')
           expect(client.locked?('conflict.b')).to eq(false)
@@ -888,7 +888,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'read-to-write lock upgrade: raised error' do
-        client.lock('conflict.r', read_write_mode: :read, ttl: 60_000)
+        client.lock('conflict.r', rw_mode: :read, ttl: 60_000)
         expect do
           client.lock_series!('conflict.b', 'conflict.r', conflict_strategy: :work_through)
         end.to raise_error(
@@ -956,11 +956,11 @@ RSpec.shared_examples 'redis_queued_locks' do
         config['instrumenter'] = test_notifier
       end
 
-      %i[write read].each do |read_write_mode|
+      %i[write read].each do |rw_mode|
         is_change_required = true
         test_notifier.notifications.clear
         result = client.lock_series(
-          'race.a', 'race.b', read_write_mode:, ttl: 60_000, retry_count: 1
+          'race.a', 'race.b', rw_mode:, ttl: 60_000, retry_count: 1
         ) { :never }
 
         expect(is_change_required).to eq(false)
@@ -1029,11 +1029,11 @@ RSpec.shared_examples 'redis_queued_locks' do
         config['logger'] = test_logger
       end
 
-      client.lock('expired.a', read_write_mode: :read, ttl: 60_000)
-      client.lock('expired.b', read_write_mode: :read, ttl: 60_000)
+      client.lock('expired.a', rw_mode: :read, ttl: 60_000)
+      client.lock('expired.b', rw_mode: :read, ttl: 60_000)
       result = client.lock_series(
         'expired.a', 'expired.b', 'expired.c',
-        read_write_mode: :read,
+        rw_mode: :read,
         conflict_strategy: :extendable_work_through,
         ttl: 60_000,
         retry_count: 1
@@ -1071,13 +1071,13 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       lock_names = %w[pos.a pos.b pos.c]
 
-      %i[write read].each do |read_write_mode|
-        queue_key = (read_write_mode == :read) ? 'read_queue' : 'queue'
+      %i[write read].each do |rw_mode|
+        queue_key = (rw_mode == :read) ? 'read_queue' : 'queue'
         holder = Thread.new { holder_client.lock('pos.a', ttl: 60_000) }
         holder.join
         series = Thread.new do
           client.lock_series(
-            'pos.b', 'pos.a', 'pos.c', read_write_mode:, priority: 7, timeout: 10
+            'pos.b', 'pos.a', 'pos.c', rw_mode:, priority: 7, timeout: 10
           ) { :done }
         end
         sleep(0.2) # NOTE: give a timespot to queue the lock requests
@@ -1238,7 +1238,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       aggregate_failures 'read lock requests' do
         redis.call('ZADD', 'rql:lock_queue:dead.a', dead_position.call(5), 'rql:acq:dead/1')
         expect(
-          client.lock_series('dead.a', 'dead.b', read_write_mode: :read, ttl: 5_000) { :ok }
+          client.lock_series('dead.a', 'dead.b', rw_mode: :read, ttl: 5_000) { :ok }
         ).to eq(:ok)
       end
 
@@ -1338,7 +1338,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
         aggregate_failures "an obtained series (read, #{locks_count} locks)" do
           round_trips.clear
-          client.lock_series(*lock_names, ttl: 5_000, read_write_mode: :read) { :ok }
+          client.lock_series(*lock_names, ttl: 5_000, rw_mode: :read) { :ok }
           # NOTE: WATCH, the lock state with the queueing, MULTI/EXEC, the release transaction
           expect(round_trips.size).to eq(4)
         end
@@ -1389,9 +1389,9 @@ RSpec.shared_examples 'redis_queued_locks' do
       state_pipeline = -> { pipelines.find { |commands| commands.include?(['TIME']) } }
 
       aggregate_failures 'eager queueing: the commands of each lock in the lock state pipeline' do
-        { write: 1, read: 0 }.each do |read_write_mode, write_tail|
+        { write: 1, read: 0 }.each do |rw_mode, write_tail|
           pipelines.clear
-          client.lock_series(*lock_names, ttl: 10_000, read_write_mode:) { :ok }
+          client.lock_series(*lock_names, ttl: 10_000, rw_mode:) { :ok }
 
           lock_commands = state_pipeline.call.each_slice(
             try_to_lock::LOCK_STATE_QUEUE_REPLIES_AT + queue_replies + write_tail
@@ -1399,7 +1399,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           expect(lock_commands.size).to eq(lock_names.size)
           lock_commands.each_with_index do |commands, index|
             lock_name = lock_names[index]
-            request_queue = (read_write_mode == :read) ? 'lock_read_queue' : 'lock_queue'
+            request_queue = (rw_mode == :read) ? 'lock_read_queue' : 'lock_queue'
             queueing_at = try_to_lock::LOCK_STATE_QUEUE_REPLIES_AT
 
             expect(commands[try_to_lock::LOCK_STATE_OBTAINER_REPLY]).to eq(
@@ -1448,12 +1448,12 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'the extensions of the read locks are the first transaction commands' do
-        client.lock('series.pipeline.a', ttl: 10_000, read_write_mode: :read)
-        client.lock('series.pipeline.c', ttl: 10_000, read_write_mode: :read)
+        client.lock('series.pipeline.a', ttl: 10_000, rw_mode: :read)
+        client.lock('series.pipeline.c', ttl: 10_000, rw_mode: :read)
         pipelines.clear
         client.lock_series(
           *lock_names,
-          ttl: 10_000, read_write_mode: :read, conflict_strategy: :extendable_work_through
+          ttl: 10_000, rw_mode: :read, conflict_strategy: :extendable_work_through
         ) { :ok }
 
         transaction = pipelines.find { |commands| commands.first == ['MULTI'] }
@@ -3437,16 +3437,16 @@ RSpec.shared_examples 'redis_queued_locks' do
       %i[write read].each do |mode|
         invalid_ttls.each do |ttl|
           expect do
-            client.lock('ttl.args', ttl:, read_write_mode: mode)
+            client.lock('ttl.args', ttl:, rw_mode: mode)
           end.to raise_error(RedisQueuedLocks::ArgumentError, /ttl/)
           expect do
-            client.lock!('ttl.args', ttl:, read_write_mode: mode)
+            client.lock!('ttl.args', ttl:, rw_mode: mode)
           end.to raise_error(RedisQueuedLocks::ArgumentError, /ttl/)
           expect do
-            client.lock('ttl.args', ttl:, read_write_mode: mode) { 1 + 1 }
+            client.lock('ttl.args', ttl:, rw_mode: mode) { 1 + 1 }
           end.to raise_error(RedisQueuedLocks::ArgumentError, /ttl/)
           expect do
-            client.lock_series('ttl.args.a', 'ttl.args.b', ttl:, read_write_mode: mode)
+            client.lock_series('ttl.args.a', 'ttl.args.b', ttl:, rw_mode: mode)
           end.to raise_error(RedisQueuedLocks::ArgumentError, /ttl/)
         end
       end
@@ -3467,18 +3467,18 @@ RSpec.shared_examples 'redis_queued_locks' do
 
     aggregate_failures 'non-positive ttl extension (both modes)' do
       client.lock('ttl.ext.write', ttl: 10_000)
-      client.lock('ttl.ext.read', ttl: 10_000, read_write_mode: :read)
+      client.lock('ttl.ext.read', ttl: 10_000, rw_mode: :read)
 
       [0, -20_000].each do |milliseconds|
         expect do
           client.extend_lock_ttl('ttl.ext.write', milliseconds)
         end.to raise_error(RedisQueuedLocks::ArgumentError, /milliseconds/)
         expect do
-          client.extend_lock_ttl('ttl.ext.read', milliseconds, read_write_mode: :read)
+          client.extend_lock_ttl('ttl.ext.read', milliseconds, rw_mode: :read)
         end.to raise_error(RedisQueuedLocks::ArgumentError, /milliseconds/)
         expect do
           client.extend_lock_ttl(
-            'ttl.ext.read', milliseconds, read_write_mode: :read, all_read_locks: true
+            'ttl.ext.read', milliseconds, rw_mode: :read, all_read_locks: true
           )
         end.to raise_error(RedisQueuedLocks::ArgumentError, /milliseconds/)
       end
@@ -3681,7 +3681,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       %i[write read].each do |mode|
         expect do
           client.lock(
-            'bum.bum.bam.bam', ttl: 5_000, read_write_mode: mode, meta: { 'rw_mode' => 'kek' }
+            'bum.bum.bam.bam', ttl: 5_000, rw_mode: mode, meta: { 'rw_mode' => 'kek' }
           )
         end.to raise_error(RedisQueuedLocks::ArgumentError, /rw_mode/)
         expect(client.locked?('bum.bum.bam.bam')).to eq(false)
@@ -3753,14 +3753,14 @@ RSpec.shared_examples 'redis_queued_locks' do
         modes.each do |mode|
           expect do
             client.lock(
-              'bum.bum.bam.bam', ttl: 5_000, read_write_mode: mode, meta: { reserved_key => 'kek' }
+              'bum.bum.bam.bam', ttl: 5_000, rw_mode: mode, meta: { reserved_key => 'kek' }
             )
           end.to raise_error(RedisQueuedLocks::ArgumentError, /reserved lock data keys/)
           expect(client.locked?('bum.bum.bam.bam')).to eq(false)
 
           expect do
             client.lock_series(
-              'bum.a', 'bum.b', ttl: 5_000, read_write_mode: mode, meta: { reserved_key => 'kek' }
+              'bum.a', 'bum.b', ttl: 5_000, rw_mode: mode, meta: { reserved_key => 'kek' }
             )
           end.to raise_error(RedisQueuedLocks::ArgumentError, /reserved lock data keys/)
           expect(client.locked?('bum.a')).to eq(false)
@@ -3863,7 +3863,7 @@ RSpec.shared_examples 'redis_queued_locks' do
     end
 
     client.lock('obs.write', ttl: 10_000)
-    client.lock('obs.read', ttl: 10_000, read_write_mode: :read)
+    client.lock('obs.read', ttl: 10_000, rw_mode: :read)
 
     aggregate_failures 'extend_lock_ttl' do
       client.extend_lock_ttl('obs.write', 1_000, instrument: { op: :extend })
@@ -4002,7 +4002,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
     aggregate_failures 'the failure result (without exceptions)' do
       client.lock('obs.busy', ttl: 5_000, fail_fast: true, instrument: { op: :fail_fast })
-      client.lock('obs.busy', ttl: 5_000, retry_count: 2, read_write_mode: :read)
+      client.lock('obs.busy', ttl: 5_000, retry_count: 2, rw_mode: :read)
       expect(failures.call).to contain_exactly(
         failure_payload.call(
           'rql:lock:obs.busy', :write, 5_000, :fail_fast_no_try, { op: :fail_fast }
@@ -4382,38 +4382,38 @@ RSpec.shared_examples 'redis_queued_locks' do
       config['log_lock_try'] = true
     end
     holder_client = RedisQueuedLocks::Client.new(redis)
-    waiters = %i[write read].to_h do |read_write_mode|
-      holder_client.lock("requeue.#{read_write_mode}", ttl: 2_500)
+    waiters = %i[write read].to_h do |rw_mode|
+      holder_client.lock("requeue.#{rw_mode}", ttl: 2_500)
       waiter = Thread.new do
         client.lock(
-          "requeue.#{read_write_mode}",
-          read_write_mode:, queue_ttl: 1, retry_count: nil, retry_delay: 100, retry_jitter: 0,
+          "requeue.#{rw_mode}",
+          rw_mode:, queue_ttl: 1, retry_count: nil, retry_delay: 100, retry_jitter: 0,
           timeout: 10
         )
       end
-      [read_write_mode, waiter]
+      [rw_mode, waiter]
     end
-    logs = lambda do |event, read_write_mode|
+    logs = lambda do |event, rw_mode|
       test_logger.logs.grep(
-        /\A\[redis_queued_locks\.#{event}\] lock_key => 'rql:lock:requeue\.#{read_write_mode}' /
+        /\A\[redis_queued_locks\.#{event}\] lock_key => 'rql:lock:requeue\.#{rw_mode}' /
       )
     end
 
     aggregate_failures 'write and read lock requests' do
-      waiters.each do |read_write_mode, waiter|
+      waiters.each do |rw_mode, waiter|
         expect(waiter.value).to match({
           ok: true,
-          result: hash_including(lock_key: "rql:lock:requeue.#{read_write_mode}")
+          result: hash_including(lock_key: "rql:lock:requeue.#{rw_mode}")
         })
         expect(
-          logs.call('dead_score_reached__reset_acquirer_position', read_write_mode)
+          logs.call('dead_score_reached__reset_acquirer_position', rw_mode)
         ).not_to be_empty
         # NOTE: the requeued lock request is never missing in its lock queue
-        expect(logs.call('try_lock\.exit__queue_ttl_reached', read_write_mode)).to be_empty
+        expect(logs.call('try_lock\.exit__queue_ttl_reached', rw_mode)).to be_empty
       end
     end
 
-    waiters.each_key { |read_write_mode| client.unlock("requeue.#{read_write_mode}") }
+    waiters.each_key { |rw_mode| client.unlock("requeue.#{rw_mode}") }
     expect(client.keys).to be_empty
   end
 
@@ -5032,11 +5032,11 @@ RSpec.shared_examples 'redis_queued_locks' do
     let(:enqueue_requests) do
       lambda do |lock_name, requests, timeline|
         timeline_lock = Mutex.new
-        requests.map do |name, read_write_mode, priority|
+        requests.map do |name, rw_mode, priority|
           queued_before = queued_requests.call(lock_name)
           requester = Thread.new do
             prio_client.lock(
-              lock_name, ttl: 30_000, read_write_mode:, priority:, retry_count: nil, timeout: 20
+              lock_name, ttl: 30_000, rw_mode:, priority:, retry_count: nil, timeout: 20
             ) do
               timeline_lock.synchronize { timeline << name }
               sleep(0.05) # NOTE: other lock requests wait for the release of the lock
@@ -5198,7 +5198,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         )
         expect(
           prio_client.lock(
-            'prio.dead', read_write_mode: :read, priority: 0, queue_ttl: 5, retry_count: 1
+            'prio.dead', rw_mode: :read, priority: 0, queue_ttl: 5, retry_count: 1
           )
         ).to obtained
         expect(redis.call('EXISTS', 'rql:lock_queue:prio.dead')).to eq(0)
@@ -5685,7 +5685,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       aggregate_failures 'a write request at -inf does not block readers' do
         redis.call('ZADD', 'rql:lock_queue:prio.inf', '-inf', 'rql:acq:1/2/3/4/first')
-        expect(prio_client.lock('prio.inf', read_write_mode: :read, retry_count: 1)).to obtained
+        expect(prio_client.lock('prio.inf', rw_mode: :read, retry_count: 1)).to obtained
         expect(redis.call('EXISTS', 'rql:lock_queue:prio.inf')).to eq(0)
         prio_client.unlock('prio.inf')
       end
@@ -5709,7 +5709,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       requesters = [
         Thread.new { prio_client.lock('prio.info', retry_count: nil, timeout: 20) {} },
         Thread.new do
-          high_client.lock('prio.info', read_write_mode: :read, retry_count: nil, timeout: 20) {}
+          high_client.lock('prio.info', rw_mode: :read, retry_count: nil, timeout: 20) {}
         end
       ]
       wait_until.call { queued_requests.call('prio.info') == 2 }
@@ -6157,7 +6157,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           'ZADD', 'rql:lock_queue:prio.trylog', position.call(30), 'rql:acq:1/2/3/4/writer'
         )
         expect(
-          client.lock('prio.trylog', read_write_mode: :read, retry_count: 1)
+          client.lock('prio.trylog', rw_mode: :read, retry_count: 1)
         ).to match(failed_attempt)
         expect(try_logs.call('exit__write_request_ahead')).to include(
           a_string_including("ahead_acq_id => 'rql:acq:1/2/3/4/writer' ahead_priority => 30")
@@ -6176,7 +6176,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         )
         holder_client.unlock('prio.trylog')
 
-        holder_client.lock('prio.trylog', ttl: 10_000, read_write_mode: :read)
+        holder_client.lock('prio.trylog', ttl: 10_000, rw_mode: :read)
         expect(client.lock('prio.trylog', priority: 7, retry_count: 1)).to match(failed_attempt)
         expect(try_logs.call('exit__read_lock_still_obtained')).to include(
           a_string_including(
@@ -6218,7 +6218,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       readers = Array.new(2) do |index|
         Thread.new do
-          client.lock('rw.shared', read_write_mode: :read, ttl: 10_000) do
+          client.lock('rw.shared', rw_mode: :read, ttl: 10_000) do
             mark.call(:"reader#{index}_in")
             sleep(0.5)
             mark.call(:"reader#{index}_out")
@@ -6227,7 +6227,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
       sleep(0.2) # NOTE: give a timespot to readers to obtain the lock
       writer = Thread.new do
-        client.lock('rw.shared', read_write_mode: :write, ttl: 10_000) do
+        client.lock('rw.shared', rw_mode: :write, ttl: 10_000) do
           mark.call(:writer_in)
           sleep(0.3)
           mark.call(:writer_out)
@@ -6235,7 +6235,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
       sleep(0.1) # NOTE: give a timespot to the writer to take its place in the lock queue
       late_reader = Thread.new do
-        client.lock('rw.shared', read_write_mode: :read, ttl: 10_000) { mark.call(:late_reader_in) }
+        client.lock('rw.shared', rw_mode: :read, ttl: 10_000) { mark.call(:late_reader_in) }
       end
       [*readers, writer, late_reader].each(&:join)
 
@@ -6268,18 +6268,18 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       reader = Thread.new do
-        client.lock('rw.random', read_write_mode: :read, ttl: 10_000) do
+        client.lock('rw.random', rw_mode: :read, ttl: 10_000) do
           sleep(0.6)
           mark.call(:reader_out)
         end
       end
       sleep(0.2) # NOTE: give a timespot to the reader to obtain the lock
       writer = Thread.new do
-        client.lock('rw.random', read_write_mode: :write, ttl: 10_000) { mark.call(:writer_in) }
+        client.lock('rw.random', rw_mode: :write, ttl: 10_000) { mark.call(:writer_in) }
       end
       sleep(0.1) # NOTE: give a timespot to the writer to try to obtain the lock
       late_reader = Thread.new do
-        client.lock('rw.random', read_write_mode: :read, ttl: 10_000) { mark.call(:late_reader_in) }
+        client.lock('rw.random', rw_mode: :read, ttl: 10_000) { mark.call(:late_reader_in) }
       end
       [reader, writer, late_reader].each(&:join)
 
@@ -6302,7 +6302,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           random = Random.new(worker)
           12.times do
             mode = (random.rand < 0.75) ? :read : :write
-            client.lock('rw.invariant', read_write_mode: mode, ttl: 10_000, timeout: 30) do
+            client.lock('rw.invariant', rw_mode: mode, ttl: 10_000, timeout: 30) do
               state_lock.synchronize do
                 if mode == :read
                   state[:readers] += 1
@@ -6343,15 +6343,15 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'read -> read (:work_through)' do
-        client.lock('rw.reentrant', read_write_mode: :read, ttl: 10_000) do
+        client.lock('rw.reentrant', rw_mode: :read, ttl: 10_000) do
           result = client.lock(
-            'rw.reentrant', read_write_mode: :read, ttl: 10_000, conflict_strategy: :work_through
+            'rw.reentrant', rw_mode: :read, ttl: 10_000, conflict_strategy: :work_through
           )
           expect(result).to match({
             ok: true, result: hash_including(process: :conflict_work_through)
           })
           client.lock(
-            'rw.reentrant', read_write_mode: :read, ttl: 10_000, conflict_strategy: :work_through
+            'rw.reentrant', rw_mode: :read, ttl: 10_000, conflict_strategy: :work_through
           ) { :inner }
           # NOTE: the inner block does not release the outer read lock
           expect(client.lock_info('rw.reentrant')).to match(hash_including(
@@ -6363,10 +6363,10 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'read -> read (:extendable_work_through)' do
-        client.lock('rw.reentrant', read_write_mode: :read, ttl: 5_000) do
+        client.lock('rw.reentrant', rw_mode: :read, ttl: 5_000) do
           client.lock(
             'rw.reentrant',
-            read_write_mode: :read,
+            rw_mode: :read,
             ttl: 20_000,
             conflict_strategy: :extendable_work_through
           ) do
@@ -6382,18 +6382,18 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'read -> read (:dead_locking)' do
-        client.lock('rw.reentrant', read_write_mode: :read, ttl: 10_000) do
+        client.lock('rw.reentrant', rw_mode: :read, ttl: 10_000) do
           expect do
-            client.lock!('rw.reentrant', read_write_mode: :read, conflict_strategy: :dead_locking)
+            client.lock!('rw.reentrant', rw_mode: :read, conflict_strategy: :dead_locking)
           end.to raise_error(RedisQueuedLocks::ConflictLockObtainError)
         end
         expect(client.locked?('rw.reentrant')).to eq(false)
       end
 
       aggregate_failures 'write -> read (:work_through): read lock under the obtained write lock' do
-        client.lock('rw.reentrant', read_write_mode: :write, ttl: 10_000) do
+        client.lock('rw.reentrant', rw_mode: :write, ttl: 10_000) do
           client.lock(
-            'rw.reentrant', read_write_mode: :read, conflict_strategy: :work_through
+            'rw.reentrant', rw_mode: :read, conflict_strategy: :work_through
           ) do
             expect(client.lock_info('rw.reentrant')['acq_id']).to eq(client.current_acquirer_id)
           end
@@ -6404,17 +6404,17 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'read -> write (lock upgrade) fails for non-waiting conflict strategies' do
-        client.lock('rw.reentrant', read_write_mode: :read, ttl: 10_000) do
+        client.lock('rw.reentrant', rw_mode: :read, ttl: 10_000) do
           %i[work_through extendable_work_through].each do |strategy|
             expect(
-              client.lock('rw.reentrant', read_write_mode: :write, conflict_strategy: strategy)
+              client.lock('rw.reentrant', rw_mode: :write, conflict_strategy: strategy)
             ).to match({ ok: false, result: :conflict_lock_upgrade })
             expect do
-              client.lock!('rw.reentrant', read_write_mode: :write, conflict_strategy: strategy)
+              client.lock!('rw.reentrant', rw_mode: :write, conflict_strategy: strategy)
             end.to raise_error(RedisQueuedLocks::ConflictLockObtainError, /upgrade/)
           end
           expect(
-            client.lock('rw.reentrant', read_write_mode: :write, conflict_strategy: :dead_locking)
+            client.lock('rw.reentrant', rw_mode: :write, conflict_strategy: :dead_locking)
           ).to match({ ok: false, result: :conflict_dead_lock })
           expect(client.queued?('rw.reentrant')).to eq(false)
         end
@@ -6422,11 +6422,11 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'read -> write (:wait_for_lock): waits for its own read lock expiration' do
-        client.lock('rw.reentrant', read_write_mode: :read, ttl: 400)
+        client.lock('rw.reentrant', rw_mode: :read, ttl: 400)
         started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         result = client.lock(
           'rw.reentrant',
-          read_write_mode: :write,
+          rw_mode: :write,
           ttl: 10_000,
           conflict_strategy: :wait_for_lock,
           retry_count: nil,
@@ -6445,28 +6445,28 @@ RSpec.shared_examples 'redis_queued_locks' do
       # NOTE: (thread references are kept till the end of the spec in order to keep acquirer ids)
       holders = []
       take = lambda do |mode|
-        holder = Thread.new { client.lock('rw.ff', read_write_mode: mode, ttl: 10_000) }
+        holder = Thread.new { client.lock('rw.ff', rw_mode: mode, ttl: 10_000) }
         holders << holder
         holder.value
       end
 
       take.call(:write)
-      expect(client.lock('rw.ff', read_write_mode: :read, fail_fast: true)).to match({
+      expect(client.lock('rw.ff', rw_mode: :read, fail_fast: true)).to match({
         ok: false, result: :fail_fast_no_try
       })
       expect do
-        client.lock!('rw.ff', read_write_mode: :read, fail_fast: true)
+        client.lock!('rw.ff', rw_mode: :read, fail_fast: true)
       end.to raise_error(RedisQueuedLocks::LockAlreadyObtainedError)
       client.unlock('rw.ff')
 
       take.call(:read)
-      expect(client.lock('rw.ff', read_write_mode: :write, fail_fast: true)).to match({
+      expect(client.lock('rw.ff', rw_mode: :write, fail_fast: true)).to match({
         ok: false, result: :fail_fast_no_try
       })
       expect do
-        client.lock!('rw.ff', read_write_mode: :write, fail_fast: true)
+        client.lock!('rw.ff', rw_mode: :write, fail_fast: true)
       end.to raise_error(RedisQueuedLocks::LockAlreadyObtainedError)
-      expect(client.lock('rw.ff', read_write_mode: :read, ttl: 10_000, fail_fast: true)).to match({
+      expect(client.lock('rw.ff', rw_mode: :read, ttl: 10_000, fail_fast: true)).to match({
         ok: true, result: hash_including(process: :lock_obtaining)
       })
       expect(client.lock_info('rw.ff')['readers'].size).to eq(2)
@@ -6479,7 +6479,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         config['retry_jitter'] = 5
       end
       holders = Array.new(2) do |index|
-        Thread.new { client.lock('rw.expired', read_write_mode: :read, ttl: [300, 1_000][index]) }
+        Thread.new { client.lock('rw.expired', rw_mode: :read, ttl: [300, 1_000][index]) }
       end
       holders.each(&:join)
       sleep(0.5) # NOTE: the first read lock is expired, the second one is still alive
@@ -6491,7 +6491,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           )
         ))
         started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        result = client.lock('rw.expired', read_write_mode: :write, ttl: 10_000, retry_count: nil)
+        result = client.lock('rw.expired', rw_mode: :write, ttl: 10_000, retry_count: nil)
         waited = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
         expect(result).to match({ ok: true, result: hash_including(process: :lock_obtaining) })
         expect(waited).to be < 2
@@ -6500,7 +6500,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       aggregate_failures 'dead write lock request does not block readers' do
         redis.call('ZADD', 'rql:lock_queue:rw.dead', Time.now.to_f - 60, 'rql:acq:1/2/3/4/dead')
-        result = client.lock('rw.dead', read_write_mode: :read, queue_ttl: 5, retry_count: 1)
+        result = client.lock('rw.dead', rw_mode: :read, queue_ttl: 5, retry_count: 1)
         expect(result).to match({ ok: true, result: hash_including(process: :lock_obtaining) })
         expect(redis.call('EXISTS', 'rql:lock_queue:rw.dead')).to eq(0)
         client.unlock('rw.dead')
@@ -6510,7 +6510,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         redis.call(
           'ZADD', 'rql:lock_read_queue:rw.dead', Time.now.to_f - 60, 'rql:acq:1/2/3/4/dead'
         )
-        result = client.lock('rw.dead', read_write_mode: :write, queue_ttl: 5, retry_count: 1)
+        result = client.lock('rw.dead', rw_mode: :write, queue_ttl: 5, retry_count: 1)
         expect(result).to match({ ok: true, result: hash_including(process: :lock_obtaining) })
         expect(redis.call('EXISTS', 'rql:lock_read_queue:rw.dead')).to eq(0)
         client.unlock('rw.dead')
@@ -6519,10 +6519,10 @@ RSpec.shared_examples 'redis_queued_locks' do
 
     specify 'read lock request is dequeued on timeout' do
       client = RedisQueuedLocks::Client.new(redis)
-      holder = Thread.new { client.lock('rw.timeout', read_write_mode: :write, ttl: 10_000) }
+      holder = Thread.new { client.lock('rw.timeout', rw_mode: :write, ttl: 10_000) }
       holder.join
 
-      result = client.lock('rw.timeout', read_write_mode: :read, timeout: 1, retry_count: nil)
+      result = client.lock('rw.timeout', rw_mode: :read, timeout: 1, retry_count: nil)
       expect(result).to match({ ok: false, result: :timeout_reached })
       expect(client.queue_info('rw.timeout')).to eq(nil)
       expect(client.queued?('rw.timeout')).to eq(false)
@@ -6535,14 +6535,14 @@ RSpec.shared_examples 'redis_queued_locks' do
         config['retry_delay'] = 10
         config['retry_jitter'] = 5
       end
-      reader = Thread.new { client.lock('rw.info', read_write_mode: :read, ttl: 10_000) }
+      reader = Thread.new { client.lock('rw.info', rw_mode: :read, ttl: 10_000) }
       reader.join
       writer = Thread.new do
-        client.lock('rw.info', read_write_mode: :write, ttl: 10_000, timeout: 10) { :written }
+        client.lock('rw.info', rw_mode: :write, ttl: 10_000, timeout: 10) { :written }
       end
       sleep(0.2) # NOTE: give a timespot to the writer to take its place in the lock queue
       late_reader = Thread.new do
-        client.lock('rw.info', read_write_mode: :read, ttl: 10_000, timeout: 10) { :read }
+        client.lock('rw.info', rw_mode: :read, ttl: 10_000, timeout: 10) { :read }
       end
       sleep(0.2) # NOTE: give a timespot to the reader to take its place in the read lock queue
 
@@ -6638,7 +6638,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       client = RedisQueuedLocks::Client.new(redis)
 
       aggregate_failures 'clear_current_locks' do
-        client.lock('rw.clear', read_write_mode: :read, ttl: 10_000)
+        client.lock('rw.clear', rw_mode: :read, ttl: 10_000)
         redis.call(
           'ZADD', 'rql:lock_read_queue:rw.clear.queue', Time.now.to_f, client.current_acquirer_id
         )
@@ -6655,7 +6655,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'clear_locks' do
-        client.lock('rw.clear', read_write_mode: :read, ttl: 10_000)
+        client.lock('rw.clear', rw_mode: :read, ttl: 10_000)
         redis.call('ZADD', 'rql:lock_read_queue:rw.clear', Time.now.to_f, 'rql:acq:1/2/3/4/waiting')
         # NOTE: the queue is written directly (not by RQL acquirers): the keyspace SCAN finds it,
         #   the lock index gets it by `#reindex_locks` (the lock index is the only lookup then);
@@ -6727,7 +6727,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         config['swarm.flush_zombies.zombie_ttl'] = 1_000
       end
 
-      client.lock('rw.zombie', read_write_mode: :read, ttl: 500_000)
+      client.lock('rw.zombie', rw_mode: :read, ttl: 500_000)
       client.probe_hosts
       sleep(1.5) # NOTE: zombie_ttl is reached (no more host probes)
 
@@ -6771,7 +6771,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         end
       end
       reader_fiber = Fiber.new do
-        client.lock('rw.zombie.read', read_write_mode: :read, ttl: 500_000)
+        client.lock('rw.zombie.read', rw_mode: :read, ttl: 500_000)
         client.current_acquirer_id
       end
       zombie_writers = writer_fibers.map(&:resume)
@@ -6865,9 +6865,9 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       # NOTE: the lock state pipeline (the only one with TIME) and the pipeline with
       #   the lock request queueing (ZADD NX) of an uncontended lock
-      lock_pipelines = lambda do |read_write_mode, conflict_strategy, priority = 0|
+      lock_pipelines = lambda do |rw_mode, conflict_strategy, priority = 0|
         pipelines.clear
-        client.lock('rw.pipeline', read_write_mode:, conflict_strategy:, priority:, ttl: 10_000) {}
+        client.lock('rw.pipeline', rw_mode:, conflict_strategy:, priority:, ttl: 10_000) {}
         [
           pipelines.find { |commands| commands.include?(['TIME']) },
           pipelines.find do |commands|
@@ -6987,7 +6987,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         # NOTE: each thread is a separate acquirer (thread references are kept till the end)
         readers = Array.new(2) do
           Thread.new do
-            readers_client.lock('rw.unlock', read_write_mode: :read, ttl: 10_000)
+            readers_client.lock('rw.unlock', rw_mode: :read, ttl: 10_000)
           end
         end
         readers.each(&:join)
@@ -7109,7 +7109,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       #   matches the lock queues pattern (`rql:lock_*queue:*`) too
       read_locks = %w[scan.r.0 scan.r.1 scan.my_queue:r]
       write_locks.each { |lock_name| client.lock(lock_name, ttl: 60_000) }
-      read_locks.each { |lock_name| client.lock(lock_name, read_write_mode: :read, ttl: 60_000) }
+      read_locks.each { |lock_name| client.lock(lock_name, rw_mode: :read, ttl: 60_000) }
       lock_keys = (write_locks + read_locks).map { |lock_name| "rql:lock:#{lock_name}" }
 
       now = Time.now.to_f
@@ -7203,7 +7203,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       aggregate_failures 'clear_locks' do
         client.lock('scan.w.0', ttl: 60_000)
-        client.lock('scan.r.0', read_write_mode: :read, ttl: 60_000)
+        client.lock('scan.r.0', rw_mode: :read, ttl: 60_000)
         expect(client.clear_locks(batch_size: 2)).to match({
           ok: true,
           # NOTE: write lock, readers registry, read lock data, 6 lock queues
@@ -7237,7 +7237,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       zombie_fibers = Array.new(3) do |index|
         Fiber.new do
           client.lock("zombie.batch.w.#{index}", ttl: 500_000)
-          client.lock("zombie.batch.r.#{index}", read_write_mode: :read, ttl: 500_000)
+          client.lock("zombie.batch.r.#{index}", rw_mode: :read, ttl: 500_000)
           client.current_acquirer_id
         end
       end
@@ -7301,7 +7301,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           Thread.new do
             client.lock(
               'rw.meta',
-              read_write_mode: :read,
+              rw_mode: :read,
               ttl: 10_000,
               meta: { 'reader' => index.to_s, 'num' => index }
             )
@@ -7359,11 +7359,11 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'read lock data of reentrant read locks' do
-        client.lock('rw.meta', read_write_mode: :read, ttl: 10_000, meta: { 'kek' => 'pek' }) do
-          client.lock('rw.meta', read_write_mode: :read, conflict_strategy: :work_through) { 1 }
+        client.lock('rw.meta', rw_mode: :read, ttl: 10_000, meta: { 'kek' => 'pek' }) do
+          client.lock('rw.meta', rw_mode: :read, conflict_strategy: :work_through) { 1 }
           client.lock(
             'rw.meta',
-            read_write_mode: :read,
+            rw_mode: :read,
             ttl: 2_000,
             conflict_strategy: :extendable_work_through
           ) { 1 }
@@ -7402,7 +7402,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           Thread.new do
             client.lock_series(
               'rw.series.a', 'rw.series.b',
-              read_write_mode: :read,
+              rw_mode: :read,
               ttl: 10_000,
               meta: { 'series' => index.to_s }
             ) do
@@ -7420,7 +7420,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         expect(client.lock_info('rw.series.b')['readers'].size).to eq(2)
 
         writer = Thread.new do
-          client.lock('rw.series.b', read_write_mode: :write, ttl: 10_000) { mark.call(:writer_in) }
+          client.lock('rw.series.b', rw_mode: :write, ttl: 10_000) { mark.call(:writer_in) }
         end
         [*readers, writer].each(&:join)
 
@@ -7433,12 +7433,12 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'read locks of the failed lock series are released' do
-        holder = Thread.new { client.lock('rw.series.c', read_write_mode: :write, ttl: 10_000) }
+        holder = Thread.new { client.lock('rw.series.c', rw_mode: :write, ttl: 10_000) }
         holder.join
 
         expect do
           client.lock_series!(
-            'rw.series.a', 'rw.series.c', read_write_mode: :read, fail_fast: true
+            'rw.series.a', 'rw.series.c', rw_mode: :read, fail_fast: true
           ) { :never }
         end.to raise_error(RedisQueuedLocks::LockAlreadyObtainedError)
         expect(client.locked?('rw.series.a')).to eq(false)
@@ -7446,10 +7446,10 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'reentrant read locks of the lock series are not released by the series' do
-        client.lock('rw.series.a', read_write_mode: :read, ttl: 10_000) do
+        client.lock('rw.series.a', rw_mode: :read, ttl: 10_000) do
           client.lock_series(
             'rw.series.a', 'rw.series.b',
-            read_write_mode: :read,
+            rw_mode: :read,
             conflict_strategy: :work_through
           ) { :ok }
           # NOTE: the outer read lock is still obtained, the series lock is released
@@ -7477,10 +7477,10 @@ RSpec.shared_examples 'redis_queued_locks' do
       client = RedisQueuedLocks::Client.new(redis) do |config|
         config['instrumenter'] = test_notifier
       end
-      other_reader = Thread.new { client.lock('rw.own', read_write_mode: :read, ttl: 10_000) }
+      other_reader = Thread.new { client.lock('rw.own', rw_mode: :read, ttl: 10_000) }
       other_reader.join
       other_acquirer_id = other_reader.value[:result][:acq_id]
-      client.lock('rw.own', read_write_mode: :read, ttl: 3_000, meta: { 'kek' => 'pek' })
+      client.lock('rw.own', rw_mode: :read, ttl: 3_000, meta: { 'kek' => 'pek' })
       own_acquirer_id = client.current_acquirer_id
       read_lock_key = RedisQueuedLocks::Resource.prepare_read_lock_key('rw.own', own_acquirer_id)
       reader_info = lambda do |acquirer_id|
@@ -7488,7 +7488,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'extend_lock_ttl extends the read lock of the current acquirer only' do
-        expect(client.extend_lock_ttl('rw.own', 20_000, read_write_mode: :read)).to eq({
+        expect(client.extend_lock_ttl('rw.own', 20_000, rw_mode: :read)).to eq({
           ok: true, result: { extended_locks_count: 1 }
         })
         expect(reader_info.call(own_acquirer_id)['rem_ttl']).to be > 20_000
@@ -7526,18 +7526,18 @@ RSpec.shared_examples 'redis_queued_locks' do
         expect(client.release_read_lock('rw.own')).to match({
           ok: true, result: hash_including(lock_res: :nothing_to_release)
         })
-        expect(client.extend_lock_ttl('rw.own', 1_000, read_write_mode: :read)).to eq({
+        expect(client.extend_lock_ttl('rw.own', 1_000, rw_mode: :read)).to eq({
           ok: false, result: :async_expire_or_no_lock
         })
       end
 
       aggregate_failures 'unlock_read releases the read lock of the custom acquirer only' do
-        custom_reader = Thread.new { client.lock('rw.custom', read_write_mode: :read, ttl: 10_000) }
+        custom_reader = Thread.new { client.lock('rw.custom', rw_mode: :read, ttl: 10_000) }
         custom_reader.join
         custom_acquirer_id = custom_reader.value[:result][:acq_id]
         custom_read_lock_key =
           RedisQueuedLocks::Resource.prepare_read_lock_key('rw.custom', custom_acquirer_id)
-        client.lock('rw.custom', read_write_mode: :read, ttl: 10_000)
+        client.lock('rw.custom', rw_mode: :read, ttl: 10_000)
 
         expect(
           client.unlock_read('rw.custom', acquirer_id: custom_acquirer_id, identity: 'ignored')
@@ -7566,9 +7566,9 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
 
       aggregate_failures 'expired read lock is not extended (not revived)' do
-        client.lock('rw.expiring', read_write_mode: :read, ttl: 100)
+        client.lock('rw.expiring', rw_mode: :read, ttl: 100)
         sleep(0.2) # NOTE: the read lock is expired
-        expect(client.extend_lock_ttl('rw.expiring', 10_000, read_write_mode: :read)).to eq({
+        expect(client.extend_lock_ttl('rw.expiring', 10_000, rw_mode: :read)).to eq({
           ok: false, result: :async_expire_or_no_lock
         })
         expect(client.locked?('rw.expiring')).to eq(false)
@@ -7577,7 +7577,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       aggregate_failures 'read lock is not extended while the write lock is held' do
         writer = Thread.new { client.lock('rw.written', ttl: 10_000) }
         writer.join
-        expect(client.extend_lock_ttl('rw.written', 10_000, read_write_mode: :read)).to eq({
+        expect(client.extend_lock_ttl('rw.written', 10_000, rw_mode: :read)).to eq({
           ok: false, result: :async_expire_or_no_lock
         })
         client.unlock('rw.written')
@@ -7589,7 +7589,7 @@ RSpec.shared_examples 'redis_queued_locks' do
     specify '#extend_lock_ttl with all_read_locks: true' do
       client = RedisQueuedLocks::Client.new(redis)
       reader_threads = [5_000, 8_000, 100].map do |ttl|
-        Thread.new { client.lock('rw.all', read_write_mode: :read, ttl:) }
+        Thread.new { client.lock('rw.all', rw_mode: :read, ttl:) }
       end
       reader_threads.each(&:join)
       long_reader_ids = reader_threads.first(2).map { |thread| thread.value[:result][:acq_id] }
@@ -7603,7 +7603,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       aggregate_failures 'all live read locks are extended, expired read locks are not revived' do
         expect(
-          client.extend_lock_ttl('rw.all', 20_000, read_write_mode: :read, all_read_locks: true)
+          client.extend_lock_ttl('rw.all', 20_000, rw_mode: :read, all_read_locks: true)
         ).to eq({ ok: true, result: { extended_locks_count: 2 } })
         expect(reader_ttl.call(long_reader_ids[0])).to be_between(24_000, 25_000)
         expect(reader_ttl.call(long_reader_ids[1])).to be_between(27_000, 28_000)
@@ -7618,7 +7618,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       aggregate_failures 'all_read_locks: false (default) extends the own read lock only' do
         # NOTE: the current acquirer has no read lock
         expect(reader_ttl.call(own_reader_id)).to eq(nil)
-        expect(client.extend_lock_ttl('rw.all', 1_000, read_write_mode: :read)).to eq({
+        expect(client.extend_lock_ttl('rw.all', 1_000, rw_mode: :read)).to eq({
           ok: false, result: :async_expire_or_no_lock
         })
       end
@@ -7633,14 +7633,14 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       aggregate_failures 'no live read locks or the write lock is held' do
         expect(
-          client.extend_lock_ttl('rw.all.none', 1_000, read_write_mode: :read, all_read_locks: true)
+          client.extend_lock_ttl('rw.all.none', 1_000, rw_mode: :read, all_read_locks: true)
         ).to eq({ ok: false, result: :async_expire_or_no_lock })
 
         writer = Thread.new { client.lock('rw.all.written', ttl: 10_000) }
         writer.join
         expect(
           client.extend_lock_ttl(
-            'rw.all.written', 1_000, read_write_mode: :read, all_read_locks: true
+            'rw.all.written', 1_000, rw_mode: :read, all_read_locks: true
           )
         ).to eq({ ok: false, result: :async_expire_or_no_lock })
       end
@@ -7662,7 +7662,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           false, 15, RedisQueuedLocks::Logging::Sampler, false,
           false, 15, RedisQueuedLocks::Instrument::Sampler, false
         )
-      end.to raise_error(RedisQueuedLocks::ArgumentError, /read_write_mode/)
+      end.to raise_error(RedisQueuedLocks::ArgumentError, /rw_mode/)
       # NOTE: (RBS) a type-invalid value (`nil` for `bool all_read_locks`) can't reach the runtime
       #   validation under the RBS runtime type checks (the hook raises first)
       unless RBS_RUNTIME_TEST
@@ -7687,17 +7687,17 @@ RSpec.shared_examples 'redis_queued_locks' do
         ).to eq({ ok: false, result: :async_expire_or_no_lock })
       end
       expect do
-        client.lock('rw.args', read_write_mode: :read, meta: { 'acq_id' => 'pek' })
+        client.lock('rw.args', rw_mode: :read, meta: { 'acq_id' => 'pek' })
       end.to raise_error(RedisQueuedLocks::ArgumentError, /meta/)
       expect do
-        client.lock('rw.args', read_write_mode: :read, ttl: 0)
+        client.lock('rw.args', rw_mode: :read, ttl: 0)
       end.to raise_error(RedisQueuedLocks::ArgumentError, /ttl/)
       # NOTE: (RBS) a type-invalid value (`Client#lock_series` types the mode) can't reach the
       #   runtime validation under the RBS runtime type checks (the hook raises first)
       unless RBS_RUNTIME_TEST
         expect do
-          client.lock_series('rw.args.a', 'rw.args.b', read_write_mode: :reed)
-        end.to raise_error(RedisQueuedLocks::ArgumentError, /read_write_mode/)
+          client.lock_series('rw.args.a', 'rw.args.b', rw_mode: :reed)
+        end.to raise_error(RedisQueuedLocks::ArgumentError, /rw_mode/)
       end
       expect(client.locked?('rw.args')).to eq(false)
     end
@@ -7733,7 +7733,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         config['retry_jitter'] = 5
       end
 
-      client.lock('rw.logs', read_write_mode: :read) { :ok }
+      client.lock('rw.logs', rw_mode: :read) { :ok }
 
       aggregate_failures 'read lock logs' do
         expect(test_logger.logs).to include(
@@ -7757,10 +7757,10 @@ RSpec.shared_examples 'redis_queued_locks' do
         )
       end
 
-      holder = Thread.new { client.lock('rw.logs', read_write_mode: :read, ttl: 10_000) }
+      holder = Thread.new { client.lock('rw.logs', rw_mode: :read, ttl: 10_000) }
       holder.join
       test_logger.logs.clear
-      client.lock('rw.logs', read_write_mode: :write, retry_count: 1)
+      client.lock('rw.logs', rw_mode: :write, retry_count: 1)
 
       aggregate_failures 'write lock waits for readers (logs)' do
         expect(test_logger.logs).to include(
@@ -7793,7 +7793,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       test_notifier.notifications.clear
       series_lock_keys = ['rql:lock:rw.logs.series.a', 'rql:lock:rw.logs.series.b']
       client.lock_series(
-        'rw.logs.series.a', 'rw.logs.series.b', read_write_mode: :read, ttl: 5_000
+        'rw.logs.series.a', 'rw.logs.series.b', rw_mode: :read, ttl: 5_000
       ) { :ok }
 
       aggregate_failures 'lock series logs and instrumentation (rw_mode of the series)' do
@@ -7879,7 +7879,7 @@ RSpec.describe RedisQueuedLocks do
       end
 
       aggregate_failures 'read lock: the read lock ttl (longer than the request queue ttl)' do
-        client.lock('idx.read', read_write_mode: :read, ttl: 100_000, queue_ttl: 5)
+        client.lock('idx.read', rw_mode: :read, ttl: 100_000, queue_ttl: 5)
         expect(index_score_ahead.call('idx.read')).to upper_bound.call(100_000)
       end
 
@@ -7941,28 +7941,28 @@ RSpec.describe RedisQueuedLocks do
       end
 
       aggregate_failures '#extend_lock_ttl (read locks)' do
-        client.lock('idx.ext.read', read_write_mode: :read, ttl: 100_000, queue_ttl: 5)
+        client.lock('idx.ext.read', rw_mode: :read, ttl: 100_000, queue_ttl: 5)
         initial_score = score.call('idx.ext.read')
-        expect(client.extend_lock_ttl('idx.ext.read', 30_000, read_write_mode: :read)).to match({
+        expect(client.extend_lock_ttl('idx.ext.read', 30_000, rw_mode: :read)).to match({
           ok: true, result: { extended_locks_count: 1 }
         })
         expect(score.call('idx.ext.read')).to eq(initial_score + 30_000)
         expect(
           client.extend_lock_ttl(
-            'idx.ext.read', 20_000, read_write_mode: :read, all_read_locks: true
+            'idx.ext.read', 20_000, rw_mode: :read, all_read_locks: true
           )
         ).to match({ ok: true, result: { extended_locks_count: 1 } })
         expect(score.call('idx.ext.read')).to eq(initial_score + 50_000)
       end
 
       aggregate_failures 'reentrant locks (:extendable_work_through)' do
-        %i[write read].each do |read_write_mode|
-          lock_name = "idx.ext.reentrant.#{read_write_mode}"
-          client.lock(lock_name, read_write_mode:, ttl: 100_000, queue_ttl: 5) do
+        %i[write read].each do |rw_mode|
+          lock_name = "idx.ext.reentrant.#{rw_mode}"
+          client.lock(lock_name, rw_mode:, ttl: 100_000, queue_ttl: 5) do
             initial_score = score.call(lock_name)
             client.lock(
               lock_name,
-              read_write_mode:, ttl: 40_000, conflict_strategy: :extendable_work_through
+              rw_mode:, ttl: 40_000, conflict_strategy: :extendable_work_through
             ) do
               expect(score.call(lock_name)).to eq(initial_score + 40_000)
             end
@@ -7971,13 +7971,13 @@ RSpec.describe RedisQueuedLocks do
       end
 
       aggregate_failures 'reentrant locks of the lock series (:extendable_work_through)' do
-        %i[write read].each do |read_write_mode|
-          lock_name = "idx.ext.series.#{read_write_mode}"
-          client.lock(lock_name, read_write_mode:, ttl: 100_000, queue_ttl: 5)
+        %i[write read].each do |rw_mode|
+          lock_name = "idx.ext.series.#{rw_mode}"
+          client.lock(lock_name, rw_mode:, ttl: 100_000, queue_ttl: 5)
           initial_score = score.call(lock_name)
           client.lock_series(
             lock_name, "#{lock_name}.next",
-            read_write_mode:, ttl: 40_000, conflict_strategy: :extendable_work_through
+            rw_mode:, ttl: 40_000, conflict_strategy: :extendable_work_through
           ) do
             expect(score.call(lock_name)).to eq(initial_score + 40_000)
           end
@@ -8075,7 +8075,7 @@ RSpec.describe RedisQueuedLocks do
       end
 
       client.lock('idx.zombie.write', ttl: 500_000)
-      client.lock('idx.zombie.read', read_write_mode: :read, ttl: 500_000)
+      client.lock('idx.zombie.read', rw_mode: :read, ttl: 500_000)
       # NOTE: a lock written directly (like a lock of an older RQL version): not indexed
       redis.call(
         'HSET', 'rql:lock:idx.zombie.legacy', 'acq_id', zombie_acquirer, 'hst_id', zombie_host
@@ -8210,7 +8210,7 @@ RSpec.describe RedisQueuedLocks do
       end
 
       client.lock('idx.race.write', ttl: 100_000, queue_ttl: 5)
-      client.lock('idx.race.read', read_write_mode: :read, ttl: 100_000, queue_ttl: 5)
+      client.lock('idx.race.read', rw_mode: :read, ttl: 100_000, queue_ttl: 5)
 
       expect(index_score_ahead.call('idx.race.write')).to upper_bound.call(100_000)
       expect(index_score_ahead.call('idx.race.read')).to upper_bound.call(100_000)
@@ -8222,7 +8222,7 @@ RSpec.describe RedisQueuedLocks do
       client.lock_series('idx.race.series.write', 'idx.race.series.a', ttl: 100_000, queue_ttl: 5)
       client.lock_series(
         'idx.race.series.read', 'idx.race.series.b',
-        read_write_mode: :read, ttl: 100_000, queue_ttl: 5
+        rw_mode: :read, ttl: 100_000, queue_ttl: 5
       )
 
       %w[
@@ -8246,7 +8246,7 @@ RSpec.describe RedisQueuedLocks do
 
       aggregate_failures '#unlock' do
         client.lock('idx.unlock.write', ttl: 100_000)
-        client.lock('idx.unlock.read', read_write_mode: :read, ttl: 100_000)
+        client.lock('idx.unlock.read', rw_mode: :read, ttl: 100_000)
         client.unlock('idx.unlock.write')
         client.unlock('idx.unlock.read')
         expect(lock_names.call).to eq([])
@@ -8270,7 +8270,7 @@ RSpec.describe RedisQueuedLocks do
 
       aggregate_failures '#clear_locks (with expired lock names)' do
         client.lock('idx.clear.0', ttl: 100_000)
-        client.lock('idx.clear.1', read_write_mode: :read, ttl: 100_000)
+        client.lock('idx.clear.1', rw_mode: :read, ttl: 100_000)
         redis.call(
           'ZADD', lock_index, RedisQueuedLocks::Resource.lock_index_time - 1_000, 'idx.expired'
         )
@@ -8309,7 +8309,7 @@ RSpec.describe RedisQueuedLocks do
       end
 
       client.lock('idx.ops.write', ttl: 100_000)
-      client.lock('idx.ops.read', read_write_mode: :read, ttl: 100_000)
+      client.lock('idx.ops.read', rw_mode: :read, ttl: 100_000)
       # NOTE: a lock request of another acquirer (queued by RQL: indexed)
       requester = Thread.new { client.lock('idx.ops.write', ttl: 1_000, retry_count: 1) }
       requester.join
@@ -8392,24 +8392,24 @@ RSpec.describe RedisQueuedLocks do
 
       aggregate_failures 'lock acquirement, extension and release' do
         client.lock('noidx.write', ttl: 100_000)
-        client.lock('noidx.read', read_write_mode: :read, ttl: 100_000)
+        client.lock('noidx.read', rw_mode: :read, ttl: 100_000)
         # NOTE: reentrant lock extensions (write: four extension commands without the lock index)
-        %i[write read].each do |read_write_mode|
+        %i[write read].each do |rw_mode|
           expect(
             client.lock(
-              "noidx.#{read_write_mode}",
-              read_write_mode:, ttl: 1_000, conflict_strategy: :extendable_work_through
+              "noidx.#{rw_mode}",
+              rw_mode:, ttl: 1_000, conflict_strategy: :extendable_work_through
             )
           ).to match(
             { ok: true, result: hash_including(process: :extendable_conflict_work_through) }
           )
         end
         # NOTE: lock series: obtaining, reentrant extensions and the release of both modes
-        %i[write read].each do |read_write_mode|
+        %i[write read].each do |rw_mode|
           expect(
             client.lock_series(
-              "noidx.#{read_write_mode}", "noidx.series.#{read_write_mode}",
-              read_write_mode:, ttl: 1_000, conflict_strategy: :extendable_work_through
+              "noidx.#{rw_mode}", "noidx.series.#{rw_mode}",
+              rw_mode:, ttl: 1_000, conflict_strategy: :extendable_work_through
             ) { :ok }
           ).to eq(:ok)
         end
@@ -8417,7 +8417,7 @@ RSpec.describe RedisQueuedLocks do
           ok: true, result: { extended_locks_count: 1 }
         })
         expect(
-          client.extend_lock_ttl('noidx.read', 10_000, read_write_mode: :read)
+          client.extend_lock_ttl('noidx.read', 10_000, rw_mode: :read)
         ).to match({ ok: true, result: { extended_locks_count: 1 } })
         # NOTE: a waiting lock request (each thread is a separate acquirer, references are kept)
         holder = Thread.new { client.lock('noidx.queue', ttl: 10_000) }

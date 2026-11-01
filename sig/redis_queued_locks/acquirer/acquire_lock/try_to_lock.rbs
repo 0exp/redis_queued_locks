@@ -38,7 +38,7 @@ module RedisQueuedLocks
           RQL::loggerObj logger,
           bool log_lock_try,
           String lock_key,
-          RQL::readWriteMode read_write_mode,
+          RQL::readWriteMode rw_mode,
           String lock_key_queue,
           String read_lock_key_queue,
           String lock_readers_key,
@@ -215,7 +215,7 @@ module RedisQueuedLocks
           String acquirer_id,
           String host_id,
           RQL::accessStrategy access_strategy,
-          RQL::readWriteMode read_write_mode,
+          RQL::readWriteMode rw_mode,
           String? waiting_acquirer,
           Integer? waiting_priority,
           [String, Float]? opposite_waiting_request,
@@ -230,7 +230,7 @@ module RedisQueuedLocks
 
         def drop_dead_requests_ahead: (
           RC::client rconn,
-          RQL::readWriteMode read_write_mode,
+          RQL::readWriteMode rw_mode,
           String request_queue,
           String opposite_request_queue,
           String acquirer_id,
@@ -271,7 +271,7 @@ module RedisQueuedLocks
           String acquirer_id,
           String host_id,
           RQL::accessStrategy access_strategy,
-          RQL::readWriteMode read_write_mode,
+          RQL::readWriteMode rw_mode,
           Array[[String, Integer]] dropped_requests
         ) -> void
 
@@ -283,7 +283,7 @@ module RedisQueuedLocks
           bool log_sampled,
           bool log_lock_try,
           String lock_key,
-          RQL::readWriteMode read_write_mode,
+          RQL::readWriteMode rw_mode,
           String lock_readers_key,
           String request_queue,
           String opposite_request_queue,

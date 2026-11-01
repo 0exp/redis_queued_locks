@@ -9,7 +9,7 @@ module RedisQueuedLocks
           RC::client redis,
           RQL::loggerObj logger,
           String lock_key,
-          RQL::readWriteMode read_write_mode,
+          RQL::readWriteMode rw_mode,
           String lock_key_queue,
           String read_lock_key_queue,
           Integer queue_ttl,

@@ -43,7 +43,7 @@ The suite is pending a total rework (overview "Conventions"): these rules guide 
 10. Check new or changed examples for flakiness without retries: `RSPEC_RETRY_RETRY_COUNT=1 bundle exec rspec spec/redis_queued_locks_spec.rb -e '<group>'`, several runs in a row; also watch for `RSpec::Retry: 2nd try` lines in normal runs.
 11. Threads in specs: `Thread.abort_on_exception = true`, so never raise expected errors inside threads (call non-raising `lock` there and assert results in the main thread); keep references to helper threads until the end of the example (acquirer ids contain `Thread#object_id`, which can be reused after GC).
 12. Timing assertions on TTLs allow the redis time shift error: extendable reentrant locks return the extension minus the time spent in the inner block and `Resource::REDIS_TIMESHIFT_ERROR` (2 ms), so the remaining TTL can slightly exceed the initial one.
-13. New lock features get specs for both modes when relevant (`read_write_mode: :write` and `:read`): ordering, mutual exclusion, reentrancy per conflict strategy, `fail_fast`, timeouts/dequeue, release/cleanup/info/zombie paths, and that no `rql:*` keys are left (`client.keys` is empty) after blocks finish.
+13. New lock features get specs for both modes when relevant (`rw_mode: :write` and `:read`): ordering, mutual exclusion, reentrancy per conflict strategy, `fail_fast`, timeouts/dequeue, release/cleanup/info/zombie paths, and that no `rql:*` keys are left (`client.keys` is empty) after blocks finish.
 
 ## Recommendations (proposed, not yet project policy)
 Apply to new tests; don't restructure the existing suite unless asked.

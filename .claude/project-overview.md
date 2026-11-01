@@ -46,7 +46,7 @@ duplicated on purpose (`Locks` duplicates the `LockInfo` write/read lock formatt
 
 ### Read/Write locks in the architecture
 
-`read_write_mode: :write` (default) is the exclusive classic lock (its keys and data are unchanged); `:read` is a shared
+`rw_mode: :write` (default) is the exclusive classic lock (its keys and data are unchanged); `:read` is a shared
 lock: readers share the lock with each other, a writer waits for the write lock and for all live readers, a reader waits
 for the write lock only. Mutual exclusion comes only from WATCH/MULTI on the lock state (no Lua in the RW path); the
 request queues only order the requests (FIFO between modes by `(score, acq_id)`).
@@ -64,8 +64,8 @@ rql:lock_read_queue:<name>      ZSET  read lock requests (the same scores)      
 The path of the mode through the components:
 
 ```
-Client#lock / #lock! (read_write_mode:)            #lock_series / #lock_series! (one mode per series),
-  │                                                #unlock_read / #release_read_lock, #extend_lock_ttl(read_write_mode:,
+Client#lock / #lock! (rw_mode:)            #lock_series / #lock_series! (one mode per series),
+  │                                                #unlock_read / #release_read_lock, #extend_lock_ttl(rw_mode:,
   │                                                all_read_locks:)
   ▼
 AcquireLock Step 0.1 (RW)                          validates the mode; the keys are computed once (read_lock_key: readers only)
@@ -150,10 +150,10 @@ AcquireLock Step 0.1 / LockSeries Step 0.1              name -> Integer, range -
 | Client method | Implementation |
 |---|---|
 | `lock` / `lock!` | `acquirer/acquire_lock.rb` + `acquirer/acquire_lock/*` |
-| `lock_series` / `lock_series!` | `acquirer/lock_series.rb` + `acquirer/lock_series/*` (atomic, see "Lock series"; one `read_write_mode`, `priority` and `ttl` for the whole series) |
+| `lock_series` / `lock_series!` | `acquirer/lock_series.rb` + `acquirer/lock_series/*` (atomic, see "Lock series"; one `rw_mode`, `priority` and `ttl` for the whole series) |
 | `unlock` | `acquirer/release_lock.rb` |
 | `unlock_read` / `release_read_lock` | `acquirer/release_read_lock.rb` (own read lock or `acquirer_id:` read lock only) |
-| `extend_lock_ttl` | `acquirer/extend_lock_ttl.rb` (`read_write_mode: :read` extends own read lock, `+ all_read_locks: true` all live read locks) |
+| `extend_lock_ttl` | `acquirer/extend_lock_ttl.rb` (`rw_mode: :read` extends own read lock, `+ all_read_locks: true` all live read locks) |
 | `locked?` / `queued?` | `acquirer/is_locked.rb` / `acquirer/is_queued.rb` |
 | `lock_info` / `queue_info` | `acquirer/lock_info.rb` / `acquirer/queue_info.rb` |
 | `locks`, `locks_info`, `queues`, `queues_info`, `keys` | `acquirer/locks.rb`, `queues.rb`, `keys.rb` (keyspace SCAN or lock index: `lock_index_enabled`) |
@@ -184,7 +184,7 @@ The second part of the lock acquisition core (not an operation module): `LockSer
 
 - Semantics: all or nothing; all locks are obtained by one transaction with the same `ttl` at the same moment; nothing is held while
   the series waits (no hold-and-wait, no ttl staircase); `timeout`, `retry_count`, `queue_ttl` are limits of the whole series; one
-  `read_write_mode`, `priority`, `ttl`, `meta` per series; lock names: at least one (`ArgumentError`), `uniq(&:to_s)`.
+  `rw_mode`, `priority`, `ttl`, `meta` per series; lock names: at least one (`ArgumentError`), `uniq(&:to_s)`.
 - Deadlock freedom: one `acquirer_position` in all request queues of the series, reset for all queues at once when the dead score is
   reached: all requests of a lock are ordered by `(score, acq_id)` in the same way in all queues, a request waits only for earlier
   requests, so a wait cycle is impossible for any order of the lock names (nested holders of the user's logic are out of it).
@@ -235,16 +235,16 @@ The second part of the lock acquisition core (not an operation module): `LockSer
 `ttl`, `queue_ttl`, `lock_index_grace_period` (used with the enabled lock index only; the mode itself, `config['lock_index_enabled']`,
 is client-wide: `Client` passes it to the acquirers, it is not a `lock` option), `timeout`, `timed`, `retry_count`, `retry_delay`, `retry_jitter`,
 `raise_errors`, `fail_fast`, `conflict_strategy`, `access_strategy`, `priority` (`-100`..`100` or a priority name of `config['lock_priorities']`, default
-`config['default_lock_priority']` = `0`, see "Lock request priorities"), `read_write_mode`
+`config['default_lock_priority']` = `0`, see "Lock request priorities"), `rw_mode`
 (`:write` (default, exclusive) | `:read` (shared)), `identity`, `meta`, `logger`, `log_lock_try`,
 `instrumenter`, `instrument`, log/instr sampling options, `log_sample_this`, `instr_sample_this`.
 
 - `access_strategy`: `:queued` (FIFO, default) or `:random`.
 - `conflict_strategy` (same process re-acquires its own lock): `:wait_for_lock` (default),
   `:work_through`, `:extendable_work_through`, `:dead_locking`.
-- `read_write_mode`: `:write` (default) | `:read`, see "Read/Write locks" below.
+- `rw_mode`: `:write` (default) | `:read`, see "Read/Write locks" below.
 
-### Read/Write locks (`read_write_mode`)
+### Read/Write locks (`rw_mode`)
 
 - Semantics: `:write` is exclusive (waits for the write lock and all live read locks); `:read` is
   shared (waits for the write lock only). Default `:write` keeps the classic behavior and keys.
@@ -271,7 +271,7 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 - Try results (internal symbols): `:write_request_is_ahead`, `:read_request_is_ahead`,
   `:read_lock_is_still_acquired`, `:conflict_lock_upgrade`, `:read_lock_is_expired_during_extension`;
   try success result carries internal `rw_mode` (held mode), not exposed in the public `lock` result.
-- Validation (`AcquireLock`): `read_write_mode` must be `:read`/`:write`; `ttl` must be a positive
+- Validation (`AcquireLock`): `rw_mode` must be `:read`/`:write`; `ttl` must be a positive
   Integer in both modes (`RedisQueuedLocks::ArgumentError`; write: `PEXPIRE` with a non-positive ttl would
   delete the lock key in the obtaining `MULTI`, read: the reader expiration is computed from it);
   `LockSeries` checks the same arguments itself (duplicated on purpose); `config['default_lock_ttl']` must be positive too; `extend_lock_ttl`
@@ -300,20 +300,20 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 - Own read lock operations (current acquirer via `current_acquirer_id(identity:)`): `unlock_read` /
   `release_read_lock` (`ZREM` + `DEL` reader data, event `explicit_read_lock_release`, result
   `{ rel_time:, rel_key:, rel_acq_id:, lock_res: }`; `acquirer_id:` (default `nil` => current acquirer;
-  when passed, `identity:` is ignored: the acquirer id already contains its identity) releases the read lock of a different acquirer) and `extend_lock_ttl(..., read_write_mode: :read)`
+  when passed, `identity:` is ignored: the acquirer id already contains its identity) releases the read lock of a different acquirer) and `extend_lock_ttl(..., rw_mode: :read)`
   (`multi(watch: [lock_key])`: extends only a live read lock while no write lock exists, never revives
   an expired one; registry and reader data TTLs via `PEXPIRE NX`+`GT`). `unlock` releases everything.
-- `extend_lock_ttl(..., read_write_mode: :read, all_read_locks: true)` (`false` by default, ignored for
+- `extend_lock_ttl(..., rw_mode: :read, all_read_locks: true)` (`false` by default, ignored for
   `:write`; non-boolean in `:read` => `ArgumentError`): same `multi(watch: [lock_key])` (registry not
   watched, so concurrent readers don't abort it), `ZRANGE WITHSCORES` snapshot, every live reader gets
   `ZADD XX INCR` + reader data `PEXPIRE NX`+`GT`, registry TTL = longest extended reader;
   `extended_locks_count` = the number of non-nil `ZADD` results (0 => `:async_expire_or_no_lock`).
   `extend_lock_ttl` success result (all modes): `{ ok: true, result: { extended_locks_count: Integer } }`
-  (write / own read = 1); failure stays `{ ok: false, result: :async_expire_or_no_lock }`. Internal param order: `read_write_mode, all_read_locks, acquirer_id`.
+  (write / own read = 1); failure stays `{ ok: false, result: :async_expire_or_no_lock }`. Internal param order: `rw_mode, all_read_locks, acquirer_id`.
 - Design decisions (release semantics, not limitations to "fix"): read->write upgrade is an error unless
   `:wait_for_lock`; nested reads of one acquirer go through `conflict_strategy` (no hold counting);
   `:random` gives no fairness between modes; cross-host FIFO is best effort; no Lua in the RW path.
-- RBS: `Client` types `read_write_mode` as `:read | :write`. Older gem versions ignore readers: all processes must be upgraded
+- RBS: `Client` types `rw_mode` as `:read | :write`. Older gem versions ignore readers: all processes must be upgraded
   before read locks are used.
 
 ### Lock request priorities (`priority`)
@@ -502,7 +502,7 @@ the connection (drops the WATCH state, reconnected on the next use) and re-raise
 |---|---|
 | `Client` | Facade; constructor injection (caller-supplied `RedisClient`); `x` returns a result hash, `x!` raises |
 | `Acquirer::*` | One module per command; stateless `class << self` functions; uniform `{ ok:, result: }` returns (public API contract; swarm element internals use bare scalars/primitives) |
-| `AcquireLock` | Composition via `extend` mixins; optimistic concurrency (WATCH/MULTI; asymmetric WATCH for read/write locks) + Lua only for write TTL extension/decrease; strategy options (`access_strategy`, `conflict_strategy`, `read_write_mode`) |
+| `AcquireLock` | Composition via `extend` mixins; optimistic concurrency (WATCH/MULTI; asymmetric WATCH for read/write locks) + Lua only for write TTL extension/decrease; strategy options (`access_strategy`, `conflict_strategy`, `rw_mode`) |
 | Log/Instr visitors | Visitor-style event hooks keep observability out of the algorithm; percent sampling via `sampling_happened?(percent)` |
 | `Logging` / `Instrument` | Null Object defaults (`VoidLogger`, `VoidNotifier`); Adapter (`instrument/active_support.rb`); duck typing (`::Logger` API, `#notify(event, payload)`) |
 | `Config` | Declarative DSL: `setting(key, default)` and `validate(key) { }` registries; access as `config['a.b']`; runtime `Client#configure` |

@@ -10,7 +10,7 @@
 #   - the lock series are deadlock-free for any order of the lock names (one position of the lock
 #     request in all queues of the series, see `TryToLockSeries`);
 #   - the series limits are the limits of the whole series: `timeout`, `retry_count`, `queue_ttl`;
-#   - one `read_write_mode`, one `priority`, one `ttl` for all locks of the series;
+#   - one `rw_mode`, one `priority`, one `ttl` for all locks of the series;
 #   - the locks of the series are classic locks with the classic keys: lock info, `#unlock`,
 #     `#extend_lock_ttl`, the swarm and other operations work with each of them separately;
 #   - reentrant locks (`conflict_strategy`) are processed per lock: they are not obtained and not
@@ -18,6 +18,7 @@
 #
 # @api private
 # @since 1.23.0
+# @version 1.23.0
 # rubocop:disable Metrics/ModuleLength
 # rubocop:disable Metrics/ClassLength
 # rubocop:disable Metrics/BlockNesting
@@ -92,7 +93,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
     #   Custom instrumentation data wich will be passed to the instrumenter's payload.
     # @option conflict_strategy [Symbol]
     #   The conflict strategy of each lock of the series (see `AcquireLock.acquire_lock`).
-    # @option read_write_mode [Symbol]
+    # @option rw_mode [Symbol]
     #   The mode of all locks of the series: `:write` or `:read` (see `AcquireLock.acquire_lock`).
     # @option access_strategy [Symbol]
     #   The way in which the locks will be obtained (see `AcquireLock.acquire_lock`).
@@ -125,6 +126,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
     #
     # @api private
     # @since 1.23.0
+    # @version 1.23.0
     # rubocop:disable Metrics/MethodLength
     def lock_series(
       redis,
@@ -153,7 +155,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
       logger:,
       log_lock_try:,
       conflict_strategy:,
-      read_write_mode:,
+      rw_mode:,
       access_strategy:,
       priority:,
       lock_priorities:,
@@ -187,14 +189,14 @@ module RedisQueuedLocks::Acquirer::LockSeries
         )
       end
 
-      # Step 0.1 (RW): prevent :read_write_mode incompatabilities
-      case read_write_mode # NOTE: (steep) case/when narrows `Symbol` to `RQL::readWriteMode` below
+      # Step 0.1 (RW): prevent :rw_mode incompatabilities
+      case rw_mode # NOTE: (steep) case/when narrows `Symbol` to `RQL::readWriteMode` below
       when :read, :write then nil
       else
         raise(
           RedisQueuedLocks::ArgumentError,
-          "`:read_write_mode` argument should be `:read` or `:write`, " \
-          "got #{read_write_mode.inspect}."
+          "`:rw_mode` argument should be `:read` or `:write`, " \
+          "got #{rw_mode.inspect}."
         )
       end
 
@@ -291,7 +293,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
       # NOTE: a duplicated lock name is the same lock (the series is obtained by one transaction
       #   and the lock state is checked once per lock);
       lock_names = lock_names.uniq(&:to_s)
-      read_mode = (read_write_mode == :read)
+      read_mode = (rw_mode == :read)
       acquirer_id = RedisQueuedLocks::Resource.acquirer_identifier(
         process_id,
         thread_id,
@@ -369,7 +371,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
 
       LogVisitor.start_lock_series_obtaining(
         logger, log_sampled, lock_keys,
-        queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
+        queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
       )
 
       # Step 2: try to obtain the series with timeout
@@ -384,7 +386,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
             while acq_process[:should_try]
               LogVisitor.start_try_to_lock_series_cycle(
                 logger, log_sampled, lock_keys,
-                queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
+                queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
               )
 
               # Step 2.X: check the actual score: is it in queue ttl limit or not?
@@ -398,7 +400,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
 
                 LogVisitor.dead_score_reached__reset_series_position(
                   logger, log_sampled, lock_keys,
-                  queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
+                  queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
                 )
               end
 
@@ -407,7 +409,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
                 logger,
                 log_lock_try,
                 lock_keys,
-                read_write_mode,
+                rw_mode,
                 lock_key_queues,
                 read_lock_key_queues,
                 lock_readers_keys,
@@ -459,10 +461,10 @@ module RedisQueuedLocks::Acquirer::LockSeries
                   reported_ready_locks[lock_index] = true
                   LogVisitor.lock_series_intermediate_lock_obtained(
                     logger, log_sampled, lock_keys[lock_index], lock_keys, queue_ttl, acquirer_id,
-                    host_id, acq_time, access_strategy, read_write_mode, priority
+                    host_id, acq_time, access_strategy, rw_mode, priority
                   )
                   InstrVisitor.lock_series_intermediate_lock_obtained(
-                    instrumenter, instr_sampled, lock_keys[lock_index], lock_keys, read_write_mode,
+                    instrumenter, instr_sampled, lock_keys[lock_index], lock_keys, rw_mode,
                     priority, ttl, acquirer_id, host_id, ready_ts, acq_time, instrument
                   )
                 end
@@ -513,10 +515,10 @@ module RedisQueuedLocks::Acquirer::LockSeries
             if lock_processes[index] == :lock_obtaining
               LogVisitor.lock_series_lock_obtained(
                 logger, log_sampled, lock_key, lock_keys, queue_ttl, acquirer_id, host_id,
-                acq_process[:acq_time], access_strategy, read_write_mode, priority
+                acq_process[:acq_time], access_strategy, rw_mode, priority
               )
               InstrVisitor.lock_series_lock_obtained(
-                instrumenter, instr_sampled, lock_key, lock_keys, read_write_mode, priority, ttl,
+                instrumenter, instr_sampled, lock_key, lock_keys, rw_mode, priority, ttl,
                 acquirer_id, host_id, acq_process[:ts], acq_process[:acq_time], instrument
               )
             else
@@ -527,10 +529,10 @@ module RedisQueuedLocks::Acquirer::LockSeries
           LogVisitor.lock_series_obtained(
             logger, log_sampled, lock_keys,
             queue_ttl, acquirer_id, host_id, acq_process[:acq_time], access_strategy,
-            read_write_mode, priority, reentrant_lock_keys
+            rw_mode, priority, reentrant_lock_keys
           )
           InstrVisitor.lock_series_obtained(
-            instrumenter, instr_sampled, lock_keys, read_write_mode, priority, ttl, acquirer_id,
+            instrumenter, instr_sampled, lock_keys, rw_mode, priority, ttl, acquirer_id,
             host_id, acq_process[:ts], acq_process[:acq_time], reentrant_lock_keys, instrument
           )
 
@@ -547,7 +549,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
         if !acq_process[:acquired]
           # Step 3.b.X: the series is not obtained (a failure or an interruption of any kind)
           drop_failed_lock_series(
-            redis, logger, lock_keys, read_write_mode, lock_key_queues, read_lock_key_queues,
+            redis, logger, lock_keys, rw_mode, lock_key_queues, read_lock_key_queues,
             lock_names, queue_ttl, acquirer_id, host_id, access_strategy, priority, acq_process,
             log_sampled
           )
@@ -567,7 +569,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
 
           LogVisitor.expire_lock_series(
             logger, log_sampled, lock_keys,
-            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
+            queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
           )
           # NOTE: an extended lock is the reentrant lock that was extended by the attempt
           if log_sampled && decreased_ttl > 0
@@ -577,12 +579,12 @@ module RedisQueuedLocks::Acquirer::LockSeries
             unless extended_lock_keys.empty?
               LogVisitor.decrease_lock_series(
                 logger, log_sampled, extended_lock_keys, decreased_ttl,
-                queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
+                queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
               )
             end
           end
           InstrVisitor.lock_series_hold_and_release(
-            instrumenter, instr_sampled, lock_keys, read_write_mode, priority, ttl, acquirer_id,
+            instrumenter, instr_sampled, lock_keys, rw_mode, priority, ttl, acquirer_id,
             host_id, acq_process[:rel_ts], acq_process[:acq_time], acq_process[:hold_time],
             reentrant_lock_keys, instrument
           )
@@ -634,19 +636,19 @@ module RedisQueuedLocks::Acquirer::LockSeries
         if failed_lock_key
           LogVisitor.lock_series_lock_obtaining_failed(
             logger, log_sampled, failed_lock_key, lock_keys, queue_ttl, acquirer_id, host_id,
-            acq_time, access_strategy, read_write_mode, priority, failure_result
+            acq_time, access_strategy, rw_mode, priority, failure_result
           )
           InstrVisitor.lock_series_lock_obtaining_failed(
-            instrumenter, instr_sampled, failed_lock_key, lock_keys, read_write_mode, priority, ttl,
+            instrumenter, instr_sampled, failed_lock_key, lock_keys, rw_mode, priority, ttl,
             acquirer_id, host_id, failed_ts, acq_time, failure_result, instrument
           )
         end
         LogVisitor.lock_series_obtaining_failed(
           logger, log_sampled, lock_keys, queue_ttl, acquirer_id, host_id, acq_time,
-          access_strategy, read_write_mode, priority, failure_result, failed_lock_key
+          access_strategy, rw_mode, priority, failure_result, failed_lock_key
         )
         InstrVisitor.lock_series_obtaining_failed(
-          instrumenter, instr_sampled, lock_keys, read_write_mode, priority, ttl, acquirer_id,
+          instrumenter, instr_sampled, lock_keys, rw_mode, priority, ttl, acquirer_id,
           host_id, failed_ts, acq_time, failure_result, failed_lock_key, instrument
         )
 
@@ -769,7 +771,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
     # @param redis [RedisClient]
     # @param logger [::Logger,#debug]
     # @param lock_keys [Array<String>]
-    # @param read_write_mode [Symbol]
+    # @param rw_mode [Symbol]
     # @param lock_key_queues [Array<String>]
     # @param read_lock_key_queues [Array<String>]
     # @param lock_names [Array<String>]
@@ -788,7 +790,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
       redis,
       logger,
       lock_keys,
-      read_write_mode,
+      rw_mode,
       lock_key_queues,
       read_lock_key_queues,
       lock_names,
@@ -808,7 +810,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
           )
           LogVisitor.expire_lock_series(
             logger, log_sampled, lock_keys,
-            queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
+            queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
           )
         end
       end
@@ -817,13 +819,13 @@ module RedisQueuedLocks::Acquirer::LockSeries
       return if acq_process[:result] == :fail_fast_no_try
 
       run_non_critical do
-        request_queues = (read_write_mode == :read) ? read_lock_key_queues : lock_key_queues
+        request_queues = (rw_mode == :read) ? read_lock_key_queues : lock_key_queues
         redis.pipelined do |pipeline|
           request_queues.each { |request_queue| pipeline.call('ZREM', request_queue, acquirer_id) }
         end
         LogVisitor.dequeue_from_lock_series_queues(
           logger, log_sampled, lock_keys,
-          queue_ttl, acquirer_id, host_id, access_strategy, read_write_mode, priority
+          queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
         )
       end
     end

@@ -14,6 +14,7 @@
   - the messages of the retry limit and timeout errors name the series and the lock that blocks it;
   - an empty series raises `RedisQueuedLocks::ArgumentError`, duplicated lock names are one lock;
   - upgrade all processes that share these locks: older versions obtain a series lock by lock;
+- [**Breaking**] `read_write_mode:` option of `#lock`/`#lock!`/`#lock_series`/`#lock_series!`/`#extend_lock_ttl` is renamed to `rw_mode:`;
 ### Added
 - `#lock_series` instrumentation events and logs: `lock_series_obtaining_failed` of the series and the events of each lock of the series:
   `lock_series_intermediate_lock_obtained`, `lock_series_lock_obtained`, `lock_series_lock_obtaining_failed`;

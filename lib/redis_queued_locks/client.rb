@@ -2,7 +2,7 @@
 
 # @api public
 # @since 1.0.0
-# @version 1.22.0
+# @version 1.23.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @return [RedisClient]
@@ -222,7 +222,7 @@ class RedisQueuedLocks::Client
   #     - `:wait_for_lock` - (default) - work in classic way
   #       (with timeouts, retry delays, retry limits, etc - in classic way :));
   #     - `:dead_locking` - fail with deadlock exception;
-  # @option read_write_mode [Symbol]
+  # @option rw_mode [Symbol]
   #   - The lock mode (read/write lock semantics);
   #   - `:write` mode is used by default;
   #   - Supports:
@@ -366,7 +366,7 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.22.0
+  # @version 1.23.0
   # rubocop:disable Metrics/MethodLength
   def lock(
     lock_name,
@@ -381,7 +381,7 @@ class RedisQueuedLocks::Client
     raise_errors: false,
     fail_fast: false,
     conflict_strategy: config['default_conflict_strategy'],
-    read_write_mode: :write,
+    rw_mode: :write,
     access_strategy: config['default_access_strategy'],
     priority: config['default_lock_priority'],
     identity: uniq_identity,
@@ -422,7 +422,7 @@ class RedisQueuedLocks::Client
       identity:,
       fail_fast:,
       conflict_strategy:,
-      read_write_mode:,
+      rw_mode:,
       access_strategy:,
       priority:,
       lock_priorities: config['lock_priorities'],
@@ -458,7 +458,7 @@ class RedisQueuedLocks::Client
   #   Time period whe should try to acquire the whole series (in seconds). See `#lock`.
   # @option retry_count [Integer,NilClass]
   #   How many times we should try to acquire the whole series. See `#lock`.
-  # @option read_write_mode [Symbol]
+  # @option rw_mode [Symbol]
   #   The mode of all locks of the series. See `#lock`.
   # @option priority [Integer,Symbol]
   #   The lock request priority of the series. See `#lock`.
@@ -492,7 +492,7 @@ class RedisQueuedLocks::Client
     raise_errors: false,
     fail_fast: false,
     conflict_strategy: config['default_conflict_strategy'],
-    read_write_mode: :write,
+    rw_mode: :write,
     access_strategy: config['default_access_strategy'],
     priority: config['default_lock_priority'],
     identity: uniq_identity,
@@ -534,7 +534,7 @@ class RedisQueuedLocks::Client
       identity:,
       fail_fast:,
       conflict_strategy:,
-      read_write_mode:,
+      rw_mode:,
       access_strategy:,
       priority:,
       lock_priorities: config['lock_priorities'],
@@ -575,7 +575,7 @@ class RedisQueuedLocks::Client
     retry_jitter: config['retry_jitter'],
     fail_fast: false,
     conflict_strategy: config['default_conflict_strategy'],
-    read_write_mode: :write,
+    rw_mode: :write,
     access_strategy: config['default_access_strategy'],
     priority: config['default_lock_priority'],
     identity: uniq_identity,
@@ -609,7 +609,7 @@ class RedisQueuedLocks::Client
       raise_errors: true,
       fail_fast:,
       conflict_strategy:,
-      read_write_mode:,
+      rw_mode:,
       access_strategy:,
       priority:,
       identity:,
@@ -637,7 +637,7 @@ class RedisQueuedLocks::Client
   # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.0.0
-  # @version 1.22.0
+  # @version 1.23.0
   def lock!(
     lock_name,
     ttl: config['default_lock_ttl'],
@@ -650,7 +650,7 @@ class RedisQueuedLocks::Client
     retry_jitter: config['retry_jitter'],
     fail_fast: false,
     conflict_strategy: config['default_conflict_strategy'],
-    read_write_mode: :write,
+    rw_mode: :write,
     access_strategy: config['default_access_strategy'],
     priority: config['default_lock_priority'],
     identity: uniq_identity,
@@ -690,7 +690,7 @@ class RedisQueuedLocks::Client
       instrument:,
       instrumenter:,
       conflict_strategy:,
-      read_write_mode:,
+      rw_mode:,
       access_strategy:,
       priority:,
       log_sampling_enabled:,
@@ -982,7 +982,7 @@ class RedisQueuedLocks::Client
   # @param lock_name [String]
   # @param milliseconds [Integer]
   #   How many milliseconds should be added: a positive Integer.
-  # @option read_write_mode [Symbol]
+  # @option rw_mode [Symbol]
   #   - `:write` (default) - extends the write lock (the method description above);
   #   - `:read` - extends the read lock of the current acquirer only (an expired read lock or
   #     a read lock replaced by a writer is not extended);
@@ -1011,11 +1011,11 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.21.0
+  # @version 1.23.0
   def extend_lock_ttl(
     lock_name,
     milliseconds,
-    read_write_mode: :write,
+    rw_mode: :write,
     all_read_locks: false,
     identity: uniq_identity,
     logger: config['logger'],
@@ -1034,7 +1034,7 @@ class RedisQueuedLocks::Client
       redis_client,
       lock_name,
       milliseconds,
-      read_write_mode,
+      rw_mode,
       all_read_locks,
       current_acquirer_id(identity:),
       config['lock_index_enabled'],

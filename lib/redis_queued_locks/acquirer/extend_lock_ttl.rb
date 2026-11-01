@@ -26,7 +26,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     # @param lock_name [String]
     # @param milliseconds [Integer]
     #   How many milliseconds should be added: a positive Integer.
-    # @param read_write_mode [Symbol]
+    # @param rw_mode [Symbol]
     #   - `:write` - extends the write lock (of any acquirer);
     #   - `:read` - extends the read lock of the given acquirer (other read locks are not affected)
     #     or all live read locks of the lock (see `all_read_locks`);
@@ -52,13 +52,13 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     #
     # @api private
     # @since 1.0.0
-    # @version 1.21.0
+    # @version 1.23.0
     # rubocop:disable Metrics/MethodLength
     def extend_lock_ttl(
       redis_client,
       lock_name,
       milliseconds,
-      read_write_mode,
+      rw_mode,
       all_read_locks,
       acquirer_id,
       lock_index_enabled,
@@ -74,13 +74,13 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
       instr_sampler,
       instr_sample_this
     )
-      case read_write_mode # NOTE: (steep) case/when narrows `Symbol` to `RQL::readWriteMode` below
+      case rw_mode # NOTE: (steep) case/when narrows `Symbol` to `RQL::readWriteMode` below
       when :read, :write then nil
       else
         raise(
           RedisQueuedLocks::ArgumentError,
-          "`:read_write_mode` argument should be `:read` or `:write`, " \
-          "got #{read_write_mode.inspect}."
+          "`:rw_mode` argument should be `:read` or `:write`, " \
+          "got #{rw_mode.inspect}."
         )
       end
 
@@ -92,7 +92,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
         )
       end
 
-      if read_write_mode == :read && all_read_locks != true && all_read_locks != false
+      if rw_mode == :read && all_read_locks != true && all_read_locks != false
         raise(
           RedisQueuedLocks::ArgumentError,
           "`:all_read_locks` argument should be a boolean, got #{all_read_locks.inspect}."
@@ -103,7 +103,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
 
       ext_start_time = clock_gettime
       result = fully_extend_lock_ttl(
-        redis_client, lock_name, lock_key, milliseconds, read_write_mode, all_read_locks,
+        redis_client, lock_name, lock_key, milliseconds, rw_mode, all_read_locks,
         acquirer_id, lock_index_enabled
       )
       time_at = Time.now.to_f
@@ -129,7 +129,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
         logger.debug do
           "[redis_queued_locks.extend_lock_ttl] " \
           "lock_key => '#{lock_key}' " \
-          "rw_mode => '#{read_write_mode}' " \
+          "rw_mode => '#{rw_mode}' " \
           "all_read_locks => #{all_read_locks} " \
           "ext_ttl => #{milliseconds} " \
           "extended_locks_count => #{extended_locks_count} " \
@@ -141,7 +141,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
       run_non_critical do
         instrumenter.notify('redis_queued_locks.extend_lock_ttl', {
           lock_key: lock_key,
-          rw_mode: read_write_mode,
+          rw_mode:,
           all_read_locks: all_read_locks,
           ext_ttl: milliseconds,
           extended_locks_count: extended_locks_count,
@@ -163,7 +163,7 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
     # @param lock_name [String]
     # @param lock_key [String]
     # @param milliseconds [Integer]
-    # @param read_write_mode [Symbol]
+    # @param rw_mode [Symbol]
     # @param all_read_locks [Boolean]
     # @param acquirer_id [String]
     # @param lock_index_enabled [Boolean]
@@ -177,12 +177,12 @@ module RedisQueuedLocks::Acquirer::ExtendLockTTL
       lock_name,
       lock_key,
       milliseconds,
-      read_write_mode,
+      rw_mode,
       all_read_locks,
       acquirer_id,
       lock_index_enabled
     )
-      if read_write_mode == :read
+      if rw_mode == :read
         # NOTE: (RW) all live read locks of the lock
         if all_read_locks
           return extend_all_read_locks_ttl(

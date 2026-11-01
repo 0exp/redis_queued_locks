@@ -28,7 +28,7 @@ module RedisQueuedLocks
           RQL::loggerObj logger,
           bool log_lock_try,
           Array[String] lock_keys,
-          RQL::readWriteMode read_write_mode,
+          RQL::readWriteMode rw_mode,
           Array[String] lock_key_queues,
           Array[String] read_lock_key_queues,
           Array[String] lock_readers_keys,
@@ -136,7 +136,7 @@ module RedisQueuedLocks
           String acquirer_id,
           String host_id,
           RQL::accessStrategy access_strategy,
-          RQL::readWriteMode read_write_mode,
+          RQL::readWriteMode rw_mode,
           Integer priority
         ) -> void
 
@@ -150,7 +150,7 @@ module RedisQueuedLocks
           String acquirer_id,
           String host_id,
           RQL::accessStrategy access_strategy,
-          RQL::readWriteMode read_write_mode
+          RQL::readWriteMode rw_mode
         ) -> void
 
         def log_series_lock_obstacle: (
@@ -166,7 +166,7 @@ module RedisQueuedLocks
           String acquirer_id,
           String host_id,
           RQL::accessStrategy access_strategy,
-          RQL::readWriteMode read_write_mode
+          RQL::readWriteMode rw_mode
         ) -> void
 
         def precheck_lock_series: (
@@ -175,7 +175,7 @@ module RedisQueuedLocks
           bool log_sampled,
           bool log_lock_try,
           Array[String] lock_keys,
-          RQL::readWriteMode read_write_mode,
+          RQL::readWriteMode rw_mode,
           Array[String] lock_readers_keys,
           Array[String] request_queues,
           Array[String] opposite_request_queues,
