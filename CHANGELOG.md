@@ -1,4 +1,6 @@
 ## [Unreleased]
+
+## [1.23.0] - 2026-11-01
 ### Changed
 - [**Breaking**] `#lock_series`/`#lock_series!` are no longer a proof of concept. The final feature design:
   - all locks are obtained atomically with the same;
