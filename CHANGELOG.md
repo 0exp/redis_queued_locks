@@ -7,6 +7,13 @@
 - `timed: true` of `#lock`/`#lock_series`: in some cases the time budget of the block could have been a little bit longer than the lock lifetime (2ms);
 
 ## [1.23.0] - 2026-11-01
+### Added
+- `#lock_series` instrumentation events and logs: `lock_series_obtaining_failed` of the series and the events of each lock of the series:
+  `lock_series_intermediate_lock_obtained`, `lock_series_lock_obtained`, `lock_series_lock_obtaining_failed`;
+- `reentrant_lock_keys` key of the `lock_series_obtained` and `lock_series_hold_and_release` events and logs;
+- the logs of the series acquirement: `start_try_to_lock_series_cycle`, `dead_score_reached__reset_series_position`,
+  `dequeue_from_lock_series_queues`, `decrease_lock_series`;
+- RBS signatures of `#lock_series`/`#lock_series!`;
 ### Changed
 - [**Breaking**] `#lock_series`/`#lock_series!` are no longer a proof of concept. The final feature design:
   - all locks are obtained atomically with the same;
@@ -21,13 +28,6 @@
   - an empty series raises `RedisQueuedLocks::ArgumentError`, duplicated lock names are one lock;
   - upgrade all processes that share these locks: older versions obtain a series lock by lock;
 - [**Breaking**] `read_write_mode:` option of `#lock`/`#lock!`/`#lock_series`/`#lock_series!`/`#extend_lock_ttl` is renamed to `rw_mode:`;
-### Added
-- `#lock_series` instrumentation events and logs: `lock_series_obtaining_failed` of the series and the events of each lock of the series:
-  `lock_series_intermediate_lock_obtained`, `lock_series_lock_obtained`, `lock_series_lock_obtaining_failed`;
-- `reentrant_lock_keys` key of the `lock_series_obtained` and `lock_series_hold_and_release` events and logs;
-- the logs of the series acquirement: `start_try_to_lock_series_cycle`, `dead_score_reached__reset_series_position`,
-  `dequeue_from_lock_series_queues`, `decrease_lock_series`;
-- RBS signatures of `#lock_series`/`#lock_series!`;
 
 ## [1.22.0] - 2026-10-27
 ### Added
