@@ -14,20 +14,27 @@ Gem::Specification.new do |spec|
     'Distributed locks with "prioritized lock acquisition queue" ' \
     'capabilities based on the Redis Database.'
 
-  spec.description =
-    "|> Distributed locks with \"prioritized lock acquisition queue\" capabilities " \
-    "based on the Redis Database.\n" \
-    "|> Each lock request is put into the request queue " \
-    "(each lock is hosted by its own queue separately from other queues) and processed " \
-    "in order of their priority (FIFO).\n" \
-    "|> Each lock request lives some period of time (RTTL) " \
-    "(with requeue capabilities) which guarantees the request queue will never be stacked.\n" \
-    "|> In addition to the classic `queued` (FIFO) strategy RQL supports " \
-    "`random` (RANDOM) lock obtaining strategy when any acquirer from the lock queue " \
-    "can obtain the lock regardless the position in the queue.\n" \
-    "|> Provides flexible invocation flow, parametrized limits " \
-    "(lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), " \
-    "logging and instrumentation."
+  spec.description = <<~GEMSPEC_DESCRIPTION
+    RedisQueuedLocks (aka RQL, aka RQL-lock) - distributed locks with
+    "prioritized lock acquisition queue" capabilities based on the Redis Database.
+
+    Each lock request is put into the request queue
+    (each lock is hosted by its own queue separately from other queues)
+    and processed in order of their priority: requests of a higher priority go first,
+    requests of the same priority are processed in FIFO order.
+    Each lock request lives some period of time (RTTL) (with requeue capabilities)
+    which guarantees the request queue will never be stacked.
+
+    In addition to the classic queued (FIFO) strategy RQL supports random (RANDOM)
+    lock obtaining strategy when any acquirer from the lock queue
+    can obtain the lock regardless the position in the queue.
+
+    Supports lock request prioritization, Read/Write locks and Reentrant locks.
+
+    Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl,
+    queue ttl, lock attempts limit, fast failing, etc), zombie locks elimination,
+    lock indexing, logging and instrumentation (and much more).
+  GEMSPEC_DESCRIPTION
 
   spec.homepage = 'https://github.com/0exp/redis_queued_locks'
   spec.license = 'MIT'
