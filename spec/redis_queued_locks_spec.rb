@@ -620,7 +620,7 @@ RSpec.shared_examples 'redis_queued_locks' do
             'timed.a', 'timed.b', ttl: 100, timed: true, rw_mode: mode
           ) { sleep(2) }
         end.to raise_error(
-          RedisQueuedLocks::TimedLockTimeoutError,
+          RedisQueuedLocks::TimedBlockExceedsLockTtlError,
           /exceeded the lock TTL \(lock: "rql:lock:timed.a, rql:lock:timed.b", ttl: 100/
         )
         expect(client.keys).to be_empty
@@ -4132,6 +4132,64 @@ RSpec.shared_examples 'redis_queued_locks' do
     redis.close
   end
 
+  specify '`timed` budget: stays within the lock lifetime, no budget => the block is not invoked' do
+    redis = RedisClient.config.new_pool(
+      timeout: 5, size: 50, connect_timeout: 5, read_timeout: 5, write_timeout: 5
+    )
+    client = RedisQueuedLocks::Client.new(redis)
+    margin = RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
+
+    budgets = []
+    allow(Timeout).to receive(:timeout).and_wrap_original do |original, sec, klass = nil, &block|
+      budgets << sec if klass == RedisQueuedLocks::TimedLockIntermediateTimeoutError
+      original.call(sec, klass, &block)
+    end
+
+    %i[write read].each do |mode|
+      budgets.clear
+
+      client.lock('timed-budget', ttl: 1_000, timed: true, rw_mode: mode) { :done }
+      client.lock_series(
+        'timed-budget.a', 'timed-budget.b', ttl: 1_000, timed: true, rw_mode: mode
+      ) { :done }
+
+      expect(budgets.size).to eq(2)
+      expect(budgets).to all(be <= (1_000 - margin) / 1_000.0)
+      expect(budgets).to all(be > 0)
+
+      invoked = false
+      expect do
+        client.lock('timed-budget', ttl: margin, timed: true, rw_mode: mode) { invoked = true }
+      end.to raise_error(
+        RedisQueuedLocks::LockTtlTimeBudgetIsSpentError,
+        /was not invoked: the time budget of the lock TTL is spent \(lock: /
+      )
+      expect do
+        client.lock_series(
+          'timed-budget.a', 'timed-budget.b', ttl: margin, timed: true, rw_mode: mode
+        ) { invoked = true }
+      end.to raise_error(
+        RedisQueuedLocks::LockTtlTimeBudgetIsSpentError,
+        /was not invoked: the time budget of the lock TTL is spent \(lock: /
+      )
+
+      expect(invoked).to eq(false)
+      expect(budgets.size).to eq(2)
+      expect(client.keys).to be_empty
+    end
+
+    redis.close
+  end
+
+  specify '`timed` failures are `TimedLockTimeoutError`s' do
+    expect(RedisQueuedLocks::LockTtlTimeBudgetIsSpentError.superclass).to eq(
+      RedisQueuedLocks::TimedLockTimeoutError
+    )
+    expect(RedisQueuedLocks::TimedBlockExceedsLockTtlError.superclass).to eq(
+      RedisQueuedLocks::TimedLockTimeoutError
+    )
+  end
+
   specify 'timed lock' do
     redis = RedisClient.config.new_pool(
       # NOTE:
@@ -4145,7 +4203,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
     expect do
       client.lock('some-timed-lock', timed: true, ttl: 2_000) { sleep(3) }
-    end.to raise_error(RedisQueuedLocks::TimedLockTimeoutError)
+    end.to raise_error(RedisQueuedLocks::TimedBlockExceedsLockTtlError)
 
     timed_lock_error = begin
       client.lock('some-timed-lock', timed: true, ttl: 1_000) { sleep(2) }

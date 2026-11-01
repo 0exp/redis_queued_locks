@@ -589,6 +589,11 @@ def lock(
   - the block is interrupted by an internal `RedisQueuedLocks::Exception` (an `::Exception`, like `Timeout::ExitException` of Ruby's `Timeout`): `rescue => e`,
     `rescue StandardError`, `rescue Timeout::Error` and `rescue nil` inside the block can not swallow it (only `rescue Exception`),
     `ensure` of the block still runs;
+  - the block gets the lock's TTL minus the time from the start of the successful acquirement attempt and minus a 2 ms margin;
+    with no time left the block is not invoked (`RedisQueuedLocks::LockTtlTimeBudgetIsSpentError`);
+  - both failures have the common superclass `RedisQueuedLocks::TimedLockTimeoutError`: `RedisQueuedLocks::TimedBlockExceedsLockTtlError` (the block exceeded the time) and `RedisQueuedLocks::LockTtlTimeBudgetIsSpentError` (the block was not invoked);
+  - (limitation) `timed` can only interrupt the block: a long `ensure` of the block, `rescue Exception` in the block and the code that
+    can not be interrupted (a C extension holding the GVL) can outlive the lock;
   - pre-configured in `config['is_timed_by_default']`;
   - `false` by default;
 - `retry_count` - (optional) `[Integer,NilClass]`
@@ -837,7 +842,7 @@ rql.lock("my_lock", ttl: 5_000, timed: true) { sleep(4) }
 # => OK
 
 rql.lock("my_lock", ttl: 5_000, timed: true) { sleep(6) }
-# => fails with RedisQueuedLocks::TimedLockTimeoutError
+# => fails with RedisQueuedLocks::TimedBlockExceedsLockTtlError (a RedisQueuedLocks::TimedLockTimeoutError)
 ```
 
 - infinite lock obtaining (no retry limit, no timeout limit):

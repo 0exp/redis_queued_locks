@@ -1,4 +1,9 @@
 ## [Unreleased]
+### Added
+- `timed: true` of `#lock`/`#lock_series`: separate errors of the failures, both are `TimedLockTimeoutError` subclasses: `LockTtlTimeBudgetIsSpentError` (the block was not invoked: no time left) and `TimedBlockExceedsLockTtlError` (the block exceeded the lock TTL);
+
+### Fixed
+- `timed: true` of `#lock`/`#lock_series`: in some cases the time budget of the block could have been a little bit longer than the lock lifetime (2ms);
 
 ## [1.23.0] - 2026-11-01
 ### Changed
