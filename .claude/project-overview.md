@@ -2,13 +2,13 @@
 
 Ruby gem providing **distributed locks on Redis with a prioritized lock-acquisition queue**.
 Each lock has its own request queue; requests are processed FIFO (`:queued`, ordered by the lock request
-priority first: `priority` -100..100) or first-come (`:random`). Requests have TTLs (with requeue), so queues never get stuck. Includes reentrancy
-(conflict) strategies, timed locks, retries/fail-fast, logging, instrumentation with sampling,
-and a background "swarm" that detects dead hosts and flushes their locks.
+priority first: `priority` -100..100) or first-come (`:random`). Requests have TTLs (with requeue), so queues never get stuck. Includes read/write
+locks, atomic lock series, reentrancy (conflict) strategies, timed locks, retries/fail-fast, an opt-in lock index, logging,
+instrumentation with sampling, and a background "swarm" that detects dead hosts and flushes their locks.
 
 - Repo: https://github.com/0exp/redis_queued_locks (MIT); main branch `master`
 - Runtime dependency: `redis-client ~> 0.20` (locked 0.31.0), nothing else
-- Ruby `>= 4.0` (`.ruby-version` = 4.0.7)
+- Ruby `>= 4.0` (`.ruby-version` = 4.0.9)
 
 ---
 
@@ -151,18 +151,19 @@ AcquireLock Step 0.1 / LockSeries Step 0.1              name -> Integer, range -
 |---|---|
 | `lock` / `lock!` | `acquirer/acquire_lock.rb` + `acquirer/acquire_lock/*` |
 | `lock_series` / `lock_series!` | `acquirer/lock_series.rb` + `acquirer/lock_series/*` (atomic, see "Lock series"; one `rw_mode`, `priority` and `ttl` for the whole series) |
-| `unlock` | `acquirer/release_lock.rb` |
+| `unlock` / `release_lock` | `acquirer/release_lock.rb` |
 | `unlock_read` / `release_read_lock` | `acquirer/release_read_lock.rb` (own read lock or `acquirer_id:` read lock only) |
 | `extend_lock_ttl` | `acquirer/extend_lock_ttl.rb` (`rw_mode: :read` extends own read lock, `+ all_read_locks: true` all live read locks) |
 | `locked?` / `queued?` | `acquirer/is_locked.rb` / `acquirer/is_queued.rb` |
 | `lock_info` / `queue_info` | `acquirer/lock_info.rb` / `acquirer/queue_info.rb` |
 | `locks`, `locks_info`, `queues`, `queues_info`, `keys` | `acquirer/locks.rb`, `queues.rb`, `keys.rb` (keyspace SCAN or lock index: `lock_index_enabled`) |
-| `clear_locks` | `acquirer/release_all_locks.rb` |
-| `clear_locks_of`, `clear_current_locks` | `acquirer/release_locks_of.rb` |
+| `clear_locks` / `release_locks` | `acquirer/release_all_locks.rb` |
+| `clear_locks_of` / `release_locks_of`, `clear_current_locks` / `release_current_locks` | `acquirer/release_locks_of.rb` |
 | `clear_dead_requests` | `acquirer/clear_dead_requests.rb` (`by_priority: true` reads the first request of each priority band instead of all requests) |
 | `reindex_locks` | `acquirer/reindex_locks.rb` (adds keys without lock index entries to the lock index: one SCAN pass; works in both modes) |
-| `current_acquirer_id`, `current_host_id`, `possible_host_ids` | `resource.rb` |
-| `swarmize!`, `deswarmize!`, `swarm_status`, `swarm_info`, `probe_hosts`, `flush_zombies`, `zombie_locks`, `zombie_acquirers`, `zombie_hosts`, `zombies_info` | `swarm.rb` + `swarm/*` |
+| `current_acquirer_id` (`current_acq_id`, `acq_id`), `current_host_id` (`current_hst_id`, `hst_id`), `possible_host_ids` | `resource.rb` |
+| `swarmize!`, `deswarmize!`, `swarm_status` / `swarm_state`, `swarm_info`, `probe_hosts`, `flush_zombies`, `zombie_locks`, `zombie_acquirers`, `zombie_hosts`, `zombies_info` / `zombies` | `swarm.rb` + `swarm/*` |
+| `configure` | `config.rb` (`Config#configure`) |
 
 ### Lock acquisition flow (`acquirer/acquire_lock.rb` + `acquire_lock/`)
 
@@ -170,7 +171,7 @@ AcquireLock Step 0.1 / LockSeries Step 0.1              name -> Integer, range -
 
 | Mixin | Role |
 |---|---|
-| `TryToLock` (`try_to_lock.rb`) | One attempt: `multi(watch:)` (write: lock key + readers registry, read: lock key only), one pipelined read of the lock state (`HGET acq_id`, `TIME`, own reader score, longest reader: write requests only), the lock request queueing in one pipelined round trip (`queue_lock_request`: prune the priority band of the request in both queues (first: the old dead position of a requeued request is dropped before `ZADD NX` adds its new position), `ZADD NX` into the queue of the requested mode (timestamp score shifted by the priority band, see "Lock request priorities"), both queue heads with scores, then (the enabled lock index only) the lock index commands: request queue `PEXPIRE NX`+`GT` (queue ttl), `ZADD GT` of the lock name into the lock index (queue ttl), `ZREMRANGEBYSCORE` of expired lock names), drop the dead requests of other priority bands that block the request (the write queue head and the earlier opposite-mode request) with their bands in one more round trip that re-reads the heads (`drop_dead_requests_ahead`, Step 2.2, also in the pre-check: up to `MAX_DEAD_REQUEST_REMOVALS` = 5 such round trips per attempt, none while no dead request blocks), take the lock if allowed (see Read/Write locks; with the enabled lock index the obtaining `MULTI` ends with the lock index `ZADD GT` (lock ttl), the `:extendable_work_through` extension `MULTI` with `ZADD XX INCR`). Eager queueing (`:wait_for_lock`/`:dead_locking` without `fail_fast`) sends the queueing commands in the lock state round trip: `lock {}` = 4 round trips (`WATCH`, state + queueing, `MULTI/EXEC`, release), a failed attempt = 3. Pre-check (`precheck_lock`, retries and `fail_fast` attempts): the lock state (+ the queueing for retries) without `WATCH` in one round trip; an attempt that can not obtain the lock fails there (same results and log events in the same order: `lock_obstacle`/`log_lock_obstacle`, the dropped dead requests after the queueing events: `log_dropped_requests`), otherwise the attempt continues with `WATCH`/`MULTI` (a failed retry = 1 round trip, a successful one = 4; `fail_fast` on an obtained lock = 1); same-process conflicts are never decided by the pre-check. Handles reentrant conflicts (incl. read/write ones); write TTL extension via inline Lua (`PTTL` + `PEXPIRE`). |
+| `TryToLock` (`try_to_lock.rb`) | One attempt: `multi(watch:)` (write: lock key + readers registry, read: lock key only), one pipelined read of the lock state (`HGET acq_id`, `TIME`, own reader score, longest reader: write requests only), the lock request queueing in one pipelined round trip (`queue_lock_request`: prune the priority band of the request in both queues (first: the old dead position of a requeued request is dropped before `ZADD NX` adds its new position), `ZADD NX` into the queue of the requested mode (timestamp score shifted by the priority band, see "Lock request priorities"), both queue heads with scores, then (the enabled lock index only) the lock index commands: request queue `PEXPIRE NX`+`GT` (queue ttl), `ZADD GT` of the lock name into the lock index (queue ttl), `ZREMRANGEBYSCORE` of expired lock names), drop the dead requests of other priority bands that block the request (the write queue head and the earlier opposite-mode request) with their bands in one more round trip that re-reads the heads (`drop_dead_requests_ahead`, Step 2.2, also in the pre-check: up to `MAX_DEAD_REQUEST_REMOVALS` = 5 such round trips per attempt, none while no dead request blocks), take the lock if allowed (see Read/Write locks; with the enabled lock index the obtaining `MULTI` ends with the lock index `ZADD GT` (lock ttl), the `:extendable_work_through` extension `MULTI` with `ZADD XX INCR`). Eager queueing (`:wait_for_lock`/`:dead_locking` without `fail_fast`) sends the queueing commands in the lock state round trip: `lock {}` = 4 round trips (`WATCH`, state + queueing, `MULTI/EXEC`, release), a failed attempt = 3. Pre-check (`precheck_lock`, retries and `fail_fast` attempts): the lock state (+ the queueing for retries) without `WATCH` in one round trip; an attempt that can not obtain the lock fails there (same results and log events in the same order: `lock_obstacle`/`log_lock_obstacle`, the dropped dead requests after the queueing events: `log_dropped_requests`), otherwise the attempt continues with `WATCH`/`MULTI` (a failed retry = 1 round trip, a successful one = 4 + the release; `fail_fast` on an obtained lock = 1); same-process conflicts are never decided by the pre-check. Handles reentrant conflicts (incl. read/write ones); write TTL extension via inline Lua (`PTTL` + `PEXPIRE`). |
 | `WithAcqTimeout` | Global acquisition timeout (`timeout`). |
 | `DelayExecution` | Retry delay + jitter between attempts. |
 | `DequeueFromLockQueue` | Removes the acquirer from the queue of the requested mode on timeout/failure. |
@@ -236,7 +237,7 @@ The second part of the lock acquisition core (not an operation module): `LockSer
 is client-wide: `Client` passes it to the acquirers, it is not a `lock` option), `timeout`, `timed`, `retry_count`, `retry_delay`, `retry_jitter`,
 `raise_errors`, `fail_fast`, `conflict_strategy`, `access_strategy`, `priority` (`-100`..`100` or a priority name of `config['lock_priorities']`, default
 `config['default_lock_priority']` = `0`, see "Lock request priorities"), `rw_mode`
-(`:write` (default, exclusive) | `:read` (shared)), `identity`, `meta`, `logger`, `log_lock_try`,
+(`:write` (default, exclusive) | `:read` (shared)), `identity`, `meta`, `detailed_acq_timeout_error`, `logger`, `log_lock_try`,
 `instrumenter`, `instrument`, log/instr sampling options, `log_sample_this`, `instr_sample_this`.
 
 - `access_strategy`: `:queued` (FIFO, default) or `:random`.
@@ -313,7 +314,7 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 - Design decisions (release semantics, not limitations to "fix"): read->write upgrade is an error unless
   `:wait_for_lock`; nested reads of one acquirer go through `conflict_strategy` (no hold counting);
   `:random` gives no fairness between modes; cross-host FIFO is best effort; no Lua in the RW path.
-- RBS: `Client` types `rw_mode` as `:read | :write`. Older gem versions ignore readers: all processes must be upgraded
+- RBS: `Client` types `rw_mode` as `RQL::readWriteMode` (`:read | :write`). Older gem versions ignore readers: all processes must be upgraded
   before read locks are used.
 
 ### Lock request priorities (`priority`)
@@ -508,7 +509,7 @@ the connection (drops the WATCH state, reconnected on the next use) and re-raise
 | `Config` | Declarative DSL: `setting(key, default)` and `validate(key) { }` registries; access as `config['a.b']`; runtime `Client#configure` |
 | `Swarm` | Template base classes `SwarmElement::Threaded` (Thread) and `SwarmElement::Isolated` (Ractor; commands/replies via a per-element pair of `Ractor::Port`s, termination via `Ractor#monitor`). `ProbeHosts < Threaded`; `FlushZombies < Isolated` with its own connection from `RedisClientBuilder` (plain, pooled or sentinel). `Supervisor` watchdog thread restarts dead elements. |
 | `Resource` | Single source of truth for key names and identity strings |
-| Misc | `Data < Hash` result object; `Utilities::Lock` mutex wrapper; global `Debugger` toggle |
+| Misc | `Data < Hash` result object; `Utilities::Lock` `Monitor` wrapper (reentrant); global `Debugger` toggle |
 
 ---
 
@@ -543,11 +544,12 @@ lib/redis_queued_locks/
   logging/, instrument/            void defaults, samplers, ActiveSupport adapter
   resource.rb                      keys and identities
   data.rb, errors.rb, utilities.rb, utilities/lock.rb, debugger/, version.rb
-sig/                               RBS mirror of lib/ + sig/vendor stubs (redis_client, active_support, semantic_logger)
-spec/                              redis_queued_locks_spec.rb (~5.6k lines, integration: shared examples run with both lock lookup modes), redis_queued_locks/config_spec.rb (Redis-free: `Config#[]` RBS table == `setting` registry), spec_helper.rb, setup_simplecov.rb, support/parallel_runner.rb (the `rake rspec:parallel` runner, not a spec)
+sig/                               RBS mirror of lib/ + sig/vendor stubs (redis_client, active_support, semantic_logger), manifest.yml (dependencies of the signatures)
+spec/                              redis_queued_locks_spec.rb (~8.6k lines, integration: shared examples run with both lock lookup modes), redis_queued_locks/config_spec.rb (Redis-free: `Config#[]` RBS table == `setting` registry), spec_helper.rb, setup_simplecov.rb, support/parallel_runner.rb (the `rake rspec:parallel` runner, not a spec)
 .github/workflows/                 tests, lint, typecheck-static, typecheck-runtime
+.claude/                           this overview, rules/*.md (path-scoped rules), skills/rql-code-review (review of the changes)
 bin/console, bin/setup             dev scripts
-Rakefile, Steepfile, rbs_collection.yaml
+Rakefile, Steepfile, rbs_collection.yaml, .rubocop.yml, .rubocop.rbs.yml
 ```
 
 ---
@@ -555,8 +557,8 @@ Rakefile, Steepfile, rbs_collection.yaml
 ## 5. Technology stack
 
 ### Runtime
-- Ruby >= 4.0; stdlib `timeout`, `securerandom`, `logger`; Thread, Fiber, Ractor, Mutex
-- Redis server: WATCH/MULTI, EVAL (Lua), ZSET, HASH, PTTL/PEXPIRE (NX/GT: Redis >= 7), SCAN/ZSCAN
+- Ruby >= 4.0; stdlib `timeout`, `securerandom`, `logger`, `monitor`; Thread, Fiber, Ractor, Monitor
+- Redis server `>= 7`, `~> 8.x`, protocol RESP3 (README "Requirements"): WATCH/MULTI, EVAL (Lua), ZSET, HASH, PTTL/PEXPIRE (NX/GT: Redis >= 7), SCAN/ZSCAN
 - `redis-client ~> 0.20`
 - Optional, duck-typed: any `::Logger`-compatible logger; any `#notify(event, payload)` instrumenter (ActiveSupport adapter included; SemanticLogger has only an RBS stub)
 
@@ -572,7 +574,7 @@ Rakefile, Steepfile, rbs_collection.yaml
 - rake, bundler, pry, pry-doc, reline, activesupport 8.1
 
 ### Rake tasks
-`rspec` (default), `rspec:parallel` (`spec/support/parallel_runner.rb`, the `Rakefile` only declares the task: the specs in `WORKERS` processes, ~1 min instead of ~6: each worker gets its own pair of Redis databases via `RQL_SPEC_DB_OFFSET` = worker index * 2, prepended to `RedisClient::Config::Common#initialize` in `spec_helper.rb` (the library, swarm and Ractor clients included; after the URL is resolved: the database of a `url:` gets the offset too); examples listed by `rspec --dry-run` and distributed by the durations of the previous runs (`tmp/rspec_parallel/durations.json`, the longest first to the least loaded worker); per-worker logs/JSON in `tmp/rspec_parallel/` (the worker files of the previous run are deleted before the workers start: a worker that dies before RSpec writes its JSON output is reported as broken, never with stale results); coverage: each worker stores only its SimpleCov result in `coverage/parallel/worker-<n>` (`rspec:worker:<n>` command names, no report), the task collates one report into `coverage/` after all workers (`SimpleCov.collate`) and drops the collated resultset (later `rspec` runs don't merge it); the environment is passed to the workers: the RBS runtime checks and `RSPEC_RETRY_RETRY_COUNT` work as with `rspec`), `rubocop` (runs `rubocop:ruby` and `rubocop:rbs`, fails if either fails), `steep:check`, plus bundler gem tasks (`build`, `release`, ...).
+`rspec` (default), `rspec:parallel` (`spec/support/parallel_runner.rb`, the `Rakefile` only declares the task, optional `rspec:parallel[<paths>]`: the specs in `WORKERS` processes, ~1 min instead of ~6: each worker gets its own pair of Redis databases via `RQL_SPEC_DB_OFFSET` = worker index * 2, prepended to `RedisClient::Config::Common#initialize` in `spec_helper.rb` (the library, swarm and Ractor clients included; after the URL is resolved: the database of a `url:` gets the offset too); examples listed by `rspec --dry-run` and distributed by the durations of the previous runs (`tmp/rspec_parallel/durations.json`, `durations-rbs.json` under the RBS runtime checks; the longest first to the least loaded worker, examples without a recorded duration count as the median one); per-worker logs/JSON in `tmp/rspec_parallel/` (the worker files of the previous run are deleted before the workers start: a worker that dies before RSpec writes its JSON output is reported as broken, never with stale results); coverage: each worker stores only its SimpleCov result in `coverage/parallel/worker-<n>` (`rspec:worker:<n>` command names, no report), the task collates one report into `coverage/` after all workers (`SimpleCov.collate`) and drops the collated resultset (later `rspec` runs don't merge it); the environment is passed to the workers: the RBS runtime checks and `RSPEC_RETRY_RETRY_COUNT` work as with `rspec`), `rubocop` (runs `rubocop:ruby` and `rubocop:rbs`, fails if either fails), `steep:check`, plus bundler gem tasks (`build`, `release`, ...).
 
 ### CI (GitHub Actions, ubuntu-latest, Ruby 4.0, on every push)
 
@@ -581,7 +583,7 @@ Rakefile, Steepfile, rbs_collection.yaml
 | tests | `bundle exec rake rspec:parallel` (with a Redis service; 4 workers on the 4-core runner; `tmp/rspec_parallel/durations.json` restored/saved with `actions/cache` (a new key per run, `restore-keys` prefix) to balance the workers; the worker logs are uploaded as an artifact on failure) |
 | lint | `bundle exec rake rubocop` (precompiled native gems: no `BUNDLE_FORCE_RUBY_PLATFORM`, a rubydex 0.4.1 source build on the runner flags constants as `@deprecated` and breaks `Lint/DeprecatedReference`) |
 | typecheck-static | `bundle exec rbs collection install && bundle exec rake steep:check -j 10` |
-| typecheck-runtime | `RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec` (blocking; serial on purpose: the RBS hooks keep a worker on a CPU core, and parallel workers on the runner (4 vCPU = 2 physical cores) starved the timing-sensitive examples: Redis connect timeouts with 4 workers, swarm flush waits with 2; locally `rake rspec:parallel` works for the RBS checks; Ractor-executed methods are skipped: `RBS_TEST_SKIP` + `%a{rbs:test:skip}` in `resource.rbs`/`utilities.rbs`) |
+| typecheck-runtime | `bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec` (blocking; serial on purpose: the RBS hooks keep a worker on a CPU core, and parallel workers on the runner (4 vCPU = 2 physical cores) starved the timing-sensitive examples: Redis connect timeouts with 4 workers, swarm flush waits with 2; locally `rake rspec:parallel` works for the RBS checks; Ractor-executed methods are skipped: `RBS_TEST_SKIP` + `%a{rbs:test:skip}` in `resource.rbs`/`utilities.rbs`) |
 
 ---
 
