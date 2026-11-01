@@ -620,7 +620,7 @@ RSpec.shared_examples 'redis_queued_locks' do
             'timed.a', 'timed.b', ttl: 100, timed: true, rw_mode: mode
           ) { sleep(2) }
         end.to raise_error(
-          RedisQueuedLocks::TimedLockTimeoutError,
+          RedisQueuedLocks::TimedBlockExceedsLockTtlError,
           /exceeded the lock TTL \(lock: "rql:lock:timed.a, rql:lock:timed.b", ttl: 100/
         )
         expect(client.keys).to be_empty
@@ -4161,7 +4161,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       expect do
         client.lock('timed-budget', ttl: margin, timed: true, rw_mode: mode) { invoked = true }
       end.to raise_error(
-        RedisQueuedLocks::TimedLockTimeoutError,
+        RedisQueuedLocks::LockTtlTimeBudgetIsSpentError,
         /was not invoked: the time budget of the lock TTL is spent \(lock: /
       )
       expect do
@@ -4169,7 +4169,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           'timed-budget.a', 'timed-budget.b', ttl: margin, timed: true, rw_mode: mode
         ) { invoked = true }
       end.to raise_error(
-        RedisQueuedLocks::TimedLockTimeoutError,
+        RedisQueuedLocks::LockTtlTimeBudgetIsSpentError,
         /was not invoked: the time budget of the lock TTL is spent \(lock: /
       )
 
@@ -4179,6 +4179,15 @@ RSpec.shared_examples 'redis_queued_locks' do
     end
 
     redis.close
+  end
+
+  specify '`timed` failures are `TimedLockTimeoutError`s' do
+    expect(RedisQueuedLocks::LockTtlTimeBudgetIsSpentError.superclass).to eq(
+      RedisQueuedLocks::TimedLockTimeoutError
+    )
+    expect(RedisQueuedLocks::TimedBlockExceedsLockTtlError.superclass).to eq(
+      RedisQueuedLocks::TimedLockTimeoutError
+    )
   end
 
   specify 'timed lock' do
@@ -4194,7 +4203,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
     expect do
       client.lock('some-timed-lock', timed: true, ttl: 2_000) { sleep(3) }
-    end.to raise_error(RedisQueuedLocks::TimedLockTimeoutError)
+    end.to raise_error(RedisQueuedLocks::TimedBlockExceedsLockTtlError)
 
     timed_lock_error = begin
       client.lock('some-timed-lock', timed: true, ttl: 1_000) { sleep(2) }

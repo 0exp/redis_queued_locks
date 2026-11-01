@@ -174,7 +174,7 @@ AcquireLock Step 0.1 / LockSeries Step 0.1              name -> Integer, range -
 | `WithAcqTimeout` | Global acquisition timeout (`timeout`). |
 | `DelayExecution` | Retry delay + jitter between attempts. |
 | `DequeueFromLockQueue` | Removes the acquirer from the queue of the requested mode on timeout/failure. |
-| `YieldExpire` | Runs the user block (optionally `timed`: budget = `ttl` - time from the start of the successful attempt - `REDIS_TIMESHIFT_ERROR`, always within the lock lifetime; no budget left => the block is not invoked, `TimedLockTimeoutError`; `Timeout.timeout(0)` means no timeout; a long `ensure` of the block, `rescue Exception` and non-interruptible code can still outlive the lock), then releases/expires the lock of the held mode (write: `EXPIRE 0`; read: `ZREM` own reader + `DEL` own read lock data; extendable reentrant: decrease). Known limitation (kept by the user's decision, documented in README): the write release and the write ttl decrease have no owner check, so a block longer than the ttl can delete/shorten the lock of another acquirer. |
+| `YieldExpire` | Runs the user block (optionally `timed`: budget = `ttl` - time from the start of the successful attempt - `REDIS_TIMESHIFT_ERROR`, always within the lock lifetime; no budget left => the block is not invoked, `LockTtlTimeBudgetIsSpentError`; the budget exceeded => `TimedBlockExceedsLockTtlError`; `Timeout.timeout(0)` means no timeout; a long `ensure` of the block, `rescue Exception` and non-interruptible code can still outlive the lock), then releases/expires the lock of the held mode (write: `EXPIRE 0`; read: `ZREM` own reader + `DEL` own read lock data; extendable reentrant: decrease). Known limitation (kept by the user's decision, documented in README): the write release and the write ttl decrease have no owner check, so a block longer than the ttl can delete/shorten the lock of another acquirer. |
 | `LogVisitor` / `InstrVisitor` | One method per lifecycle event for logs and instrumentation. |
 
 ### Lock series (`acquirer/lock_series.rb`)
@@ -483,7 +483,7 @@ log event: `dead_request_removed` (`dead_acq_id`, `dead_priority`: a dead blocki
 
 Global base errors per branch (`logic.md#15`): `RedisQueuedLocks::Error < StandardError` (the main
 hierarchy: `LockAlreadyObtainedError`, `LockAcquirementTimeoutError`, `LockAcquirementRetryLimitError`,
-`TimedLockTimeoutError`, `ConflictLockObtainError`, `SwarmError`, `ConfigError` (`ConfigNotFoundError`,
+`TimedLockTimeoutError` (`LockTtlTimeBudgetIsSpentError`, `TimedBlockExceedsLockTtlError`), `ConflictLockObtainError`, `SwarmError`, `ConfigError` (`ConfigNotFoundError`,
 `ConfigValidationError`)), `RedisQueuedLocks::ArgumentError < ::ArgumentError` (`SwarmArgumentError`),
 `RedisQueuedLocks::Exception < ::Exception` (`@api private`, super exceptional cases only: the internal
 `*IntermediateTimeoutError`s of `Timeout.timeout` for `timeout` and `timed`; like `Timeout::ExitException`,

@@ -68,6 +68,14 @@ module RedisQueuedLocks
   class TimedLockTimeoutError < Error; end
 
   # @api public
+  # @since 1.23.1
+  class LockTtlTimeBudgetIsSpentError < TimedLockTimeoutError; end
+
+  # @api public
+  # @since 1.23.1
+  class TimedBlockExceedsLockTtlError < TimedLockTimeoutError; end
+
+  # @api public
   # @since 1.3.0
   class ConflictLockObtainError < Error; end
 
