@@ -1,6 +1,6 @@
 ## [Unreleased]
 
-## [1.23.1] = 2026-11-01
+## [1.23.1] - 2026-11-01
 ### Added
 - `timed: true` of `#lock`/`#lock_series`: separate errors of the failures, both are `TimedLockTimeoutError` subclasses: `LockTtlTimeBudgetIsSpentError` (the block was not invoked: no time left) and `TimedBlockExceedsLockTtlError` (the block exceeded the lock TTL);
 ### Fixed
