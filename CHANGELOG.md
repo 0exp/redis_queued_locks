@@ -20,7 +20,6 @@
   `dequeue_from_lock_series_queues`, `decrease_lock_series`;
 - RBS signatures of `#lock_series`/`#lock_series!`;
 
-
 ## [1.22.0] - 2026-10-27
 ### Added
 - *Brand New Feature*: **Lock Request Prioritization**: the `priority:` option of `#lock`/`#lock!`/`#lock_series`/`#lock_series!`
