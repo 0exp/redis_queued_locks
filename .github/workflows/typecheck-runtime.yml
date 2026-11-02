@@ -9,6 +9,8 @@ jobs:
         ruby_version: ['4.0']
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    # NOTE: (hung examples) a hung example must not hold the runner for the default 6 hours
+    timeout-minutes: 45
     env:
       BUNDLE_RETRY: 3
       BUNDLE_JOBS: 4
@@ -20,7 +22,5 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby_version }}
           bundler-cache: true
-      - name: Prepare Bundler/Ruby Environment
-        run: bundle install --redownload && bundle clean --force
       - name: TypeCheck (Runtime) (RBS)
         run: bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec

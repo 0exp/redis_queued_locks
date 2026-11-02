@@ -2540,7 +2540,8 @@ RSpec.shared_examples 'redis_queued_locks' do
       conf['instr_sampling_percent'] = 10
     end
 
-    100.times do
+    # NOTE: 10 rounds: 100 rounds took ~3 minutes per example under the RBS runtime checks
+    10.times do
       sampled_notifications = Array.new(100) do
         sampled_notifier = test_notifier.new
         client.lock('instr_sampling_check', instrumenter: sampled_notifier) {}
@@ -2605,7 +2606,8 @@ RSpec.shared_examples 'redis_queued_locks' do
       conf['log_sampling_percent'] = 10
     end
 
-    100.times do
+    # NOTE: 10 rounds: 100 rounds took ~3 minutes per example under the RBS runtime checks
+    10.times do
       sampled_logs = Array.new(100) do
         sampled_logger = test_logger_klass.new
         client.lock('log_sampling_check', logger: sampled_logger) {}

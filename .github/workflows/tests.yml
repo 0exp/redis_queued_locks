@@ -9,6 +9,8 @@ jobs:
         ruby_version: ['4.0']
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    # NOTE: (hung examples) a hung example must not hold the runner for the default 6 hours
+    timeout-minutes: 15
     env:
       BUNDLE_RETRY: 3
       BUNDLE_JOBS: 4

@@ -8,7 +8,10 @@ module RedisQueuedLocks
 
     @config_state: configState
     @configuring: bool
-    attr_reader config_state: configState
+    # NOTE: (rbs test) `%a{rbs:test:skip}`: the hottest call of the runtime checks: it runs twice per
+    #   `config['...']` (`Client#lock` reads ~25 defaults) and rbs/test walks every key of the hash on each
+    #   call; the values stay checked per key by the `Config#[]` overloads (Steep still checks the reader).
+    %a{rbs:test:skip} attr_reader config_state: configState
 
     def initialize: () ?{ (RedisQueuedLocks::Config) -> void } -> void
     def configure: () ?{ (RedisQueuedLocks::Config) -> void } -> void
