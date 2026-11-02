@@ -3835,8 +3835,9 @@ bundle exec rake steep:check
 
 - `Runtime` TypeChecking (`RBS`):
 ```shell
-bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec
-# or in parallel processes: the same environment with `bundle exec rake rspec:parallel` instead of `bundle exec rspec`
+bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rake rspec:parallel
+# parallel processes as in CI: `WORKERS=n` flushes db `0..2n-1` of the local Redis (see the parallel tests above);
+# or in one process (db 0 and db 1): the same environment with `bundle exec rspec` instead of `bundle exec rake rspec:parallel`
 ```
 
 ---
