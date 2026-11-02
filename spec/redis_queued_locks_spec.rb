@@ -9049,6 +9049,17 @@ RSpec.describe RedisQueuedLocks do
     let(:upper_bound) do
       -> (lifetime) { be_between(lifetime + grace_period - 1_000, lifetime + grace_period) }
     end
+    # NOTE: bounded polling: a lock lost on a starved CPU fails the example, never hangs it
+    let(:wait_until) do
+      lambda do |timeout = 5, &condition|
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+        until condition.call
+          break if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+          sleep(0.005)
+        end
+        condition.call
+      end
+    end
 
     specify 'lock names are indexed with the upper bound of the lock key lifetime' do
       client = RedisQueuedLocks::Client.new(redis) do |config|
@@ -9564,7 +9575,7 @@ RSpec.describe RedisQueuedLocks do
           client.lock(
             "idx.auto.#{mode}", ttl: 300, rw_mode: mode, auto_extend: true, auto_extend_ttl: 90_000
           ) do
-            sleep(0.2) until lock_pttl.call(key) > 300
+            expect(wait_until.call { lock_pttl.call(key) > 300 }).to eq(true)
             expect(index_score_ahead.call("idx.auto.#{mode}")).to upper_bound.call(90_000)
           end
         end
