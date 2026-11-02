@@ -225,10 +225,17 @@ class RedisQueuedLocks::Client
   #   - `nil` means the lock's TTL (`ttl`);
   #   - pre-configured in `config['default_auto_extend_ttl']`;
   # @option max_hold_time [Integer,NilClass]
-  #   - The limit of the auto extension (in milliseconds, from the start of the successful lock
-  #     acquirement attempt): the lock of a stuck block of code is not kept forever: the lock
-  #     expires by this time and the block of code continues to work (use `timed: true` to
-  #     interrupt it);
+  #   - The protection of an auto extended lock against blocks of code that never finish: a block
+  #     that hangs forever (an endless loop, a call without a timeout) or a block abandoned midway
+  #     (a fiber that is never resumed: its `ensure` never runs and the lock is not released); such
+  #     a block looks like a running one, and without a limit its lock is extended till the end of
+  #     the process;
+  #   - the limit of the auto extension (in milliseconds, from the start of the successful lock
+  #     acquirement attempt): the lock expires by this time and the block of code continues to
+  #     work (use `timed: true` to interrupt it);
+  #   - !IMPORTANT: configure it yourself, deliberately, for your logic: `nil` or a period that is
+  #     longer than your longest block of code (a longer block of code loses its lock at the
+  #     limit); the default of `config['default_max_hold_time']` (1 hour) is only a fallback;
   #   - a block of code that makes progress can move it (`RedisQueuedLocks::LockLease#hold_for`);
   #   - it should not be less than `ttl` for an auto extended lock;
   #   - `nil` means no limit (a stuck block of code holds the lock till the end of the process);

@@ -240,9 +240,17 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   config['default_auto_extend_ttl'] = nil
 
   # (milliseconds) (default: 3_600_000, 1 hour)
-  # - the limit of the auto extension of the lock: the lock of a stuck block of code is not kept
-  #   forever (the `max_hold_time:` option, see "Lock Auto Extension");
+  # - the protection against blocks of code that never finish: a block that hangs forever (an
+  #   endless loop, a call without a timeout) or a block abandoned midway (a fiber that is never
+  #   resumed: its `ensure` never runs and the lock is not released); such a block looks like a
+  #   running one, and without a limit its lock is extended till the end of the process;
+  # - the limit of the auto extension of the lock (the `max_hold_time:` option, see "Lock Auto
+  #   Extension");
   # - `nil` means no limit;
+  # - !IMPORTANT: configure it yourself, deliberately, for your logic: `nil` (no limit) or a period
+  #   that is longer than your longest block of code (a longer block of code loses its lock at the
+  #   limit, a stuck block of code with `nil` holds its lock till the end of the process); the
+  #   default is only a fallback;
   # - should be `nil` or a positive Integer;
   config['default_max_hold_time'] = 3_600_000
 
@@ -641,7 +649,13 @@ def lock(
   - pre-configured in `config['default_auto_extend_ttl']`;
   - `nil` by default;
 - `max_hold_time` - (optional) `[Integer,NilClass]`
-  - The limit of the auto extension (in milliseconds, from the start of the successful acquirement attempt): the lock of a stuck block of code expires by this time;
+  - The protection of an auto extended lock against blocks of code that never finish: a block that hangs forever (an endless loop, a call without a timeout)
+    or a block abandoned midway (a fiber that is never resumed: its `ensure` never runs and the lock is not released). Such a block looks like a running one,
+    and without a limit its lock is extended till the end of the process;
+  - the limit of the auto extension (in milliseconds, from the start of the successful acquirement attempt): the lock of such a block of code expires by this time;
+  - **!IMPORTANT**: configure it yourself, deliberately, for your logic (per call or in `config['default_max_hold_time']`): `nil` (no limit) or a period that is longer
+    than your longest block of code. A block of code that runs longer loses its lock at the limit (a `timed` block is interrupted) unless it moves the limit
+    by `lease.hold_for`, and a stuck block of code with `nil` holds its lock till the end of the process. The default (1 hour) is only a fallback;
   - should not be less than `ttl` for an auto extended lock;
   - `nil` means no limit;
   - pre-configured in `config['default_max_hold_time']`;
@@ -3016,10 +3030,16 @@ rql.lock_series('report', 'stats', auto_extend: true) { long_running_logic }
   - extensions are made each `auto_extend_ttl / 3`;
   - it is the only knob of the trade-off: a process can stall for 2/3 of this value (see the limits below) and a crash blocks other acquirers for this value;
   - the extension never shortens the lock: with a longer `ttl` the first extension comes when it is needed;
-- `max_hold_time` - the limit of the extension (`config['default_max_hold_time']`, 1 hour by default, `nil` means no limit), counted from the start of the successful
-  acquirement attempt: a stuck block of code looks like a running one, and without a limit it holds the lock till the end of the process.
-  The lock is extended up to this moment exactly and expires by itself. It should not be less than `ttl`. A block of code that makes progress can move
-  the limit (see [the lease of the block of code](#the-lease-of-the-block-of-code) below);
+- `max_hold_time` - the protection against blocks of code that never finish: a block that hangs forever (an endless loop, a call without a timeout) or a block
+  abandoned midway (a fiber that is never resumed: its `ensure` never runs and the lock is not released). Such a block looks like a running one, and without
+  a limit it holds the lock till the end of the process. It is the limit of the extension (`config['default_max_hold_time']`, 1 hour by default, `nil` means
+  no limit), counted from the start of the successful acquirement attempt: the lock is extended up to this moment exactly and expires by itself. It should not
+  be less than `ttl`. A block of code that makes progress can move the limit (see [the lease of the block of code](#the-lease-of-the-block-of-code) below);
+
+> [!IMPORTANT]
+> Configure `max_hold_time` yourself, deliberately, for your logic (per call or in `config['default_max_hold_time']`): `nil` (no limit) or a period that is longer
+> than your longest block of code. A block of code that runs longer loses its lock at the limit (a `timed` block is interrupted) unless it moves the limit
+> by `lease.hold_for`, and a stuck block of code with `nil` holds its lock till the end of the process. The default (1 hour) is only a fallback, not a value for your logic.
 
 **What happens**:
 
