@@ -30,6 +30,9 @@ class RedisQueuedLocks::Config
   setting('lock_index_enabled', false)
   setting('lock_index_grace_period', 60_000) # NOTE: in milliseconds)
   setting('is_timed_by_default', false)
+  setting('is_auto_extended_by_default', false)
+  setting('default_auto_extend_ttl', nil) # NOTE: in milliseconds (nil: the ttl of the lock)
+  setting('default_max_hold_time', 3_600_000) # NOTE: 1 hour in milliseconds (nil: no limit)
   setting('default_conflict_strategy', :wait_for_lock)
   setting('default_access_strategy', :queued)
   setting('lock_priorities', { lowest: -100, low: -50, normal: 0, high: 50, highest: 100 }.freeze)
@@ -97,6 +100,9 @@ class RedisQueuedLocks::Config
   validate('lock_index_enabled') { |val| val == true || val == false }
   validate('lock_index_grace_period') { |val| val.is_a?(Integer) && val >= 0 }
   validate('is_timed_by_default') { |val| val == true || val == false }
+  validate('is_auto_extended_by_default') { |val| val == true || val == false }
+  validate('default_auto_extend_ttl') { |val| val == nil || (val.is_a?(Integer) && val > 0) }
+  validate('default_max_hold_time') { |val| val == nil || (val.is_a?(Integer) && val > 0) }
   validate('log_sampler') { |val| RedisQueuedLocks::Logging.valid_sampler?(val) }
   validate('log_sampling_enabled') { |val| val == true || val == false }
   validate('log_sampling_percent') { |val| val.is_a?(Integer) && val >= 0 && val <= 100 }

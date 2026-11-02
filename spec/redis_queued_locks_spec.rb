@@ -7894,6 +7894,1132 @@ RSpec.shared_examples 'redis_queued_locks' do
       expect(client.keys).to be_empty
     end
   end
+
+  describe 'lock auto extension' do
+    # NOTE: all locks of these examples have a short ttl and the blocks of code are longer than it:
+    #   a lock without the auto extension is expired in the middle of the block;
+    let(:notifier) do
+      Class.new do
+        attr_reader :notifications
+
+        def initialize
+          @notifications = []
+        end
+
+        def notify(event, payload = {})
+          notifications << [event, payload]
+        end
+
+        def events(name)
+          notifications.filter_map do |event, payload|
+            payload if event == "redis_queued_locks.#{name}"
+          end
+        end
+      end.new
+    end
+    let(:logger) do
+      Class.new do
+        attr_reader :logs
+
+        def initialize
+          @logs = []
+        end
+
+        def debug(progname = nil, &block)
+          logs << (block ? yield : progname)
+        end
+      end.new
+    end
+    let(:wait_until) do
+      lambda do |timeout = 5, &condition|
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+        until condition.call
+          break if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+          sleep(0.005)
+        end
+        condition.call
+      end
+    end
+    let(:pttl) { -> (lock_name) { redis.call('PTTL', "rql:lock:#{lock_name}") } }
+
+    specify 'write lock: the block of code longer than the ttl keeps the lock' do
+      client = RedisQueuedLocks::Client.new(redis)
+      other_client = RedisQueuedLocks::Client.new(redis)
+      lock_pttls = []
+      other_results = []
+
+      result = client.lock('auto.write', ttl: 600, auto_extend: true) do
+        15.times do
+          sleep(0.1)
+          lock_pttls << pttl.call('auto.write')
+          other_results << other_client.lock('auto.write', ttl: 100, fail_fast: true)[:ok]
+        end
+        :block_result
+      end
+
+      aggregate_failures do
+        expect(result).to eq(:block_result)
+        expect(lock_pttls).to all(be_positive)
+        expect(lock_pttls).to all(be <= 600)
+        expect(other_results).to all(eq(false))
+        # NOTE: the lock is released right after the block
+        expect(client.locked?('auto.write')).to eq(false)
+        expect(client.keys).to be_empty
+      end
+    end
+
+    specify 'read lock: the block of code longer than the ttl keeps the lock' do
+      client = RedisQueuedLocks::Client.new(redis)
+      other_client = RedisQueuedLocks::Client.new(redis)
+      readers_key = 'rql:lock_readers:auto.read'
+      reader_key = "rql:lock_reader:auto.read:#{client.current_acquirer_id}"
+      other_results = []
+      lock_states = []
+
+      # NOTE: another reader is not affected by the extension and has its own (shorter) lifetime
+      other_reader = other_client.lock('auto.read', ttl: 200, rw_mode: :read)
+
+      client.lock('auto.read', ttl: 600, rw_mode: :read, auto_extend: true) do
+        15.times do
+          sleep(0.1)
+          lock_states << [redis.call('PTTL', readers_key), redis.call('PTTL', reader_key)]
+          other_results << other_client.lock(
+            'auto.read', ttl: 100, fail_fast: true, identity: 'writer'
+          )[:ok]
+        end
+      end
+
+      aggregate_failures do
+        expect(other_reader[:ok]).to eq(true)
+        expect(lock_states.flatten).to all(be_positive)
+        expect(other_results).to all(eq(false))
+        expect(client.locked?('auto.read')).to eq(false)
+        # NOTE: the expired member of another reader lives till the end of the registry ttl: the
+        #   last extension is not a reason to keep the registry longer than the extension ttl;
+        expect(wait_until.call(2) { client.keys.empty? }).to eq(true)
+      end
+    end
+
+    specify 'the block of code shorter than the extension interval: no extensions' do
+      commands = []
+      recorder = Module.new do
+        define_method(:call_pipelined) do |pipeline_commands, redis_config, &block|
+          commands.concat(pipeline_commands.map { |command| command.first(2).map(&:to_s) })
+          super(pipeline_commands, redis_config, &block)
+        end
+      end
+      client = RedisQueuedLocks::Client.new(
+        RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5)
+      )
+
+      client.lock('auto.short', ttl: 5_000, auto_extend: true) { sleep(0.05) }
+
+      expect(commands).not_to include(['EVAL', RedisQueuedLocks::LockKeeper::EXTEND_WRITE_LOCK])
+    end
+
+    specify 'auto_extend_ttl: the lock lives this time after each extension (not a sum)' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock('auto.ext', ttl: 300, auto_extend: true, auto_extend_ttl: 1_500) do
+        expect(wait_until.call { pttl.call('auto.ext') > 300 }).to eq(true)
+        expect(pttl.call('auto.ext')).to be_between(800, 1_500)
+        # NOTE: several extensions (each 500 ms): they do not sum up
+        sleep(1.2)
+        expect(pttl.call('auto.ext')).to be_between(500, 1_500)
+      end
+
+      expect(client.locked?('auto.ext')).to eq(false)
+    end
+
+    specify 'auto_extend_ttl shorter than the ttl: the lock is not shortened and is kept' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock(
+        'auto.short_ext',
+        ttl: 1_000,
+        auto_extend: true,
+        auto_extend_ttl: 300,
+        instrumenter: notifier
+      ) do
+        # NOTE: nothing to extend while the remaining ttl is greater than the extension
+        sleep(0.4)
+        expect(notifier.events('lock_auto_extended')).to be_empty
+        expect(pttl.call('auto.short_ext')).to be_between(300, 1_000)
+        sleep(1.1)
+        expect(pttl.call('auto.short_ext')).to be_between(1, 300)
+      end
+
+      expect(notifier.events('lock_auto_extended')).not_to be_empty
+    end
+
+    specify 'max_hold_time: the lock expires by the limit, the next owner keeps its lock' do
+      client = RedisQueuedLocks::Client.new(redis)
+      other_client = RedisQueuedLocks::Client.new(redis)
+      start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      # @type var waiter_time: Float
+      waiter_time = nil
+      block_time = nil
+
+      waiter = Thread.new do
+        result = other_client.lock(
+          'auto.hold', ttl: 10_000, timeout: 5, retry_count: nil, retry_delay: 5, retry_jitter: 1
+        )
+        waiter_time = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+        result
+      end
+
+      result = client.lock(
+        'auto.hold',
+        ttl: 300,
+        auto_extend: true,
+        auto_extend_ttl: 500,
+        max_hold_time: 900,
+        instrumenter: notifier,
+        logger:,
+        log_sample_this: true
+      ) do
+        sleep(1.5)
+        block_time = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+        :completed
+      end
+      released = !client.locked?('auto.hold')
+
+      aggregate_failures do
+        # NOTE: the block of code continues to work
+        expect(result).to eq(:completed)
+        expect(waiter.value).to match(
+          { ok: true, result: hash_including(process: :lock_obtaining) }
+        )
+        # NOTE: an extension does not exceed the limit: the lock lives exactly `max_hold_time`
+        expect(waiter_time).to be > 0.8
+        expect(waiter_time).to be < block_time
+        # NOTE: the release of the lost lock does not touch the lock of the next owner
+        expect(released).to eq(false)
+        expect(pttl.call('auto.hold')).to be > 8_000
+        expect(notifier.events('lock_hold_limit_reached').size).to eq(1)
+        expect(notifier.events('lock_hold_limit_reached').first).to match(
+          {
+            lock_key: 'rql:lock:auto.hold',
+            rw_mode: :write,
+            max_hold_time: 900,
+            acq_id: client.current_acquirer_id,
+            hst_id: client.current_host_id,
+            at: be_a(Float),
+            instrument: nil
+          }
+        )
+        expect(logger.logs).to include(
+          a_string_starting_with(
+            "[redis_queued_locks.lock_hold_limit_reached] lock_key => 'rql:lock:auto.hold' " \
+            "rw_mode => 'write' max_hold_time => 900 "
+          )
+        )
+      end
+
+      client.clear_locks
+    end
+
+    specify 'max_hold_time: nil means no limit' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock('auto.nolimit', ttl: 300, auto_extend: true, max_hold_time: nil) do
+        sleep(0.7)
+        expect(client.locked?('auto.nolimit')).to eq(true)
+      end
+
+      expect(client.locked?('auto.nolimit')).to eq(false)
+    end
+
+    specify 'read lock: max_hold_time' do
+      client = RedisQueuedLocks::Client.new(redis)
+      other_client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock(
+        'auto.read_hold', ttl: 300, rw_mode: :read, auto_extend: true, max_hold_time: 600,
+        instrumenter: notifier
+      ) do
+        # NOTE: a writer waits for the expired read lock
+        result = other_client.lock(
+          'auto.read_hold', ttl: 100, timeout: 3, retry_count: nil, retry_delay: 5, retry_jitter: 1
+        )
+        expect(result[:ok]).to eq(true)
+        # NOTE: the expired lock can be obtained right before the tick of the keeper
+        expect(wait_until.call { notifier.events('lock_hold_limit_reached').any? }).to eq(true)
+      end
+
+      expect(notifier.events('lock_hold_limit_reached').map { _1[:rw_mode] }).to eq([:read])
+      client.clear_locks
+    end
+
+    specify 'a lost lock is reported, the block of code continues, the lock is not revived' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      result = client.lock(
+        'auto.lost', ttl: 300, auto_extend: true, instrumenter: notifier, logger:,
+        log_sample_this: true, instrument: { custom: :data }
+      ) do
+        client.unlock('auto.lost')
+        expect(wait_until.call { notifier.events('auto_extended_lock_lost').any? }).to eq(true)
+        expect(client.locked?('auto.lost')).to eq(false)
+        :completed
+      end
+
+      aggregate_failures do
+        expect(result).to eq(:completed)
+        expect(notifier.events('auto_extended_lock_lost')).to contain_exactly(
+          {
+            lock_key: 'rql:lock:auto.lost',
+            rw_mode: :write,
+            acq_id: client.current_acquirer_id,
+            hst_id: client.current_host_id,
+            hold_time: be_a(Integer),
+            at: be_a(Float),
+            instrument: { custom: :data }
+          }
+        )
+        expect(logger.logs).to include(
+          a_string_starting_with(
+            "[redis_queued_locks.auto_extended_lock_lost] lock_key => 'rql:lock:auto.lost' " \
+            "rw_mode => 'write' acq_id => "
+          )
+        )
+      end
+    end
+
+    specify 'a lost read lock is reported, an expired read lock is not revived' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock(
+        'auto.read_lost', ttl: 300, rw_mode: :read, auto_extend: true, instrumenter: notifier
+      ) do
+        redis.call('ZREM', 'rql:lock_readers:auto.read_lost', client.current_acquirer_id)
+        expect(wait_until.call { notifier.events('auto_extended_lock_lost').any? }).to eq(true)
+        expect(redis.call('ZCARD', 'rql:lock_readers:auto.read_lost')).to eq(0)
+      end
+
+      expect(notifier.events('auto_extended_lock_lost').map { _1[:rw_mode] }).to eq([:read])
+    end
+
+    specify 'the extensions are reported' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock(
+        'auto.report', ttl: 300, auto_extend: true, instrumenter: notifier, logger:,
+        log_sample_this: true, instr_sample_this: true, instrument: { custom: :data }
+      ) do
+        expect(wait_until.call { notifier.events('lock_auto_extended').size >= 2 }).to eq(true)
+      end
+
+      aggregate_failures do
+        expect(notifier.events('lock_auto_extended').first).to match(
+          {
+            lock_key: 'rql:lock:auto.report',
+            rw_mode: :write,
+            ext_ttl: 300,
+            rem_ttl: be_between(1, 300),
+            acq_id: client.current_acquirer_id,
+            hst_id: client.current_host_id,
+            at: be_a(Float),
+            instrument: { custom: :data }
+          }
+        )
+        expect(logger.logs).to include(
+          a_string_starting_with(
+            "[redis_queued_locks.lock_auto_extended] lock_key => 'rql:lock:auto.report' " \
+            "rw_mode => 'write' ext_ttl => 300 rem_ttl => "
+          )
+        )
+      end
+    end
+
+    specify 'timed: the block of code is interrupted when the lock is lost' do
+      client = RedisQueuedLocks::Client.new(redis)
+      swallowed = false
+
+      aggregate_failures do
+        expect do
+          client.lock('auto.timed', ttl: 300, auto_extend: true, timed: true) do
+            client.unlock('auto.timed')
+            # NOTE: `rescue => e` of the block can not swallow the interruption
+            begin
+              sleep(5)
+            rescue StandardError
+              swallowed = true
+            end
+          end
+        end.to raise_error(RedisQueuedLocks::TimedBlockLostLockError, /is lost.*auto\.timed/)
+        expect(swallowed).to eq(false)
+        expect(client.locked?('auto.timed')).to eq(false)
+      end
+    end
+
+    specify 'timed: the block of code is limited by max_hold_time instead of the ttl' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      aggregate_failures do
+        # NOTE: longer than the ttl, shorter than the limit
+        expect(
+          client.lock(
+            'auto.timed_hold', ttl: 300, auto_extend: true, timed: true, max_hold_time: 3_000
+          ) do
+            sleep(0.5)
+            :completed
+          end
+        ).to eq(:completed)
+
+        expect do
+          client.lock(
+            'auto.timed_hold', ttl: 300, auto_extend: true, timed: true, max_hold_time: 600
+          ) { sleep(5) }
+        end.to raise_error(
+          RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError,
+          /max hold time.*\(600\).*auto\.timed_hold/
+        )
+        expect(client.locked?('auto.timed_hold')).to eq(false)
+      end
+    end
+
+    specify 'timed: max_hold_time: nil means no time limit' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      expect(
+        client.lock(
+          'auto.timed_nolimit', ttl: 300, auto_extend: true, timed: true, max_hold_time: nil
+        ) do
+          sleep(0.5)
+          :completed
+        end
+      ).to eq(:completed)
+    end
+
+    specify 'timed: the block of code without the budget of the hold limit is not invoked' do
+      client = RedisQueuedLocks::Client.new(redis)
+      invoked = false
+
+      expect do
+        client.lock('auto.no_budget', ttl: 1, auto_extend: true, timed: true, max_hold_time: 1) do
+          invoked = true
+        end
+      end.to raise_error(RedisQueuedLocks::LockTtlTimeBudgetIsSpentError)
+      expect(invoked).to eq(false)
+    end
+
+    specify 'timed: the lock is lost before the block of code: the block is not invoked' do
+      client = RedisQueuedLocks::Client.new(redis)
+      invoked = false
+
+      # NOTE: the lock is found as a lost one between the obtaining and the block of code: an
+      #   interruption at this moment is out of the `rescue` scope of the block;
+      allow(client.lock_keeper).to receive(:interrupt_on_loss).and_wrap_original do |method, lease|
+        redis.call('DEL', 'rql:lock:auto.before')
+        expect(wait_until.call { lease.lost? }).to eq(true)
+        method.call(lease)
+      end
+
+      expect do
+        client.lock('auto.before', ttl: 300, auto_extend: true, timed: true) { invoked = true }
+      end.to raise_error(RedisQueuedLocks::TimedBlockLostLockError)
+      expect(invoked).to eq(false)
+    end
+
+    specify 'a lock without the expiration is not a lost lock' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock('auto.persist', ttl: 300, auto_extend: true, instrumenter: notifier) do
+        redis.call('PERSIST', 'rql:lock:auto.persist')
+        notifier.notifications.clear
+        expect(wait_until.call { notifier.events('lock_auto_extended').any? }).to eq(true)
+      end
+
+      aggregate_failures do
+        expect(notifier.events('lock_auto_extended').first[:rem_ttl]).to eq(-1)
+        expect(notifier.events('auto_extended_lock_lost')).to be_empty
+      end
+    end
+
+    specify 'timed: the blocks of a non-blocking fiber are not interrupted by Thread#raise' do
+      client = RedisQueuedLocks::Client.new(redis)
+      result = nil
+
+      Fiber.new(blocking: false) do
+        result = client.lock(
+          'auto.fiber', ttl: 300, auto_extend: true, timed: true, instrumenter: notifier,
+          max_hold_time: nil
+        ) do
+          client.unlock('auto.fiber')
+          wait_until.call { notifier.events('auto_extended_lock_lost').any? }
+          :completed
+        end
+      end.resume
+
+      expect(result).to eq(:completed)
+      expect(notifier.events('auto_extended_lock_lost').size).to eq(1)
+    end
+
+    specify 'reentrant locks: the lease of the block does not depend on the nested locks' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock(
+        'auto.reentrant', ttl: 600, auto_extend: true, conflict_strategy: :extendable_work_through
+      ) do
+        # NOTE: the nested extension is taken back after the nested block
+        client.lock(
+          'auto.reentrant', ttl: 5_000, conflict_strategy: :extendable_work_through
+        ) do
+          expect(pttl.call('auto.reentrant')).to be > 5_000
+          sleep(0.05)
+        end
+        expect(pttl.call('auto.reentrant')).to be <= 700
+
+        # NOTE: the nested block does not release the lock
+        client.lock('auto.reentrant', ttl: 600, conflict_strategy: :work_through) { sleep(0.05) }
+
+        # NOTE: the next extensions do not wait for the taken back ttl
+        sleep(1.0)
+        expect(pttl.call('auto.reentrant')).to be_between(1, 600)
+      end
+
+      expect(client.locked?('auto.reentrant')).to eq(false)
+    end
+
+    specify 'reentrant locks: a nested block keeps the lock of the outer logic alive' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock('auto.nested', ttl: 400, conflict_strategy: :work_through) do
+        client.lock('auto.nested', ttl: 400, conflict_strategy: :work_through, auto_extend: true) do
+          sleep(0.8)
+          expect(client.locked?('auto.nested')).to eq(true)
+        end
+
+        # NOTE: the lock of the outer logic is not released by the nested block
+        expect(client.locked?('auto.nested')).to eq(true)
+      end
+
+      expect(client.locked?('auto.nested')).to eq(false)
+    end
+
+    specify 'reentrant locks: a read request under the own write lock extends the write lock' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock('auto.held', ttl: 400, conflict_strategy: :work_through) do
+        client.lock(
+          'auto.held', ttl: 400, rw_mode: :read, conflict_strategy: :work_through, auto_extend: true
+        ) do
+          sleep(0.8)
+          expect(pttl.call('auto.held')).to be_positive
+          expect(redis.call('EXISTS', 'rql:lock_readers:auto.held')).to eq(0)
+        end
+      end
+
+      expect(client.locked?('auto.held')).to eq(false)
+    end
+
+    specify 'reentrant locks: the ttl of the next owner is not decreased by a lost lock' do
+      client = RedisQueuedLocks::Client.new(redis)
+      other_client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock('auto.next', ttl: 600, conflict_strategy: :extendable_work_through) do
+        client.lock(
+          'auto.next', ttl: 600, conflict_strategy: :extendable_work_through, auto_extend: true
+        ) do
+          client.unlock('auto.next')
+          other_client.lock('auto.next', ttl: 10_000)
+        end
+
+        expect(pttl.call('auto.next')).to be > 9_000
+        redis.call('DEL', 'rql:lock:auto.next')
+      end
+    end
+
+    specify '#lock_series: all locks of the series are kept' do
+      %i[write read].each do |rw_mode|
+        client = RedisQueuedLocks::Client.new(redis)
+        other_client = RedisQueuedLocks::Client.new(redis)
+        lock_names = ["auto.series.#{rw_mode}.1", "auto.series.#{rw_mode}.2"]
+        other_results = []
+
+        result = client.lock_series(*lock_names, ttl: 600, rw_mode:, auto_extend: true) do
+          10.times do
+            sleep(0.1)
+            lock_names.each do |lock_name|
+              other_results << other_client.lock(
+                lock_name, ttl: 100, fail_fast: true, identity: 'other'
+              )[:ok]
+            end
+          end
+          :block_result
+        end
+
+        aggregate_failures do
+          expect(result).to eq(:block_result)
+          expect(other_results).to all(eq(false))
+          expect(lock_names.map { client.locked?(_1) }).to all(eq(false))
+          expect(client.keys).to be_empty
+        end
+      end
+    end
+
+    specify '#lock_series: a lost lock does not stop the extension of other locks' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock_series(
+        'auto.partial.1', 'auto.partial.2', ttl: 600, auto_extend: true, instrumenter: notifier
+      ) do
+        client.unlock('auto.partial.2')
+        expect(wait_until.call { notifier.events('auto_extended_lock_lost').any? }).to eq(true)
+        sleep(0.8)
+        expect(client.locked?('auto.partial.1')).to eq(true)
+        expect(client.locked?('auto.partial.2')).to eq(false)
+      end
+
+      aggregate_failures do
+        expect(notifier.events('auto_extended_lock_lost').map { _1[:lock_key] }).to eq(
+          ['rql:lock:auto.partial.2']
+        )
+        expect(client.keys).to be_empty
+      end
+    end
+
+    specify '#lock_series: the lost lock is not reported again' do
+      failing = { enabled: false }
+      failing_middleware = Module.new do
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          if failing[:enabled] && commands.first[0].to_s == 'EVAL'
+            raise(RedisClient::ConnectionError, 'failed extension')
+          end
+
+          super(commands, redis_config, &block)
+        end
+      end
+      client = RedisQueuedLocks::Client.new(
+        RedisClient.config(db: 0, middlewares: [failing_middleware]).new_pool(timeout: 5)
+      )
+
+      client.lock_series(
+        'auto.again.1', 'auto.again.2',
+        ttl: 300, auto_extend: true, max_hold_time: 900, instrumenter: notifier
+      ) do
+        client.unlock('auto.again.2')
+        expect(wait_until.call { notifier.events('auto_extended_lock_lost').any? }).to eq(true)
+        failing[:enabled] = true
+        expect(wait_until.call { notifier.events('lock_auto_extension_failed').any? }).to eq(true)
+        failing[:enabled] = false
+        expect(wait_until.call { notifier.events('lock_hold_limit_reached').any? }).to eq(true)
+      end
+
+      aggregate_failures do
+        expect(notifier.events('lock_auto_extension_failed').map { _1[:lock_key] }.uniq).to eq(
+          ['rql:lock:auto.again.1']
+        )
+        expect(notifier.events('lock_hold_limit_reached').map { _1[:lock_key] }).to eq(
+          ['rql:lock:auto.again.1']
+        )
+      end
+    end
+
+    specify '#lock_series: timed: the block of code is interrupted once' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      # NOTE: both locks are lost by the same tick of the keeper
+      expect do
+        client.lock_series(
+          'auto.once.1', 'auto.once.2', ttl: 300, auto_extend: true, timed: true
+        ) do
+          client.unlock('auto.once.1')
+          client.unlock('auto.once.2')
+          sleep(5)
+        end
+      end.to raise_error(RedisQueuedLocks::TimedBlockLostLockError)
+    end
+
+    specify '#lock_series: max_hold_time' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      expect do
+        client.lock_series(
+          'auto.series_hold.1', 'auto.series_hold.2',
+          ttl: 300, auto_extend: true, timed: true, max_hold_time: 600
+        ) { sleep(5) }
+      end.to raise_error(RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError)
+    end
+
+    specify '#lock_series: a reentrant lock of the series keeps working' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock('auto.series_reentrant', ttl: 400) do
+        client.lock_series(
+          'auto.series_reentrant', 'auto.series_new',
+          ttl: 400, auto_extend: true, conflict_strategy: :work_through
+        ) do
+          sleep(0.8)
+          expect(client.locked?('auto.series_reentrant')).to eq(true)
+          expect(client.locked?('auto.series_new')).to eq(true)
+        end
+
+        # NOTE: the reentrant lock is not released by the series
+        expect(client.locked?('auto.series_reentrant')).to eq(true)
+        expect(client.locked?('auto.series_new')).to eq(false)
+      end
+    end
+
+    specify 'the bang methods support the auto extension' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      aggregate_failures do
+        expect(
+          client.lock!(
+            'auto.bang', ttl: 300, auto_extend: true, auto_extend_ttl: 300, max_hold_time: 5_000
+          ) do
+            sleep(0.5)
+            client.locked?('auto.bang')
+          end
+        ).to eq(true)
+        expect(
+          client.lock_series!(
+            'auto.bang', ttl: 300, auto_extend: true, auto_extend_ttl: 300, max_hold_time: 5_000
+          ) do
+            sleep(0.5)
+            client.locked?('auto.bang')
+          end
+        ).to eq(true)
+      end
+    end
+
+    specify 'config: default values of the options' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['is_auto_extended_by_default'] = true
+        config['default_auto_extend_ttl'] = 900
+        config['default_max_hold_time'] = 600
+        config['instrumenter'] = notifier
+      end
+
+      expect(RedisQueuedLocks::Config.new['is_auto_extended_by_default']).to eq(false)
+      expect(RedisQueuedLocks::Config.new['default_auto_extend_ttl']).to eq(nil)
+      expect(RedisQueuedLocks::Config.new['default_max_hold_time']).to eq(3_600_000)
+
+      client.lock('auto.config', ttl: 300) do
+        expect(wait_until.call { notifier.events('lock_auto_extended').any? }).to eq(true)
+        expect(notifier.events('lock_auto_extended').first[:ext_ttl]).to be_between(1, 900)
+        expect(wait_until.call { notifier.events('lock_hold_limit_reached').any? }).to eq(true)
+      end
+    end
+
+    specify 'config: validations of the values' do
+      aggregate_failures do
+        [
+          ['is_auto_extended_by_default', 1],
+          ['default_auto_extend_ttl', 0],
+          ['default_auto_extend_ttl', 1.5],
+          ['default_max_hold_time', 0],
+          ['default_max_hold_time', -1]
+        ].each do |config_key, config_value|
+          expect do
+            RedisQueuedLocks::Client.new(redis) { |config| config[config_key] = config_value }
+          end.to raise_error(RedisQueuedLocks::ConfigValidationError)
+        end
+      end
+    end
+
+    specify 'invalid values of the options' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      aggregate_failures do
+        [
+          -> (kwargs, &block) { client.lock('auto.args', **kwargs, &block) },
+          -> (kwargs, &block) { client.lock_series('auto.args', **kwargs, &block) }
+        ].each do |lock_method|
+          expect { lock_method.call({ auto_extend_ttl: 0 }) }.to raise_error(
+            RedisQueuedLocks::ArgumentError, /:auto_extend_ttl/
+          )
+          expect { lock_method.call({ max_hold_time: 0 }) }.to raise_error(
+            RedisQueuedLocks::ArgumentError, /:max_hold_time/
+          )
+          expect do
+            lock_method.call({ ttl: 1_000, auto_extend: true, max_hold_time: 999 }) { :block }
+          end.to raise_error(RedisQueuedLocks::ArgumentError, /should not be less than `:ttl`/)
+          # NOTE: the hold limit is used by the auto extension of a block of code only
+          expect(lock_method.call({ ttl: 1_000, max_hold_time: 999 })).to include(ok: true)
+          client.clear_locks
+          expect(
+            lock_method.call({ ttl: 1_000, auto_extend: true, max_hold_time: 999 })
+          ).to include(ok: true)
+          client.clear_locks
+        end
+      end
+    end
+
+    specify 'no keeper without the auto extension' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock('auto.none', ttl: 100) {}
+      # NOTE: the option has no effect without a block of code: there is nothing to wait for
+      client.lock('auto.none', ttl: 100, auto_extend: true)
+      client.lock_series('auto.none.series', ttl: 100, auto_extend: true)
+
+      expect(client.lock_keeper.thread).to eq(nil)
+      client.clear_locks
+    end
+
+    specify 'the keeper does not share the connection of a plain RedisClient' do
+      plain_redis = RedisClient.config(db: 0).new_client
+      client = RedisQueuedLocks::Client.new(plain_redis)
+      statuses = []
+
+      client.lock('auto.plain', ttl: 300, auto_extend: true, instrumenter: notifier) do
+        # NOTE: a busy connection of the application next to the ticks of the keeper
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 0.7
+        while Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+          statuses << plain_redis.call('PING')
+        end
+      end
+
+      aggregate_failures do
+        expect(statuses).to all(eq('PONG'))
+        expect(notifier.events('lock_auto_extended')).not_to be_empty
+        expect(notifier.events('lock_auto_extension_failed')).to be_empty
+      end
+
+      plain_redis.close
+    end
+
+    specify 'the keeper is revived after its death' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock('auto.dead', ttl: 300, auto_extend: true) {}
+      keeper_thread = client.lock_keeper.thread
+      keeper_thread.kill.join
+
+      client.lock('auto.dead', ttl: 300, auto_extend: true) do
+        sleep(0.6)
+        expect(client.locked?('auto.dead')).to eq(true)
+      end
+
+      aggregate_failures do
+        expect(client.lock_keeper.thread).not_to eq(keeper_thread)
+        expect(client.lock_keeper.thread).to be_alive
+      end
+    end
+
+    specify 'the keeper stops without leases and starts again on demand' do
+      stub_const('RedisQueuedLocks::LockKeeper::IDLE_TIMEOUT', 100)
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock('auto.idle', ttl: 300, auto_extend: true) {}
+      keeper_thread = client.lock_keeper.thread
+      expect(wait_until.call { !keeper_thread.alive? }).to eq(true)
+      expect(client.lock_keeper.thread).to eq(nil)
+
+      client.lock('auto.idle', ttl: 300, auto_extend: true) do
+        sleep(0.5)
+        expect(client.locked?('auto.idle')).to eq(true)
+      end
+    end
+
+    specify 'blocks that end before the keeper sees them are not an idle keeper' do
+      stub_const('RedisQueuedLocks::LockKeeper::IDLE_TIMEOUT', 300)
+      client = RedisQueuedLocks::Client.new(redis)
+      keeper_threads = []
+
+      # NOTE: a block without I/O ends before the keeper thread gets the GVL
+      30.times do
+        client.lock('auto.unseen', ttl: 5_000, auto_extend: true) {}
+        keeper_threads << client.lock_keeper.thread
+        sleep(0.05)
+      end
+
+      expect(keeper_threads.uniq.size).to eq(1)
+    end
+
+    specify 'a block of the same ttl needs no wake-up of the keeper' do
+      wake_ups = Class.new(Thread::Queue) do
+        attr_reader :count
+
+        def <<(value)
+          @count = @count.to_i + 1
+          super
+        end
+      end.new
+      client = RedisQueuedLocks::Client.new(redis)
+      client.lock_keeper.instance_variable_set(:@wakeups, wake_ups)
+
+      client.lock('auto.wakeup', ttl: 5_000, auto_extend: true) {}
+      # NOTE: give a timespot to the keeper thread: it plans its next wake-up
+      sleep(0.1)
+      before = wake_ups.count.to_i
+      20.times { client.lock('auto.wakeup', ttl: 5_000, auto_extend: true) {} }
+
+      expect(wake_ups.count.to_i).to eq(before)
+    end
+
+    specify 'a lease with a shorter ttl wakes the keeper up' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      # NOTE: the keeper sleeps for the interval of the long ttl (~3 seconds)
+      client.lock('auto.long_ttl', ttl: 9_000, auto_extend: true) {}
+      sleep(0.1)
+
+      client.lock('auto.short_ttl', ttl: 300, auto_extend: true) do
+        sleep(0.8)
+        expect(client.locked?('auto.short_ttl')).to eq(true)
+      end
+    end
+
+    describe 'an extension during a reentrant lock attempt' do
+      # NOTE: the transaction of the attempt is aborted the same way as by a tick of the lock keeper
+      #   between `WATCH` and `EXEC`: the deterministic form of the race;
+      let(:touches) { { left: 0, lock_key: nil, sent: 0 } }
+      let(:raced_client) do
+        state = touches
+        toucher = redis
+        middleware = Module.new do
+          define_method(:call_pipelined) do |commands, redis_config, &block|
+            if state[:left] > 0 && commands.first[0].to_s == 'MULTI'
+              state[:left] -= 1
+              state[:sent] += 1
+              toucher.call('PEXPIRE', state[:lock_key], 60_000)
+            end
+
+            super(commands, redis_config, &block)
+          end
+        end
+        RedisQueuedLocks::Client.new(
+          RedisClient.config(db: 0, middlewares: [middleware]).new_pool(timeout: 5)
+        ) do |config|
+          config['logger'] = logger
+          config['log_lock_try'] = true
+        end
+      end
+
+      specify 'the attempt is repeated at once: no fail_fast failure, no spent retry' do
+        client = raced_client
+        touches[:lock_key] = 'rql:lock:auto.race'
+
+        client.lock('auto.race', ttl: 5_000, conflict_strategy: :extendable_work_through) do
+          [{ fail_fast: true }, { retry_count: 1 }].each do |options|
+            touches[:left] = 1
+            started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            result = client.lock(
+              'auto.race', ttl: 1_000, conflict_strategy: :extendable_work_through, **options
+            ) { :nested }
+
+            expect(result).to eq(:nested)
+            # NOTE: without the delay of the retries
+            expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.15
+          end
+        end
+
+        expect(touches[:sent]).to eq(2)
+        expect(logger.logs).to include(
+          a_string_starting_with(
+            "[redis_queued_locks.try_lock.exit__reentrant_lock_is_changed] " \
+            "lock_key => 'rql:lock:auto.race' "
+          )
+        )
+      end
+
+      specify 'the repeats are limited' do
+        client = raced_client
+        limit = RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::MAX_REENTRANT_EXTENSION_RETRIES
+        touches[:lock_key] = 'rql:lock:auto.race_limit'
+
+        client.lock('auto.race_limit', ttl: 5_000, conflict_strategy: :extendable_work_through) do
+          touches[:left] = 1_000
+          result = client.lock(
+            'auto.race_limit', ttl: 1_000, conflict_strategy: :extendable_work_through,
+            fail_fast: true
+          ) { :nested }
+
+          expect(result).to eq({ ok: false, result: :fail_fast_after_try })
+        end
+
+        expect(touches[:sent]).to eq(limit + 1)
+      end
+
+      specify '#lock_series: the attempt is repeated at once' do
+        client = raced_client
+        touches[:lock_key] = 'rql:lock:auto.race_series.1'
+
+        client.lock(
+          'auto.race_series.1', ttl: 5_000, conflict_strategy: :extendable_work_through
+        ) do
+          touches[:left] = 1
+          result = client.lock_series(
+            'auto.race_series.1', 'auto.race_series.2',
+            ttl: 1_000, conflict_strategy: :extendable_work_through, fail_fast: true
+          ) { :nested }
+
+          expect(result).to eq(:nested)
+        end
+
+        expect(touches[:sent]).to eq(1)
+        expect(logger.logs).to include(
+          a_string_starting_with(
+            "[redis_queued_locks.try_lock.exit__reentrant_lock_is_changed] " \
+            "lock_key => 'rql:lock:auto.race_series.1' "
+          )
+        )
+      end
+
+      specify 'a lock that is really lost is obtained by the repeated attempt' do
+        client = raced_client
+        touches[:lock_key] = 'rql:lock:auto.race_lost'
+
+        client.lock('auto.race_lost', ttl: 5_000, conflict_strategy: :extendable_work_through) do
+          redis.call('DEL', 'rql:lock:auto.race_lost')
+          expect(
+            client.lock(
+              'auto.race_lost', ttl: 1_000, conflict_strategy: :extendable_work_through
+            ) { client.locked?('auto.race_lost') }
+          ).to eq(true)
+        end
+      end
+    end
+
+    specify 'an idle keeper does not wake up more often than the limit' do
+      wake_ups = Class.new(Thread::Queue) do
+        attr_reader :count
+
+        def pop(*, **)
+          @count = @count.to_i + 1
+          super
+        end
+      end.new
+      client = RedisQueuedLocks::Client.new(redis)
+      client.lock_keeper.instance_variable_set(:@wakeups, wake_ups)
+
+      # NOTE: the interval of this extension is 1 ms
+      client.lock('auto.tiny_ttl', ttl: 3, auto_extend: true) {}
+      sleep(0.05)
+      before = wake_ups.count.to_i
+      sleep(0.5)
+
+      expect(wake_ups.count.to_i - before).to be <= 7
+    end
+
+    specify 'a failed extension of a completed block of code is not reported' do
+      failed = { enabled: false, hit: false }
+      keeper = nil
+      failing_middleware = Module.new do
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          if failed[:enabled] && commands.first[0].to_s == 'EVAL'
+            # NOTE: the block of code is completed during the tick
+            keeper.instance_variable_get(:@leases).each_key { |lease| keeper.forget(lease) }
+            failed[:hit] = true
+            raise(RedisClient::ConnectionError, 'failed extension')
+          end
+
+          super(commands, redis_config, &block)
+        end
+      end
+      client = RedisQueuedLocks::Client.new(
+        RedisClient.config(db: 0, middlewares: [failing_middleware]).new_pool(timeout: 5)
+      )
+      keeper = client.lock_keeper
+
+      client.lock('auto.completed', ttl: 300, auto_extend: true, instrumenter: notifier) do
+        failed[:enabled] = true
+        expect(wait_until.call { failed[:hit] }).to eq(true)
+        sleep(0.05)
+      end
+
+      expect(notifier.events('lock_auto_extension_failed')).to be_empty
+    end
+
+    specify 'a failed extension is reported and retried' do
+      failing = { enabled: false }
+      failing_middleware = Module.new do
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          if failing[:enabled] && commands.first[0].to_s == 'EVAL'
+            raise(RedisClient::ConnectionError, 'failed extension')
+          end
+
+          super(commands, redis_config, &block)
+        end
+      end
+      client = RedisQueuedLocks::Client.new(
+        RedisClient.config(db: 0, middlewares: [failing_middleware]).new_pool(timeout: 5)
+      )
+
+      client.lock(
+        'auto.failed', ttl: 600, auto_extend: true, instrumenter: notifier, logger:,
+        log_sample_this: true, instrument: { custom: :data }
+      ) do
+        failing[:enabled] = true
+        expect(wait_until.call { notifier.events('lock_auto_extension_failed').any? }).to eq(true)
+        failing[:enabled] = false
+        notifier.notifications.clear
+        expect(wait_until.call { notifier.events('lock_auto_extended').any? }).to eq(true)
+        sleep(0.7)
+        expect(client.locked?('auto.failed')).to eq(true)
+      end
+
+      expect(logger.logs).to include(
+        a_string_matching(
+          /\A\[redis_queued_locks\.lock_auto_extension_failed\] .*error => 'RedisClient::ConnectionError'/
+        )
+      )
+    end
+
+    specify 'the reported failed extension: instrumentation payload' do
+      failing_middleware = Module.new do
+        define_method(:call_pipelined) do |commands, redis_config, &block|
+          if commands.first[0].to_s == 'EVAL'
+            raise(RedisClient::ConnectionError, 'failed extension')
+          end
+
+          super(commands, redis_config, &block)
+        end
+      end
+      client = RedisQueuedLocks::Client.new(
+        RedisClient.config(db: 0, middlewares: [failing_middleware]).new_pool(timeout: 5)
+      )
+
+      client.lock('auto.failed_event', ttl: 300, auto_extend: true, instrumenter: notifier) do
+        expect(wait_until.call { notifier.events('lock_auto_extension_failed').any? }).to eq(true)
+      end
+
+      expect(notifier.events('lock_auto_extension_failed').first).to match(
+        {
+          lock_key: 'rql:lock:auto.failed_event',
+          rw_mode: :write,
+          ext_ttl: 300,
+          acq_id: client.current_acquirer_id,
+          hst_id: client.current_host_id,
+          error: 'RedisClient::ConnectionError',
+          at: be_a(Float),
+          instrument: nil
+        }
+      )
+    end
+
+    specify 'fork: the leases of the parent process are not extended by the child process' do
+      client = RedisQueuedLocks::Client.new(redis)
+      reader, writer = IO.pipe
+
+      client.lock('auto.fork', ttl: 400, auto_extend: true) do
+        child = fork do
+          reader.close
+          child_lease = client.lock_keeper.keep(
+            %w[rql:lock:auto.fork.child], %w[rql:lock_readers:auto.fork.child], [nil], [:write],
+            ['auto.fork.child'], 'child_acquirer', 'child_host',
+            Process.clock_gettime(Process::CLOCK_MONOTONIC, :microsecond), 100, 100, nil,
+            false, 0, RedisQueuedLocks::Logging::VoidLogger, false,
+            RedisQueuedLocks::Instrument::VoidNotifier, false, nil
+          )
+          leases = client.lock_keeper.instance_variable_get(:@leases).keys
+          writer.write(Marshal.dump([leases.size, leases.first.equal?(child_lease)]))
+          writer.close
+          exit!(0)
+        end
+        writer.close
+        Process.wait(child)
+
+        expect(Marshal.load(reader.read)).to eq([1, true])
+        sleep(0.5)
+        expect(client.locked?('auto.fork')).to eq(true)
+      end
+    end
+  end
 end
 
 RSpec.describe RedisQueuedLocks do
@@ -8422,6 +9548,69 @@ RSpec.describe RedisQueuedLocks do
       end
 
       recorded_redis.close
+    end
+
+    specify 'lock auto extension: the lock index score stays the upper bound of the lifetime' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['lock_index_enabled'] = true
+      end
+      lock_pttl = -> (lock_key) { redis.call('PTTL', lock_key) }
+
+      aggregate_failures do
+        {
+          write: 'rql:lock:idx.auto.write',
+          read: 'rql:lock_readers:idx.auto.read'
+        }.each do |mode, key|
+          client.lock(
+            "idx.auto.#{mode}", ttl: 300, rw_mode: mode, auto_extend: true, auto_extend_ttl: 90_000
+          ) do
+            sleep(0.2) until lock_pttl.call(key) > 300
+            expect(index_score_ahead.call("idx.auto.#{mode}")).to upper_bound.call(90_000)
+          end
+        end
+
+        # NOTE: `XX`: the removed name is not added to the lock index again
+        client.lock('idx.auto.removed', ttl: 300, auto_extend: true) do
+          redis.call('ZREM', lock_index, 'idx.auto.removed')
+          sleep(0.5)
+          expect(redis.call('ZSCORE', lock_index, 'idx.auto.removed')).to eq(nil)
+        end
+
+        # NOTE: `GT`: the score is never decreased
+        client.lock('idx.auto.score', ttl: 300, auto_extend: true) do
+          redis.call(
+            'ZADD',
+            lock_index,
+            'XX',
+            RedisQueuedLocks::Resource.lock_index_time * 2,
+            'idx.auto.score'
+          )
+          sleep(0.5)
+          expect(index_score_ahead.call('idx.auto.score')).to be > 1_000_000
+        end
+      end
+    end
+
+    specify 'lock auto extension of the disabled lock index: no lock index commands' do
+      commands = []
+      recorder = Module.new do
+        define_method(:call_pipelined) do |pipeline_commands, redis_config, &block|
+          commands.concat(pipeline_commands.map { |command| command.map(&:to_s) })
+          super(pipeline_commands, redis_config, &block)
+        end
+      end
+      client = RedisQueuedLocks::Client.new(
+        RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5)
+      )
+
+      client.lock('noidx.auto.write', ttl: 300, auto_extend: true) { sleep(0.5) }
+      client.lock('noidx.auto.read', ttl: 300, rw_mode: :read, auto_extend: true) { sleep(0.5) }
+
+      extensions = commands.select { |command| command[0] == 'EVAL' }
+      aggregate_failures do
+        expect(extensions.map { |command| command[2] }.uniq).to contain_exactly('1', '3')
+        expect(commands.flatten).not_to include(lock_index)
+      end
     end
 
     specify 'the disabled lock index (default): no lock index commands, keyspace lookups' do

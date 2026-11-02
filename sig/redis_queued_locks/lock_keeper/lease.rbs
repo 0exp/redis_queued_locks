@@ -1,0 +1,61 @@
+use RedisQueuedLocks as RQL
+
+module RedisQueuedLocks
+  class LockKeeper
+    class Lease
+      attr_reader lock_keys: Array[String]
+      attr_reader lock_readers_keys: Array[String]
+      attr_reader read_lock_keys: Array[String?]
+      attr_reader rw_modes: Array[RQL::readWriteMode]
+      attr_reader lock_names: Array[String]
+      attr_reader acquirer_id: String
+      attr_reader host_id: String
+      attr_reader extension_ttl: Integer
+      attr_reader extension_interval: Integer
+      attr_reader max_hold_time: Integer?
+      attr_reader started_at: Integer
+      attr_reader next_extension_at: Integer
+      attr_reader lock_index_enabled: bool
+      attr_reader lock_index_grace_period: Integer
+      attr_accessor interrupted_thread: Thread?
+      attr_reader logger: RQL::loggerObj
+      attr_reader log_sampled: bool
+      attr_reader instrumenter: RQL::instrObj
+      attr_reader instr_sampled: bool
+      attr_reader instrument: untyped?
+
+      @hold_deadline: Integer?
+      @lost_locks: Array[bool]
+      @lost: bool
+
+      def initialize: (
+        Array[String] lock_keys,
+        Array[String] lock_readers_keys,
+        Array[String?] read_lock_keys,
+        Array[RQL::readWriteMode] rw_modes,
+        Array[String] lock_names,
+        String acquirer_id,
+        String host_id,
+        Integer started_at,
+        Integer ttl,
+        Integer extension_ttl,
+        Integer? max_hold_time,
+        bool lock_index_enabled,
+        Integer lock_index_grace_period,
+        RQL::loggerObj logger,
+        bool log_sampled,
+        RQL::instrObj instrumenter,
+        bool instr_sampled,
+        untyped? instrument
+      ) -> void
+
+      def lost?: () -> bool
+      def lock_lost?: (Integer lock_index) -> bool
+      def lose_lock: (Integer lock_index) -> void
+      def all_locks_lost?: () -> bool
+      def hold_limit_reached?: (Integer time) -> bool
+      def extension_ttl_at: (Integer time) -> Integer
+      def schedule_extension: (Integer time) -> void
+    end
+  end
+end

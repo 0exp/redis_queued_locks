@@ -1,4 +1,10 @@
 ## [Unreleased]
+### Added
+- *Brand New Feature*: **Lock Auto Extension**: a block of code keeps its lock alive while it is running, and the crash of the process releases the lock by the TTL (see README "Lock Auto Extension"):
+  - `auto_extend:`, `auto_extend_ttl:` and `max_hold_time:` options of `#lock`/`#lock!`/`#lock_series`/`#lock_series!`;
+  - `config['is_auto_extended_by_default']`, `config['default_auto_extend_ttl']` and `config['default_max_hold_time']`;
+  - `timed: true` with `auto_extend: true`: the block of code is limited by `max_hold_time` and is interrupted when the lock is lost: `TimedBlockExceedsMaxHoldTimeError`, `TimedBlockLostLockError`;
+  - instrumentation events and logs: `lock_auto_extended`, `lock_auto_extension_failed`, `auto_extended_lock_lost`, `lock_hold_limit_reached`; `try_lock.exit__reentrant_lock_is_changed` log;
 
 ## [1.23.1] - 2026-11-01
 ### Added

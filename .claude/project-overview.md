@@ -21,6 +21,7 @@ RedisQueuedLocks (lib/redis_queued_locks.rb)   entry point; requires all parts; 
 Client (client.rb)                              public API facade
   ├── Config (config.rb + config/dsl.rb)        declarative settings + validators
   ├── Swarm  (swarm.rb + swarm/*)               supervised background workers
+  ├── LockKeeper (lock_keeper.rb + lock_keeper/*)  keeps the locks of running blocks alive (`auto_extend`)
   └── Acquirer::* modules                       one stateless module per operation
               │
               ▼
@@ -32,7 +33,8 @@ Resource (resource.rb)                          keys, acquirer/host ids, queue s
 `Client.new(redis_client) { |config| ... }`:
 1. builds `Config` from the block,
 2. computes `uniq_identity` via `config['uniq_identifier']`,
-3. creates `Swarm` and starts it when `config['swarm.auto_swarm']` is true.
+3. creates `LockKeeper` (no thread until the first `auto_extend: true` block),
+4. creates `Swarm` and starts it when `config['swarm.auto_swarm']` is true.
 
 Every other public method is a thin wrapper: it fills option defaults from `config[...]` and calls
 an `Acquirer::*` module function with `redis_client`.
@@ -151,6 +153,7 @@ AcquireLock Step 0.1 / LockSeries Step 0.1              name -> Integer, range -
 |---|---|
 | `lock` / `lock!` | `acquirer/acquire_lock.rb` + `acquirer/acquire_lock/*` |
 | `lock_series` / `lock_series!` | `acquirer/lock_series.rb` + `acquirer/lock_series/*` (atomic, see "Lock series"; one `rw_mode`, `priority` and `ttl` for the whole series) |
+| `auto_extend:` of the four lock methods | `lock_keeper.rb` + `lock_keeper/*` (see "Lock auto extension") |
 | `unlock` / `release_lock` | `acquirer/release_lock.rb` |
 | `unlock_read` / `release_read_lock` | `acquirer/release_read_lock.rb` (own read lock or `acquirer_id:` read lock only) |
 | `extend_lock_ttl` | `acquirer/extend_lock_ttl.rb` (`rw_mode: :read` extends own read lock, `+ all_read_locks: true` all live read locks) |
@@ -175,8 +178,26 @@ AcquireLock Step 0.1 / LockSeries Step 0.1              name -> Integer, range -
 | `WithAcqTimeout` | Global acquisition timeout (`timeout`). |
 | `DelayExecution` | Retry delay + jitter between attempts. |
 | `DequeueFromLockQueue` | Removes the acquirer from the queue of the requested mode on timeout/failure. |
-| `YieldExpire` | Runs the user block (optionally `timed`: budget = `ttl` - time from the start of the successful attempt - `REDIS_TIMESHIFT_ERROR`, always within the lock lifetime; no budget left => the block is not invoked, `LockTtlTimeBudgetIsSpentError`; the budget exceeded => `TimedBlockExceedsLockTtlError`; `Timeout.timeout(0)` means no timeout; a long `ensure` of the block, `rescue Exception` and non-interruptible code can still outlive the lock), then releases/expires the lock of the held mode (write: `EXPIRE 0`; read: `ZREM` own reader + `DEL` own read lock data; extendable reentrant: decrease). Known limitation (kept by the user's decision, documented in README): the write release and the write ttl decrease have no owner check, so a block longer than the ttl can delete/shorten the lock of another acquirer. |
+| `YieldExpire` | Runs the user block (optionally `timed`: budget = `ttl` - time from the start of the successful attempt - `REDIS_TIMESHIFT_ERROR`, always within the lock lifetime; no budget left => the block is not invoked, `LockTtlTimeBudgetIsSpentError`; the budget exceeded => `TimedBlockExceedsLockTtlError`; `Timeout.timeout(0)` means no timeout; a long `ensure` of the block, `rescue Exception` and non-interruptible code can still outlive the lock; `auto_extend`: the block gets a lease of `LockKeeper` and the budget is `max_hold_time`, see "Lock auto extension"), then releases/expires the lock of the held mode (write: `EXPIRE 0`; read: `ZREM` own reader + `DEL` own read lock data; extendable reentrant: decrease). Known limitation (kept by the user's decision, documented in README): without `auto_extend` the write release and the write ttl decrease have no owner check, so a block longer than the ttl can delete/shorten the lock of another acquirer (with a lease: `RELEASE_OWN_LOCK`, `DECREASE_OWN_LOCK_PTTL`). |
 | `LogVisitor` / `InstrVisitor` | One method per lifecycle event for logs and instrumentation. |
+
+### Lock auto extension (`lock_keeper.rb`)
+
+`auto_extend: true` (`lock`, `lock!`, `lock_series`, `lock_series!`): the lock ttl is a lease that is extended while the block of code is running. Without a block the option has no effect. The acquirement is the same: the extension concerns an already held lock; `TryToLock`/`TryToLockSeries` only recognize a reentrant attempt that is aborted by a tick (see "Reentrancy" below).
+
+- `RedisQueuedLocks::LockKeeper`: one per `Client` (`client.lock_keeper`, forwarded as the internal keyword `lock_keeper:`, like `lock_priorities:`), one thread `rql.lock_keeper`. No module-level state: a client lives in its Ractor. The only stateful object of the lock path: `Acquirer::*` stay stateless and get it as an argument.
+- `LockKeeper::Lease`: one per block of code, not per lock: the block is interrupted once and the hold limit is one for the whole block (a series with several lost locks would get several `Thread#raise`s otherwise, the second one reaches the application as an internal exception); the locks are parallel arrays (the series arrays as is; one-element arrays for `lock`).
+- Connection: `redis_client.config.new_client` (own connection, no new settings; plain client, pool, sentinel). The client's `RedisClient` can be one connection: using it from another thread is the issue #10 protocol desync. Not a swarm element: the swarm is opt-in and its `redis_config.*` default to localhost.
+- Lifecycle: `start` (`AcquireLock`/`LockSeries` Step 1.1, before the lock is obtained: connecting takes several round trips, a slow start under load eats the first lease) → `keep` (in `yield_expire`/`lock_series`, inside the `ensure` scope of the release: an interrupted caller leaves a lease on a released lock, the next tick drops it) → `forget` (before the release: the keeper can not report a released lock as a lost one). The thread starts on demand, stops after `IDLE_TIMEOUT` without new leases (counted from the last `keep`: a short block can end before the thread gets the GVL, so the leases it sees say nothing), and is revived by the next `start`/`keep` (`Thread#alive?`, a new process: `fork` keeps no threads; the leases of the parent are dropped by the pid check: a child never extends the locks of the parent). Without leases the thread keeps waking up each last extension interval, `MIN_IDLE_WAKE_UP_INTERVAL` at least: `keep` wakes it only for an earlier extension (`@wake_at`), so a stream of short blocks of one ttl costs no context switch per block.
+- Tick: leases due now (and in `extension_interval / EXTENSION_BATCHING_RATIO`) → one pipeline with one `EVAL` per lock; replies by position (one per lock that is not lost). Time is taken before the commands, all deadlines are counted from the start of the successful attempt (`try_start_time`) or of the tick.
+- Schedule: the first extension at `max(ttl / 3, ttl - extension_ttl * 2 / 3)`, then each `extension_ttl / 3` (a constant interval: never derive the next tick from the `PTTL` of the reply: a nested `:extendable_work_through` raises the ttl for a moment and takes it back after the nested block, the postponed tick comes after the expiration). `extension_ttl` = `auto_extend_ttl || ttl`.
+- Extension semantics: "live `extension_ttl` from now", not "add": `EXTEND_WRITE_LOCK` (`HGET acq_id` owner check, `PEXPIRE GT`, returns `PTTL`), `EXTEND_READ_LOCK` (no write lock, live own reader (`TIME`), `ZADD XX GT`, `PEXPIRE NX`+`GT` of the registry and the reader data). Replies: `-3` = lost (`LOST_LOCK_REPLY`, not a `PTTL` sentinel). A lost lock is never revived. Owner = `acq_id` only (like `release_lock_series`): `ts` of a reentrant result is not the `ts` of the lock; a late tick of a finished block can only extend the next lock of the same acquirer. Lua is not the acquirement path: mutual exclusion stays with `WATCH`/`MULTI`.
+- `max_hold_time`: `hold_deadline` = attempt start + limit; `extension_ttl_at` caps an extension by the time left, so the lock expires at the limit, nothing depends on the client (no renewal = expiry). At the deadline the lease is dropped and `lock_hold_limit_reached` is reported. Validated against `ttl` only with `auto_extend`.
+- Lost lock: `auto_extended_lock_lost`, the lock is not extended anymore, other locks of the lease continue. `timed: true`: the block is interrupted with `TimedLockIntermediateTimeoutError` from the keeper thread (under `sync`, once: the lease is dropped; so no list of the WATCH rescues changes), `yield_with_timeout` converts it (`TimedBlockLostLockError` for a lost lease, `TimedBlockExceedsMaxHoldTimeError` for the `Timeout` of a lease). The interruption period is limited by `interrupt_on_loss` and `forget`, both inside the `rescue` scope of `yield_with_timeout` (a lease is not interruptible from `keep`: a lock can be lost before the block starts, an interruption there is out of the `rescue` scope and the internal error reaches the application; `interrupt_on_loss` raises it synchronously instead, the block is not invoked). Only from a blocking fiber (`interrupted_thread`): `Thread#raise` reaches the current fiber of the thread and would interrupt another fiber scheduler task.
+- `timed` + `auto_extend`: budget = `max_hold_time` - attempt time (`nil`: no `Timeout`).
+- Failed tick (`StandardError` from the pipeline): `lock_auto_extension_failed` per lock, the next try in `extension_interval / EXTENSION_RETRY_RATIO`, the thread stays alive.
+- Reentrancy: a nested block with `auto_extend` gets its own lease (no ref counters: two leases of one lock are harmless, `GT` and the owner check make them idempotent). `held_rw_mode` decides the script (a read request under the own write lock extends the write lock). A lease of a series covers its reentrant locks too. A tick changes the watched lock key, so it can abort `EXEC` of a reentrant attempt of the same acquirer (a series: of any attempt with a reentrant lock; `:work_through` of a single lock does not read its result): it is not a failed acquirement, the lock is held. The attempt returns `:reentrant_lock_is_changed_during_extension` (`try_lock.exit__reentrant_lock_is_changed` log) and `acquire_lock`/`lock_series` repeat it at once, Step 2.1.b: no delay, no spent try, no `fail_fast` failure, up to `TryToLock::MAX_REENTRANT_EXTENSION_RETRIES` times; a really lost lock is found by the repeated attempt.
+- Limits (measured, README "Lock Auto Extension"): a Ruby thread waits for the GVL and the GC: delay ≈ 110 ms per CPU-bound thread + the longest GVL-holding call; the lock is kept while delay < 2/3 of the extension ttl (`RUBY_THREAD_TIMESLICE` scales it). Redis applies the renewal at the write, a late reply matters only for the next tick. `Thread#priority` and a raw socket (`recv_nonblock`) gave nothing. A sidecar Ractor is immune to the CPU contention but stalls at the GC barrier during long C calls, fails on non-shareable redis-client middlewares (APM) and has no `Thread` access; a helper process is immune but heavy; a presence on a subscribed connection (`PUBSUB NUMSUB`) is a separate idea (no renewals, failover and hot path costs).
 
 ### Lock series (`acquirer/lock_series.rb`)
 
@@ -234,7 +255,8 @@ The second part of the lock acquisition core (not an operation module): `LockSer
 ### Main `lock` options (defaults from config)
 
 `ttl`, `queue_ttl`, `lock_index_grace_period` (used with the enabled lock index only; the mode itself, `config['lock_index_enabled']`,
-is client-wide: `Client` passes it to the acquirers, it is not a `lock` option), `timeout`, `timed`, `retry_count`, `retry_delay`, `retry_jitter`,
+is client-wide: `Client` passes it to the acquirers, it is not a `lock` option), `timeout`, `timed`, `auto_extend`, `auto_extend_ttl`, `max_hold_time`
+(see "Lock auto extension"), `retry_count`, `retry_delay`, `retry_jitter`,
 `raise_errors`, `fail_fast`, `conflict_strategy`, `access_strategy`, `priority` (`-100`..`100` or a priority name of `config['lock_priorities']`, default
 `config['default_lock_priority']` = `0`, see "Lock request priorities"), `rw_mode`
 (`:write` (default, exclusive) | `:read` (shared)), `identity`, `meta`, `detailed_acq_timeout_error`, `logger`, `log_lock_try`,
@@ -270,7 +292,8 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
   `:conflict_dead_lock` for `:dead_locking`, waits for own read expiration for `:wait_for_lock`.
 - `fail_fast`: write fails on write holder or live readers; read fails on write holder (or own live read).
 - Try results (internal symbols): `:write_request_is_ahead`, `:read_request_is_ahead`,
-  `:read_lock_is_still_acquired`, `:conflict_lock_upgrade`, `:read_lock_is_expired_during_extension`;
+  `:read_lock_is_still_acquired`, `:conflict_lock_upgrade`, `:read_lock_is_expired_during_extension`,
+  `:reentrant_lock_is_changed_during_extension` (see "Lock auto extension");
   try success result carries internal `rw_mode` (held mode), not exposed in the public `lock` result.
 - Validation (`AcquireLock`): `rw_mode` must be `:read`/`:write`; `ttl` must be a positive
   Integer in both modes (`RedisQueuedLocks::ArgumentError`; write: `PEXPIRE` with a non-positive ttl would
@@ -441,6 +464,7 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
     indexes the lock` drops the entry right before the obtaining `MULTI`;
   - every extension of a lock key: `ZADD XX INCR <ms> <name>` in the same transaction (reentrant `:extendable_work_through`, `extend_lock_ttl`
     write (`MULTI { EVAL; ZADD }`), own read, all read locks); `XX`: names without an entry (older versions) are not indexed with a wrong score;
+    the lock keeper sets an absolute lifetime, so its scripts use `ZADD XX GT <now + extension ttl + grace> <name>` after the owner check (`KEYS[2]`/`KEYS[4]`, sent with the enabled lock index only);
   - the score is never decreased (`GT`; ttl decreases and releases do not touch the index);
   - lock request queues have TTL (`PEXPIRE NX` + `GT` = queue ttl on each queueing): the lifetime of every indexed key is bounded;
   - pruning: `ZREMRANGEBYSCORE <index> -inf <now - 1>` in every queueing pipeline (amortized, no background jobs) and in `flush_zombies`,
@@ -460,7 +484,7 @@ is client-wide: `Client` passes it to the acquirers, it is not a `lock` option),
 `redis_queued_locks.` + `lock_obtained`, `reentrant_lock_obtained`,
 `extendable_reentrant_lock_obtained`, `lock_hold_and_release`, `reentrant_lock_hold_completes`,
 `lock_obtaining_failed`, `lock_series_intermediate_lock_obtained`, `lock_series_lock_obtained`, `lock_series_lock_obtaining_failed`, `lock_series_obtained`,
-`lock_series_hold_and_release`, `lock_series_obtaining_failed`, `explicit_lock_release`,
+`lock_series_hold_and_release`, `lock_series_obtaining_failed`, `lock_auto_extended`, `lock_auto_extension_failed`, `auto_extended_lock_lost`, `lock_hold_limit_reached`, `explicit_lock_release`,
 `explicit_all_locks_release`, `release_locks_of`, `explicit_read_lock_release`, `extend_lock_ttl`, `clear_dead_requests`,
 `reindex_locks`. Observability rule (`logic.md#16`): logic that changes keys is logged and instrumented, the lock
 acquirement per meaningful outcome (visitors; `lock_obtaining_failed` with the failure `result` also before a raised
@@ -479,12 +503,13 @@ its priority (`first_priority_in_queue` after `first_acq_id_in_queue`, `ahead_pr
 lock log lines (incl. lock series logs) carry `rw_mode => '...'`. RW try-lock log events: `exit__write_request_ahead`,
 `exit__read_request_ahead`, `exit__read_lock_still_obtained`, `single_process_lock_conflict__lock_upgrade`. Priorities try-lock
 log event: `dead_request_removed` (`dead_acq_id`, `dead_priority`: a dead blocking request of another band was dropped).
+Lock auto extension events and logs are raised by the keeper thread through `LockKeeper::LogVisitor`/`InstrVisitor`, one per lock (`rw_mode` = held mode), with the sampling of the lock acquirement (`at` is computed by the visitor after the sampling guard).
 
 ### Errors (`errors.rb`)
 
 Global base errors per branch (`logic.md#15`): `RedisQueuedLocks::Error < StandardError` (the main
 hierarchy: `LockAlreadyObtainedError`, `LockAcquirementTimeoutError`, `LockAcquirementRetryLimitError`,
-`TimedLockTimeoutError` (`LockTtlTimeBudgetIsSpentError`, `TimedBlockExceedsLockTtlError`), `ConflictLockObtainError`, `SwarmError`, `ConfigError` (`ConfigNotFoundError`,
+`TimedLockTimeoutError` (`LockTtlTimeBudgetIsSpentError`, `TimedBlockExceedsLockTtlError`, `TimedBlockExceedsMaxHoldTimeError`, `TimedBlockLostLockError`), `ConflictLockObtainError`, `SwarmError`, `ConfigError` (`ConfigNotFoundError`,
 `ConfigValidationError`)), `RedisQueuedLocks::ArgumentError < ::ArgumentError` (`SwarmArgumentError`),
 `RedisQueuedLocks::Exception < ::Exception` (`@api private`, super exceptional cases only: the internal
 `*IntermediateTimeoutError`s of `Timeout.timeout` for `timeout` and `timed`; like `Timeout::ExitException`,
@@ -503,12 +528,13 @@ the connection (drops the WATCH state, reconnected on the next use) and re-raise
 |---|---|
 | `Client` | Facade; constructor injection (caller-supplied `RedisClient`); `x` returns a result hash, `x!` raises |
 | `Acquirer::*` | One module per command; stateless `class << self` functions; uniform `{ ok:, result: }` returns (public API contract; swarm element internals use bare scalars/primitives) |
-| `AcquireLock` | Composition via `extend` mixins; optimistic concurrency (WATCH/MULTI; asymmetric WATCH for read/write locks) + Lua only for write TTL extension/decrease; strategy options (`access_strategy`, `conflict_strategy`, `rw_mode`) |
+| `AcquireLock` | Composition via `extend` mixins; optimistic concurrency (WATCH/MULTI; asymmetric WATCH for read/write locks) + Lua only for write TTL extension/decrease and the owner-checked operations of a lease (the release and the decrease, `LockKeeper` extensions: not the acquirement); strategy options (`access_strategy`, `conflict_strategy`, `rw_mode`) |
 | Log/Instr visitors | Visitor-style event hooks keep observability out of the algorithm; percent sampling via `sampling_happened?(percent)` |
 | `Logging` / `Instrument` | Null Object defaults (`VoidLogger`, `VoidNotifier`); Adapter (`instrument/active_support.rb`); duck typing (`::Logger` API, `#notify(event, payload)`) |
 | `Config` | Declarative DSL: `setting(key, default)` and `validate(key) { }` registries; access as `config['a.b']`; runtime `Client#configure` |
 | `Swarm` | Template base classes `SwarmElement::Threaded` (Thread) and `SwarmElement::Isolated` (Ractor; commands/replies via a per-element pair of `Ractor::Port`s, termination via `Ractor#monitor`). `ProbeHosts < Threaded`; `FlushZombies < Isolated` with its own connection from `RedisClientBuilder` (plain, pooled or sentinel). `Supervisor` watchdog thread restarts dead elements. |
 | `Resource` | Single source of truth for key names and identity strings |
+| `LockKeeper` | One background thread per client (lazy, revived on demand, fork-aware), `Lease` per block of code, own connection, Lua with an owner check; no supervisor: `start`/`keep` revive it |
 | Misc | `Data < Hash` result object; `Utilities::Lock` `Monitor` wrapper (reentrant); global `Debugger` toggle |
 
 ---
@@ -518,6 +544,7 @@ the connection (drops the WATCH state, reconnected on the next use) and re-raise
 | Group | Keys (default) |
 |---|---|
 | Retry/timeouts | `retry_count` (3), `retry_delay` (200 ms), `retry_jitter` (25 ms), `try_to_lock_timeout` (10 s), `is_timed_by_default` (false) |
+| Lock auto extension | `is_auto_extended_by_default` (false), `default_auto_extend_ttl` (nil: the lock ttl, ms), `default_max_hold_time` (3_600_000 ms, nil: no limit) |
 | TTLs | `default_lock_ttl` (5000 ms), `default_queue_ttl` (15 s), `dead_request_ttl` (1 day, ms) |
 | Strategies | `default_conflict_strategy` (`:wait_for_lock`), `default_access_strategy` (`:queued`), `default_lock_priority` (0, from -100 to 100 or a priority name), `lock_priorities` (priority names => Integer priorities) |
 | Batching | `lock_release_batch_size` (100), `clear_locks_of__lock_scan_size` / `__queue_scan_size` (300), `key_extraction_batch_size` (500) |
@@ -540,6 +567,7 @@ lib/redis_queued_locks/
   acquirer/*.rb                    one operation per file
   acquirer/acquire_lock/*          lock algorithm mixins + visitors
   acquirer/lock_series/*           lock series attempt and release mixins + visitors
+  lock_keeper.rb, lock_keeper/*    lock auto extension: keeper thread, leases, visitors
   swarm.rb, swarm/*                supervisor, swarm elements, zombie logic, redis client builder
   logging/, instrument/            void defaults, samplers, ActiveSupport adapter
   resource.rb                      keys and identities

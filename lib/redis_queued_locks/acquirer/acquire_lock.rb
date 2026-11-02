@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.23.0
+# @version 1.24.0
 # rubocop:disable Metrics/ModuleLength
 # rubocop:disable Metrics/MethodLength
 # rubocop:disable Metrics/ClassLength
@@ -61,6 +61,14 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   (`0` is the same as `nil`: `Timeout.timeout(0)` sets no timeout).
     # @option timed [Boolean]
     #   Limit the invocation time period of the passed block of code by the lock's TTL.
+    # @option auto_extend [Boolean]
+    #   Keep the lock alive while the passed block of code is running: see `Client#lock`.
+    # @option auto_extend_ttl [Integer,NilClass]
+    #   How long the lock lives after an auto extension (in milliseconds), `nil`: the lock ttl.
+    # @option max_hold_time [Integer,NilClass]
+    #   The limit of the auto extension (in milliseconds), `nil`: no limit.
+    # @option lock_keeper [RedisQueuedLocks::LockKeeper]
+    #   The lock keeper of the client.
     # @option retry_count [Integer,NilClass]
     #   How many times we should try to acquire a lock. Nil means "infinite retries".
     # @option retry_delay [Integer]
@@ -193,7 +201,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #
     # @api private
     # @since 1.0.0
-    # @version 1.23.1
+    # @version 1.24.0
     def acquire_lock(
       redis,
       lock_name,
@@ -207,6 +215,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock
       lock_index_grace_period:,
       timeout:,
       timed:,
+      auto_extend:,
+      auto_extend_ttl:,
+      max_hold_time:,
+      lock_keeper:,
       retry_count:,
       retry_delay:,
       retry_jitter:,
@@ -312,6 +324,31 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         )
       end
 
+      # Step 0.1: prevent :auto_extend_ttl and :max_hold_time incompatibilities (the same ranges as
+      #   their config keys); the hold limit shorter than the lock ttl can not be reached: the
+      #   lock is obtained for a longer time;
+      if auto_extend_ttl != nil && (!auto_extend_ttl.is_a?(::Integer) || auto_extend_ttl <= 0)
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:auto_extend_ttl` argument should be nil or a positive Integer, " \
+          "got #{auto_extend_ttl.inspect}."
+        )
+      end
+      if max_hold_time != nil && (!max_hold_time.is_a?(::Integer) || max_hold_time <= 0)
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:max_hold_time` argument should be nil or a positive Integer, " \
+          "got #{max_hold_time.inspect}."
+        )
+      end
+      if auto_extend && block_given? && max_hold_time && max_hold_time < ttl
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:max_hold_time` argument of an auto extended lock should not be less than `:ttl`, " \
+          "got #{max_hold_time.inspect} (ttl: #{ttl.inspect})."
+        )
+      end
+
       # Step 0.1: prevent :priority incompatibilities (the same range as its config key)
       #   - a Symbol is a priority name of `config['lock_priorities']`: it is resolved to its
       #     Integer priority (the lock request queues, the logs and the instrumentation use the
@@ -410,6 +447,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         lock_info: {},
         should_try: true,
         tries: 0,
+        reentrant_retries: 0,
         acquired: false,
         result: nil,
         try_start_time: nil,
@@ -439,6 +477,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         logger, log_sampled, lock_key,
         queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
       )
+
+      # Step 1.1: (auto extension) the lock keeper should be ready before the lock is obtained
+      lock_keeper.start if auto_extend && block_given?
 
       # Step 2: try to lock with timeout
       # NOTE: the acquirement start time is defined out of the timeout block: the failed
@@ -578,6 +619,16 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           else
             # @type var result: Symbol
 
+            # Step 2.1.b: the already held lock is changed during the reentrant attempt (an
+            #   extension of the lock keeper, for example): the lock is not lost and the attempt
+            #   has failed nothing: the next attempt is made at once (no delay, no spent try, no
+            #   `fail_fast` failure) and it sees the actual lock state;
+            if result == :reentrant_lock_is_changed_during_extension &&
+               acq_process[:reentrant_retries] < TryToLock::MAX_REENTRANT_EXTENSION_RETRIES
+              acq_process[:reentrant_retries] += 1
+              next
+            end
+
             # Step 2.2: failed to acquire. anylize each case and act in accordance
             case acq_process[:result]
             when :fail_fast_no_try # Step 2.2.a: fail without try
@@ -690,6 +741,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
               lock_readers_key,
               read_lock_key,
               acq_process[:held_rw_mode],
+              lock_name,
               acquirer_id,
               host_id,
               access_strategy,
@@ -697,11 +749,20 @@ module RedisQueuedLocks::Acquirer::AcquireLock
               ttl_shift,
               ttl,
               queue_ttl,
+              lock_index_enabled,
+              lock_index_grace_period,
               meta,
               log_sampled,
               instr_sampled,
               should_expire, # NOTE: should expire the lock after the block execution
               should_decrease, # NOTE: should decrease the lock ttl in reentrant locks?
+              lock_keeper,
+              auto_extend,
+              auto_extend_ttl,
+              max_hold_time,
+              acq_process[:try_start_time],
+              instrumenter,
+              instrument,
               &block
             )
           ensure

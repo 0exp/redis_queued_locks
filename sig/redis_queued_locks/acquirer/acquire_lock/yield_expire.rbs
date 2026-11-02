@@ -6,6 +6,8 @@ module RedisQueuedLocks
     module AcquireLock
       module YieldExpire
         DECREASE_LOCK_PTTL: String
+        RELEASE_OWN_LOCK: String
+        DECREASE_OWN_LOCK_PTTL: String
 
         def yield_expire: (
           RC::client redis,
@@ -14,6 +16,7 @@ module RedisQueuedLocks
           String lock_readers_key,
           String? read_lock_key,
           RQL::readWriteMode rw_mode,
+          String lock_name,
           String acquirer_id,
           String host_id,
           RQL::accessStrategy access_strategy,
@@ -21,23 +24,47 @@ module RedisQueuedLocks
           Integer|Float ttl_shift,
           Integer ttl,
           Integer queue_ttl,
+          bool lock_index_enabled,
+          Integer lock_index_grace_period,
           Hash[String|Symbol,untyped]? meta,
           bool log_sampled,
           bool instr_sampled,
           bool should_expire,
-          bool should_decrease
+          bool should_decrease,
+          RQL::LockKeeper lock_keeper,
+          bool auto_extend,
+          Integer? auto_extend_ttl,
+          Integer? max_hold_time,
+          Integer try_start_time,
+          RQL::instrObj instrumenter,
+          untyped? instrument
         ) ?{ (?) -> untyped } -> untyped?
 
         private
 
+        def timed_block_budget: (Integer? time_limit, Integer|Float ttl_shift) -> Float?
+
         def yield_with_timeout: (
-          Float timeout,
+          Float? timeout,
           String lock_key,
           Integer lock_ttl,
+          Integer? max_hold_time,
+          RQL::LockKeeper lock_keeper,
+          RQL::LockKeeper::Lease? lock_lease,
           String acquirer_id,
           String host_id,
           Hash[String|Symbol,untyped]? meta,
         ) { (?) -> untyped } -> untyped
+
+        def raise_timed_block_error: (
+          String lock_key,
+          Integer lock_ttl,
+          Integer? max_hold_time,
+          RQL::LockKeeper::Lease? lock_lease,
+          String acquirer_id,
+          String host_id,
+          Hash[String|Symbol,untyped]? meta
+        ) -> void
       end
     end
   end

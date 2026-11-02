@@ -32,6 +32,12 @@ module RedisQueuedLocks
   class TimedBlockExceedsLockTtlError < TimedLockTimeoutError
   end
 
+  class TimedBlockExceedsMaxHoldTimeError < TimedLockTimeoutError
+  end
+
+  class TimedBlockLostLockError < TimedLockTimeoutError
+  end
+
   class ConflictLockObtainError < Error
   end
 
