@@ -9019,6 +9019,57 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
     end
 
+    specify 'a new keeper thread takes over the leases of the dead one' do
+      client = RedisQueuedLocks::Client.new(redis)
+      observer = RedisQueuedLocks::Client.new(redis)
+      started = Thread::Queue.new
+
+      holder = Thread.new do
+        client.lock('auto.takeover', ttl: 300, auto_extend: true) do
+          started << true
+          sleep(1.2)
+        end
+      end
+      started.pop
+      sleep(0.2)
+      # NOTE: the thread dies with the lease in its schedule; the next lease revives it
+      client.lock_keeper.thread.kill.join
+      client.lock('auto.takeover.other', ttl: 300, auto_extend: true) {}
+      sleep(0.6)
+
+      aggregate_failures do
+        expect(observer.locked?('auto.takeover')).to eq(true)
+        holder.join
+        expect(client.locked?('auto.takeover')).to eq(false)
+      end
+    end
+
+    specify 'the schedule: blocks of different ttls and many blocks at once are kept' do
+      client = RedisQueuedLocks::Client.new(redis)
+      observer = RedisQueuedLocks::Client.new(redis)
+      ttls = [300, 900, 2_700] + Array.new(20, 300)
+      started = Thread::Queue.new
+
+      holders = ttls.each_with_index.map do |ttl, index|
+        Thread.new do
+          client.lock("auto.schedule.#{index}", ttl:, auto_extend: true) do
+            started << index
+            sleep(1.5)
+          end
+        end
+      end
+      ttls.size.times { started.pop }
+      # NOTE: longer than the shortest ttls: each lock is kept by its own schedule
+      sleep(1.2)
+      alive = ttls.each_index.count { |index| observer.locked?("auto.schedule.#{index}") }
+      holders.each(&:join)
+
+      aggregate_failures do
+        expect(alive).to eq(ttls.size)
+        expect(wait_until.call(2) { client.keys.empty? }).to eq(true)
+      end
+    end
+
     specify 'the keeper stops without leases and starts again on demand' do
       stub_const('RedisQueuedLocks::LockKeeper::IDLE_TIMEOUT', 100)
       client = RedisQueuedLocks::Client.new(redis)

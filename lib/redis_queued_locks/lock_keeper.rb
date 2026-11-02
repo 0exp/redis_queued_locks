@@ -19,6 +19,9 @@
 #   - the block of code can move its hold limit while it makes progress
 #     (`RedisQueuedLocks::LockLease#hold_for`, see `#hold_for`); this thread interrupts a `timed`
 #     block of code at the hold limit (a `Timeout` can not be moved);
+#   - the leases are planned in a timer wheel (`SCHEDULE_SLOT`): a wake-up takes the due slots only
+#     and `#keep`/`#forget` change one slot, so the work under the lock does not grow with the
+#     number of running blocks of code;
 #   - `fork`: the thread does not survive and the locks of the parent process are not the locks of
 #     the child: the first lease of the child process starts with an empty state;
 #   - a thread of the same process has the same limits as the block of code: see README "Lock auto
@@ -116,6 +119,16 @@ class RedisQueuedLocks::LockKeeper
   # @since 1.24.0
   EXTENSION_BATCHING_RATIO = 10
 
+  # The schedule of the leases is a set of slots of this length (in milliseconds) by the time of
+  # their next extension: a wake-up looks at the leases of the due slots only, not at all leases
+  # (the work under the lock does not grow with the number of the running blocks of code).
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.24.0
+  SCHEDULE_SLOT = 10
+
   # @return [RedisClient]
   #
   # @api private
@@ -143,6 +156,10 @@ class RedisQueuedLocks::LockKeeper
     @redis_client = redis_client
     @sync = RedisQueuedLocks::Utilities::Lock.new
     @leases = {} #: Hash[Lease,bool]
+    # NOTE: the schedule (under the lock): the leases by the slot of their next extension and the
+    #   sorted slots (the first one is the nearest);
+    @buckets = {} #: Hash[Integer,Hash[Lease,bool]]
+    @slot_keys = [] #: Array[Integer]
     @wakeups = ::Thread::Queue.new
     @wake_at = nil
     @last_lease_at = 0
@@ -235,6 +252,7 @@ class RedisQueuedLocks::LockKeeper
     sync.synchronize do
       run_keeper_thread
       @leases[lease] = true
+      schedule(lease)
       @last_lease_at = monotonic_time
       @idle_wake_up_interval = [lease.extension_interval, MIN_IDLE_WAKE_UP_INTERVAL].max
       # NOTE: the thread sleeps till the nearest extension (or till its idle wake-up): a later one
@@ -287,7 +305,7 @@ class RedisQueuedLocks::LockKeeper
   # @api private
   # @since 1.24.0
   def forget(lease)
-    sync.synchronize { @leases.delete(lease) }
+    sync.synchronize { unschedule(lease) if @leases.delete(lease) }
   end
 
   # Moves the hold limit of the block of code (`RedisQueuedLocks::LockLease#hold_for`): its locks
@@ -378,6 +396,8 @@ class RedisQueuedLocks::LockKeeper
     if @process_id != ::Process.pid
       @process_id = ::Process.pid
       @leases = {}
+      @buckets = {}
+      @slot_keys = []
       @wake_at = nil
       @thread = nil
     end
@@ -406,6 +426,9 @@ class RedisQueuedLocks::LockKeeper
     # NOTE: connect before the first extension (see `#start`); an unavailable Redis is reported by
     #   the extensions;
     run_non_critical { redis.call('PING') }
+    # NOTE: a new thread takes the leases of a dead one over: a killed thread can leave the due
+    #   leases of its tick out of the schedule (the registry keeps all leases);
+    sync.synchronize { rebuild_schedule }
 
     while (leases = wait_for_due_leases)
       extend_locks(redis, leases)
@@ -419,14 +442,12 @@ class RedisQueuedLocks::LockKeeper
   #
   # @api private
   # @since 1.24.0
-  # rubocop:disable Metrics/MethodLength
   def wait_for_due_leases
     loop do
       wait_time = sync.synchronize do
         now = monotonic_time
         @wakeups.clear
-        leases = @leases.keys
-        next_extension_at = leases.map(&:next_extension_at).min
+        next_extension_at = planned_extension_at
 
         if next_extension_at == nil
           # NOTE: (idle) counted from the last lease, not from the last lease seen here: a short
@@ -448,16 +469,118 @@ class RedisQueuedLocks::LockKeeper
           @wake_at = next_extension_at
           next_extension_at - now
         else
-          return leases.select do |lease|
-            lease.next_extension_at <= now + (lease.extension_interval / EXTENSION_BATCHING_RATIO)
-          end
+          return take_due_leases(now)
         end
       end
 
       @wakeups.pop(timeout: wait_time / 1_000.0)
     end
   end
-  # rubocop:enable Metrics/MethodLength
+
+  # NOTE: (the schedule) all methods of the schedule are called under the lock (`sync`);
+  #
+  # @return [void]
+  #
+  # @api private
+  # @since 1.24.0
+  def rebuild_schedule
+    @buckets = {}
+    @slot_keys = []
+    @leases.each_key { |lease| schedule(lease) }
+  end
+
+  # The empty slots in front of the schedule are dropped here (see `#unschedule`).
+  #
+  # @return [Integer,NilClass] The nearest planned extension, `nil`: no leases.
+  #
+  # @api private
+  # @since 1.24.0
+  def planned_extension_at
+    while (slot = @slot_keys.first)
+      bucket = @buckets.fetch(slot)
+      return bucket.each_key.map(&:next_extension_at).min unless bucket.empty?
+
+      @slot_keys.shift
+      @buckets.delete(slot)
+    end
+  end
+
+  # Takes the due leases and the leases that are due in their batching interval out of the
+  # schedule (the slots till the batching interval of the nearest lease are looked at): one
+  # pipeline instead of a wake-up per lease. The tick puts them back (`#reschedule`).
+  #
+  # @param now [Integer]
+  # @return [Array<RedisQueuedLocks::LockKeeper::Lease>]
+  #
+  # @api private
+  # @since 1.24.0
+  def take_due_leases(now)
+    first_slot = @slot_keys.first #: Integer
+    nearest_lease = @buckets.fetch(first_slot).each_key.min_by(&:next_extension_at) #: Lease
+    horizon = now + (nearest_lease.extension_interval / EXTENSION_BATCHING_RATIO)
+    due_leases = [] #: Array[Lease]
+    later_leases = [] #: Array[Lease]
+
+    while (slot = @slot_keys.first) && slot * SCHEDULE_SLOT <= horizon
+      @slot_keys.shift
+      @buckets.delete(slot)&.each_key do |lease|
+        if lease.next_extension_at <= now + (lease.extension_interval / EXTENSION_BATCHING_RATIO)
+          due_leases << lease
+        else
+          later_leases << lease
+        end
+      end
+    end
+
+    later_leases.each { |lease| schedule(lease) }
+    due_leases
+  end
+
+  # Puts the leases of a tick back into the schedule (the leases of the completed blocks of code
+  # and the dropped ones are not in the registry anymore): one section for the whole tick.
+  #
+  # @param leases [Array<RedisQueuedLocks::LockKeeper::Lease>]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.24.0
+  def reschedule(leases)
+    sync.synchronize do
+      leases.each { |lease| schedule(lease) if @leases.key?(lease) }
+    end
+  end
+
+  # @param lease [RedisQueuedLocks::LockKeeper::Lease]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.24.0
+  def schedule(lease)
+    slot = lease.next_extension_at / SCHEDULE_SLOT
+    bucket = @buckets[slot]
+
+    if bucket
+      bucket[lease] = true
+    else
+      @buckets[slot] = { lease => true }
+      slot_index = @slot_keys.bsearch_index { |slot_key| slot_key >= slot } || @slot_keys.size
+      @slot_keys.insert(slot_index, slot)
+    end
+  end
+
+  # NOTE: the slot is found by the planned extension: it changes only while the lease is out of
+  #   the schedule (a due lease of a tick); a lease out of the schedule is not found (a no-op);
+  #   an empty slot stays till its time (`#planned_extension_at` drops it): a stream of short
+  #   blocks of code reuses it (no new slot per block under the lock);
+  #
+  # @param lease [RedisQueuedLocks::LockKeeper::Lease]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.24.0
+  def unschedule(lease)
+    @buckets[lease.next_extension_at / SCHEDULE_SLOT]&.delete(lease)
+  end
 
   # @param redis [RedisClient]
   # @param due_leases [Array<RedisQueuedLocks::LockKeeper::Lease>]
@@ -469,7 +592,9 @@ class RedisQueuedLocks::LockKeeper
     # NOTE: the time before the commands: all deadlines are counted from an earlier moment;
     time = monotonic_time
     stopped_leases, leases = due_leases.partition { |lease| lease.hold_limit_reached?(time) }
-    stopped_leases.each { |lease| stop_hold(lease, time) }
+    # NOTE: a limit that is moved after this check (`#hold_for`) keeps the lease: it is extended
+    #   with the others (the due leases are out of the schedule till the end of the tick);
+    stopped_leases.each { |lease| leases << lease if stop_hold(lease, time) == :moved }
     return if leases.empty?
 
     # NOTE: the locks that are not lost yet: the thread of a block of code can lose a lock during
@@ -489,10 +614,12 @@ class RedisQueuedLocks::LockKeeper
       #   blocks of code that are completed during the tick have nothing to report;
       kept_leases = sync.synchronize { leases.select { |lease| @leases.key?(lease) } }
       kept_leases.each { |lease| report_failed_extension(lease, time, error) }
+      reschedule(leases)
       return
     end
 
     process_extension_replies(leases, lock_indexes, replies, time)
+    reschedule(leases)
   end
 
   # @param leases [Array<RedisQueuedLocks::LockKeeper::Lease>]
@@ -505,10 +632,12 @@ class RedisQueuedLocks::LockKeeper
   # @since 1.24.0
   def process_extension_replies(leases, lock_indexes, replies, time)
     reply_position = 0
+    # NOTE: one section for the whole tick (not one per lease);
+    kept_leases = sync.synchronize { leases.map { |lease| @leases.key?(lease) } }
 
     leases.each_with_index do |lease, lease_position|
       lease.schedule_extension(time + lease.extension_interval)
-      lease_kept = sync.synchronize { @leases.key?(lease) }
+      lease_kept = kept_leases[lease_position]
 
       lock_indexes[lease_position].each do |lock_index|
         reply = replies[reply_position]
@@ -586,15 +715,18 @@ class RedisQueuedLocks::LockKeeper
   #
   # @param lease [RedisQueuedLocks::LockKeeper::Lease]
   # @param time [Integer] The time of the tick.
-  # @return [void]
+  # @return [Symbol]
+  #   - `:stopped` - the hold limit is reached;
+  #   - `:moved` - the limit is moved after the tick has found it reached (`#hold_for`);
+  #   - `:released` - the block of code is completed during the tick;
   #
   # @api private
   # @since 1.24.0
   def stop_hold(lease, time)
-    is_stopped = sync.synchronize do
-      # NOTE: the block of code is completed during the tick, or the limit is moved after the tick
-      #   has found it reached (`#hold_for`: the lease is due, the next tick extends it);
-      next false unless @leases.key?(lease) && lease.hold_limit_reached?(time)
+    # @type var status: Symbol
+    status = sync.synchronize do
+      next :released unless @leases.key?(lease)
+      next :moved unless lease.hold_limit_reached?(time)
 
       @leases.delete(lease)
       lease.stop_hold
@@ -603,9 +735,9 @@ class RedisQueuedLocks::LockKeeper
         RedisQueuedLocks::TimedLockIntermediateTimeoutError,
         "The hold limit (#{lease.max_hold_time}) of the locks is reached"
       )
-      true
+      :stopped
     end
-    return unless is_stopped
+    return status unless status == :stopped
 
     lease.lock_keys.each_with_index do |lock_key, lock_index|
       next if lease.lock_lost?(lock_index)
@@ -619,6 +751,7 @@ class RedisQueuedLocks::LockKeeper
         lease.max_hold_time, lease.acquirer_id, lease.host_id, lease.instrument
       )
     end
+    status
   end
 
   # @param lease [RedisQueuedLocks::LockKeeper::Lease]
@@ -688,19 +821,21 @@ class RedisQueuedLocks::LockKeeper
       lease.lose_lock(lock_index)
       interrupted_thread = lease.interrupted_thread
 
+      # NOTE: a dropped lease is unscheduled too: `#hold_for` can find a lock lost while the lease
+      #   waits in the schedule (a due lease of a tick is not in it: a no-op);
       if interrupted_thread == ::Thread.current
         # NOTE: `#hold_for` of the `timed` block of code itself: the error is raised after the
         #   report (the block is running: no race with `#forget`);
-        @leases.delete(lease)
+        unschedule(lease) if @leases.delete(lease)
         interrupts_current_thread = true
       elsif interrupted_thread
-        @leases.delete(lease)
+        unschedule(lease) if @leases.delete(lease)
         interrupted_thread.raise(
           RedisQueuedLocks::TimedLockIntermediateTimeoutError,
           "The lock \"#{lease.lock_keys[lock_index]}\" is lost"
         )
       elsif lease.all_locks_lost?
-        @leases.delete(lease)
+        unschedule(lease) if @leases.delete(lease)
       end
 
       true

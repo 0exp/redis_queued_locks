@@ -12,12 +12,15 @@ module RedisQueuedLocks
     MIN_IDLE_WAKE_UP_INTERVAL: Integer
     EXTENSION_RETRY_RATIO: Integer
     EXTENSION_BATCHING_RATIO: Integer
+    SCHEDULE_SLOT: Integer
 
     attr_reader redis_client: RC::client
     attr_reader sync: RQL::Utilities::Lock
     attr_reader thread: Thread?
 
     @leases: Hash[Lease, bool]
+    @buckets: Hash[Integer, Hash[Lease, bool]]
+    @slot_keys: Array[Integer]
     @wakeups: Thread::Queue[bool]
     @wake_at: Integer?
     @last_lease_at: Integer
@@ -59,6 +62,12 @@ module RedisQueuedLocks
     def run_keeper_thread: () -> void
     def keep_locks: (RedisClient redis) -> void
     def wait_for_due_leases: () -> Array[Lease]?
+    def rebuild_schedule: () -> void
+    def planned_extension_at: () -> Integer?
+    def take_due_leases: (Integer now) -> Array[Lease]
+    def reschedule: (Array[Lease] leases) -> void
+    def schedule: (Lease lease) -> void
+    def unschedule: (Lease lease) -> void
     def extend_locks: (RedisClient redis, Array[Lease] due_leases) -> void
 
     def process_extension_replies: (
@@ -77,7 +86,7 @@ module RedisQueuedLocks
       Integer time
     ) -> void
 
-    def stop_hold: (Lease lease, Integer time) -> void
+    def stop_hold: (Lease lease, Integer time) -> Symbol
     def report_extended_lock: (Lease lease, Integer lock_index, Integer time, Integer rem_ttl) -> void
     def report_failed_extension: (Lease lease, Integer time, StandardError error) -> void
     def report_lost_lock: (Lease lease, Integer lock_index, Integer time) -> void

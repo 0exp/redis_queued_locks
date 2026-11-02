@@ -3080,6 +3080,8 @@ end
 
 - one background thread per `RedisQueuedLocks::Client` extends the locks of all running blocks of the client (all locks that are due in one pipeline). The thread is started on demand
   and it stops after a minute without blocks. Blocks without `auto_extend` pay nothing, a block that ends before the first extension sends no extensions to Redis;
+- the thread looks only at the locks that are due (a schedule by the time of the next extension): its work does not grow with the number of running blocks
+  (tens of thousands of blocks in fibers, for example);
 - the thread has its own Redis connection, built from the config of your `redis_client`: a plain `RedisClient` is one connection that can not be shared between threads;
 - `fork`: the thread does not survive and a child process does not extend the locks of the parent process;
 
