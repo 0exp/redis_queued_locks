@@ -6,11 +6,13 @@
 #     is the limit of the whole block;
 #   - the locks are parallel arrays in the order of the lock names;
 #   - the time values are the milliseconds of the monotonic clock;
-#   - the extension schedule is changed by the keeper thread only, the thread of the block reads
-#     `#lost?` only;
+#   - the extension schedule is changed by the keeper thread only; the block of code reads `#lost?`
+#     and moves the hold limit (`RedisQueuedLocks::LockLease#hold_for`) under the lock of the
+#     keeper;
 #
 # @api private
 # @since 1.24.0
+# rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::LockKeeper::Lease
   # @return [Array<String>]
   #
@@ -105,9 +107,9 @@ class RedisQueuedLocks::LockKeeper::Lease
   # @since 1.24.0
   attr_reader :lock_index_grace_period
 
-  # The thread of the block of code that is interrupted when a lock is lost (`nil`: nothing to
-  # interrupt: the block is not `timed`, it is not started yet or it can not be reached by
-  # `Thread#raise`). See `RedisQueuedLocks::LockKeeper#interrupt_on_loss`.
+  # The thread of the block of code that is interrupted when a lock is lost or the hold limit is
+  # reached (`nil`: nothing to interrupt: the block is not `timed`, it is not started yet or it can
+  # not be reached by `Thread#raise`). See `RedisQueuedLocks::LockKeeper#interrupt_timed_block`.
   #
   # @return [Thread,NilClass]
   #
@@ -167,6 +169,7 @@ class RedisQueuedLocks::LockKeeper::Lease
   #
   # @api private
   # @since 1.24.0
+  # rubocop:disable Metrics/MethodLength
   def initialize(
     lock_keys,
     lock_readers_keys,
@@ -209,6 +212,8 @@ class RedisQueuedLocks::LockKeeper::Lease
     @instrument = instrument
     @lost_locks = Array.new(lock_keys.size, false)
     @lost = false
+    @hold_stopped = false
+    @hold_moved = false
     # NOTE: the first extension:
     #   - `ttl / 3`: the lock has to be extended while it is alive (the ttl can be shorter than the
     #     extension ttl);
@@ -217,6 +222,7 @@ class RedisQueuedLocks::LockKeeper::Lease
     @next_extension_at = 0
     schedule_extension(started_at + [ttl / 3, ttl - (extension_ttl * 2 / 3)].max)
   end
+  # rubocop:enable Metrics/MethodLength
 
   # @return [Boolean] At least one lock of the lease is lost.
   #
@@ -263,6 +269,58 @@ class RedisQueuedLocks::LockKeeper::Lease
     hold_deadline ? time >= hold_deadline : false
   end
 
+  # Moves the hold limit to the given moment, never back (no limit stays no limit). Under the lock
+  # of the keeper: see `RedisQueuedLocks::LockKeeper#hold_for`.
+  #
+  # @param hold_deadline [Integer]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.24.0
+  def hold_until(hold_deadline)
+    current_hold_deadline = @hold_deadline
+    return unless current_hold_deadline && hold_deadline > current_hold_deadline
+
+    @hold_deadline = hold_deadline
+    @hold_moved = true
+  end
+
+  # @return [Boolean] The hold limit is moved by the block of code (it is not `max_hold_time`).
+  #
+  # @api private
+  # @since 1.24.0
+  def hold_moved?
+    @hold_moved
+  end
+
+  # @param time [Integer]
+  # @return [Integer,NilClass] The time left till the hold limit (in milliseconds), `nil`: no limit.
+  #
+  # @api private
+  # @since 1.24.0
+  def hold_time_left(time)
+    hold_deadline = @hold_deadline
+    hold_deadline ? [hold_deadline - time, 0].max : nil
+  end
+
+  # The hold limit is reached and the locks are not extended anymore (under the lock of the keeper).
+  #
+  # @return [void]
+  #
+  # @api private
+  # @since 1.24.0
+  def stop_hold
+    @hold_stopped = true
+  end
+
+  # @return [Boolean]
+  #
+  # @api private
+  # @since 1.24.0
+  def hold_stopped?
+    @hold_stopped
+  end
+
   # How long the lock lives after an extension at the given time: the extension ttl without
   # exceeding the hold limit.
   #
@@ -288,3 +346,4 @@ class RedisQueuedLocks::LockKeeper::Lease
     @next_extension_at = (hold_deadline && hold_deadline < time) ? hold_deadline : time
   end
 end
+# rubocop:enable Metrics/ClassLength

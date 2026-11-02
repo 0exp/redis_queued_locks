@@ -49,8 +49,10 @@ module RedisQueuedLocks
       untyped? instrument
     ) -> Lease
 
-    def interrupt_on_loss: (Lease lease) -> void
+    def interrupt_timed_block: (Lease lease) -> void
     def forget: (Lease lease) -> void
+    def hold_for: (RC::client redis, Lease lease, Integer hold_time) -> RQL::LockLease::holdForResult
+    def hold_time_left: (Lease lease) -> Integer?
 
     private
 
@@ -58,12 +60,36 @@ module RedisQueuedLocks
     def keep_locks: (RedisClient redis) -> void
     def wait_for_due_leases: () -> Array[Lease]?
     def extend_locks: (RedisClient redis, Array[Lease] due_leases) -> void
-    def process_extension_replies: (Array[Lease] leases, Array[Integer] replies, Integer time) -> void
-    def pipeline_lease_extension: (RedisClient::Pipeline pipeline, Lease lease, Integer time) -> void
-    def stop_hold: (Lease lease) -> void
+
+    def process_extension_replies: (
+      Array[Lease] leases,
+      Array[Array[Integer]] lock_indexes,
+      Array[Integer] replies,
+      Integer time
+    ) -> void
+
+    def extended_lock_indexes: (Lease lease) -> Array[Integer]
+
+    def pipeline_lease_extension: (
+      RedisClient::Pipeline pipeline,
+      Lease lease,
+      Array[Integer] lock_indexes,
+      Integer time
+    ) -> void
+
+    def stop_hold: (Lease lease, Integer time) -> void
     def report_extended_lock: (Lease lease, Integer lock_index, Integer time, Integer rem_ttl) -> void
     def report_failed_extension: (Lease lease, Integer time, StandardError error) -> void
     def report_lost_lock: (Lease lease, Integer lock_index, Integer time) -> void
+
+    def report_held_lock: (
+      Lease lease,
+      Integer lock_index,
+      Integer time,
+      Integer hold_time,
+      Integer rem_ttl
+    ) -> void
+
     def monotonic_time: () -> Integer
   end
 end

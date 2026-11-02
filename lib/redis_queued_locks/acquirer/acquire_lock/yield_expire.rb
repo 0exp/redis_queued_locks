@@ -77,6 +77,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @param instrumenter [#notify] See `RedisQueuedLocks::LockKeeper`.
   # @param instrument [NilClass,Any] See `RedisQueuedLocks::LockKeeper`.
   # @yield Custom logic that should be invoked under the obtained lock.
+  # @yieldparam lease [RedisQueuedLocks::LockLease]
+  #   The lease of an auto extended block of code (only for a block with arguments).
   # @yieldreturn [Any]
   # @return [Any,NilClass] nil is returned when no block parametr is provided.
   #
@@ -118,8 +120,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
     initial_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)
     # @type var lock_lease: RedisQueuedLocks::LockKeeper::Lease?
     lock_lease = nil
+    # @type var lease_handle: RedisQueuedLocks::LockLease?
+    lease_handle = nil
 
-    if block_given?
+    if block
       # NOTE: (auto extension) inside the `ensure` scope of the lock release: the lease of an
       #   interrupted method is dropped by the keeper (the released lock is not found);
       if auto_extend
@@ -143,6 +147,11 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
           instr_sampled,
           instrument
         )
+        # NOTE: (auto extension) the block of code gets its lease when it takes an argument (no
+        #   object for a block without arguments, a lambda without parameters gets no argument);
+        if block.arity != 0
+          lease_handle = RedisQueuedLocks::LockLease.new(lock_keeper, lock_lease, redis)
+        end
       end
 
       if timed
@@ -153,11 +162,14 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
           max_hold_time,
           lock_keeper,
           lock_lease,
+          lease_handle,
           acquirer_id,
           host_id,
           meta,
           &block
         )
+      elsif lease_handle
+        yield(lease_handle)
       else
         yield
       end
@@ -245,6 +257,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @param max_hold_time [Integer,NilClass]
   # @param lock_keeper [RedisQueuedLocks::LockKeeper]
   # @param lock_lease [RedisQueuedLocks::LockKeeper::Lease,NilClass]
+  # @param lease_handle [RedisQueuedLocks::LockLease,NilClass] The argument of the block of code.
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param meta [NilClass,Hash<Symbol|String,Any>]
@@ -260,6 +273,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @api private
   # @since 1.3.0
   # @version 1.24.0
+  # rubocop:disable Metrics/MethodLength
   def yield_with_timeout(
     timeout,
     lock_key,
@@ -267,6 +281,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
     max_hold_time,
     lock_keeper,
     lock_lease,
+    lease_handle,
     acquirer_id,
     host_id,
     meta,
@@ -287,11 +302,24 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
     begin
       begin
         # NOTE: (auto extension) the lock keeper interrupts the block of code from another thread:
-        #   the interruption period is limited by `#interrupt_on_loss` and `#forget`, both are
+        #   the interruption period is limited by `#interrupt_timed_block` and `#forget`, both are
         #   inside the `rescue` scope: an internal error never reaches the application (an
         #   interruption that comes at the very end of the block is delivered in `#forget`);
-        lock_keeper.interrupt_on_loss(lock_lease) if lock_lease
-        ::Timeout.timeout(timeout, RedisQueuedLocks::TimedLockIntermediateTimeoutError, &block)
+        lock_keeper.interrupt_timed_block(lock_lease) if lock_lease
+
+        if lock_lease&.interrupted_thread
+          # NOTE: (auto extension) the keeper interrupts the block at the hold limit too: the block
+          #   can move the limit (`RedisQueuedLocks::LockLease#hold_for`), a `Timeout` can not;
+          lease_handle ? yield(lease_handle) : yield
+        elsif lock_lease
+          # NOTE: (auto extension) a non-blocking fiber can not be interrupted by the keeper: its
+          #   hold limit is a `Timeout` (a fiber scheduler implements it);
+          ::Timeout.timeout(timeout, RedisQueuedLocks::TimedLockIntermediateTimeoutError) do
+            lease_handle ? yield(lease_handle) : yield
+          end
+        else
+          ::Timeout.timeout(timeout, RedisQueuedLocks::TimedLockIntermediateTimeoutError, &block)
+        end
       ensure
         lock_keeper.forget(lock_lease) if lock_lease
       end
@@ -301,6 +329,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
       )
     end
   end
+  # rubocop:enable Metrics/MethodLength
 
   # @param lock_key [String]
   # @param lock_ttl [Integer]
@@ -341,7 +370,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
       raise(
         RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError,
         "Passed <timed> block of code exceeded the max hold time of the lock " \
-        "(#{max_hold_time}) #{lock_details}"
+        "(#{max_hold_time}#{', moved by the block of code' if lock_lease.hold_moved?}) " \
+        "#{lock_details}"
       )
     else
       raise(

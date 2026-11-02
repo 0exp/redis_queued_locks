@@ -48,6 +48,20 @@ module RedisQueuedLocks
         String hst_id,
         untyped? instrument
       ) -> void
+
+      def self.lock_hold_limit_extended: (
+        RQL::instrObj instrumenter,
+        bool instr_sampled,
+        String lock_key,
+        RQL::readWriteMode rw_mode,
+        Integer hold_time,
+        Integer? rem_hold_time,
+        Integer ext_ttl,
+        Integer rem_ttl,
+        String acq_id,
+        String hst_id,
+        untyped? instrument
+      ) -> void
     end
   end
 end

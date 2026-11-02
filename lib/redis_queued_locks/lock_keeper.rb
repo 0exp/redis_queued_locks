@@ -16,6 +16,9 @@
 #     acquirement: an extension changes the ttl of an already held lock only);
 #   - the lock of a stuck block is not kept forever: see `max_hold_time` (the extension just stops,
 #     nothing depends on the client: the lock expires by itself);
+#   - the block of code can move its hold limit while it makes progress
+#     (`RedisQueuedLocks::LockLease#hold_for`, see `#hold_for`); this thread interrupts a `timed`
+#     block of code at the hold limit (a `Timeout` can not be moved);
 #   - `fork`: the thread does not survive and the locks of the parent process are not the locks of
 #     the child: the first lease of the child process starts with an empty state;
 #   - a thread of the same process has the same limits as the block of code: see README "Lock auto
@@ -244,13 +247,16 @@ class RedisQueuedLocks::LockKeeper
   end
   # rubocop:enable Metrics/MethodLength
 
-  # Allows the keeper to interrupt the `timed` block of code when a lock is lost. It is called
-  # inside the `rescue` scope of the interruption (`YieldExpire#yield_with_timeout`) and `#forget`
-  # is the end of the interruption period: an internal error can not reach the application:
-  #   - a lock that is already lost interrupts the block here (the block is not invoked);
+  # Allows the keeper to interrupt the `timed` block of code when a lock is lost or the hold limit
+  # is reached. It is called inside the `rescue` scope of the interruption
+  # (`YieldExpire#yield_with_timeout`) and `#forget` is the end of the interruption period: an
+  # internal error can not reach the application:
+  #   - a lock that is already lost (or the reached hold limit) interrupts the block here (the
+  #     block is not invoked);
   #   - `Thread#raise` reaches the current fiber of the thread only: a non-blocking fiber (a fiber
   #     scheduler task, for example) can be suspended, and the error would interrupt another fiber:
-  #     such a block is not interrupted;
+  #     such a block is not interrupted (`interrupted_thread` stays `nil`: its hold limit is a
+  #     `Timeout`);
   #
   # @param lease [RedisQueuedLocks::LockKeeper::Lease]
   # @return [void]
@@ -259,10 +265,13 @@ class RedisQueuedLocks::LockKeeper
   #
   # @api private
   # @since 1.24.0
-  def interrupt_on_loss(lease)
+  def interrupt_timed_block(lease)
     sync.synchronize do
       if lease.lost?
         raise(RedisQueuedLocks::TimedLockIntermediateTimeoutError, 'A lock is already lost')
+      end
+      if lease.hold_stopped?
+        raise(RedisQueuedLocks::TimedLockIntermediateTimeoutError, 'The hold limit is reached')
       end
 
       lease.interrupted_thread = ::Thread.current if ::Fiber.current.blocking?
@@ -279,6 +288,80 @@ class RedisQueuedLocks::LockKeeper
   # @since 1.24.0
   def forget(lease)
     sync.synchronize { @leases.delete(lease) }
+  end
+
+  # Moves the hold limit of the block of code (`RedisQueuedLocks::LockLease#hold_for`): its locks
+  # are kept at least `hold_time` from now (the limit never moves back) and they are extended at
+  # once, in the thread of the caller:
+  #   - at once: the last extensions before the limit are shortened to the limit, so a limit that is
+  #     moved right before it could miss the next tick (a delayed keeper thread); `ok: true` means
+  #     that all locks are still owned and extended;
+  #   - with the connection of the client: the connection of the keeper belongs to its thread;
+  #   - under the lock of the keeper: a stopped lease is never extended again, and a tick that has
+  #     found the old limit reached does not stop the moved one (`#stop_hold` checks it again);
+  #   - a lost lock is reported once (`auto_extended_lock_lost`) and interrupts a `timed` block of
+  #     code (the error is raised here when the block of code itself calls it);
+  #   - a dead keeper thread is revived (the next extensions are its work);
+  #
+  # @param redis [RedisClient] The connection of the client.
+  # @param lease [RedisQueuedLocks::LockKeeper::Lease]
+  # @param hold_time [Integer] In milliseconds.
+  # @return [Hash<Symbol,Boolean|Symbol>] See `RedisQueuedLocks::LockLease#hold_for`.
+  #
+  # @raise [RedisQueuedLocks::TimedLockIntermediateTimeoutError]
+  #
+  # @api private
+  # @since 1.24.0
+  # rubocop:disable Metrics/MethodLength
+  def hold_for(redis, lease, hold_time)
+    # NOTE: the time before the commands: the new limit is counted from an earlier moment;
+    time = monotonic_time
+    status = sync.synchronize do
+      if lease.lost?
+        :lock_lost
+      elsif lease.hold_stopped?
+        :hold_limit_reached
+      elsif @process_id != ::Process.pid || !@leases.key?(lease)
+        # NOTE: the block of code is completed (or it is a lease of the parent process: `fork`);
+        :released
+      else
+        run_keeper_thread
+        lease.hold_until(time + hold_time)
+        nil
+      end
+    end
+    return { ok: false, result: status } if status
+
+    lock_indexes = extended_lock_indexes(lease)
+    # NOTE: (pipeline layout) one reply per lock of `lock_indexes`, in their order;
+    # @type var replies: Array[Integer]
+    replies = redis.pipelined do |pipeline|
+      pipeline_lease_extension(pipeline, lease, lock_indexes, time)
+    end
+    lock_lost = false
+
+    lock_indexes.each_with_index do |lock_index, reply_position|
+      reply = replies[reply_position]
+
+      if reply == LOST_LOCK_REPLY
+        lock_lost = true
+        report_lost_lock(lease, lock_index, time)
+      else
+        report_held_lock(lease, lock_index, time, hold_time, reply)
+      end
+    end
+
+    lock_lost ? { ok: false, result: :lock_lost } : { ok: true, result: :extended }
+  end
+  # rubocop:enable Metrics/MethodLength
+
+  # @param lease [RedisQueuedLocks::LockKeeper::Lease]
+  # @return [Integer,NilClass] The time left till the hold limit (in milliseconds), `nil`: no limit.
+  #
+  # @api private
+  # @since 1.24.0
+  def hold_time_left(lease)
+    lease.hold_time_left(monotonic_time)
   end
 
   private
@@ -386,14 +469,20 @@ class RedisQueuedLocks::LockKeeper
     # NOTE: the time before the commands: all deadlines are counted from an earlier moment;
     time = monotonic_time
     stopped_leases, leases = due_leases.partition { |lease| lease.hold_limit_reached?(time) }
-    stopped_leases.each { |lease| stop_hold(lease) }
+    stopped_leases.each { |lease| stop_hold(lease, time) }
     return if leases.empty?
 
+    # NOTE: the locks that are not lost yet: the thread of a block of code can lose a lock during
+    #   the tick (`#hold_for`), so the replies are read by these indexes;
+    lock_indexes = leases.map { |lease| extended_lock_indexes(lease) }
+
     begin
-      # NOTE: (pipeline layout) one reply per lock that is not lost, in the order of the leases;
+      # NOTE: (pipeline layout) one reply per lock of `lock_indexes`, in the order of the leases;
       # @type var replies: Array[Integer]
       replies = redis.pipelined do |pipeline|
-        leases.each { |lease| pipeline_lease_extension(pipeline, lease, time) }
+        leases.each_with_index do |lease, lease_position|
+          pipeline_lease_extension(pipeline, lease, lock_indexes[lease_position], time)
+        end
       end
     rescue ::StandardError => error
       # NOTE: the lock can still live: the next try comes sooner, a lost lock is found by it; the
@@ -403,30 +492,30 @@ class RedisQueuedLocks::LockKeeper
       return
     end
 
-    process_extension_replies(leases, replies, time)
+    process_extension_replies(leases, lock_indexes, replies, time)
   end
 
   # @param leases [Array<RedisQueuedLocks::LockKeeper::Lease>]
+  # @param lock_indexes [Array<Array<Integer>>] The extended locks of each lease.
   # @param replies [Array<Integer>] See the pipeline layout of `#extend_locks`.
   # @param time [Integer]
   # @return [void]
   #
   # @api private
   # @since 1.24.0
-  def process_extension_replies(leases, replies, time)
+  def process_extension_replies(leases, lock_indexes, replies, time)
     reply_position = 0
 
-    leases.each do |lease|
+    leases.each_with_index do |lease, lease_position|
       lease.schedule_extension(time + lease.extension_interval)
       lease_kept = sync.synchronize { @leases.key?(lease) }
 
-      lease.lock_keys.each_index do |lock_index|
-        next if lease.lock_lost?(lock_index)
-
+      lock_indexes[lease_position].each do |lock_index|
         reply = replies[reply_position]
         reply_position += 1
-        # NOTE: the block of code is completed and its lock is released during the tick;
-        next unless lease_kept
+        # NOTE: the block of code is completed and its lock is released during the tick, or the
+        #   lock is found lost by the thread of the block meanwhile (`#hold_for`);
+        next if !lease_kept || lease.lock_lost?(lock_index)
 
         if reply == LOST_LOCK_REPLY
           report_lost_lock(lease, lock_index, time)
@@ -437,24 +526,33 @@ class RedisQueuedLocks::LockKeeper
     end
   end
 
+  # @param lease [RedisQueuedLocks::LockKeeper::Lease]
+  # @return [Array<Integer>] The indexes of the locks that are not lost.
+  #
+  # @api private
+  # @since 1.24.0
+  def extended_lock_indexes(lease)
+    lease.lock_keys.each_index.reject { |lock_index| lease.lock_lost?(lock_index) }
+  end
+
   # @param pipeline [RedisClient::Pipeline]
   # @param lease [RedisQueuedLocks::LockKeeper::Lease]
+  # @param lock_indexes [Array<Integer>] The locks to extend (one reply per lock, in this order).
   # @param time [Integer]
   # @return [void]
   #
   # @api private
   # @since 1.24.0
   # rubocop:disable Metrics/MethodLength
-  def pipeline_lease_extension(pipeline, lease, time)
+  def pipeline_lease_extension(pipeline, lease, lock_indexes, time)
     extension_ttl = lease.extension_ttl_at(time)
     index_score =
       if lease.lock_index_enabled
         RedisQueuedLocks::Resource.lock_index_time + extension_ttl + lease.lock_index_grace_period
       end
 
-    lease.lock_keys.each_with_index do |lock_key, lock_index|
-      next if lease.lock_lost?(lock_index)
-
+    lock_indexes.each do |lock_index|
+      lock_key = lease.lock_keys[lock_index]
       read_lock = lease.rw_modes[lock_index] == :read
 
       if lease.lock_index_enabled && read_lock
@@ -483,16 +581,31 @@ class RedisQueuedLocks::LockKeeper
   end
   # rubocop:enable Metrics/MethodLength
 
-  # The hold limit is reached: the lock is not extended anymore (it expires by itself).
+  # The hold limit is reached: the lock is not extended anymore (it expires by itself), a `timed`
+  # block of code is interrupted.
   #
   # @param lease [RedisQueuedLocks::LockKeeper::Lease]
+  # @param time [Integer] The time of the tick.
   # @return [void]
   #
   # @api private
   # @since 1.24.0
-  def stop_hold(lease)
-    # NOTE: the block of code is completed during the tick;
-    return unless sync.synchronize { @leases.delete(lease) }
+  def stop_hold(lease, time)
+    is_stopped = sync.synchronize do
+      # NOTE: the block of code is completed during the tick, or the limit is moved after the tick
+      #   has found it reached (`#hold_for`: the lease is due, the next tick extends it);
+      next false unless @leases.key?(lease) && lease.hold_limit_reached?(time)
+
+      @leases.delete(lease)
+      lease.stop_hold
+      # NOTE: under the lock: see `#report_lost_lock`;
+      lease.interrupted_thread&.raise(
+        RedisQueuedLocks::TimedLockIntermediateTimeoutError,
+        "The hold limit (#{lease.max_hold_time}) of the locks is reached"
+      )
+      true
+    end
+    return unless is_stopped
 
     lease.lock_keys.each_with_index do |lock_key, lock_index|
       next if lease.lock_lost?(lock_index)
@@ -562,16 +675,25 @@ class RedisQueuedLocks::LockKeeper
   #
   # @api private
   # @since 1.24.0
+  # rubocop:disable Metrics/MethodLength
   def report_lost_lock(lease, lock_index, time)
+    interrupts_current_thread = false
     # NOTE: under the lock: `#forget` returns only when the block can not be interrupted anymore
     #   (an interruption after the block of code would reach the code of the application);
     is_lost = sync.synchronize do
-      next false unless @leases.key?(lease)
+      # NOTE: a lock is lost once: the keeper thread and the thread of the block (`#hold_for`) can
+      #   find it lost at the same time;
+      next false if !@leases.key?(lease) || lease.lock_lost?(lock_index)
 
       lease.lose_lock(lock_index)
       interrupted_thread = lease.interrupted_thread
 
-      if interrupted_thread
+      if interrupted_thread == ::Thread.current
+        # NOTE: `#hold_for` of the `timed` block of code itself: the error is raised after the
+        #   report (the block is running: no race with `#forget`);
+        @leases.delete(lease)
+        interrupts_current_thread = true
+      elsif interrupted_thread
         @leases.delete(lease)
         interrupted_thread.raise(
           RedisQueuedLocks::TimedLockIntermediateTimeoutError,
@@ -593,6 +715,35 @@ class RedisQueuedLocks::LockKeeper
       lease.instrumenter, lease.instr_sampled, lease.lock_keys[lock_index],
       lease.rw_modes[lock_index], lease.acquirer_id, lease.host_id, time - lease.started_at,
       lease.instrument
+    )
+    return unless interrupts_current_thread
+
+    raise(
+      RedisQueuedLocks::TimedLockIntermediateTimeoutError,
+      "The lock \"#{lease.lock_keys[lock_index]}\" is lost"
+    )
+  end
+  # rubocop:enable Metrics/MethodLength
+
+  # @param lease [RedisQueuedLocks::LockKeeper::Lease]
+  # @param lock_index [Integer]
+  # @param time [Integer]
+  # @param hold_time [Integer] The requested time (in milliseconds).
+  # @param rem_ttl [Integer]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.24.0
+  def report_held_lock(lease, lock_index, time, hold_time, rem_ttl)
+    LogVisitor.lock_hold_limit_extended(
+      lease.logger, lease.log_sampled, lease.lock_keys[lock_index], lease.rw_modes[lock_index],
+      hold_time, lease.hold_time_left(time), lease.extension_ttl_at(time), rem_ttl,
+      lease.acquirer_id, lease.host_id
+    )
+    InstrVisitor.lock_hold_limit_extended(
+      lease.instrumenter, lease.instr_sampled, lease.lock_keys[lock_index],
+      lease.rw_modes[lock_index], hold_time, lease.hold_time_left(time),
+      lease.extension_ttl_at(time), rem_ttl, lease.acquirer_id, lease.host_id, lease.instrument
     )
   end
 

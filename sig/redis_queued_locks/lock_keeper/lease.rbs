@@ -27,6 +27,8 @@ module RedisQueuedLocks
       @hold_deadline: Integer?
       @lost_locks: Array[bool]
       @lost: bool
+      @hold_stopped: bool
+      @hold_moved: bool
 
       def initialize: (
         Array[String] lock_keys,
@@ -54,6 +56,11 @@ module RedisQueuedLocks
       def lose_lock: (Integer lock_index) -> void
       def all_locks_lost?: () -> bool
       def hold_limit_reached?: (Integer time) -> bool
+      def hold_until: (Integer hold_deadline) -> void
+      def hold_moved?: () -> bool
+      def hold_time_left: (Integer time) -> Integer?
+      def stop_hold: () -> void
+      def hold_stopped?: () -> bool
       def extension_ttl_at: (Integer time) -> Integer
       def schedule_extension: (Integer time) -> void
     end

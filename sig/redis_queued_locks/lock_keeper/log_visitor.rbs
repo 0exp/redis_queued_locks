@@ -44,6 +44,19 @@ module RedisQueuedLocks
         String acquirer_id,
         String host_id
       ) -> void
+
+      def self.lock_hold_limit_extended: (
+        RQL::loggerObj logger,
+        bool log_sampled,
+        String lock_key,
+        RQL::readWriteMode rw_mode,
+        Integer hold_time,
+        Integer? rem_hold_time,
+        Integer ext_ttl,
+        Integer rem_ttl,
+        String acquirer_id,
+        String host_id
+      ) -> void
     end
   end
 end

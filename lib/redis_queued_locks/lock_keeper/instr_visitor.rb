@@ -123,5 +123,49 @@ module RedisQueuedLocks::LockKeeper::InstrVisitor
         lock_key:, rw_mode:, max_hold_time:, acq_id:, hst_id:, at: Time.now.to_f, instrument:
       }) rescue nil
     end
+
+    # @param instrumenter [#notify]
+    # @param instr_sampled [Boolean]
+    # @param lock_key [String]
+    # @param rw_mode [Symbol]
+    # @param hold_time [Integer] The requested time (`RedisQueuedLocks::LockLease#hold_for`).
+    # @param rem_hold_time [Integer,NilClass] The time left till the hold limit, `nil`: no limit.
+    # @param ext_ttl [Integer]
+    # @param rem_ttl [Integer]
+    # @param acq_id [String]
+    # @param hst_id [String]
+    # @param instrument [NilClass,Any]
+    # @return [void]
+    #
+    # @api private
+    # @since 1.24.0
+    def lock_hold_limit_extended(
+      instrumenter,
+      instr_sampled,
+      lock_key,
+      rw_mode,
+      hold_time,
+      rem_hold_time,
+      ext_ttl,
+      rem_ttl,
+      acq_id,
+      hst_id,
+      instrument
+    )
+      return unless instr_sampled
+
+      instrumenter.notify('redis_queued_locks.lock_hold_limit_extended', {
+        lock_key:,
+        rw_mode:,
+        hold_time:,
+        rem_hold_time:,
+        ext_ttl:,
+        rem_ttl:,
+        acq_id:,
+        hst_id:,
+        at: Time.now.to_f,
+        instrument:
+      }) rescue nil
+    end
   end
 end

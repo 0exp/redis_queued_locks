@@ -8312,10 +8312,10 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       # NOTE: the lock is found as a lost one between the obtaining and the block of code: an
       #   interruption at this moment is out of the `rescue` scope of the block;
-      allow(client.lock_keeper).to receive(:interrupt_on_loss).and_wrap_original do |method, lease|
+      allow(client.lock_keeper).to receive(:interrupt_timed_block).and_wrap_original do |arm, lease|
         redis.call('DEL', 'rql:lock:auto.before')
         expect(wait_until.call { lease.lost? }).to eq(true)
-        method.call(lease)
+        arm.call(lease)
       end
 
       expect do
@@ -8584,6 +8584,323 @@ RSpec.shared_examples 'redis_queued_locks' do
             client.locked?('auto.bang')
           end
         ).to eq(true)
+      end
+    end
+
+    describe 'the lease of the block of code (LockLease)' do
+      let(:observer) { RedisQueuedLocks::Client.new(redis) }
+
+      specify 'the block of code gets its lease only when it takes an argument' do
+        client = RedisQueuedLocks::Client.new(redis)
+        arguments = []
+
+        client.lock('lease.args', ttl: 300, auto_extend: true) do |*args|
+          arguments << args.map(&:class)
+        end
+        client.lock('lease.args', ttl: 300, auto_extend: true) { arguments << :no_arguments }
+        # NOTE: rbs/test wraps the blocks of the checked methods (the arity of a lambda is lost)
+        unless RBS_RUNTIME_TEST
+          client.lock('lease.args', ttl: 300, auto_extend: true, &-> { arguments << :lambda })
+        end
+        client.lock('lease.args', ttl: 300) { |*args| arguments << args }
+        client.lock_series('lease.args', 'lease.args2', ttl: 300, auto_extend: true) do |*args|
+          arguments << args.map(&:class)
+        end
+
+        expect(arguments).to eq(
+          [
+            [RedisQueuedLocks::LockLease], :no_arguments, *(RBS_RUNTIME_TEST ? [] : [:lambda]), [],
+            [RedisQueuedLocks::LockLease]
+          ]
+        )
+      end
+
+      specify 'hold_for: the lock is kept beyond max_hold_time while the limit is moved' do
+        client = RedisQueuedLocks::Client.new(redis)
+        results = []
+        locked = []
+
+        client.lock('lease.hold', ttl: 300, auto_extend: true, max_hold_time: 400) do |lease|
+          6.times do
+            sleep(0.2)
+            results << lease.hold_for(500)
+            locked << observer.locked?('lease.hold')
+          end
+        end
+
+        aggregate_failures do
+          expect(results).to all(eq({ ok: true, result: :extended }))
+          expect(locked).to all(eq(true))
+          expect(client.locked?('lease.hold')).to eq(false)
+        end
+      end
+
+      specify 'hold_for: the lock expires at the moved limit when it is not moved anymore' do
+        client = RedisQueuedLocks::Client.new(redis)
+        started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        client.lock(
+          'lease.dead', ttl: 300, auto_extend: true, max_hold_time: 300, instrumenter: notifier
+        ) do |lease|
+          aggregate_failures do
+            expect(lease.hold_for(900)).to eq({ ok: true, result: :extended })
+            # NOTE: the old limit is passed, the lock is kept by the moved one
+            sleep(0.6)
+            expect(observer.locked?('lease.dead')).to eq(true)
+            # NOTE: a stuck block of code: the lock expires at the moved limit
+            expect(wait_until.call(3) { !observer.locked?('lease.dead') }).to eq(true)
+            expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at)
+              .to be_between(0.85, 3.0)
+            expect(wait_until.call { notifier.events('lock_hold_limit_reached').any? }).to eq(true)
+            expect(lease.hold_for(1_000)).to eq({ ok: false, result: :hold_limit_reached })
+            expect(lease.hold_time_left).to eq(0)
+          end
+        end
+      end
+
+      specify 'hold_for: the time is counted from now, the limit never moves back' do
+        client = RedisQueuedLocks::Client.new(redis)
+
+        client.lock('lease.from_now', ttl: 300, auto_extend: true, max_hold_time: 300) do |lease|
+          aggregate_failures do
+            lease.hold_for(5_000)
+            expect(lease.hold_time_left).to be_between(4_500, 5_000)
+            # NOTE: a shorter time does not move the limit back
+            lease.hold_for(1_000)
+            expect(lease.hold_time_left).to be_between(4_500, 5_000)
+            # NOTE: the calls are not summed up
+            3.times { lease.hold_for(6_000) }
+            expect(lease.hold_time_left).to be_between(5_500, 6_000)
+          end
+        end
+      end
+
+      specify 'hold_for: a tick that found the old limit reached does not stop the moved one' do
+        client = RedisQueuedLocks::Client.new(redis)
+        moved = false
+
+        # NOTE: the first tick finds the limit reached while the lock is alive (at the real limit
+        #   the lock expires: the last extensions are shortened to it)...
+        allow(client.lock_keeper).to receive(:keep).and_wrap_original do |keep, *arguments|
+          keep.call(*arguments).tap do |lease|
+            forced = false
+            allow(lease).to receive(:hold_limit_reached?).and_wrap_original do |check, time|
+              next check.call(time) if forced
+
+              forced = true
+            end
+          end
+        end
+        # NOTE: ...and the limit is moved between this check and the stop of the lease
+        allow(client.lock_keeper).to receive(:stop_hold).and_wrap_original do |stop, lease, time|
+          unless moved
+            client.lock_keeper.hold_for(redis, lease, 600)
+            moved = true
+          end
+          stop.call(lease, time)
+        end
+
+        client.lock(
+          'lease.race', ttl: 300, auto_extend: true, max_hold_time: 300, instrumenter: notifier
+        ) do
+          aggregate_failures do
+            expect(wait_until.call { moved }).to eq(true)
+            # NOTE: the old limit is passed: the moved one keeps the lock
+            sleep(0.4)
+            expect(observer.locked?('lease.race')).to eq(true)
+            expect(notifier.events('lock_hold_limit_reached')).to be_empty
+            expect(wait_until.call(3) { notifier.events('lock_hold_limit_reached').any? })
+              .to eq(true)
+          end
+        end
+      end
+
+      specify 'hold_for: a lost lock is reported once and is not revived' do
+        client = RedisQueuedLocks::Client.new(redis)
+
+        client.lock('lease.lost', ttl: 300, auto_extend: true, instrumenter: notifier) do |lease|
+          redis.call('DEL', 'rql:lock:lease.lost')
+
+          aggregate_failures do
+            # NOTE: the keeper can find the lost lock first: the same result
+            expect(lease.hold_for(1_000)).to eq({ ok: false, result: :lock_lost })
+            expect(lease.lost?).to eq(true)
+            expect(lease.hold_for(1_000)).to eq({ ok: false, result: :lock_lost })
+            sleep(0.3)
+            expect(notifier.events('auto_extended_lock_lost').size).to eq(1)
+            expect(observer.locked?('lease.lost')).to eq(false)
+          end
+        end
+      end
+
+      specify 'hold_for: the lease of a completed block of code' do
+        client = RedisQueuedLocks::Client.new(redis)
+        kept_lease = nil
+
+        client.lock('lease.done', ttl: 300, auto_extend: true) { |lease| kept_lease = lease }
+
+        aggregate_failures do
+          expect(kept_lease.hold_for(1_000)).to eq({ ok: false, result: :released })
+          expect(client.locked?('lease.done')).to eq(false)
+        end
+      end
+
+      specify 'hold_for: max_hold_time: nil (no limit)' do
+        client = RedisQueuedLocks::Client.new(redis)
+
+        client.lock('lease.no_limit', ttl: 300, auto_extend: true, max_hold_time: nil) do |lease|
+          aggregate_failures do
+            expect(lease.hold_time_left).to eq(nil)
+            expect(lease.hold_for(1_000)).to eq({ ok: true, result: :extended })
+            expect(lease.hold_time_left).to eq(nil)
+          end
+        end
+      end
+
+      specify 'hold_for: invalid values' do
+        client = RedisQueuedLocks::Client.new(redis)
+
+        client.lock('lease.invalid', ttl: 300, auto_extend: true) do |lease|
+          aggregate_failures do
+            expect { lease.hold_for(0) }.to raise_error(
+              RedisQueuedLocks::ArgumentError, /`hold_time`.*positive Integer.*got 0/
+            )
+            expect { lease.hold_for(-1) }.to raise_error(RedisQueuedLocks::ArgumentError)
+            unless RBS_RUNTIME_TEST
+              expect { lease.hold_for(1.5) }.to raise_error(RedisQueuedLocks::ArgumentError)
+              expect { lease.hold_for(nil) }.to raise_error(RedisQueuedLocks::ArgumentError)
+            end
+          end
+        end
+      end
+
+      specify 'hold_for: the extension is reported' do
+        client = RedisQueuedLocks::Client.new(redis)
+
+        client.lock(
+          'lease.report', ttl: 300, auto_extend: true, auto_extend_ttl: 600, max_hold_time: 300,
+          instrumenter: notifier, logger:, log_sample_this: true, instr_sample_this: true,
+          instrument: { custom: :data }
+        ) { |lease| lease.hold_for(2_000) }
+
+        aggregate_failures do
+          expect(notifier.events('lock_hold_limit_extended')).to contain_exactly(
+            {
+              lock_key: 'rql:lock:lease.report',
+              rw_mode: :write,
+              hold_time: 2_000,
+              rem_hold_time: be_between(1_900, 2_000),
+              ext_ttl: 600,
+              rem_ttl: be_between(500, 600),
+              acq_id: client.current_acquirer_id,
+              hst_id: client.current_host_id,
+              at: be_a(Float),
+              instrument: { custom: :data }
+            }
+          )
+          expect(logger.logs).to include(
+            a_string_starting_with(
+              "[redis_queued_locks.lock_hold_limit_extended] " \
+              "lock_key => 'rql:lock:lease.report' rw_mode => 'write' hold_time => 2000 " \
+              "rem_hold_time => "
+            )
+          )
+        end
+      end
+
+      specify 'timed: the block of code is interrupted at the moved limit' do
+        client = RedisQueuedLocks::Client.new(redis)
+        alive_after_old_limit = false
+
+        aggregate_failures do
+          expect do
+            client.lock(
+              'lease.timed', ttl: 300, auto_extend: true, timed: true, max_hold_time: 300
+            ) do |lease|
+              lease.hold_for(800)
+              sleep(0.5)
+              alive_after_old_limit = true
+              sleep(5)
+            end
+          end.to raise_error(
+            RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError,
+            /max hold time.*\(300, moved by the block of code\).*lease\.timed/
+          )
+          expect(alive_after_old_limit).to eq(true)
+          expect(client.locked?('lease.timed')).to eq(false)
+        end
+      end
+
+      specify 'timed: the hold limit of a non-blocking fiber is a Timeout that is not moved' do
+        client = RedisQueuedLocks::Client.new(redis)
+        results = []
+        raised_error = nil
+
+        Fiber.new(blocking: false) do
+          client.lock(
+            'lease.fiber', ttl: 300, auto_extend: true, timed: true, max_hold_time: 600
+          ) do |lease|
+            results << lease.class << lease.hold_for(2_000)
+            sleep(5)
+          end
+        rescue RedisQueuedLocks::TimedLockTimeoutError => error
+          raised_error = error
+        end.resume
+
+        aggregate_failures do
+          expect(results).to eq([RedisQueuedLocks::LockLease, { ok: true, result: :extended }])
+          # NOTE: the `Timeout` of `max_hold_time`: the moved limit of the keeper does not move it
+          expect(raised_error).to be_a(RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError)
+          expect(client.locked?('lease.fiber')).to eq(false)
+        end
+      end
+
+      specify 'timed: a lost lock found by hold_for interrupts the block of code' do
+        client = RedisQueuedLocks::Client.new(redis)
+        continued = false
+
+        aggregate_failures do
+          expect do
+            client.lock('lease.timed_lost', ttl: 300, auto_extend: true, timed: true) do |lease|
+              redis.call('DEL', 'rql:lock:lease.timed_lost')
+              lease.hold_for(1_000)
+              continued = true
+            end
+          end.to raise_error(RedisQueuedLocks::TimedBlockLostLockError)
+          expect(continued).to eq(false)
+        end
+      end
+
+      specify '#lock_series: hold_for keeps all locks of the series' do
+        client = RedisQueuedLocks::Client.new(redis)
+
+        client.lock_series(
+          'lease.series.a', 'lease.series.b', ttl: 300, auto_extend: true, max_hold_time: 300
+        ) do |lease|
+          aggregate_failures do
+            expect(lease.hold_for(900)).to eq({ ok: true, result: :extended })
+            sleep(0.6)
+            expect(observer.locked?('lease.series.a')).to eq(true)
+            expect(observer.locked?('lease.series.b')).to eq(true)
+          end
+        end
+
+        expect(client.locked?('lease.series.a') || client.locked?('lease.series.b')).to eq(false)
+      end
+
+      specify 'read lock: hold_for' do
+        client = RedisQueuedLocks::Client.new(redis)
+
+        client.lock(
+          'lease.read', ttl: 300, rw_mode: :read, auto_extend: true, max_hold_time: 300
+        ) do |lease|
+          aggregate_failures do
+            expect(lease.hold_for(900)).to eq({ ok: true, result: :extended })
+            sleep(0.6)
+            # NOTE: the read lock is alive: a writer can not obtain the lock
+            expect(observer.lock('lease.read', ttl: 100, fail_fast: true)[:ok]).to eq(false)
+          end
+        end
       end
     end
 
@@ -9604,6 +9921,22 @@ RSpec.describe RedisQueuedLocks do
       end
     end
 
+    specify 'lock auto extension: hold_for moves the lock index score with the lock' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['lock_index_enabled'] = true
+      end
+
+      client.lock(
+        'idx.lease', ttl: 300, auto_extend: true, auto_extend_ttl: 90_000, max_hold_time: 300
+      ) do |lease|
+        aggregate_failures do
+          expect(lease.hold_for(120_000)).to eq({ ok: true, result: :extended })
+          expect(redis.call('PTTL', 'rql:lock:idx.lease')).to be > 80_000
+          expect(index_score_ahead.call('idx.lease')).to upper_bound.call(90_000)
+        end
+      end
+    end
+
     specify 'lock auto extension of the disabled lock index: no lock index commands' do
       commands = []
       recorder = Module.new do
@@ -9616,7 +9949,11 @@ RSpec.describe RedisQueuedLocks do
         RedisClient.config(db: 0, middlewares: [recorder]).new_pool(timeout: 5)
       )
 
-      client.lock('noidx.auto.write', ttl: 300, auto_extend: true) { sleep(0.5) }
+      # NOTE: the extensions of the keeper and of `LockLease#hold_for`
+      client.lock('noidx.auto.write', ttl: 300, auto_extend: true) do |lease|
+        lease.hold_for(1_000)
+        sleep(0.5)
+      end
       client.lock('noidx.auto.read', ttl: 300, rw_mode: :read, auto_extend: true) { sleep(0.5) }
 
       extensions = commands.select { |command| command[0] == 'EVAL' }

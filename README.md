@@ -96,6 +96,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
     - ["redis_queued_locks.lock_auto_extension_failed"](#redis_queued_lockslock_auto_extension_failed)
     - ["redis_queued_locks.auto_extended_lock_lost"](#redis_queued_locksauto_extended_lock_lost)
     - ["redis_queued_locks.lock_hold_limit_reached"](#redis_queued_lockslock_hold_limit_reached)
+    - ["redis_queued_locks.lock_hold_limit_extended"](#redis_queued_lockslock_hold_limit_extended)
     - ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release)
     - ["redis_queued_locks.explicit_read_lock_release"](#redis_queued_locksexplicit_read_lock_release)
     - ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
@@ -3017,7 +3018,8 @@ rql.lock_series('report', 'stats', auto_extend: true) { long_running_logic }
   - the extension never shortens the lock: with a longer `ttl` the first extension comes when it is needed;
 - `max_hold_time` - the limit of the extension (`config['default_max_hold_time']`, 1 hour by default, `nil` means no limit), counted from the start of the successful
   acquirement attempt: a stuck block of code looks like a running one, and without a limit it holds the lock till the end of the process.
-  The lock is extended up to this moment exactly and expires by itself. It should not be less than `ttl`;
+  The lock is extended up to this moment exactly and expires by itself. It should not be less than `ttl`. A block of code that makes progress can move
+  the limit (see [the lease of the block of code](#the-lease-of-the-block-of-code) below);
 
 **What happens**:
 
@@ -3025,7 +3027,7 @@ rql.lock_series('report', 'stats', auto_extend: true) { long_running_logic }
 |---|---|---|
 | the block of code ends | the lock is released | the lock is released |
 | the process crashes | the lock expires in `auto_extend_ttl` at most | the same |
-| `max_hold_time` is reached | the lock expires, the block of code continues to work, `lock_hold_limit_reached` is reported | `RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError` |
+| `max_hold_time` is reached (or the limit moved by `lease.hold_for`) | the lock expires, the block of code continues to work, `lock_hold_limit_reached` is reported | `RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError` |
 | the lock is lost (`#unlock`, the swarm, an expiration while the process was stalled, ...) | the block of code continues to work, `auto_extended_lock_lost` is reported | `RedisQueuedLocks::TimedBlockLostLockError` (the block is not invoked when the lock is lost before it) |
 
 - `timed: true` limits the block of code by `max_hold_time` instead of the lock's TTL; with `max_hold_time: nil` the block is limited by the lost lock only;
@@ -3033,10 +3035,46 @@ rql.lock_series('report', 'stats', auto_extend: true) { long_running_logic }
   (the owner is checked; it is not so without `auto_extend`, see [#lock](#lock---obtain-a-lock));
 - a failed extension (Redis is not available) is reported (`lock_auto_extension_failed`) and is tried again sooner (each `auto_extend_ttl / 9`);
 - `timed: true` can not interrupt a block of code that runs in a non-blocking fiber (a fiber scheduler task, for example): `Thread#raise` reaches the current
-  fiber of the thread only and would interrupt another task, so such a block is not interrupted when the lock is lost (the lost lock is reported);
+  fiber of the thread only and would interrupt another task, so such a block is not interrupted when the lock is lost (the lost lock is reported); its hold
+  limit is a `Timeout` (a fiber scheduler implements it) that `lease.hold_for` can not move;
 - reentrant locks: the lock of a block with `auto_extend` is extended while this block is running, nested blocks do not need the option; a nested block
   with `auto_extend` keeps the lock of the outer logic alive while the nested block is running; an extension that changes the lock during a reentrant lock attempt
   repeats this attempt at once (no delay, no spent `retry_count`, no `fail_fast` failure, the `try_lock.exit__reentrant_lock_is_changed` log with `log_lock_try`);
+
+#### The lease of the block of code
+
+A block of code with a parameter gets its lease (`RedisQueuedLocks::LockLease`). A block that makes progress moves the hold limit itself, and a stuck
+block stops moving it, so its lock expires at the last limit (a dead man's switch instead of one fixed `max_hold_time`):
+
+```ruby
+rql.lock('report', ttl: 10_000, auto_extend: true, max_hold_time: 600_000) do |lease|
+  batches.each do |batch|
+    process(batch)
+    lease.hold_for(120_000) # => { ok: true, result: :extended }: two more minutes from now
+  end
+  save_report unless lease.lost?
+end
+```
+
+- `lease.hold_for(milliseconds)` - keep the locks at least this time **from now**: it is not a sum (calls in a loop do not accumulate it) and the limit
+  never moves back; it can move the limit beyond `max_hold_time`. The locks are extended at once (one round trip with the connection of your `redis_client`),
+  each later extension is still `auto_extend_ttl` at most (a crash releases the lock in `auto_extend_ttl`, whatever the limit is). Results:
+  - `{ ok: true, result: :extended }` - the limit is moved, all locks are owned and extended;
+  - `{ ok: false, result: :lock_lost }` - a lock is lost (`auto_extended_lock_lost` is reported, the next calls do not move the limit); a `timed` block of code
+    is interrupted right there (`RedisQueuedLocks::TimedBlockLostLockError`);
+  - `{ ok: false, result: :hold_limit_reached }` - too late: the limit is reached and the locks are not extended anymore. Call it before the limit:
+    the last extensions end the lock exactly at the limit;
+  - `{ ok: false, result: :released }` - the block of code is completed;
+  - `RedisQueuedLocks::ArgumentError` for a value that is not a positive Integer;
+- `lease.lost?` - a lock of the block is lost: a local check without Redis (a loss is found by an extension or by `hold_for`), so `false` does not prove
+  the ownership right now;
+- `lease.hold_time_left` - milliseconds till the hold limit (`0` when it is reached, `nil`: no limit);
+- `timed: true`: the block of code is interrupted at the moved limit (the keeper thread interrupts it at the hold limit, it is not a `Timeout`);
+- one lease per block of code: a lock series has one lease for all its locks, a nested block with `auto_extend` has its own lease; a block without
+  parameters gets no lease (nothing is allocated for it);
+- call `hold_for` per a unit of progress (a batch), not per item: each call is a round trip. From another thread use it only with a connection pool
+  (the connection of your client is used, like by any method of the client);
+- each moved lock is reported by `lock_hold_limit_extended`;
 
 **How it works**:
 
@@ -3161,6 +3199,7 @@ There are no extensions at all, but the swarm has to run in your processes.
 "[redis_queued_locks.lock_auto_extension_failed]" # (logs "lock_key", "rw_mode", "ext_ttl", "acq_id", "hst_id", "error");
 "[redis_queued_locks.auto_extended_lock_lost]" # (logs "lock_key", "rw_mode", "acq_id", "hst_id", "hold_time");
 "[redis_queued_locks.lock_hold_limit_reached]" # (logs "lock_key", "rw_mode", "max_hold_time", "acq_id", "hst_id");
+"[redis_queued_locks.lock_hold_limit_extended]" # (logs "lock_key", "rw_mode", "hold_time", "rem_hold_time", "ext_ttl", "rem_ttl", "acq_id", "hst_id");
 ```
 
 - operation logs (one log line per operation that changes Redis keys, with the time of the whole operation; the same data as
@@ -3226,6 +3265,7 @@ There are no extensions at all, but the swarm has to run in your processes.
 #   - "[redis_queued_locks.lock_auto_extension_failed]" (logs "lock_key", "rw_mode", "ext_ttl", "acq_id", "hst_id", "error");
 #   - "[redis_queued_locks.auto_extended_lock_lost]" (logs "lock_key", "rw_mode", "acq_id", "hst_id", "hold_time");
 #   - "[redis_queued_locks.lock_hold_limit_reached]" (logs "lock_key", "rw_mode", "max_hold_time", "acq_id", "hst_id");
+#   - "[redis_queued_locks.lock_hold_limit_extended]" (logs "lock_key", "rw_mode", "hold_time", "rem_hold_time", "ext_ttl", "rem_ttl", "acq_id", "hst_id");
 #   - "[redis_queued_locks.explicit_lock_release]" (logs "lock_key", "lock_key_queue", "rel_time", "at");
 #   - "[redis_queued_locks.explicit_read_lock_release]" (logs "lock_key", "acq_id", "lock_res", "rel_time", "at");
 #   - "[redis_queued_locks.explicit_all_locks_release]" (logs "at", "rel_time", "rel_key_cnt");
@@ -3378,6 +3418,7 @@ List of instrumentation events
 - ["redis_queued_locks.lock_auto_extension_failed"](#redis_queued_lockslock_auto_extension_failed)
 - ["redis_queued_locks.auto_extended_lock_lost"](#redis_queued_locksauto_extended_lock_lost)
 - ["redis_queued_locks.lock_hold_limit_reached"](#redis_queued_lockslock_hold_limit_reached)
+- ["redis_queued_locks.lock_hold_limit_extended"](#redis_queued_lockslock_hold_limit_extended)
 - ["redis_queued_locks.explicit_lock_release"](#redis_queued_locksexplicit_lock_release)
 - ["redis_queued_locks.explicit_read_lock_release"](#redis_queued_locksexplicit_read_lock_release)
 - ["redis_queued_locks.explicit_all_locks_release"](#redis_queued_locksexplicit_all_locks_release)
@@ -3650,6 +3691,22 @@ Detalized event semantics and payload structure:
   - `:lock_key` - `string` - lock key (`rql:lock:<lock_name>`);
   - `:rw_mode` - `symbol` - the mode of the held lock (`:write` or `:read`);
   - `:max_hold_time` - `integer`/`milliseconds` - the limit;
+  - `:acq_id` - `string` - lock acquirer identifier;
+  - `:hst_id` - `string` - lock's host identifier;
+  - `:at` - `float`/`epoch` - the time when the event was reported;
+  - `:instrument` - `nil`/`Any` - custom data passed to the `#lock`/`#lock_series` method as `:instrument` attribute;
+
+##### `"redis_queued_locks.lock_hold_limit_extended"`
+- <sup>\[[back to the list](#instrumentation-events)\]</sup>
+- an event signalizes that the block of code moved its hold limit and the lock is extended at once (`RedisQueuedLocks::LockLease#hold_for`);
+- raised from the thread that called `#hold_for`, one event per lock (a lost lock is reported by `auto_extended_lock_lost` instead);
+- payload:
+  - `:lock_key` - `string` - lock key (`rql:lock:<lock_name>`);
+  - `:rw_mode` - `symbol` - the mode of the held lock (`:write` or `:read`);
+  - `:hold_time` - `integer`/`milliseconds` - the requested time (from the moment of the call);
+  - `:rem_hold_time` - `integer`/`milliseconds`/`nil` - the time left till the hold limit after the call (`nil`: no limit);
+  - `:ext_ttl` - `integer`/`milliseconds` - how long the lock should live after the extension (`auto_extend_ttl`, the hold limit at most);
+  - `:rem_ttl` - `integer`/`milliseconds` - how long the lock really lives after the extension (the extension never shortens the lock);
   - `:acq_id` - `string` - lock acquirer identifier;
   - `:hst_id` - `string` - lock's host identifier;
   - `:at` - `float`/`epoch` - the time when the event was reported;
