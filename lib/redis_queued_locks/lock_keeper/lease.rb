@@ -107,15 +107,36 @@ class RedisQueuedLocks::LockKeeper::Lease
   # @since 1.24.0
   attr_reader :lock_index_grace_period
 
-  # The thread of the block of code that is interrupted when a lock is lost or the hold limit is
-  # reached (`nil`: nothing to interrupt: the block is not `timed`, it is not started yet or it can
-  # not be reached by `Thread#raise`). See `RedisQueuedLocks::LockKeeper#interrupt_timed_block`.
+  # The fiber of the running `timed` block of code (`nil`: the block is not `timed`, it is not
+  # started yet or it is completed: `RedisQueuedLocks::LockKeeper#forget`): the block that finds its
+  # lock lost by itself (`RedisQueuedLocks::LockLease#hold_for`) is interrupted right there, in any
+  # fiber. See `RedisQueuedLocks::LockKeeper#interrupt_timed_block`.
+  #
+  # @return [Fiber,NilClass]
+  #
+  # @api private
+  # @since 1.24.0
+  attr_accessor :timed_fiber
+
+  # The thread of the `timed` block of code of a blocking fiber: it is interrupted with
+  # `Thread#raise` when a lock is lost or the hold limit is reached (`nil`: see `#fiber_scheduler`).
   #
   # @return [Thread,NilClass]
   #
   # @api private
   # @since 1.24.0
   attr_accessor :interrupted_thread
+
+  # The fiber scheduler of the `timed` block of code of a non-blocking fiber: the block is
+  # interrupted through its `Fiber::Scheduler#fiber_interrupt` (`nil`: a blocking fiber or a
+  # scheduler without this hook: the keeper does not interrupt the block, its hold limit is a
+  # `Timeout`).
+  #
+  # @return [#fiber_interrupt,NilClass]
+  #
+  # @api private
+  # @since 1.24.0
+  attr_accessor :fiber_scheduler
 
   # @return [::Logger,#debug]
   #
@@ -204,7 +225,11 @@ class RedisQueuedLocks::LockKeeper::Lease
     @hold_deadline = max_hold_time ? (started_at + max_hold_time) : nil
     @lock_index_enabled = lock_index_enabled
     @lock_index_grace_period = lock_index_grace_period
+    @timed_fiber = nil
     @interrupted_thread = nil
+    @fiber_scheduler = nil
+    # NOTE: the interruption that is sent through the fiber scheduler and has not come yet;
+    @pending_interruption = nil
     @logger = logger
     @log_sampled = log_sampled
     @instrumenter = instrumenter
@@ -257,6 +282,59 @@ class RedisQueuedLocks::LockKeeper::Lease
   # @since 1.24.0
   def all_locks_lost?
     @lost_locks.all?
+  end
+
+  # @return [Boolean]
+  #   The keeper can interrupt the `timed` block of code: its hold limit needs no `Timeout`.
+  #
+  # @api private
+  # @since 1.24.0
+  def interruptible?
+    (@interrupted_thread || @fiber_scheduler) ? true : false
+  end
+
+  # Interrupts the `timed` block of code from another thread or fiber with
+  # `RedisQueuedLocks::TimedLockIntermediateTimeoutError` (under the lock of the keeper: see
+  # `RedisQueuedLocks::LockKeeper#forget`; nothing happens when the block can not be interrupted):
+  #   - a blocking fiber: `Thread#raise`;
+  #   - a non-blocking fiber: the fiber scheduler raises the error in the fiber at its next
+  #     suspension point (`Fiber::Scheduler#fiber_interrupt`, it may be called by another thread);
+  #     a sent interruption can not be cancelled: it is pending till the block of code takes it
+  #     (`#take_pending_interruption`);
+  #
+  # @param message [String]
+  # @return [void]
+  #
+  # @api private
+  # @since 1.24.0
+  def interrupt(message)
+    if (interrupted_thread = @interrupted_thread)
+      interrupted_thread.raise(RedisQueuedLocks::TimedLockIntermediateTimeoutError, message)
+    elsif (fiber_scheduler = @fiber_scheduler) && (timed_fiber = @timed_fiber)
+      error = RedisQueuedLocks::TimedLockIntermediateTimeoutError.new(message)
+      @pending_interruption = error
+      begin
+        fiber_scheduler.fiber_interrupt(timed_fiber, error)
+      rescue StandardError
+        # NOTE: the scheduler can not interrupt the fiber: the loss is only reported (like in a
+        #   scheduler without the hook), nothing is pending;
+        @pending_interruption = nil
+      end
+    end
+  end
+
+  # The interruption sent through the fiber scheduler that has not come to the block of code yet
+  # (it is taken once: the next call returns `nil`). Under the lock of the keeper.
+  #
+  # @param raised_error [Exception,NilClass] The error that has stopped the block of code.
+  # @return [RedisQueuedLocks::TimedLockIntermediateTimeoutError,NilClass]
+  #
+  # @api private
+  # @since 1.24.0
+  def take_pending_interruption(raised_error)
+    pending_interruption = @pending_interruption
+    @pending_interruption = nil
+    pending_interruption.equal?(raised_error) ? nil : pending_interruption
   end
 
   # @param time [Integer]

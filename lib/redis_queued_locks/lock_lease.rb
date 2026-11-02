@@ -47,8 +47,10 @@ class RedisQueuedLocks::LockLease
   #   - each extension of the keeper is still `auto_extend_ttl` at most: the crash of the process
   #     releases the lock in `auto_extend_ttl`, whatever the limit is;
   #   - `timed: true`: the limit of the block of code is moved too (the block is interrupted at the
-  #     moved limit); a lost lock interrupts such block right here
-  #     (`RedisQueuedLocks::TimedBlockLostLockError`);
+  #     moved limit; a non-blocking fiber whose fiber scheduler has no
+  #     `Fiber::Scheduler#fiber_interrupt` keeps the `Timeout` of `max_hold_time`); a lost lock
+  #     interrupts such block right here (`RedisQueuedLocks::TimedBlockLostLockError`), in any
+  #     fiber;
   #   - call it per a unit of progress (a batch), not per item: each call is a round trip;
   #   - from another thread: only with a connection pool (the connection of the client is used,
   #     like by any method of the client);

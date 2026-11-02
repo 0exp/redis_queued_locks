@@ -3034,9 +3034,12 @@ rql.lock_series('report', 'stats', auto_extend: true) { long_running_logic }
 - a lost lock is never revived, and the release after the block of code does not touch the lock of the next owner
   (the owner is checked; it is not so without `auto_extend`, see [#lock](#lock---obtain-a-lock));
 - a failed extension (Redis is not available) is reported (`lock_auto_extension_failed`) and is tried again sooner (each `auto_extend_ttl / 9`);
-- `timed: true` can not interrupt a block of code that runs in a non-blocking fiber (a fiber scheduler task, for example): `Thread#raise` reaches the current
-  fiber of the thread only and would interrupt another task, so such a block is not interrupted when the lock is lost (the lost lock is reported); its hold
-  limit is a `Timeout` (a fiber scheduler implements it) that `lease.hold_for` can not move;
+- `timed: true` in a non-blocking fiber (a fiber scheduler task, `async` for example): `Thread#raise` reaches the current fiber of the thread only, so the keeper
+  interrupts such a block through its fiber scheduler (`Fiber::Scheduler#fiber_interrupt`, a Ruby 4.0 hook; `async` >= 2.25 implements it), the same way as
+  a block of a thread: at the hold limit (moved by `lease.hold_for` too) and when the lock is lost. The scheduler raises the error at the next suspension point
+  of the fiber (IO, `sleep`, ...): a CPU-bound block without them is interrupted when it yields, like by a `Timeout`. A scheduler without this hook
+  (or a non-blocking fiber without a scheduler): the hold limit is a `Timeout` that `lease.hold_for` can not move, and a lost lock interrupts the block only
+  when the block finds it by itself (`lease.hold_for`), otherwise it is reported only;
 - reentrant locks: the lock of a block with `auto_extend` is extended while this block is running, nested blocks do not need the option; a nested block
   with `auto_extend` keeps the lock of the outer logic alive while the nested block is running; an extension that changes the lock during a reentrant lock attempt
   repeats this attempt at once (no delay, no spent `retry_count`, no `fail_fast` failure, the `try_lock.exit__reentrant_lock_is_changed` log with `log_lock_try`);
@@ -3061,7 +3064,7 @@ end
   each later extension is still `auto_extend_ttl` at most (a crash releases the lock in `auto_extend_ttl`, whatever the limit is). Results:
   - `{ ok: true, result: :extended }` - the limit is moved, all locks are owned and extended;
   - `{ ok: false, result: :lock_lost }` - a lock is lost (`auto_extended_lock_lost` is reported, the next calls do not move the limit); a `timed` block of code
-    is interrupted right there (`RedisQueuedLocks::TimedBlockLostLockError`);
+    is interrupted right there, in any fiber (`RedisQueuedLocks::TimedBlockLostLockError`);
   - `{ ok: false, result: :hold_limit_reached }` - too late: the limit is reached and the locks are not extended anymore. Call it before the limit:
     the last extensions end the lock exactly at the limit;
   - `{ ok: false, result: :released }` - the block of code is completed;
@@ -3069,7 +3072,8 @@ end
 - `lease.lost?` - a lock of the block is lost: a local check without Redis (a loss is found by an extension or by `hold_for`), so `false` does not prove
   the ownership right now;
 - `lease.hold_time_left` - milliseconds till the hold limit (`0` when it is reached, `nil`: no limit);
-- `timed: true`: the block of code is interrupted at the moved limit (the keeper thread interrupts it at the hold limit, it is not a `Timeout`);
+- `timed: true`: the block of code is interrupted at the moved limit (the keeper thread interrupts it at the hold limit, it is not a `Timeout`; a non-blocking
+  fiber whose scheduler has no `fiber_interrupt` keeps the `Timeout` of `max_hold_time`);
 - one lease per block of code: a lock series has one lease for all its locks, a nested block with `auto_extend` has its own lease; a block without
   parameters gets no lease (nothing is allocated for it);
 - call `hold_for` per a unit of progress (a batch), not per item: each call is a round trip. From another thread use it only with a connection pool

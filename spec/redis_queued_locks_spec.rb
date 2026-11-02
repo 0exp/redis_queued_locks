@@ -8339,7 +8339,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
     end
 
-    specify 'timed: the blocks of a non-blocking fiber are not interrupted by Thread#raise' do
+    specify 'timed: the blocks of a non-blocking fiber without a scheduler are not interrupted' do
       client = RedisQueuedLocks::Client.new(redis)
       result = nil
 
@@ -8356,6 +8356,144 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       expect(result).to eq(:completed)
       expect(notifier.events('auto_extended_lock_lost').size).to eq(1)
+    end
+
+    specify 'timed: a fiber scheduler task is interrupted through its scheduler (a lost lock)' do
+      client = RedisQueuedLocks::Client.new(redis)
+      continued = false
+      other_ticks = 0
+      raised_error = nil
+
+      Sync do |task|
+        # NOTE: another task of the same thread is not interrupted
+        other_task = task.async do
+          20.times do
+            sleep(0.01)
+            other_ticks += 1
+          end
+        end
+
+        begin
+          # NOTE: no hold limit (no `Timeout`): the lost lock interrupts the block
+          client.lock(
+            'auto.fiber_scheduler', ttl: 300, auto_extend: true, timed: true, max_hold_time: nil,
+            instrumenter: notifier
+          ) do
+            client.unlock('auto.fiber_scheduler')
+            sleep(3)
+            continued = true
+          end
+        rescue RedisQueuedLocks::TimedLockTimeoutError => error
+          raised_error = error
+        end
+
+        other_task.wait
+      end
+
+      aggregate_failures do
+        expect(raised_error).to be_a(RedisQueuedLocks::TimedBlockLostLockError)
+        expect(continued).to eq(false)
+        expect(other_ticks).to eq(20)
+        expect(notifier.events('auto_extended_lock_lost').size).to eq(1)
+      end
+    end
+
+    specify 'timed: an interruption at the end of a block of a fiber scheduler task stays in it' do
+      client = RedisQueuedLocks::Client.new(redis)
+      clock = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+      raised_error = nil
+      waited = nil
+      after_lock = false
+
+      Sync do
+        block_end = clock.call
+
+        begin
+          client.lock('auto.fiber_end', ttl: 300, auto_extend: true, timed: true) do |lease|
+            redis.call('DEL', 'rql:lock:auto.fiber_end')
+            # NOTE: the keeper finds the lost lock while the block does not suspend (`Thread.pass`
+            #   gives the GVL, not the control to the scheduler): the interruption is sent right
+            #   before the end of the block and has to come in `#forget`, not after the block
+            deadline = clock.call + 3
+            Thread.pass until lease.lost? || clock.call > deadline
+            block_end = clock.call
+            :completed
+          end
+        rescue RedisQueuedLocks::TimedLockTimeoutError => error
+          raised_error = error
+          waited = clock.call - block_end
+        end
+
+        # NOTE: nothing comes after the block of code
+        sleep(0.3)
+        after_lock = true
+      end
+
+      aggregate_failures do
+        expect(raised_error).to be_a(RedisQueuedLocks::TimedBlockLostLockError)
+        # NOTE: the interruption has come before the timeout of the wait
+        expect(waited).to be < 0.5
+        expect(after_lock).to eq(true)
+      end
+    end
+
+    specify 'timed: a failed interruption of the fiber scheduler: the loss is reported only' do
+      client = RedisQueuedLocks::Client.new(redis)
+      result = nil
+      elapsed = nil
+
+      Sync do
+        allow(Fiber.scheduler).to receive(:fiber_interrupt).and_raise(IOError, 'closed scheduler')
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        result = client.lock(
+          'auto.fiber_failed', ttl: 300, auto_extend: true, timed: true, max_hold_time: nil,
+          instrumenter: notifier
+        ) do
+          client.unlock('auto.fiber_failed')
+          wait_until.call { notifier.events('auto_extended_lock_lost').any? }
+          :completed
+        end
+        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      end
+
+      aggregate_failures do
+        expect(result).to eq(:completed)
+        expect(notifier.events('auto_extended_lock_lost').size).to eq(1)
+        # NOTE: nothing is pending: the end of the block does not wait for an interruption
+        expect(elapsed).to be < 0.9
+        expect(client.lock_keeper.thread&.alive?).to eq(true)
+      end
+    end
+
+    specify 'timed: an interruption that the scheduler never raises is not waited for forever' do
+      client = RedisQueuedLocks::Client.new(redis)
+      clock = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+      result = nil
+      waited = nil
+
+      Sync do
+        # NOTE: the scheduler takes the interruption and never raises it
+        allow(Fiber.scheduler).to receive(:fiber_interrupt).and_return(nil)
+        block_end = clock.call
+
+        result = client.lock(
+          'auto.fiber_lost_interruption', ttl: 300, auto_extend: true, timed: true
+        ) do |lease|
+          redis.call('DEL', 'rql:lock:auto.fiber_lost_interruption')
+          deadline = clock.call + 3
+          Thread.pass until lease.lost? || clock.call > deadline
+          block_end = clock.call
+          :completed
+        end
+        waited = clock.call - block_end
+      end
+
+      aggregate_failures do
+        expect(result).to eq(:completed)
+        # NOTE: `LockKeeper::FIBER_INTERRUPTION_TIMEOUT`
+        expect(waited).to be_between(0.9, 2.0)
+      end
     end
 
     specify 'reentrant locks: the lease of the block does not depend on the nested locks' do
@@ -8831,7 +8969,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         end
       end
 
-      specify 'timed: the hold limit of a non-blocking fiber is a Timeout that is not moved' do
+      specify 'timed: the hold limit of a fiber without a scheduler is a Timeout (not moved)' do
         client = RedisQueuedLocks::Client.new(redis)
         results = []
         raised_error = nil
@@ -8853,6 +8991,104 @@ RSpec.shared_examples 'redis_queued_locks' do
           expect(raised_error).to be_a(RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError)
           expect(client.locked?('lease.fiber')).to eq(false)
         end
+      end
+
+      specify 'timed: a fiber scheduler task is interrupted at the moved limit' do
+        client = RedisQueuedLocks::Client.new(redis)
+        alive_after_old_limit = false
+        raised_error = nil
+
+        Sync do
+          client.lock(
+            'lease.fiber_scheduler', ttl: 300, auto_extend: true, timed: true, max_hold_time: 300
+          ) do |lease|
+            lease.hold_for(800)
+            sleep(0.5)
+            alive_after_old_limit = true
+            sleep(5)
+          end
+        rescue RedisQueuedLocks::TimedLockTimeoutError => error
+          raised_error = error
+        end
+
+        aggregate_failures do
+          expect(raised_error).to be_a(RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError)
+          expect(raised_error&.message).to match(/\(300, moved by the block of code\)/)
+          expect(alive_after_old_limit).to eq(true)
+          expect(client.locked?('lease.fiber_scheduler')).to eq(false)
+        end
+      end
+
+      specify 'timed: a fiber scheduler without fiber_interrupt keeps the Timeout of the limit' do
+        client = RedisQueuedLocks::Client.new(redis)
+        results = []
+        raised_error = nil
+
+        Sync do
+          # NOTE: a scheduler that can not be asked to interrupt a fiber
+          Fiber.scheduler.singleton_class.send(:undef_method, :fiber_interrupt)
+
+          client.lock(
+            'lease.no_hook', ttl: 300, auto_extend: true, timed: true, max_hold_time: 600
+          ) do |lease|
+            results << lease.hold_for(2_000)
+            sleep(5)
+          end
+        rescue RedisQueuedLocks::TimedLockTimeoutError => error
+          raised_error = error
+        end
+
+        aggregate_failures do
+          expect(results).to eq([{ ok: true, result: :extended }])
+          # NOTE: the `Timeout` of `max_hold_time` (the scheduler implements it) is not moved
+          expect(raised_error).to be_a(RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError)
+          expect(client.locked?('lease.no_hook')).to eq(false)
+        end
+      end
+
+      specify 'timed: a lost lock found by hold_for interrupts the block of any fiber' do
+        client = RedisQueuedLocks::Client.new(redis)
+
+        # NOTE: no fiber scheduler: the keeper can not interrupt the block; `hold_for` finds the
+        #   lost lock by itself (no delay) or after the keeper (the delay is longer than a tick)
+        [0, 0.2].each do |delay|
+          continued = false
+          raised_error = nil
+
+          Fiber.new(blocking: false) do
+            client.lock('lease.fiber_lost', ttl: 300, auto_extend: true, timed: true) do |lease|
+              redis.call('DEL', 'rql:lock:lease.fiber_lost')
+              sleep(delay)
+              lease.hold_for(1_000)
+              continued = true
+            end
+          rescue RedisQueuedLocks::TimedLockTimeoutError => error
+            raised_error = error
+          end.resume
+
+          aggregate_failures do
+            expect(raised_error).to be_a(RedisQueuedLocks::TimedBlockLostLockError)
+            expect(continued).to eq(false)
+          end
+        end
+      end
+
+      specify 'timed: hold_for of a kept lease after the block of a fiber interrupts nothing' do
+        client = RedisQueuedLocks::Client.new(redis)
+        kept_lease = nil
+        result = nil
+
+        Fiber.new(blocking: false) do
+          client.lock('lease.fiber_kept', ttl: 300, auto_extend: true, timed: true) do |lease|
+            kept_lease = lease
+            redis.call('DEL', 'rql:lock:lease.fiber_kept')
+            # NOTE: the keeper can not interrupt the block of code: it only finds the lost lock
+            wait_until.call { lease.lost? }
+          end
+          result = kept_lease.hold_for(1_000)
+        end.resume
+
+        expect(result).to eq({ ok: false, result: :lock_lost })
       end
 
       specify 'timed: a lost lock found by hold_for interrupts the block of code' do

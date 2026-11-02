@@ -299,31 +299,43 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
       )
     end
 
+    # @type var raised_error: Exception?
+    raised_error = nil
+
     begin
       begin
-        # NOTE: (auto extension) the lock keeper interrupts the block of code from another thread:
-        #   the interruption period is limited by `#interrupt_timed_block` and `#forget`, both are
-        #   inside the `rescue` scope: an internal error never reaches the application (an
-        #   interruption that comes at the very end of the block is delivered in `#forget`);
+        # NOTE: (auto extension) the lock keeper interrupts the block of code from another thread
+        #   (or through the fiber scheduler): the interruption period is limited by
+        #   `#interrupt_timed_block` and `#forget`, both are inside the `rescue` scope: an internal
+        #   error never reaches the application (an interruption that comes at the very end of the
+        #   block is delivered in `#forget`);
         lock_keeper.interrupt_timed_block(lock_lease) if lock_lease
 
-        if lock_lease&.interrupted_thread
+        if lock_lease&.interruptible?
           # NOTE: (auto extension) the keeper interrupts the block at the hold limit too: the block
           #   can move the limit (`RedisQueuedLocks::LockLease#hold_for`), a `Timeout` can not;
           lease_handle ? yield(lease_handle) : yield
         elsif lock_lease
-          # NOTE: (auto extension) a non-blocking fiber can not be interrupted by the keeper: its
-          #   hold limit is a `Timeout` (a fiber scheduler implements it);
+          # NOTE: (auto extension) a non-blocking fiber without a fiber scheduler that can
+          #   interrupt it: its hold limit is a `Timeout` (a fiber scheduler implements it);
           ::Timeout.timeout(timeout, RedisQueuedLocks::TimedLockIntermediateTimeoutError) do
             lease_handle ? yield(lease_handle) : yield
           end
         else
           ::Timeout.timeout(timeout, RedisQueuedLocks::TimedLockIntermediateTimeoutError, &block)
         end
+      rescue RedisQueuedLocks::TimedLockIntermediateTimeoutError => error
+        # NOTE: (auto extension) an interruption of the fiber scheduler that has already come:
+        #   `#forget` does not wait for it;
+        raised_error = error
+        raise
       ensure
-        lock_keeper.forget(lock_lease) if lock_lease
+        lock_keeper.forget(lock_lease, raised_error) if lock_lease
       end
-    rescue RedisQueuedLocks::TimedLockIntermediateTimeoutError
+    rescue RedisQueuedLocks::TimedLockIntermediateTimeoutError => error
+      # NOTE: (auto extension) the interruption can come while `#forget` waits for the lock of the
+      #   keeper: it is taken here, so the next `#forget` calls do not wait for it;
+      lock_keeper.forget(lock_lease, error) if lock_lease
       raise_timed_block_error(
         lock_key, lock_ttl, max_hold_time, lock_lease, acquirer_id, host_id, meta
       )

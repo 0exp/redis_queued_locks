@@ -13,6 +13,8 @@ module RedisQueuedLocks
     EXTENSION_RETRY_RATIO: Integer
     EXTENSION_BATCHING_RATIO: Integer
     SCHEDULE_SLOT: Integer
+    FIBER_INTERRUPTION_TIMEOUT: Integer
+    FIBER_INTERRUPTION_WAIT_STEP: Float
 
     attr_reader redis_client: RC::client
     attr_reader sync: RQL::Utilities::Lock
@@ -53,7 +55,7 @@ module RedisQueuedLocks
     ) -> Lease
 
     def interrupt_timed_block: (Lease lease) -> void
-    def forget: (Lease lease) -> void
+    def forget: (Lease lease, ?::Exception? raised_error) -> void
     def hold_for: (RC::client redis, Lease lease, Integer hold_time) -> RQL::LockLease::holdForResult
     def hold_time_left: (Lease lease) -> Integer?
 
@@ -99,6 +101,7 @@ module RedisQueuedLocks
       Integer rem_ttl
     ) -> void
 
+    def wait_for_interruption: () -> void
     def monotonic_time: () -> Integer
   end
 end

@@ -18,7 +18,8 @@
 #     nothing depends on the client: the lock expires by itself);
 #   - the block of code can move its hold limit while it makes progress
 #     (`RedisQueuedLocks::LockLease#hold_for`, see `#hold_for`); this thread interrupts a `timed`
-#     block of code at the hold limit (a `Timeout` can not be moved);
+#     block of code at the hold limit (a `Timeout` can not be moved): `Thread#raise` in a blocking
+#     fiber, the fiber scheduler in a non-blocking one (see `#interrupt_timed_block`);
 #   - the leases are planned in a timer wheel (`SCHEDULE_SLOT`): a wake-up takes the due slots only
 #     and `#keep`/`#forget` change one slot, so the work under the lock does not grow with the
 #     number of running blocks of code;
@@ -128,6 +129,26 @@ class RedisQueuedLocks::LockKeeper
   # @api private
   # @since 1.24.0
   SCHEDULE_SLOT = 10
+
+  # How long the fiber of a `timed` block of code waits for the interruption that is sent through
+  # its fiber scheduler when the block ends before it comes (in milliseconds, see `#forget`): the
+  # scheduler raises it at the next suspension point of the fiber, and a scheduler that does not
+  # raise it in this time is not waited for anymore.
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.24.0
+  FIBER_INTERRUPTION_TIMEOUT = 1_000
+
+  # The step of this wait (in seconds, `Kernel#sleep`): each step suspends the fiber, so its
+  # scheduler gets the control and raises the interruption.
+  #
+  # @return [Float]
+  #
+  # @api private
+  # @since 1.24.0
+  FIBER_INTERRUPTION_WAIT_STEP = 0.001
 
   # @return [RedisClient]
   #
@@ -271,10 +292,14 @@ class RedisQueuedLocks::LockKeeper
   # internal error can not reach the application:
   #   - a lock that is already lost (or the reached hold limit) interrupts the block here (the
   #     block is not invoked);
-  #   - `Thread#raise` reaches the current fiber of the thread only: a non-blocking fiber (a fiber
-  #     scheduler task, for example) can be suspended, and the error would interrupt another fiber:
-  #     such a block is not interrupted (`interrupted_thread` stays `nil`: its hold limit is a
-  #     `Timeout`);
+  #   - a blocking fiber is interrupted with `Thread#raise`;
+  #   - a non-blocking fiber (a fiber scheduler task, for example) can be suspended, and
+  #     `Thread#raise` reaches the current fiber of the thread only (it would interrupt another
+  #     task), `Fiber#raise` can not be called by another thread: such a block is interrupted
+  #     through its scheduler (`Fiber::Scheduler#fiber_interrupt`, Ruby 4.0: it may be called by
+  #     another thread); a scheduler without this hook (or no scheduler) can not interrupt it: its
+  #     hold limit is a `Timeout`, a lost lock interrupts it only when the block finds it by itself
+  #     (`#hold_for`);
   #
   # @param lease [RedisQueuedLocks::LockKeeper::Lease]
   # @return [void]
@@ -284,6 +309,9 @@ class RedisQueuedLocks::LockKeeper
   # @api private
   # @since 1.24.0
   def interrupt_timed_block(lease)
+    fiber = ::Fiber.current
+    fiber_scheduler = fiber.blocking? ? nil : ::Fiber.scheduler
+
     sync.synchronize do
       if lease.lost?
         raise(RedisQueuedLocks::TimedLockIntermediateTimeoutError, 'A lock is already lost')
@@ -292,20 +320,42 @@ class RedisQueuedLocks::LockKeeper
         raise(RedisQueuedLocks::TimedLockIntermediateTimeoutError, 'The hold limit is reached')
       end
 
-      lease.interrupted_thread = ::Thread.current if ::Fiber.current.blocking?
+      lease.timed_fiber = fiber
+      if fiber.blocking?
+        lease.interrupted_thread = ::Thread.current
+      elsif fiber_scheduler.respond_to?(:fiber_interrupt)
+        lease.fiber_scheduler = fiber_scheduler
+      end
     end
   end
 
   # Stops to keep the locks of the block of code (it is safe to call it several times). A running
   # tick can still send its extension: the extension checks the owner of the lock.
   #
+  # An interruption sent through the fiber scheduler can not be cancelled, and it comes at the next
+  # suspension point of the fiber: when the block of code ends before it comes, the fiber waits for
+  # it here (inside the `rescue` scope of the interruption, see `FIBER_INTERRUPTION_TIMEOUT`), so it
+  # never reaches the code of the application after the block.
+  #
   # @param lease [RedisQueuedLocks::LockKeeper::Lease]
+  # @param raised_error [Exception,NilClass]
+  #   The error that has stopped the `timed` block of code (an interruption that has already come).
   # @return [void]
+  #
+  # @raise [RedisQueuedLocks::TimedLockIntermediateTimeoutError]
   #
   # @api private
   # @since 1.24.0
-  def forget(lease)
-    sync.synchronize { unschedule(lease) if @leases.delete(lease) }
+  def forget(lease, raised_error = nil)
+    pending_interruption = sync.synchronize do
+      unschedule(lease) if @leases.delete(lease)
+      # NOTE: the end of the interruption period: a kept lease never interrupts the code after the
+      #   block (`#hold_for` of a lost lock returns `:lock_lost` then);
+      lease.timed_fiber = nil
+      lease.take_pending_interruption(raised_error)
+    end
+
+    wait_for_interruption if pending_interruption
   end
 
   # Moves the hold limit of the block of code (`RedisQueuedLocks::LockLease#hold_for`): its locks
@@ -318,7 +368,8 @@ class RedisQueuedLocks::LockKeeper
   #   - under the lock of the keeper: a stopped lease is never extended again, and a tick that has
   #     found the old limit reached does not stop the moved one (`#stop_hold` checks it again);
   #   - a lost lock is reported once (`auto_extended_lock_lost`) and interrupts a `timed` block of
-  #     code (the error is raised here when the block of code itself calls it);
+  #     code (the error is raised here when the block of code itself calls it, in any fiber; a
+  #     block that the keeper can not interrupt is interrupted here by an earlier loss too);
   #   - a dead keeper thread is revived (the next extensions are its work);
   #
   # @param redis [RedisClient] The connection of the client.
@@ -334,8 +385,12 @@ class RedisQueuedLocks::LockKeeper
   def hold_for(redis, lease, hold_time)
     # NOTE: the time before the commands: the new limit is counted from an earlier moment;
     time = monotonic_time
+    interrupts_caller = false
     status = sync.synchronize do
       if lease.lost?
+        # NOTE: a `timed` block of code that the keeper can not interrupt (a non-blocking fiber
+        #   without an interrupting fiber scheduler) is interrupted when it finds the lost lock;
+        interrupts_caller = !lease.interruptible? && lease.timed_fiber.equal?(::Fiber.current)
         :lock_lost
       elsif lease.hold_stopped?
         :hold_limit_reached
@@ -347,6 +402,9 @@ class RedisQueuedLocks::LockKeeper
         lease.hold_until(time + hold_time)
         nil
       end
+    end
+    if interrupts_caller
+      raise(RedisQueuedLocks::TimedLockIntermediateTimeoutError, 'A lock is already lost')
     end
     return { ok: false, result: status } if status
 
@@ -731,10 +789,7 @@ class RedisQueuedLocks::LockKeeper
       @leases.delete(lease)
       lease.stop_hold
       # NOTE: under the lock: see `#report_lost_lock`;
-      lease.interrupted_thread&.raise(
-        RedisQueuedLocks::TimedLockIntermediateTimeoutError,
-        "The hold limit (#{lease.max_hold_time}) of the locks is reached"
-      )
+      lease.interrupt("The hold limit (#{lease.max_hold_time}) of the locks is reached")
       :stopped
     end
     return status unless status == :stopped
@@ -810,7 +865,7 @@ class RedisQueuedLocks::LockKeeper
   # @since 1.24.0
   # rubocop:disable Metrics/MethodLength
   def report_lost_lock(lease, lock_index, time)
-    interrupts_current_thread = false
+    interrupts_caller = false
     # NOTE: under the lock: `#forget` returns only when the block can not be interrupted anymore
     #   (an interruption after the block of code would reach the code of the application);
     is_lost = sync.synchronize do
@@ -819,21 +874,18 @@ class RedisQueuedLocks::LockKeeper
       next false if !@leases.key?(lease) || lease.lock_lost?(lock_index)
 
       lease.lose_lock(lock_index)
-      interrupted_thread = lease.interrupted_thread
 
       # NOTE: a dropped lease is unscheduled too: `#hold_for` can find a lock lost while the lease
       #   waits in the schedule (a due lease of a tick is not in it: a no-op);
-      if interrupted_thread == ::Thread.current
-        # NOTE: `#hold_for` of the `timed` block of code itself: the error is raised after the
-        #   report (the block is running: no race with `#forget`);
+      if lease.timed_fiber.equal?(::Fiber.current) || lease.interrupted_thread == ::Thread.current
+        # NOTE: `#hold_for` of the `timed` block of code itself (in any fiber, a fiber without an
+        #   interrupting scheduler too): the error is raised after the report (the block is
+        #   running: no race with `#forget`);
         unschedule(lease) if @leases.delete(lease)
-        interrupts_current_thread = true
-      elsif interrupted_thread
+        interrupts_caller = true
+      elsif lease.interruptible?
         unschedule(lease) if @leases.delete(lease)
-        interrupted_thread.raise(
-          RedisQueuedLocks::TimedLockIntermediateTimeoutError,
-          "The lock \"#{lease.lock_keys[lock_index]}\" is lost"
-        )
+        lease.interrupt("The lock \"#{lease.lock_keys[lock_index]}\" is lost")
       elsif lease.all_locks_lost?
         unschedule(lease) if @leases.delete(lease)
       end
@@ -851,7 +903,7 @@ class RedisQueuedLocks::LockKeeper
       lease.rw_modes[lock_index], lease.acquirer_id, lease.host_id, time - lease.started_at,
       lease.instrument
     )
-    return unless interrupts_current_thread
+    return unless interrupts_caller
 
     raise(
       RedisQueuedLocks::TimedLockIntermediateTimeoutError,
@@ -880,6 +932,24 @@ class RedisQueuedLocks::LockKeeper
       lease.rw_modes[lock_index], hold_time, lease.hold_time_left(time),
       lease.extension_ttl_at(time), rem_ttl, lease.acquirer_id, lease.host_id, lease.instrument
     )
+  end
+
+  # Waits in the fiber of the `timed` block of code for the interruption that is sent through its
+  # fiber scheduler (see `#forget`): the interruption is raised out of `sleep` (each step suspends
+  # the fiber and gives the control to the scheduler).
+  #
+  # NOTE: an error of another source that comes during this wait stops it: the interruption can
+  #   still come after the block of code then (like two asynchronous errors at once in a thread);
+  #
+  # @return [void]
+  #
+  # @raise [RedisQueuedLocks::TimedLockIntermediateTimeoutError]
+  #
+  # @api private
+  # @since 1.24.0
+  def wait_for_interruption
+    deadline = monotonic_time + FIBER_INTERRUPTION_TIMEOUT
+    sleep(FIBER_INTERRUPTION_WAIT_STEP) while monotonic_time < deadline
   end
 
   # @return [Integer] In milliseconds.
