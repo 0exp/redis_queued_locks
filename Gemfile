@@ -7,6 +7,7 @@ gemspec
 # NOTE: dev dependencies
 gem 'activesupport', require: false
 gem 'armitage-rubocop', require: false
+gem 'async', require: false # NOTE: a fiber scheduler for the specs of the lock auto extension
 gem 'bundler', require: false
 gem 'pry', require: false
 gem 'pry-doc', require: false

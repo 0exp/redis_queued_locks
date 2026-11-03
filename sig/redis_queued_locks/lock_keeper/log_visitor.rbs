@@ -1,0 +1,62 @@
+use RedisQueuedLocks as RQL
+
+module RedisQueuedLocks
+  class LockKeeper
+    module LogVisitor
+      def self.lock_auto_extended: (
+        RQL::loggerObj logger,
+        bool log_sampled,
+        String lock_key,
+        RQL::readWriteMode rw_mode,
+        Integer ext_ttl,
+        Integer rem_ttl,
+        String acquirer_id,
+        String host_id
+      ) -> void
+
+      def self.lock_auto_extension_failed: (
+        RQL::loggerObj logger,
+        bool log_sampled,
+        String lock_key,
+        RQL::readWriteMode rw_mode,
+        Integer ext_ttl,
+        String acquirer_id,
+        String host_id,
+        String error
+      ) -> void
+
+      def self.auto_extended_lock_lost: (
+        RQL::loggerObj logger,
+        bool log_sampled,
+        String lock_key,
+        RQL::readWriteMode rw_mode,
+        String acquirer_id,
+        String host_id,
+        Integer hold_time
+      ) -> void
+
+      def self.lock_hold_limit_reached: (
+        RQL::loggerObj logger,
+        bool log_sampled,
+        String lock_key,
+        RQL::readWriteMode rw_mode,
+        Integer? max_hold_time,
+        String acquirer_id,
+        String host_id
+      ) -> void
+
+      def self.lock_hold_limit_extended: (
+        RQL::loggerObj logger,
+        bool log_sampled,
+        String lock_key,
+        RQL::readWriteMode rw_mode,
+        Integer hold_time,
+        Integer? rem_hold_time,
+        Integer ext_ttl,
+        Integer rem_ttl,
+        String acquirer_id,
+        String host_id
+      ) -> void
+    end
+  end
+end

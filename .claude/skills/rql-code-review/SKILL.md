@@ -129,7 +129,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 
 ### A. Lock safety and Redis correctness
 - Mutual exclusion only from the lock state checked under `WATCH`/`MULTI` (`logic.md#6`, `#14`); Lua only for the
-  existing write TTL extension/decrease, no new Lua in the RW acquisition path unless the user asked. No
+  write TTL extension/decrease and the lock keeper scripts (write and read extensions of a held lock), no new Lua in
+  the RW acquisition path unless the user asked. No
   check-then-set in Ruby without a transaction; queues, client clocks, the lock index and the pre-check never
   decide mutual exclusion (the pre-check never obtains the lock).
 - Asymmetric WATCH (`acquirer.md#12`): writers watch `[lock_key, lock_readers_key]`, readers `[lock_key]` only.
@@ -227,7 +228,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
   except `ReindexLocks`.
 - Superset invariant: every key-creating command is followed by `ZADD <index> GT <now + lifetime + grace> <name>`
   in the same pipeline/transaction, after the key command; the obtaining `MULTI` indexes the lock itself; every
-  extension is followed by `ZADD XX INCR`; scores never decrease; names are removed only in the same `MULTI`
+  extension is followed by `ZADD XX INCR` (the absolute extensions of `LockKeeper`: `ZADD XX GT` in their scripts);
+  scores never decrease; names are removed only in the same `MULTI`
   that deletes all their keys (`ReleaseLocksOf`, `YieldExpire` releases and `FlushZombies` never remove names).
 - Lock index commands are conditional tails: reply positions never depend on the mode.
 - A new key family: distinct prefix `rql:lock_<kind>:<name>` (never a suffix of the name), bounded TTL in the
@@ -389,7 +391,7 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 - Unused `Resource` methods marked `# NOTE: (debug)` (manual runtime checks, `logic.md#17`); report a debug method
   only when it is wrong for a key family it can get.
 - Known limitations kept by the user: `YieldExpire` write release (`EXPIRE 0`) and ttl decrease without an owner
-  check; `HMGET`→`DEL` without `WATCH` in `ReleaseLocksOf`/`FlushZombies`; `unlock` dropping the data of a reader
+  check (without `auto_extend`: a block with a lease must check the owner); `HMGET`→`DEL` without `WATCH` in `ReleaseLocksOf`/`FlushZombies`; `unlock` dropping the data of a reader
   re-acquired between its two round trips; `zombie_acquirers` vs `flush_zombies` acquirer sets.
 - Known debt: `WithAcqTimeout` → `LockInfo`/`QueueInfo`; rspec-retry, disabled coverage minimum;
   `sleep(0.1)` readiness waits and missing logging in the swarm;

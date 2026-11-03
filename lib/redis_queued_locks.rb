@@ -18,6 +18,8 @@ module RedisQueuedLocks
   require_relative 'redis_queued_locks/acquirer'
   require_relative 'redis_queued_locks/instrument'
   require_relative 'redis_queued_locks/swarm'
+  require_relative 'redis_queued_locks/lock_keeper'
+  require_relative 'redis_queued_locks/lock_lease'
   require_relative 'redis_queued_locks/client'
   require_relative 'redis_queued_locks/config'
 

@@ -9,10 +9,17 @@ jobs:
         ruby_version: ['4.0']
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    # NOTE: (hung examples) a hung example must not hold the runner for the default 6 hours
+    timeout-minutes: 20
     env:
       BUNDLE_RETRY: 3
       BUNDLE_JOBS: 4
       BUNDLE_FORCE_RUBY_PLATFORM: 1
+      # NOTE: (parallel specs) no "Happy Eyeballs" resolver threads per Redis connection (Ruby >= 3.4): on a CPU
+      #   shared by the workers they stretched the connection storm of the specs past its connect timeout and
+      #   raced the closed resolution pipe (`IOError: closed stream`); `Thread.abort_on_exception` of the specs
+      #   turns either into a dead worker
+      RUBY_TCP_NO_FAST_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
       - uses: supercharge/redis-github-action@1.8.1
@@ -20,7 +27,18 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby_version }}
           bundler-cache: true
-      - name: Prepare Bundler/Ruby Environment
-        run: bundle install --redownload && bundle clean --force
+      # NOTE: (parallel specs) the example durations of the previous runs balance the workers
+      #   (a new cache entry per run, restored from the latest one of the branch or of the default branch)
+      - uses: actions/cache@v4
+        with:
+          path: tmp/rspec_parallel/durations-rbs.json
+          key: rspec-rbs-durations-${{ github.run_id }}
+          restore-keys: rspec-rbs-durations-
       - name: TypeCheck (Runtime) (RBS)
-        run: bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rspec
+        run: bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rake rspec:parallel
+      - name: Worker logs (RSpec)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rspec-rbs-worker-logs
+          path: tmp/rspec_parallel/worker-*.log

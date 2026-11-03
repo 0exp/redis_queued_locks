@@ -51,8 +51,9 @@ module RedisQueuedLocks
   # @since 1.0.0
   class LockAcquirementRetryLimitError < Error; end
 
-  # Interrupts the `timed: true` block after the lock ttl (`Timeout.timeout`); rescued by
-  # `YieldExpire` (=> `TimedLockTimeoutError`).
+  # Interrupts the `timed: true` block after the lock ttl (`Timeout.timeout`), after the hold limit
+  # of the auto extended lock (`Timeout.timeout`) and after the loss of the auto extended lock
+  # (`LockKeeper`); rescued by `YieldExpire` (=> `TimedLockTimeoutError`).
   # NOTE: (why `Exception`) a `StandardError` is swallowed by `rescue => e` / `rescue nil` of
   #   the user block: the block continues after the lock ttl (without the mutual exclusion:
   #   another acquirer can obtain the expired lock, and the write lock release after the block
@@ -74,6 +75,14 @@ module RedisQueuedLocks
   # @api public
   # @since 1.23.1
   class TimedBlockExceedsLockTtlError < TimedLockTimeoutError; end
+
+  # @api public
+  # @since 1.24.0
+  class TimedBlockExceedsMaxHoldTimeError < TimedLockTimeoutError; end
+
+  # @api public
+  # @since 1.24.0
+  class TimedBlockLostLockError < TimedLockTimeoutError; end
 
   # @api public
   # @since 1.3.0

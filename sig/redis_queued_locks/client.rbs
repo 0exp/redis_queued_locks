@@ -7,11 +7,13 @@ module RedisQueuedLocks
     @redis_client: RC::client
     @uniq_identity: String
     @swarm: RQL::Swarm
+    @lock_keeper: RQL::LockKeeper
 
     attr_reader config: RQL::Config
     attr_reader redis_client: RC::client
     attr_accessor uniq_identity: String
     attr_reader swarm: RQL::Swarm
+    attr_reader lock_keeper: RQL::LockKeeper
 
     def initialize: (RC::client redis_client) ?{ (RQL::Config) -> void } -> void
     def configure: () ?{ (RQL::Config) -> void } -> void
@@ -39,6 +41,9 @@ module RedisQueuedLocks
       ?lock_index_grace_period: Integer,
       ?timeout: Integer?,
       ?timed: bool,
+      ?auto_extend: bool,
+      ?auto_extend_ttl: Integer?,
+      ?max_hold_time: Integer?,
       ?retry_count: Integer?,
       ?retry_delay: Integer,
       ?retry_jitter: Integer,
@@ -72,6 +77,9 @@ module RedisQueuedLocks
       ?lock_index_grace_period: Integer,
       ?timeout: Integer?,
       ?timed: bool,
+      ?auto_extend: bool,
+      ?auto_extend_ttl: Integer?,
+      ?max_hold_time: Integer?,
       ?retry_count: Integer?,
       ?retry_delay: Integer,
       ?retry_jitter: Integer,
@@ -105,6 +113,9 @@ module RedisQueuedLocks
       ?lock_index_grace_period: Integer,
       ?timeout: Integer?,
       ?timed: bool,
+      ?auto_extend: bool,
+      ?auto_extend_ttl: Integer?,
+      ?max_hold_time: Integer?,
       ?retry_count: Integer?,
       ?retry_delay: Integer,
       ?retry_jitter: Integer,
@@ -139,6 +150,9 @@ module RedisQueuedLocks
       ?lock_index_grace_period: Integer,
       ?timeout: Integer?,
       ?timed: bool,
+      ?auto_extend: bool,
+      ?auto_extend_ttl: Integer?,
+      ?max_hold_time: Integer?,
       ?retry_count: Integer?,
       ?retry_delay: Integer,
       ?retry_jitter: Integer,

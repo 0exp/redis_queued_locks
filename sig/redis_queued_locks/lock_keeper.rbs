@@ -1,0 +1,107 @@
+use RedisQueuedLocks as RQL
+use RedisClient as RC
+
+module RedisQueuedLocks
+  class LockKeeper
+    include RQL::Utilities
+
+    EXTEND_WRITE_LOCK: String
+    EXTEND_READ_LOCK: String
+    LOST_LOCK_REPLY: Integer
+    IDLE_TIMEOUT: Integer
+    MIN_IDLE_WAKE_UP_INTERVAL: Integer
+    EXTENSION_RETRY_RATIO: Integer
+    EXTENSION_BATCHING_RATIO: Integer
+    SCHEDULE_SLOT: Integer
+    FIBER_INTERRUPTION_TIMEOUT: Integer
+    FIBER_INTERRUPTION_WAIT_STEP: Float
+
+    attr_reader redis_client: RC::client
+    attr_reader sync: RQL::Utilities::Lock
+    attr_reader thread: Thread?
+
+    @leases: Hash[Lease, bool]
+    @buckets: Hash[Integer, Hash[Lease, bool]]
+    @slot_keys: Array[Integer]
+    @wakeups: Thread::Queue[bool]
+    @wake_at: Integer?
+    @last_lease_at: Integer
+    @idle_wake_up_interval: Integer
+    @thread: Thread?
+    @process_id: Integer
+
+    def initialize: (RC::client redis_client) -> void
+    def start: () -> void
+
+    def keep: (
+      Array[String] lock_keys,
+      Array[String] lock_readers_keys,
+      Array[String?] read_lock_keys,
+      Array[RQL::readWriteMode] rw_modes,
+      Array[String] lock_names,
+      String acquirer_id,
+      String host_id,
+      Integer try_start_time,
+      Integer ttl,
+      Integer extension_ttl,
+      Integer? max_hold_time,
+      bool lock_index_enabled,
+      Integer lock_index_grace_period,
+      RQL::loggerObj logger,
+      bool log_sampled,
+      RQL::instrObj instrumenter,
+      bool instr_sampled,
+      untyped? instrument
+    ) -> Lease
+
+    def interrupt_timed_block: (Lease lease) -> void
+    def forget: (Lease lease, ?::Exception? raised_error) -> void
+    def hold_for: (RC::client redis, Lease lease, Integer hold_time) -> RQL::LockLease::holdForResult
+    def hold_time_left: (Lease lease) -> Integer?
+
+    private
+
+    def run_keeper_thread: () -> void
+    def keep_locks: (RedisClient redis) -> void
+    def wait_for_due_leases: () -> Array[Lease]?
+    def rebuild_schedule: () -> void
+    def planned_extension_at: () -> Integer?
+    def take_due_leases: (Integer now) -> Array[Lease]
+    def reschedule: (Array[Lease] leases) -> void
+    def schedule: (Lease lease) -> void
+    def unschedule: (Lease lease) -> void
+    def extend_locks: (RedisClient redis, Array[Lease] due_leases) -> void
+
+    def process_extension_replies: (
+      Array[Lease] leases,
+      Array[Array[Integer]] lock_indexes,
+      Array[Integer] replies,
+      Integer time
+    ) -> void
+
+    def extended_lock_indexes: (Lease lease) -> Array[Integer]
+
+    def pipeline_lease_extension: (
+      RedisClient::Pipeline pipeline,
+      Lease lease,
+      Array[Integer] lock_indexes,
+      Integer time
+    ) -> void
+
+    def stop_hold: (Lease lease, Integer time) -> Symbol
+    def report_extended_lock: (Lease lease, Integer lock_index, Integer time, Integer rem_ttl) -> void
+    def report_failed_extension: (Lease lease, Integer time, StandardError error) -> void
+    def report_lost_lock: (Lease lease, Integer lock_index, Integer time) -> void
+
+    def report_held_lock: (
+      Lease lease,
+      Integer lock_index,
+      Integer time,
+      Integer hold_time,
+      Integer rem_ttl
+    ) -> void
+
+    def wait_for_interruption: () -> void
+    def monotonic_time: () -> Integer
+  end
+end

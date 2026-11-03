@@ -7,6 +7,7 @@ class RedisClient
     def multi: (?watch: Array[String]) { (Multi transact) -> untyped } -> untyped
     def with: (?untyped) { (::RedisClient|::RedisClient::Pooled rconn) -> untyped } -> untyped
     def close: () -> void
+    def config: () -> ::RedisClient::config
   end
 
   include _Client
