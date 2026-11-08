@@ -3022,6 +3022,15 @@ rql.lock(
 # both modes, lock series, bang methods
 rql.lock('report', rw_mode: :read, auto_extend: true) { long_running_logic }
 rql.lock_series('report', 'stats', auto_extend: true) { long_running_logic }
+
+# manual extension inside the block of code: the block that makes progress moves its hold limit
+# (see "The lease of the block of code" below)
+rql.lock('report', auto_extend: true, max_hold_time: 600_000) do |lease|
+  batches.each do |batch|
+    process(batch)
+    lease.hold_for(120_000) # keep the lock at least two more minutes from now
+  end
+end
 ```
 
 - `auto_extend` - keep the lock alive (`config['is_auto_extended_by_default']`, `false` by default). It has no effect without a block of code;
