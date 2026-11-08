@@ -76,7 +76,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
     #   Keep the locks alive while the passed block of code is running: see `Client#lock`.
     # @option auto_extend_ttl [Integer,NilClass]
     #   How long the lock lives after an auto extension (in milliseconds), `nil`: the `ttl`.
-    # @option auto_extend_max_hold_time [Integer,NilClass]
+    # @option max_hold_time_during_auto_extend [Integer,NilClass]
     #   The limit of the auto extension (in milliseconds), `nil`: no limit; the block of code can
     #   move it (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`).
     # @option lock_keeper [RedisQueuedLocks::LockKeeper]
@@ -162,7 +162,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
       timed:,
       auto_extend:,
       auto_extend_ttl:,
-      auto_extend_max_hold_time:,
+      max_hold_time_during_auto_extend:,
       lock_keeper:,
       retry_count:,
       retry_delay:,
@@ -268,9 +268,9 @@ module RedisQueuedLocks::Acquirer::LockSeries
         )
       end
 
-      # Step 0.1: prevent :auto_extend_ttl and :auto_extend_max_hold_time incompatibilities (the
-      #   same ranges as their config keys); the hold limit shorter than the lock ttl can not be
-      #   reached: the lock is obtained for a longer time;
+      # Step 0.1: prevent :auto_extend_ttl and :max_hold_time_during_auto_extend incompatibilities
+      #   (the same ranges as their config keys); the hold limit shorter than the lock ttl can not
+      #   be reached: the lock is obtained for a longer time;
       if auto_extend_ttl != nil && (!auto_extend_ttl.is_a?(::Integer) || auto_extend_ttl <= 0)
         raise(
           RedisQueuedLocks::ArgumentError,
@@ -278,19 +278,22 @@ module RedisQueuedLocks::Acquirer::LockSeries
           "got #{auto_extend_ttl.inspect}."
         )
       end
-      if auto_extend_max_hold_time != nil &&
-         (!auto_extend_max_hold_time.is_a?(::Integer) || auto_extend_max_hold_time <= 0)
+      if max_hold_time_during_auto_extend != nil &&
+         (!max_hold_time_during_auto_extend.is_a?(::Integer) ||
+          max_hold_time_during_auto_extend <= 0)
         raise(
           RedisQueuedLocks::ArgumentError,
-          "`:auto_extend_max_hold_time` argument should be nil or a positive Integer, " \
-          "got #{auto_extend_max_hold_time.inspect}."
+          "`:max_hold_time_during_auto_extend` argument should be nil or a positive Integer, " \
+          "got #{max_hold_time_during_auto_extend.inspect}."
         )
       end
-      if auto_extend && block_given? && auto_extend_max_hold_time && auto_extend_max_hold_time < ttl
+      if auto_extend && block_given? &&
+         max_hold_time_during_auto_extend && max_hold_time_during_auto_extend < ttl
         raise(
           RedisQueuedLocks::ArgumentError,
-          "`:auto_extend_max_hold_time` argument of an auto extended lock should not be less " \
-          "than `:ttl`, got #{auto_extend_max_hold_time.inspect} (ttl: #{ttl.inspect})."
+          "`:max_hold_time_during_auto_extend` argument of an auto extended lock should not " \
+          "be less than `:ttl`, got #{max_hold_time_during_auto_extend.inspect} " \
+          "(ttl: #{ttl.inspect})."
         )
       end
 
@@ -630,7 +633,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
               acq_process[:try_start_time],
               ttl,
               auto_extend_ttl || ttl,
-              auto_extend_max_hold_time,
+              max_hold_time_during_auto_extend,
               lock_index_enabled,
               lock_index_grace_period,
               logger,
@@ -648,8 +651,8 @@ module RedisQueuedLocks::Acquirer::LockSeries
           end
 
           yield_result = yield_lock_series(
-            lock_keys, acquirer_id, host_id, timed, ttl_shift, ttl, auto_extend_max_hold_time,
-            lock_keeper, lock_lease, lease_handle, meta, &block
+            lock_keys, acquirer_id, host_id, timed, ttl_shift, ttl,
+            max_hold_time_during_auto_extend, lock_keeper, lock_lease, lease_handle, meta, &block
           )
         end
       ensure
@@ -804,7 +807,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
     # @param timed [Boolean]
     # @param ttl_shift [Numeric] In milliseconds.
     # @param ttl [Integer] In milliseconds.
-    # @param auto_extend_max_hold_time [Integer,NilClass] In milliseconds.
+    # @param max_hold_time_during_auto_extend [Integer,NilClass] In milliseconds.
     # @param lock_keeper [RedisQueuedLocks::LockKeeper]
     # @param lock_lease [RedisQueuedLocks::LockKeeper::Lease,NilClass]
     # @param lease_handle [RedisQueuedLocks::LockKeeper::LockLease,NilClass]
@@ -826,7 +829,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
       timed,
       ttl_shift,
       ttl,
-      auto_extend_max_hold_time,
+      max_hold_time_during_auto_extend,
       lock_keeper,
       lock_lease,
       lease_handle,
@@ -840,10 +843,10 @@ module RedisQueuedLocks::Acquirer::LockSeries
       end
 
       yield_with_timeout(
-        timed_block_budget(lock_lease ? auto_extend_max_hold_time : ttl, ttl_shift),
+        timed_block_budget(lock_lease ? max_hold_time_during_auto_extend : ttl, ttl_shift),
         lock_keys.join(', '),
         ttl,
-        auto_extend_max_hold_time,
+        max_hold_time_during_auto_extend,
         lock_keeper,
         lock_lease,
         lease_handle,

@@ -32,7 +32,7 @@ class RedisQueuedLocks::Config
   setting('is_timed_by_default', false)
   setting('is_auto_extended_by_default', false)
   setting('default_auto_extend_ttl', nil) # NOTE: in milliseconds (nil: the ttl of the lock)
-  setting('default_auto_extend_max_hold_time', 3_600_000) # NOTE: 1 hour in ms (nil: no limit)
+  setting('default_max_hold_time_during_auto_extend', 3_600_000) # NOTE: 1h in ms (nil: no limit)
   setting('lock_keeper.idle_timeout', 60_000) # NOTE: in milliseconds
   setting('lock_keeper.min_idle_wake_up_interval', 100) # NOTE: in milliseconds
   setting('lock_keeper.extension_retry_ratio', 3)
@@ -109,7 +109,7 @@ class RedisQueuedLocks::Config
   validate('is_timed_by_default') { |val| val == true || val == false }
   validate('is_auto_extended_by_default') { |val| val == true || val == false }
   validate('default_auto_extend_ttl') { |val| val == nil || (val.is_a?(Integer) && val > 0) }
-  validate('default_auto_extend_max_hold_time') do |val|
+  validate('default_max_hold_time_during_auto_extend') do |val|
     val == nil || (val.is_a?(Integer) && val > 0)
   end
   validate('lock_keeper.idle_timeout') { |val| val.is_a?(Integer) && val > 0 }

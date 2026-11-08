@@ -1,10 +1,10 @@
 ## [Unreleased]
 ### Added
 - *Brand New Feature*: **Lock Auto Extension**: a block of code keeps its lock alive while it is running, and the crash of the process releases the lock by the TTL (see README "Lock Auto Extension"):
-  - `auto_extend:`, `auto_extend_ttl:` and `auto_extend_max_hold_time:` options of `#lock`/`#lock!`/`#lock_series`/`#lock_series!`;
-  - `config['is_auto_extended_by_default']`, `config['default_auto_extend_ttl']` and `config['default_auto_extend_max_hold_time']` (**!IMPORTANT**: set `auto_extend_max_hold_time` deliberately for your logic: `nil` or a period longer than your longest block of code; the default 1 hour is only a fallback);
+  - `auto_extend:`, `auto_extend_ttl:` and `max_hold_time_during_auto_extend:` options of `#lock`/`#lock!`/`#lock_series`/`#lock_series!`;
+  - `config['is_auto_extended_by_default']`, `config['default_auto_extend_ttl']` and `config['default_max_hold_time_during_auto_extend']` (**!IMPORTANT**: set `max_hold_time_during_auto_extend` deliberately for your logic: `nil` or a period longer than your longest block of code; the default 1 hour is only a fallback);
   - `RedisQueuedLocks::LockKeeper::LockLease`: a block of code with a parameter gets its lease: `#hold_for` moves the hold limit while the block makes progress, `#lost?`, `#hold_time_left`;
-  - `timed: true` with `auto_extend: true`: the block of code is limited by `auto_extend_max_hold_time` (or the moved limit) and is interrupted when the lock is lost: `TimedBlockExceedsMaxHoldTimeError`, `TimedBlockLostLockError` (fiber scheduler tasks too: through `Fiber::Scheduler#fiber_interrupt`, e.g. `async` >= 2.25);
+  - `timed: true` with `auto_extend: true`: the block of code is limited by `max_hold_time_during_auto_extend` (or the moved limit) and is interrupted when the lock is lost: `TimedBlockExceedsMaxHoldTimeError`, `TimedBlockLostLockError` (fiber scheduler tasks too: through `Fiber::Scheduler#fiber_interrupt`, e.g. `async` >= 2.25);
   - `config['lock_keeper.*']`: the tuning of the lock keeper thread (idle timeout, wake-ups, retries, batching, schedule slots, fiber interruption wait);
   - instrumentation events and logs: `lock_auto_extended`, `lock_auto_extension_failed`, `auto_extended_lock_lost`, `lock_hold_limit_reached`, `lock_hold_limit_extended`; `try_lock.exit__reentrant_lock_is_changed` log;
 

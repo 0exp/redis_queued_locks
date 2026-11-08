@@ -34,7 +34,7 @@ module RedisQueuedLocks
           RQL::LockKeeper lock_keeper,
           bool auto_extend,
           Integer? auto_extend_ttl,
-          Integer? auto_extend_max_hold_time,
+          Integer? max_hold_time_during_auto_extend,
           Integer try_start_time,
           RQL::instrObj instrumenter,
           untyped? instrument
@@ -48,7 +48,7 @@ module RedisQueuedLocks
           Float? timeout,
           String lock_key,
           Integer lock_ttl,
-          Integer? auto_extend_max_hold_time,
+          Integer? max_hold_time_during_auto_extend,
           RQL::LockKeeper lock_keeper,
           RQL::LockKeeper::Lease? lock_lease,
           RQL::LockKeeper::LockLease? lease_handle,
@@ -60,7 +60,7 @@ module RedisQueuedLocks
         def raise_timed_block_error: (
           String lock_key,
           Integer lock_ttl,
-          Integer? auto_extend_max_hold_time,
+          Integer? max_hold_time_during_auto_extend,
           RQL::LockKeeper::Lease? lock_lease,
           String acquirer_id,
           String host_id,
