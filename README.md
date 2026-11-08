@@ -3010,7 +3010,7 @@ that is extended while the block of code is running. When the process dies the e
 # the block can run longer than 10 seconds; a crashed process releases the lock in 10 seconds at most
 rql.lock('report', ttl: 10_000, auto_extend: true) { long_running_logic }
 
-# all options
+# auto extension with the time of each extension
 rql.lock(
   'report',
   ttl: 2_000, # the first lease
