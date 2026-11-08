@@ -2,7 +2,6 @@ module RedisQueuedLocks
   module Utilities
     RACTOR_LIVENESS_PATTERN: Regexp
     RACTOR_STATUS_PATTERN: Regexp
-    RUBY_OVER_4: bool
 
     def self?.run_non_critical: () { (?) -> untyped } -> untyped?
     def self?.ractor_status: (Ractor ractor) -> String
@@ -10,6 +9,5 @@ module RedisQueuedLocks
     # NOTE: (rbs test) runs inside the element Ractor (`Isolated.swarm_loop`), see `resource.rbs`;
     %a{rbs:test:skip} def self?.thread_state: (Thread thread) -> String
     def self?.clock_gettime: () -> Integer
-    def self?.ruby_over_4?: () -> bool
   end
 end

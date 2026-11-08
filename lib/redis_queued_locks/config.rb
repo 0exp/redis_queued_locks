@@ -12,11 +12,11 @@ class RedisQueuedLocks::Config
   include DSL
 
   setting('retry_count', 3)
-  setting('retry_delay', 200) # NOTE: in milliseconds)
-  setting('retry_jitter', 25) # NOTE: in milliseconds)
-  setting('try_to_lock_timeout', 10) # NOTE: in seconds)
-  setting('default_lock_ttl', 5_000) # NOTE: in milliseconds)
-  setting('default_queue_ttl', 15) # NOTE: in seconds)
+  setting('retry_delay', 200) # NOTE: in milliseconds
+  setting('retry_jitter', 25) # NOTE: in milliseconds
+  setting('try_to_lock_timeout', 10) # NOTE: in seconds
+  setting('default_lock_ttl', 5_000) # NOTE: in milliseconds
+  setting('default_queue_ttl', 15) # NOTE: in seconds
   setting('detailed_acq_timeout_error', false)
   setting('lock_release_batch_size', 100)
   setting('clear_locks_of__lock_scan_size', 300)
@@ -26,9 +26,9 @@ class RedisQueuedLocks::Config
   setting('uniq_identifier', -> { RedisQueuedLocks::Resource.calc_uniq_identity })
   setting('logger', RedisQueuedLocks::Logging::VoidLogger)
   setting('log_lock_try', false)
-  setting('dead_request_ttl', 1 * 24 * 60 * 60 * 1000) # NOTE: 1 day in milliseconds)
+  setting('dead_request_ttl', 1 * 24 * 60 * 60 * 1000) # NOTE: 1 day in milliseconds
   setting('lock_index_enabled', false)
-  setting('lock_index_grace_period', 60_000) # NOTE: in milliseconds)
+  setting('lock_index_grace_period', 60_000) # NOTE: in milliseconds
   setting('is_timed_by_default', false)
   setting('is_auto_extended_by_default', false)
   setting('default_auto_extend_ttl', nil) # NOTE: in milliseconds (nil: the ttl of the lock)
@@ -51,18 +51,18 @@ class RedisQueuedLocks::Config
   setting('instr_sampling_percent', 15)
   setting('instr_sampler', RedisQueuedLocks::Instrument::Sampler)
   setting('swarm.auto_swarm', false)
-  setting('swarm.supervisor.liveness_probing_period', 2) # NOTE: in seconds)
+  setting('swarm.supervisor.liveness_probing_period', 2) # NOTE: in seconds
   setting('swarm.probe_hosts.enabled_for_swarm', true)
-  setting('swarm.probe_hosts.probe_period', 2) # NOTE: in seconds)
+  setting('swarm.probe_hosts.probe_period', 2) # NOTE: in seconds
   setting('swarm.probe_hosts.redis_config.sentinel', false)
   setting('swarm.probe_hosts.redis_config.pooled', false)
   setting('swarm.probe_hosts.redis_config.config', {})
   setting('swarm.probe_hosts.redis_config.pool_config', {})
   setting('swarm.flush_zombies.enabled_for_swarm', true)
-  setting('swarm.flush_zombies.zombie_ttl', 15_000) # NOTE: in milliseconds)
+  setting('swarm.flush_zombies.zombie_ttl', 15_000) # NOTE: in milliseconds
   setting('swarm.flush_zombies.zombie_lock_scan_size', 500)
   setting('swarm.flush_zombies.zombie_queue_scan_size', 500)
-  setting('swarm.flush_zombies.zombie_flush_period', 10)
+  setting('swarm.flush_zombies.zombie_flush_period', 10) # NOTE: in seconds
   setting('swarm.flush_zombies.redis_config.sentinel', false)
   setting('swarm.flush_zombies.redis_config.pooled', false)
   setting('swarm.flush_zombies.redis_config.config', {})

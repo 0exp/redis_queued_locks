@@ -58,6 +58,7 @@ module RedisQueuedLocks
           RQL::accessStrategy access_strategy,
           Hash[String|Symbol,untyped]? meta,
           bool retry_attempt,
+          Hash[Symbol,untyped] acq_process,
           bool log_sampled,
           bool instr_sampled
         ) -> { ok: bool, result: Symbol|Hash[Symbol,untyped] }

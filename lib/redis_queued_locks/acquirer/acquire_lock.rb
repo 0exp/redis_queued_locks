@@ -83,7 +83,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     # @option identity [String]
     #   Unique acquire identifier that is also should be unique between processes and pods
     #   on different machines. By default the uniq identity string is
-    #   represented as 10 bytes hexstr.
+    #   a 16-character hex string (`SecureRandom.hex(8)`).
     # @option fail_fast [Boolean]
     #   Should the required lock to be checked before the try and exit immidetly if lock is
     #   already obtained.
@@ -456,6 +456,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         tries: 0,
         reentrant_retries: 0,
         acquired: false,
+        lock_obtaining_sent: false, # NOTE: see `try_to_lock`
         result: nil,
         try_start_time: nil,
         acq_time: nil, # NOTE: in milliseconds
@@ -463,7 +464,23 @@ module RedisQueuedLocks::Acquirer::AcquireLock
         rel_time: nil # NOTE: in milliseconds
       }
 
+      # NOTE: the cleanup of a failed acquirement (the timeout of `with_acq_timeout` and the
+      #   failures of Step 2.2):
+      #   - the lock is obtained right before the timeout: the acquirement is completed (`true`);
+      #   - the obtaining transaction of an interrupted attempt can be applied by Redis without the
+      #     reply (the timeout comes while the reply is read or before the lock is reported): this
+      #     lock is released (owner-checked: it belongs to another acquirer when the transaction is
+      #     aborted);
+      #   - the lock request is dropped from the queue (`false`);
       acq_dequeue = proc do
+        next true if acq_process[:acquired]
+
+        if acq_process[:lock_obtaining_sent]
+          release_unconfirmed_lock(
+            redis, logger, lock_key, rw_mode, lock_readers_key, read_lock_key, queue_ttl,
+            acquirer_id, host_id, access_strategy, log_sampled
+          )
+        end
         dequeue_from_lock_queue(
           redis,
           logger,
@@ -478,6 +495,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
           log_sampled,
           instr_sampled
         )
+        false
       end
 
       LogVisitor.start_lock_obtaining(
@@ -549,6 +567,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             access_strategy,
             meta,
             acq_process[:tries] > 0, # NOTE: retry attempt (see "pre-check" in `try_to_lock`)
+            acq_process,
             log_sampled,
             instr_sampled
           ) => { ok:, result: }
@@ -625,6 +644,9 @@ module RedisQueuedLocks::Acquirer::AcquireLock
             acq_process[:acq_end_time] = acq_end_time
           else
             # @type var result: Symbol
+
+            # NOTE: the failed attempt has obtained nothing (an aborted obtaining transaction too)
+            acq_process[:lock_obtaining_sent] = false
 
             # Step 2.1.b: the already held lock is changed during the reentrant attempt (an
             #   extension of the lock keeper, for example): the lock is not lost and the attempt

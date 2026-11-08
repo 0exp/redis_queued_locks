@@ -52,7 +52,7 @@
 #
 # @api private
 # @since 1.0.0
-# @version 1.23.0
+# @version 1.24.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   require_relative 'try_to_lock/log_visitor'
@@ -213,6 +213,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @param meta [NilClass,Hash<String|Symbol,Any>]
   # @param retry_attempt [Boolean]
   #   The attempt is a retry (the previous attempt of the acquirement did not obtain the lock).
+  # @param acq_process [Hash<Symbol,Any>]
+  #   The observer of the acquirement: the attempt sets `:lock_obtaining_sent` before the obtaining
+  #   transaction is sent (an interrupted acquirement releases the lock of a transaction that can be
+  #   applied by Redis without the reply, see `AcquireLock.acquire_lock`) and drops it at its start.
   # @param log_sampled [Boolean]
   # @param instr_sampled [Boolean]
   # @return [Hash<Symbol,Any>] Format: { ok: true/false, result: Symbol|Hash<Symbol,Any> }
@@ -245,9 +249,12 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
     access_strategy,
     meta,
     retry_attempt,
+    acq_process,
     log_sampled,
     instr_sampled
   )
+    # Step X: the obtaining transaction of the previous attempt is not sent anymore
+    acq_process[:lock_obtaining_sent] = false
     # Step X: intermediate invocation results
     # @type var inter_result: Symbol?
     inter_result = nil
@@ -577,6 +584,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
               queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
             )
           end
+
+          # NOTE: an interruption after this point can leave the applied obtaining transaction
+          #   without its reply: the acquirement releases this lock (see `@param acq_process`);
+          acq_process[:lock_obtaining_sent] = true if inter_result == :lock_obtaining
         end
       end
     rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError,

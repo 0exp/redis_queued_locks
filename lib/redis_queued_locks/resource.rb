@@ -130,7 +130,7 @@ module RedisQueuedLocks::Resource
 
   # rubocop:disable Metrics/ClassLength
   class << self
-    # Returns 16-byte unique identifier. It is used for uniquely
+    # Returns a unique identifier (16 hex characters, 8 random bytes). It is used for uniquely
     # identify current process between different nodes/pods of your application
     # during the lock obtaining and self-identifying in the lock queue.
     #

@@ -4353,6 +4353,37 @@ RSpec.shared_examples 'redis_queued_locks' do
     end
   end
 
+  specify 'internal timeouts: the lock obtained right before the acquirement timeout is released' do
+    # NOTE: the timeout interrupts the instrumenter of `lock_obtained`: the obtaining transaction is
+    #   applied, but the lock is not reported as obtained (the acquirement fails with the timeout)
+    slow_instrumenter = Class.new do
+      def notify(event, _payload = {})
+        sleep(3) if event == 'redis_queued_locks.lock_obtained'
+      end
+    end.new
+    client = RedisQueuedLocks::Client.new(redis)
+
+    aggregate_failures do
+      %i[write read].each do |rw_mode|
+        result = client.lock(
+          'internal.timeouts.obtained', ttl: 10_000, timeout: 1, rw_mode:,
+          instrumenter: slow_instrumenter
+        )
+        expect(result).to match({ ok: false, result: :timeout_reached })
+        expect(client.locked?('internal.timeouts.obtained')).to eq(false)
+        expect(client.queued?('internal.timeouts.obtained')).to eq(false)
+
+        expect do
+          client.lock!(
+            'internal.timeouts.obtained', ttl: 10_000, timeout: 1, rw_mode:,
+            instrumenter: slow_instrumenter
+          )
+        end.to raise_error(RedisQueuedLocks::LockAcquirementTimeoutError)
+        expect(client.locked?('internal.timeouts.obtained')).to eq(false)
+      end
+    end
+  end
+
   specify 'user timeouts (`Timeout.timeout` without a class): no WATCH left on the connection' do
     # NOTE: one connection: the next transaction uses the connection of the interrupted attempt
     single_connection_redis = RedisClient.config(db: 0).new_pool(
@@ -8554,6 +8585,43 @@ RSpec.shared_examples 'redis_queued_locks' do
       expect(client.locked?('auto.nested')).to eq(false)
     end
 
+    specify 'reentrant locks: a nested :work_through block keeps a lock with a spent ttl' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      # NOTE: the nested ttl is longer than the remaining ttl of the outer lock: the nested block
+      #   extends the lock at once (not in `max(ttl / 3, ttl - auto_extend_ttl * 2 / 3)`)
+      client.lock('auto.spent', ttl: 400, conflict_strategy: :work_through) do
+        sleep(0.2)
+        client.lock(
+          'auto.spent',
+          ttl: 3_000, auto_extend_ttl: 600, conflict_strategy: :work_through, auto_extend: true
+        ) do
+          sleep(0.8)
+          expect(client.locked?('auto.spent')).to eq(true)
+        end
+      end
+
+      expect(client.locked?('auto.spent')).to eq(false)
+    end
+
+    specify 'reentrant locks: a nested :work_through read block keeps a spent read lock' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      client.lock('auto.spent_read', ttl: 400, rw_mode: :read, conflict_strategy: :work_through) do
+        sleep(0.2)
+        client.lock(
+          'auto.spent_read',
+          ttl: 3_000, auto_extend_ttl: 600, rw_mode: :read, conflict_strategy: :work_through,
+          auto_extend: true
+        ) do
+          sleep(0.8)
+          expect(client.locked?('auto.spent_read')).to eq(true)
+        end
+      end
+
+      expect(client.locked?('auto.spent_read')).to eq(false)
+    end
+
     specify 'reentrant locks: a read request under the own write lock extends the write lock' do
       client = RedisQueuedLocks::Client.new(redis)
 
@@ -8716,6 +8784,26 @@ RSpec.shared_examples 'redis_queued_locks' do
         expect(client.locked?('auto.series_reentrant')).to eq(true)
         expect(client.locked?('auto.series_new')).to eq(false)
       end
+    end
+
+    specify '#lock_series: a reentrant :work_through lock with a spent ttl is kept' do
+      client = RedisQueuedLocks::Client.new(redis)
+
+      # NOTE: the ttl of the series is longer than the remaining ttl of the reentrant lock: the
+      #   locks of the series are extended at once
+      client.lock('auto.series_spent', ttl: 400) do
+        sleep(0.2)
+        client.lock_series(
+          'auto.series_spent', 'auto.series_spent_new',
+          ttl: 3_000, auto_extend_ttl: 600, auto_extend: true, conflict_strategy: :work_through
+        ) do
+          sleep(0.8)
+          expect(client.locked?('auto.series_spent')).to eq(true)
+          expect(client.locked?('auto.series_spent_new')).to eq(true)
+        end
+      end
+
+      expect(client.locked?('auto.series_spent_new')).to eq(false)
     end
 
     specify 'the bang methods support the auto extension' do

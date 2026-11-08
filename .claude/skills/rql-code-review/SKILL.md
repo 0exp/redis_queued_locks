@@ -129,7 +129,8 @@ Still in scope (the exemption covers how specs are written, not whether the libr
 
 ### A. Lock safety and Redis correctness
 - Mutual exclusion only from the lock state checked under `WATCH`/`MULTI` (`logic.md#6`, `#14`); Lua only for the
-  write TTL extension/decrease and the lock keeper scripts (write and read extensions of a held lock), no new Lua in
+  write TTL extension/decrease, the owner-checked release/decrease (`RELEASE_OWN_LOCK`, `DECREASE_OWN_LOCK_PTTL`: a lease,
+  an interrupted obtaining) and the lock keeper scripts (write and read extensions of a held lock), no new Lua in
   the RW acquisition path unless the user asked. No
   check-then-set in Ruby without a transaction; queues, client clocks, the lock index and the pre-check never
   decide mutual exclusion (the pre-check never obtains the lock).

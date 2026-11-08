@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.0.0
-# @version 1.16.0
+# @version 1.24.0
 module RedisQueuedLocks::Utilities
   require_relative 'utilities/lock'
 
@@ -35,12 +35,6 @@ module RedisQueuedLocks::Utilities
   # @api private
   # @since 1.9.0
   RACTOR_STATUS_PATTERN = /\A.*?\s(?<status>\w+)>\z/i
-
-  # @return [Boolean]
-  #
-  # @api public
-  # @since 1.16.0
-  RUBY_OVER_4 = Gem::Version.new(RUBY_VERSION) >= Gem::Version.new('4.0.0')
 
   # @yield
   # @yieldreturn [Any]
@@ -103,13 +97,5 @@ module RedisQueuedLocks::Utilities
     return 'dead' if status == false
     return 'failed' if status == nil
     status #: String
-  end
-
-  # @return [Boolean]
-  #
-  # @api public
-  # @since 1.16.0
-  def ruby_over_4?
-    RUBY_OVER_4
   end
 end
