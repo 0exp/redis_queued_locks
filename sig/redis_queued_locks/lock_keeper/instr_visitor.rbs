@@ -43,7 +43,7 @@ module RedisQueuedLocks
         bool instr_sampled,
         String lock_key,
         RQL::readWriteMode rw_mode,
-        Integer? auto_extend_max_hold_time,
+        Integer? max_hold_time_during_auto_extend,
         String acq_id,
         String hst_id,
         untyped? instrument

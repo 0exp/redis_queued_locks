@@ -79,7 +79,7 @@ class RedisQueuedLocks::LockKeeper::Lease
   #
   # @api private
   # @since 1.24.0
-  attr_reader :auto_extend_max_hold_time
+  attr_reader :max_hold_time_during_auto_extend
 
   # The start of the attempt that obtained the locks.
   #
@@ -178,7 +178,7 @@ class RedisQueuedLocks::LockKeeper::Lease
   # @param started_at [Integer] The start of the attempt that obtained the locks.
   # @param ttl [Integer] The ttl of the obtained locks (in milliseconds).
   # @param extension_ttl [Integer] How long the lock lives after an extension (in milliseconds).
-  # @param auto_extend_max_hold_time [Integer,NilClass]
+  # @param max_hold_time_during_auto_extend [Integer,NilClass]
   #   The hold limit (in milliseconds), `nil`: no limit.
   # @param lock_index_enabled [Boolean]
   # @param lock_index_grace_period [Integer]
@@ -203,7 +203,7 @@ class RedisQueuedLocks::LockKeeper::Lease
     started_at,
     ttl,
     extension_ttl,
-    auto_extend_max_hold_time,
+    max_hold_time_during_auto_extend,
     lock_index_enabled,
     lock_index_grace_period,
     logger,
@@ -221,9 +221,10 @@ class RedisQueuedLocks::LockKeeper::Lease
     @host_id = host_id
     @extension_ttl = extension_ttl
     @extension_interval = [extension_ttl / 3, 1].max
-    @auto_extend_max_hold_time = auto_extend_max_hold_time
+    @max_hold_time_during_auto_extend = max_hold_time_during_auto_extend
     @started_at = started_at
-    @hold_deadline = auto_extend_max_hold_time ? (started_at + auto_extend_max_hold_time) : nil
+    @hold_deadline =
+      max_hold_time_during_auto_extend ? (started_at + max_hold_time_during_auto_extend) : nil
     @lock_index_enabled = lock_index_enabled
     @lock_index_grace_period = lock_index_grace_period
     @timed_fiber = nil
@@ -365,7 +366,7 @@ class RedisQueuedLocks::LockKeeper::Lease
   end
 
   # @return [Boolean]
-  #   The hold limit is moved by the block of code (it is not `auto_extend_max_hold_time`).
+  #   The hold limit is moved by the block of code (it is not `max_hold_time_during_auto_extend`).
   #
   # @api private
   # @since 1.24.0

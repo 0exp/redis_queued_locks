@@ -99,7 +99,7 @@ module RedisQueuedLocks::LockKeeper::InstrVisitor
     # @param instr_sampled [Boolean]
     # @param lock_key [String]
     # @param rw_mode [Symbol]
-    # @param auto_extend_max_hold_time [Integer]
+    # @param max_hold_time_during_auto_extend [Integer]
     # @param acq_id [String]
     # @param hst_id [String]
     # @param instrument [NilClass,Any]
@@ -112,7 +112,7 @@ module RedisQueuedLocks::LockKeeper::InstrVisitor
       instr_sampled,
       lock_key,
       rw_mode,
-      auto_extend_max_hold_time,
+      max_hold_time_during_auto_extend,
       acq_id,
       hst_id,
       instrument
@@ -120,7 +120,7 @@ module RedisQueuedLocks::LockKeeper::InstrVisitor
       return unless instr_sampled
 
       instrumenter.notify('redis_queued_locks.lock_hold_limit_reached', {
-        lock_key:, rw_mode:, auto_extend_max_hold_time:, acq_id:, hst_id:, at: Time.now.to_f,
+        lock_key:, rw_mode:, max_hold_time_during_auto_extend:, acq_id:, hst_id:, at: Time.now.to_f,
         instrument:
       }) rescue nil
     end

@@ -40,7 +40,7 @@ module RedisQueuedLocks
           | ("is_timed_by_default") -> bool
           | ("is_auto_extended_by_default") -> bool
           | ("default_auto_extend_ttl") -> Integer?
-          | ("default_auto_extend_max_hold_time") -> Integer?
+          | ("default_max_hold_time_during_auto_extend") -> Integer?
           | ("lock_keeper.idle_timeout") -> Integer
           | ("lock_keeper.min_idle_wake_up_interval") -> Integer
           | ("lock_keeper.extension_retry_ratio") -> Integer
