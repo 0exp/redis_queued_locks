@@ -472,6 +472,11 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   - "[redis_queued_locks.dequeue_from_lock_series_queues]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "priority");
   #   - "[redis_queued_locks.expire_lock_series]" (logs "lock_keys", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "priority");
   #   - "[redis_queued_locks.decrease_lock_series]" (logs "lock_keys", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "priority");
+  #   - "[redis_queued_locks.lock_auto_extended]" (logs "lock_key", "rw_mode", "ext_ttl", "rem_ttl", "acq_id", "hst_id");
+  #   - "[redis_queued_locks.lock_auto_extension_failed]" (logs "lock_key", "rw_mode", "ext_ttl", "acq_id", "hst_id", "error");
+  #   - "[redis_queued_locks.auto_extended_lock_lost]" (logs "lock_key", "rw_mode", "acq_id", "hst_id", "hold_time");
+  #   - "[redis_queued_locks.lock_hold_limit_reached]" (logs "lock_key", "rw_mode", "max_hold_time_during_auto_extend", "acq_id", "hst_id");
+  #   - "[redis_queued_locks.lock_hold_limit_extended]" (logs "lock_key", "rw_mode", "hold_time", "rem_hold_time", "ext_ttl", "rem_ttl", "acq_id", "hst_id");
   #   - "[redis_queued_locks.explicit_lock_release]" (logs "lock_key", "lock_key_queue", "rel_time", "at");
   #   - "[redis_queued_locks.explicit_read_lock_release]" (logs "lock_key", "acq_id", "lock_res", "rel_time", "at");
   #   - "[redis_queued_locks.explicit_all_locks_release]" (logs "at", "rel_time", "rel_key_cnt");
@@ -3092,7 +3097,7 @@ end
   abandoned midway (a fiber that is never resumed: its `ensure` never runs and the lock is not released). Such a block looks like a running one, and without
   a limit it holds the lock till the end of the process. It is the limit of the extension (`config['default_max_hold_time_during_auto_extend']`, 1 hour by default, `nil` means
   no limit), counted from the start of the successful acquirement attempt: the lock is extended up to this moment exactly and expires by itself. It should not
-  be less than `ttl`. A block of code that makes progress can move the limit (see [the lease of the block of code](#manual-lock-auto-extension-from-the-running-block-of-code-the-lease-of-the-block-of-code) below);
+  be less than `ttl`. A block of code that makes progress can move the limit (see [the lease of the block of code](#manual-lock-lease-extending-from-the-running-block-of-code) below);
 
 > [!IMPORTANT]
 > Configure `max_hold_time_during_auto_extend` yourself, deliberately, for your logic (per call or in `config['default_max_hold_time_during_auto_extend']`): `nil` (no limit) or a period that is longer
@@ -3517,7 +3522,9 @@ List of instrumentation events
 - ["redis_queued_locks.clear_dead_requests"](#redis_queued_locksclear_dead_requests)
 - ["redis_queued_locks.reindex_locks"](#redis_queued_locksreindex_locks)
 
-What is instrumented (each event has a log line with the same name, see [Logging](#logging)):
+What is instrumented (each event has a log line with the same name, see [Logging](#logging), except the release events: `lock_hold_and_release`,
+`reentrant_lock_hold_completes` and `lock_series_hold_and_release` are logged as `expire_lock`/`decrease_lock`(`_series`), a `:work_through` reentrant
+lock releases nothing and has no release log):
 - the lock acquirement (`#lock`/`#lock!`, `#lock_series`/`#lock_series!`): each meaningful outcome (the lock or the whole
   series is obtained, not obtained, held and released);
 - the lock auto extension: each extension of each lock and its failures (from the background thread, see [Lock Auto Extension](#lock-auto-extension));
@@ -3906,7 +3913,7 @@ Detalized event semantics and payload structure:
     the global "timeout request" queue and managed by a single global "timeout wathcer" thread). it should prevent any logic and timeout intersections,
     some GVL-related things and problem situations when the global watcher thread is "dead";
   - **strict redlock algorithm support** (support for many `RedisClient` instances that are fully independent (distributed redis instances));
-  - an ability to release all locks and all requests of the concrete acquirer id or host id (or both in validation-orianted combination);
+  - an ability to release all locks and all requests of the concrete acquirer id only or of the concrete host id only (both together: `#clear_locks_of`);
   - detailed lock informotion inside the error object in cases of exceptions (at the moment we have this info inside the error message only that hard to analyze in work);
   - a convenient way to mark any `lock` invocation as "non-instrumentable" / "non-loggable" (as an alternative to `VoidNotifier` and to `VoidLogger`);
   - `README`-section `Issues with other Libs` about issues in other libraries that can broke RQL features:
@@ -3921,7 +3928,7 @@ Detalized event semantics and payload structure:
   - an ability to return all insturmentation metrics from the `lock` invocation (and after block `yield`ing);
   - think about a PG-like `stats`-data/table, that should be helpful for lock history acquirement analyzation :thinking: (suitable for cases when we want
     to check if the lock was acquired by some different parallel process durign the some period of time in the past or not);
-  - named RQL's threads (`Thread#name`) and RQL's ractors (`Ractor#name`) in order to have an ability to find and work with RQL's threads and ractors outside of RQL logic (stop threads before process forking, for example);
+  - named swarm threads (`Thread#name`) and ractors (`Ractor#name`; the lock keeper thread is already named `rql.lock_keeper`) in order to have an ability to find and work with RQL's threads and ractors outside of RQL logic (stop threads before process forking, for example);
   - `#lock`/`#lock!` - `timeout:` option: support for granular periods (it supports only `seconds` at the moment, but we need `milliseconds`);
   - Add `after timeout hook` ability for timeout errors with an ability to access the binding context (if it possibly) of the thread where it failed;
   - Add `ignore timeout errors` ability (for debug purposes);
@@ -3934,7 +3941,7 @@ Detalized event semantics and payload structure:
   - Semantic error objects for unexpected Redis errors;
   - sized lock queues (with an ability of dynamically growing size);
   - better code stylization (+ some refactorings);
-  - `RedisQueuedLocks::Acquirer::Try.try_to_lock` - detailed successful result analization;
+  - `RedisQueuedLocks::Acquirer::AcquireLock::TryToLock#try_to_lock` - detailed successful result analization;
   - Support for LIFO strategy;
   - specs refactoring with 100% test coverage (total specs rework);
   - statistics with UI;
@@ -3954,6 +3961,8 @@ Detalized event semantics and payload structure:
 ---
 
 ## Build and Develop
+
+<sup>\[[back to top](#table-of-contents)\]</sup>
 
 - Tests (`RSpec`):
 ```shell
@@ -3985,7 +3994,8 @@ bundle exec rake steep:check
 ```shell
 bundle exec rbs collection install && RBS_TEST_RAISE=true RUBYOPT='-rbundler/setup -rrbs/test/setup' RBS_TEST_OPT='-I sig' RBS_TEST_LOGLEVEL=error RBS_TEST_TARGET='RedisQueuedLocks::*' RBS_TEST_SKIP='::RedisQueuedLocks::Swarm::FlushZombies,::RedisQueuedLocks::Swarm::SwarmElement::Isolated,::RedisQueuedLocks::Swarm::RedisClientBuilder' bundle exec rake rspec:parallel
 # parallel processes as in CI: `WORKERS=n` flushes db `0..2n-1` of the local Redis (see the parallel tests above);
-# or in one process (db 0 and db 1): the same environment with `bundle exec rspec` instead of `bundle exec rake rspec:parallel`
+# or in one process (db 0 and db 1): the same environment with `bundle exec rspec` instead of `bundle exec rake rspec:parallel`;
+# CI also sets `RUBY_TCP_NO_FAST_FALLBACK=1` (no resolver threads per Redis connection: they starve the workers on a small CPU)
 ```
 
 ---
