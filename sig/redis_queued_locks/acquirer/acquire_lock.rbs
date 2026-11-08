@@ -42,7 +42,8 @@ module RedisQueuedLocks
         log_lock_try: bool,
         instrument: untyped?,
         conflict_strategy: RQL::conflictStrategy,
-        rw_mode: Symbol, # NOTE: (rbs test) validated at runtime (Step 0.1 (RW)): any Symbol is accepted here
+        # NOTE: (rbs test) validated at runtime (Step 0.1 (RW)): any Symbol is accepted here
+        rw_mode: Symbol,
         access_strategy: RQL::accessStrategy,
         priority: RQL::lockPriority,
         lock_priorities: Hash[Symbol, Integer],

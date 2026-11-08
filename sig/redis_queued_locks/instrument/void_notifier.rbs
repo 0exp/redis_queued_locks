@@ -1,8 +1,8 @@
 module RedisQueuedLocks
   module Instrument
     module VoidNotifier
-      # NOTE: (rbs test) not hooked: `Instrument.valid_interface?` introspects `#parameters` of `notify`,
-      #   and a hooked method has the `(*rest, &block)` parameters;
+      # NOTE: (rbs test) not hooked: `Instrument.valid_interface?` introspects `#parameters` of
+      #   `notify`, and a hooked method has the `(*rest, &block)` parameters;
       %a{rbs:test:skip} def self.notify: (String event, ?Hash[untyped,untyped] payload) -> void
     end
   end

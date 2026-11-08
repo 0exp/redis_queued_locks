@@ -144,7 +144,8 @@ module RedisQueuedLocks::LockKeeper::LogVisitor
     # @param log_sampled [Boolean]
     # @param lock_key [String]
     # @param rw_mode [Symbol]
-    # @param hold_time [Integer] The requested time (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`).
+    # @param hold_time [Integer]
+    #   The requested time (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`).
     # @param rem_hold_time [Integer,NilClass] The time left till the hold limit, `nil`: no limit.
     # @param ext_ttl [Integer]
     # @param rem_ttl [Integer]

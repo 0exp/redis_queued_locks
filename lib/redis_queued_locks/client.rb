@@ -237,7 +237,8 @@ class RedisQueuedLocks::Client
   #   - !IMPORTANT: configure it yourself, deliberately, for your logic: `nil` or a period that is
   #     longer than your longest block of code (a longer block of code loses its lock at the
   #     limit); the default of `config['default_max_hold_time']` (1 hour) is only a fallback;
-  #   - a block of code that makes progress can move it (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`);
+  #   - a block of code that makes progress can move it
+  #     (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`);
   #   - it should not be less than `ttl` for an auto extended lock;
   #   - `nil` means no limit (a stuck block of code holds the lock till the end of the process);
   #   - pre-configured in `config['default_max_hold_time']`;
