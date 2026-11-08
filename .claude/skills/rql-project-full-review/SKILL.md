@@ -97,7 +97,8 @@ Big areas are read in full, not sampled: an audit claim "X holds everywhere" nee
   - every error class in `errors.rb`: under the right base, in the overview "Errors", raised somewhere (or
     documented as public API kept for compatibility);
   - YARD: `@api`/`@since`/`@version` on every class/module/method; no `@since`/`@version` newer than the unreleased
-    version or older than the code that introduced it where git history proves it (`git log -S`).
+    version or older than the code that introduced it where git history proves it (`git log -S`); no
+    `@since`/`@version 2.0.0` outside `version.rb` (a formal release without code changes, `logic.md#2`).
 - Duplicated logic copies (`rql-code-review` §2 list): every copy pair compared side by side; a diverged copy is a
   Major finding (behavioral divergence) or Minor (cosmetic).
 

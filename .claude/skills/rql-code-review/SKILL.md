@@ -96,7 +96,9 @@ priorities", key layout, "Lock index", lock lookup modes, events, errors, conven
     `AcquireLock.acquire_lock` and `LockSeries.lock_series`.
 - Next version for `@since`/`@version`: the version the unreleased work already uses (`git diff <base> -- lib |
   grep -oE '^\+.*@(since|version) [0-9.]+'`, the CHANGELOG `[Unreleased]` code), otherwise the next minor of
-  `RedisQueuedLocks::VERSION` (`version.rb`); don't take the maximum over `lib/` (old tags can be wrong).
+  `RedisQueuedLocks::VERSION` (`version.rb`, `2.0.0` → `2.1.0`; a major bump only by the user's decision); don't take
+  the maximum over `lib/` (old tags can be wrong); `@since`/`@version 2.0.0` on code is wrong (`2.0.0` is a formal
+  release without code changes, `logic.md#2`).
   A value older than `VERSION` on new code, a method behavior/signature change (a typo fix in the method or keyword
   argument name included; a renamed positional parameter is not a signature change) without the method `@version` bump, or a
   class/module header `@version` that does not match its latest interface change (`logic.md#2`: signatures,
