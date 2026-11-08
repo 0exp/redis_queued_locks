@@ -74,7 +74,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 - [Lock Request Prioritization](#lock-request-prioritization)
 - [Read/Write Locks](#readwrite-locks)
 - [Lock Auto Extension](#lock-auto-extension)
-  - [Manual lock TTL extension from the running block of code](#manual-lock-ttl-extension-from-the-running-block-of-code-the-lease-of-the-block-of-code)
+  - [Manual Lock Lease extending from the running block of code](#manual-lock-lease-extending-from-the-running-block-of-code)
 - [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks)
 - [Logging](#logging)
   - [Logging Configuration](#logging-configuration)
@@ -3073,7 +3073,7 @@ rql.lock('report', rw_mode: :read, auto_extend: true) { long_running_logic }
 rql.lock_series('report', 'stats', auto_extend: true) { long_running_logic }
 
 # manual extension inside the block of code: the block that makes progress moves its hold limit
-# (see "Manual lock TTL extension from the running block of code" below)
+# (see "Manual Lock Lease extending from the running block of code" below)
 rql.lock('report', auto_extend: true, auto_extend_max_hold_time: 600_000) do |lease|
   batches.each do |batch|
     process(batch)
@@ -3125,7 +3125,7 @@ end
   with `auto_extend` keeps the lock of the outer logic alive while the nested block is running; an extension that changes the lock during a reentrant lock attempt
   repeats this attempt at once (no delay, no spent `retry_count`, no `fail_fast` failure, the `try_lock.exit__reentrant_lock_is_changed` log with `log_lock_try`);
 
-#### Manual lock TTL extension from the running block of code (the lease of the block of code)
+#### Manual Lock Lease extending from the running block of code
 
 <sup>\[[back to top](#lock-auto-extension)\]</sup>
 
