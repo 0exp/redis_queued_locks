@@ -1,5 +1,11 @@
 name: Tests (RSpec)
-on: [push]
+on:
+  push:
+    paths-ignore:
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CODE_OF_CONDUCT.md"
+      - "LICENSE.txt"
 jobs:
   test:
     name: 'Tests (os: ${{ matrix.os }}) (ruby@${{ matrix.ruby_version }})'
