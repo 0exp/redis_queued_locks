@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-09
+### Changed
+- A release with no changes, formalizing the next major version of the library. The last 7 releases have introduced a large number of significant major changes, which is why a new major version became necessary.
+
 ## [1.24.0] - 2026-11-09
 ### Added
 - *Brand New Feature*: **Lock Auto Extending**: a block of code keeps its lock alive while it is running, and the crash of the process releases the lock by the TTL (see README "Lock Auto Extending"):
