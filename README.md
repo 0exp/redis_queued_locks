@@ -8,7 +8,7 @@ Each lock request is put into the request queue (each lock is hosted by its own 
 
 In addition to the classic `queued` (FIFO) strategy RQL supports `random` (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
 
-Supports `Read`/`Write` locks, `Reentrant` locks, **[lock auto extension](#lock-auto-extension)** and [lock request prioritization](#lock-request-prioritization).
+Supports `Read`/`Write` locks, `Reentrant` locks, **[lock auto extending](#lock-auto-extending)** and [lock request prioritization](#lock-request-prioritization).
 
 Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), **zombie locks elimination**, **[lock indexing](#lock-index)**, logging and instrumentation (and much more).
 
@@ -73,7 +73,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
   - [random](#lock-access-strategies)
 - [Lock Request Prioritization](#lock-request-prioritization)
 - [Read/Write Locks](#readwrite-locks)
-- [Lock Auto Extension](#lock-auto-extension)
+- [Lock Auto Extending](#lock-auto-extending)
   - [Manual Lock Lease extending from the running block of code](#manual-lock-lease-extending-from-the-running-block-of-code)
 - [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks)
 - [Logging](#logging)
@@ -230,12 +230,12 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
 
   # (boolean) (default: false)
   # - should the locks of all blocks of code be kept alive while the block is running by default
-  #   (the `auto_extend:` option, see "Lock Auto Extension");
+  #   (the `auto_extend:` option, see "Lock Auto Extending");
   config['is_auto_extended_by_default'] = false
 
   # (milliseconds) (default: nil)
   # - how long an auto extended lock lives after each extension (the `auto_extend_ttl:` option,
-  #   see "Lock Auto Extension");
+  #   see "Lock Auto Extending");
   # - `nil` means the ttl of the lock (`ttl:`);
   # - should be `nil` or a positive Integer;
   config['default_auto_extend_ttl'] = nil
@@ -246,7 +246,7 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   resumed: its `ensure` never runs and the lock is not released); such a block looks like a
   #   running one, and without a limit its lock is extended till the end of the process;
   # - the limit of the auto extension of the lock (the `max_hold_time_during_auto_extend:` option, see
-  #   "Lock Auto Extension");
+  #   "Lock Auto Extending");
   # - `nil` means no limit;
   # - !IMPORTANT: configure it yourself, deliberately, for your logic: `nil` (no limit) or a period
   #   that is longer than your longest block of code (a longer block of code loses its lock at the
@@ -256,7 +256,7 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   config['default_max_hold_time_during_auto_extend'] = 3_600_000
 
   # (milliseconds) (default: 60_000)
-  # - the lock keeper thread (see "Lock Auto Extension") stops after this time without new blocks
+  # - the lock keeper thread (see "Lock Auto Extending") stops after this time without new blocks
   #   of code with `auto_extend: true` (and starts again on demand);
   # - should be a positive Integer;
   config['lock_keeper.idle_timeout'] = 60_000
@@ -287,7 +287,7 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   config['lock_keeper.schedule_slot'] = 10
 
   # (milliseconds) (default: 1_000)
-  # - a `timed` block of code of a fiber scheduler task (see "Lock Auto Extension") is interrupted
+  # - a `timed` block of code of a fiber scheduler task (see "Lock Auto Extending") is interrupted
   #   through its fiber scheduler, and the interruption comes at the next suspension point of the
   #   fiber; when the block ends before it comes, the fiber waits for it this time at most (a
   #   scheduler that does not raise it in this time is not waited for anymore);
@@ -608,7 +608,7 @@ types and ranges as their `config` keys: `Integer` values only (`timeout: 0.5` i
     - (limitation) the write lock is released after the block without an owner check: if the block (without `timed: true`)
       runs longer than the lock's ttl, the expired lock can be already obtained by another acquirer and the release
       deletes that lock (the same for the ttl decrease of `:extendable_work_through` reentrant locks); use
-      `auto_extend: true` (see [Lock Auto Extension](#lock-auto-extension)), `timed: true` or extend the lock
+      `auto_extend: true` (see [Lock Auto Extending](#lock-auto-extending)), `timed: true` or extend the lock
       (`#extend_lock_ttl`) for long blocks (read locks are released per acquirer and are not affected);
   - the block's result will be returned;
 - If block is not passed:
@@ -687,13 +687,13 @@ def lock(
   - (limitation) `timed` can only interrupt the block: a long `ensure` of the block, `rescue Exception` in the block and the code that
     can not be interrupted (a C extension holding the GVL) can outlive the lock;
   - with `auto_extend: true` the block is limited by `max_hold_time_during_auto_extend` instead of the lock's TTL and it is interrupted when the lock is lost
-    (see [Lock Auto Extension](#lock-auto-extension)): `RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError` and `RedisQueuedLocks::TimedBlockLostLockError`
+    (see [Lock Auto Extending](#lock-auto-extending)): `RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError` and `RedisQueuedLocks::TimedBlockLostLockError`
     (both are `RedisQueuedLocks::TimedLockTimeoutError` subclasses);
   - pre-configured in `config['is_timed_by_default']`;
   - `false` by default;
 - `auto_extend` - (optional) `[Boolean]`
   - Keep the lock alive while the passed block of code is running: the block can run longer than the lock's TTL, and the crash of the process
-    releases the lock by the TTL. See [Lock Auto Extension](#lock-auto-extension);
+    releases the lock by the TTL. See [Lock Auto Extending](#lock-auto-extending);
   - has no effect without a block of code;
   - pre-configured in `config['is_auto_extended_by_default']`;
   - `false` by default;
@@ -3050,7 +3050,7 @@ rql.lock('report') { rebuild_report } # rw_mode: :write by default
 
 ---
 
-## Lock Auto Extension
+## Lock Auto Extending
 
 <sup>\[[back to top](#table-of-contents)\]</sup>
 
@@ -3132,7 +3132,7 @@ end
 
 #### Manual Lock Lease extending from the running block of code
 
-<sup>\[[back to top](#lock-auto-extension)\]</sup>
+<sup>\[[back to top](#lock-auto-extending)\]</sup>
 
 A block of code with a parameter gets its lease (`RedisQueuedLocks::LockKeeper::LockLease`). A block that makes progress moves the hold limit itself, and a stuck
 block stops moving it, so its lock expires at the last limit (a dead man's switch instead of one fixed `max_hold_time_during_auto_extend`):
@@ -3285,7 +3285,7 @@ There are no extensions at all, but the swarm has to run in your processes.
 "[redis_queued_locks.decrease_lock_series]" # (logs "lock_keys", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "priority");
 ```
 
-- lock auto extension logs (see [Lock Auto Extension](#lock-auto-extension); one log per lock; `rw_mode` is the mode of the held lock;
+- lock auto extending logs (see [Lock Auto Extending](#lock-auto-extending); one log per lock; `rw_mode` is the mode of the held lock;
   raised by the lock keeper thread, except `lock_hold_limit_extended`: it is raised from the thread that called `lease.hold_for`, as well as
   `auto_extended_lock_lost` of a lock that `lease.hold_for` finds lost):
 
@@ -3527,7 +3527,7 @@ What is instrumented (each event has a log line with the same name, see [Logging
 lock releases nothing and has no release log):
 - the lock acquirement (`#lock`/`#lock!`, `#lock_series`/`#lock_series!`): each meaningful outcome (the lock or the whole
   series is obtained, not obtained, held and released);
-- the lock auto extension: each extension of each lock and its failures (from the background thread, see [Lock Auto Extension](#lock-auto-extension));
+- the lock auto extending: each extension of each lock and its failures (from the background thread, see [Lock Auto Extending](#lock-auto-extending));
 - each operation that changes Redis keys (`#unlock`, `#unlock_read`, `#clear_locks`, `#clear_locks_of`/`#clear_current_locks`,
   `#extend_lock_ttl`, `#clear_dead_requests`, `#reindex_locks`): one event with the time of the whole operation;
 - lock information queries (`#lock_info`, `#locks`, `#queues`, `#keys`, ...) are not instrumented;
@@ -3741,7 +3741,7 @@ Detalized event semantics and payload structure:
 
 ##### `"redis_queued_locks.lock_auto_extended"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
-- an event signalizes about the extended lock (see [Lock Auto Extension](#lock-auto-extension));
+- an event signalizes about the extended lock (see [Lock Auto Extending](#lock-auto-extending));
 - raised by the lock keeper thread, one event per lock per extension;
 - payload:
   - `:lock_key` - `string` - lock key (`rql:lock:<lock_name>`);
