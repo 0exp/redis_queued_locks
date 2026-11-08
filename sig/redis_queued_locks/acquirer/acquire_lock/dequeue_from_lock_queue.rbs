@@ -19,6 +19,20 @@ module RedisQueuedLocks
           bool log_sampled,
           bool instr_sampled
         ) -> { ok: bool, result: Integer }
+
+        def release_unconfirmed_lock: (
+          RC::client redis,
+          RQL::loggerObj logger,
+          String lock_key,
+          RQL::readWriteMode rw_mode,
+          String lock_readers_key,
+          String? read_lock_key,
+          Integer queue_ttl,
+          String acquirer_id,
+          String host_id,
+          RQL::accessStrategy access_strategy,
+          bool log_sampled
+        ) -> void
       end
     end
   end

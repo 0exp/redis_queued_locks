@@ -16,7 +16,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
   # @param detailed_acq_timeout_error [Boolean]
   #   Add additional error data about lock queue and required lock to the timeout error or not.
   # @option on_timeout [Proc,NilClass]
-  #   Callback invoked on Timeout::Error.
+  #   Callback invoked on the timeout: `true` means that the acquirement is completed right before
+  #   the timeout (the lock is obtained: no timeout error).
   # @yield Custom logic that should be invoked under the obtained lock.
   # @yieldreturn [Any]
   # @return [Any]
@@ -26,7 +27,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
   #
   # @api private
   # @since 1.0.0
-  # @version 1.21.0
+  # @version 1.24.0
   def with_acq_timeout(
     redis,
     timeout,
@@ -39,9 +40,11 @@ module RedisQueuedLocks::Acquirer::AcquireLock::WithAcqTimeout
   )
     ::Timeout.timeout(timeout, RedisQueuedLocks::LockAcquirementIntermediateTimeoutError, &block)
   rescue RedisQueuedLocks::LockAcquirementIntermediateTimeoutError
+    # NOTE: the timeout can come right after the lock is obtained (in the same iteration of the
+    #   acquirement): the acquirement is completed, not failed;
     if on_timeout != nil
       # @type var on_timeout: Proc
-      on_timeout.call
+      return if on_timeout.call == true
     end
 
     if raise_errors

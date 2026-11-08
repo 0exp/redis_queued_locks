@@ -4353,6 +4353,37 @@ RSpec.shared_examples 'redis_queued_locks' do
     end
   end
 
+  specify 'internal timeouts: the lock obtained right before the acquirement timeout is released' do
+    # NOTE: the timeout interrupts the instrumenter of `lock_obtained`: the obtaining transaction is
+    #   applied, but the lock is not reported as obtained (the acquirement fails with the timeout)
+    slow_instrumenter = Class.new do
+      def notify(event, _payload = {})
+        sleep(3) if event == 'redis_queued_locks.lock_obtained'
+      end
+    end.new
+    client = RedisQueuedLocks::Client.new(redis)
+
+    aggregate_failures do
+      %i[write read].each do |rw_mode|
+        result = client.lock(
+          'internal.timeouts.obtained', ttl: 10_000, timeout: 1, rw_mode:,
+          instrumenter: slow_instrumenter
+        )
+        expect(result).to match({ ok: false, result: :timeout_reached })
+        expect(client.locked?('internal.timeouts.obtained')).to eq(false)
+        expect(client.queued?('internal.timeouts.obtained')).to eq(false)
+
+        expect do
+          client.lock!(
+            'internal.timeouts.obtained', ttl: 10_000, timeout: 1, rw_mode:,
+            instrumenter: slow_instrumenter
+          )
+        end.to raise_error(RedisQueuedLocks::LockAcquirementTimeoutError)
+        expect(client.locked?('internal.timeouts.obtained')).to eq(false)
+      end
+    end
+  end
+
   specify 'user timeouts (`Timeout.timeout` without a class): no WATCH left on the connection' do
     # NOTE: one connection: the next transaction uses the connection of the interrupted attempt
     single_connection_redis = RedisClient.config(db: 0).new_pool(
