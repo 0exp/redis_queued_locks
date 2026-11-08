@@ -3596,6 +3596,10 @@ RSpec.shared_examples 'redis_queued_locks' do
       swarm.supervisor.liveness_probing_period swarm.probe_hosts.probe_period
       swarm.flush_zombies.zombie_ttl swarm.flush_zombies.zombie_flush_period
       swarm.flush_zombies.zombie_lock_scan_size swarm.flush_zombies.zombie_queue_scan_size
+      lock_keeper.idle_timeout lock_keeper.min_idle_wake_up_interval
+      lock_keeper.extension_retry_ratio lock_keeper.extension_batching_ratio
+      lock_keeper.schedule_slot lock_keeper.fiber_interruption_timeout
+      lock_keeper.fiber_interruption_wait_step
     ]
     invalid_values = [0, -1]
 
@@ -8500,7 +8504,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       aggregate_failures do
         expect(result).to eq(:completed)
-        # NOTE: `LockKeeper::FIBER_INTERRUPTION_TIMEOUT`
+        # NOTE: `config['lock_keeper.fiber_interruption_timeout']` (1 s by default)
         expect(waited).to be_between(0.9, 2.0)
       end
     end
@@ -9339,8 +9343,9 @@ RSpec.shared_examples 'redis_queued_locks' do
     end
 
     specify 'the keeper stops without leases and starts again on demand' do
-      stub_const('RedisQueuedLocks::LockKeeper::IDLE_TIMEOUT', 100)
-      client = RedisQueuedLocks::Client.new(redis)
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['lock_keeper.idle_timeout'] = 100
+      end
 
       client.lock('auto.idle', ttl: 300, auto_extend: true) {}
       keeper_thread = client.lock_keeper.thread
@@ -9353,9 +9358,45 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
     end
 
+    specify 'the keeper settings come from the config, a changed one at the next thread start' do
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['lock_keeper.idle_timeout'] = 100
+      end
+      keeper = client.lock_keeper
+
+      aggregate_failures do
+        expect(keeper.idle_timeout).to eq(100)
+        expect(keeper.min_idle_wake_up_interval).to eq(100)
+        expect(keeper.extension_retry_ratio).to eq(3)
+        expect(keeper.extension_batching_ratio).to eq(10)
+        expect(keeper.schedule_slot).to eq(10)
+        expect(keeper.fiber_interruption_timeout).to eq(1_000)
+        expect(keeper.fiber_interruption_wait_step).to eq(0.001)
+      end
+
+      client.lock('auto.settings', ttl: 300, auto_extend: true) do
+        # NOTE: the running thread keeps its settings
+        client.configure { |config| config['lock_keeper.schedule_slot'] = 50 }
+        sleep(0.5)
+        expect(client.locked?('auto.settings')).to eq(true)
+        expect(keeper.schedule_slot).to eq(10)
+      end
+      keeper_thread = keeper.thread
+      expect(wait_until.call { !keeper_thread.alive? }).to eq(true)
+
+      client.lock('auto.settings', ttl: 300, auto_extend: true) do
+        sleep(0.5)
+        aggregate_failures do
+          expect(keeper.schedule_slot).to eq(50)
+          expect(client.locked?('auto.settings')).to eq(true)
+        end
+      end
+    end
+
     specify 'blocks that end before the keeper sees them are not an idle keeper' do
-      stub_const('RedisQueuedLocks::LockKeeper::IDLE_TIMEOUT', 300)
-      client = RedisQueuedLocks::Client.new(redis)
+      client = RedisQueuedLocks::Client.new(redis) do |config|
+        config['lock_keeper.idle_timeout'] = 300
+      end
       keeper_threads = []
 
       # NOTE: a block without I/O ends before the keeper thread gets the GVL

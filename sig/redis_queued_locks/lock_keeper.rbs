@@ -7,18 +7,18 @@ module RedisQueuedLocks
 
     EXTEND_WRITE_LOCK: String
     EXTEND_READ_LOCK: String
-    LOST_LOCK_REPLY: Integer
-    IDLE_TIMEOUT: Integer
-    MIN_IDLE_WAKE_UP_INTERVAL: Integer
-    EXTENSION_RETRY_RATIO: Integer
-    EXTENSION_BATCHING_RATIO: Integer
-    SCHEDULE_SLOT: Integer
-    FIBER_INTERRUPTION_TIMEOUT: Integer
-    FIBER_INTERRUPTION_WAIT_STEP: Float
+    EXTEND_LOCK_LUA_LOST_LOCK_REPLY: Integer
 
-    attr_reader redis_client: RC::client
+    attr_reader rql_client: RQL::Client
     attr_reader sync: RQL::Utilities::Lock
     attr_reader thread: Thread?
+    attr_reader idle_timeout: Integer
+    attr_reader min_idle_wake_up_interval: Integer
+    attr_reader extension_retry_ratio: Integer
+    attr_reader extension_batching_ratio: Integer
+    attr_reader schedule_slot: Integer
+    attr_reader fiber_interruption_timeout: Integer
+    attr_reader fiber_interruption_wait_step: Float | Integer
 
     @leases: Hash[Lease, bool]
     @buckets: Hash[Integer, Hash[Lease, bool]]
@@ -30,7 +30,7 @@ module RedisQueuedLocks
     @thread: Thread?
     @process_id: Integer
 
-    def initialize: (RC::client redis_client) -> void
+    def initialize: (RQL::Client rql_client) -> void
     def start: () -> void
 
     def keep: (
@@ -102,6 +102,7 @@ module RedisQueuedLocks
     ) -> void
 
     def wait_for_interruption: () -> void
+    def load_settings: () -> void
     def monotonic_time: () -> Integer
   end
 end

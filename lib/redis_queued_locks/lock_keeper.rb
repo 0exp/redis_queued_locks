@@ -4,8 +4,8 @@
 # and `#lock_series`): one background thread per client extends the locks of all blocks while they
 # are running, so the lock ttl is a lease: the crash of the process releases the lock by the ttl,
 # whatever the duration of the block of code is:
-#   - the thread and its Redis connection are created on demand and stop after `IDLE_TIMEOUT`
-#     without new leases;
+#   - the thread and its Redis connection are created on demand and stop after the idle timeout
+#     without new leases (`config['lock_keeper.idle_timeout']`);
 #   - the thread has its own connection (from the config of the client): the client can be a plain
 #     `RedisClient` (one connection), it can not be shared with the threads of the application;
 #   - an extension checks the owner of the lock, never revives a lost lock and never shortens the
@@ -20,11 +20,13 @@
 #     (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`, see `#hold_for`); this thread interrupts
 #     a `timed` block of code at the hold limit (a `Timeout` can not be moved): `Thread#raise` in
 #     a blocking fiber, the fiber scheduler in a non-blocking one (see `#interrupt_timed_block`);
-#   - the leases are planned in a timer wheel (`SCHEDULE_SLOT`): a wake-up takes the due slots only
-#     and `#keep`/`#forget` change one slot, so the work under the lock does not grow with the
-#     number of running blocks of code;
+#   - the leases are planned in a timer wheel (`config['lock_keeper.schedule_slot']`): a wake-up
+#     takes the due slots only and `#keep`/`#forget` change one slot, so the work under the lock
+#     does not grow with the number of running blocks of code;
 #   - `fork`: the thread does not survive and the locks of the parent process are not the locks of
 #     the child: the first lease of the child process starts with an empty state;
+#   - the settings of the keeper are `config['lock_keeper.*']` of the client (read when the
+#     thread starts, see `#load_settings`);
 #   - a thread of the same process has the same limits as the block of code: see README "Lock auto
 #     extension" (the Global VM Lock, the garbage collector);
 #
@@ -40,8 +42,8 @@ class RedisQueuedLocks::LockKeeper
   # @since 1.24.0
   include RedisQueuedLocks::Utilities
 
-  # Extends the write lock of the acquirer (`LOST_LOCK_REPLY` if the lock is lost, the remaining ttl
-  # otherwise):
+  # Extends the write lock of the acquirer (`EXTEND_LOCK_LUA_LOST_LOCK_REPLY` if the lock is lost,
+  # the remaining ttl otherwise):
   #   - `GT`: the extension never shortens the lock (the ttl of a reentrant lock extension);
   #   - (lock index) the score is the absolute upper bound of the lock lifetime (`XX`: a lock
   #     without an index entry is not indexed, `GT`: the score never decreases); `KEYS[2]` is sent
@@ -58,8 +60,8 @@ class RedisQueuedLocks::LockKeeper
     return redis.call("PTTL", KEYS[1]);
   LUA_SCRIPT
 
-  # Extends the read lock of the acquirer (`LOST_LOCK_REPLY` if the lock is lost, the remaining ttl
-  # otherwise):
+  # Extends the read lock of the acquirer (`EXTEND_LOCK_LUA_LOST_LOCK_REPLY` if the lock is lost,
+  # the remaining ttl otherwise):
   #   - an expired read lock is never "revived": a writer could obtain the expired lock;
   #   - the registry and the read lock data keep the longest ttl (`PEXPIRE NX` + `GT`);
   #   - (lock index) see `EXTEND_WRITE_LOCK`, `KEYS[4]`;
@@ -83,79 +85,20 @@ class RedisQueuedLocks::LockKeeper
     return redis.call("ZSCORE", KEYS[2], ARGV[1]) - now;
   LUA_SCRIPT
 
-  # @return [Integer] The reply of the extension scripts for a lost lock (not a `PTTL` reply).
-  #
-  # @api private
-  # @since 1.24.0
-  LOST_LOCK_REPLY = -3
-
-  # @return [Integer] The keeper thread stops after this time without new leases (in milliseconds).
-  #
-  # @api private
-  # @since 1.24.0
-  IDLE_TIMEOUT = 60_000
-
-  # An idle keeper follows the rhythm of the extensions, but it does not wake up more often than
-  # this (in milliseconds): a lease with a shorter interval just wakes it up by itself.
+  # The reply of the Lua scripts of the lock extension (`EXTEND_WRITE_LOCK`, `EXTEND_READ_LOCK`)
+  # for a lost lock: the lock is not owned anymore (not a `PTTL` reply: they return `-3` literally).
   #
   # @return [Integer]
   #
   # @api private
   # @since 1.24.0
-  MIN_IDLE_WAKE_UP_INTERVAL = 100
+  EXTEND_LOCK_LUA_LOST_LOCK_REPLY = -3
 
-  # A failed extension is retried sooner: `extension_interval / EXTENSION_RETRY_RATIO`.
-  #
-  # @return [Integer]
+  # @return [RedisQueuedLocks::Client]
   #
   # @api private
   # @since 1.24.0
-  EXTENSION_RETRY_RATIO = 3
-
-  # The leases that are due in `extension_interval / EXTENSION_BATCHING_RATIO` are extended with the
-  # due ones: one pipeline instead of a wake-up per lease.
-  #
-  # @return [Integer]
-  #
-  # @api private
-  # @since 1.24.0
-  EXTENSION_BATCHING_RATIO = 10
-
-  # The schedule of the leases is a set of slots of this length (in milliseconds) by the time of
-  # their next extension: a wake-up looks at the leases of the due slots only, not at all leases
-  # (the work under the lock does not grow with the number of the running blocks of code).
-  #
-  # @return [Integer]
-  #
-  # @api private
-  # @since 1.24.0
-  SCHEDULE_SLOT = 10
-
-  # How long the fiber of a `timed` block of code waits for the interruption that is sent through
-  # its fiber scheduler when the block ends before it comes (in milliseconds, see `#forget`): the
-  # scheduler raises it at the next suspension point of the fiber, and a scheduler that does not
-  # raise it in this time is not waited for anymore.
-  #
-  # @return [Integer]
-  #
-  # @api private
-  # @since 1.24.0
-  FIBER_INTERRUPTION_TIMEOUT = 1_000
-
-  # The step of this wait (in seconds, `Kernel#sleep`): each step suspends the fiber, so its
-  # scheduler gets the control and raises the interruption.
-  #
-  # @return [Float]
-  #
-  # @api private
-  # @since 1.24.0
-  FIBER_INTERRUPTION_WAIT_STEP = 0.001
-
-  # @return [RedisClient]
-  #
-  # @api private
-  # @since 1.24.0
-  attr_reader :redis_client
+  attr_reader :rql_client
 
   # @return [RedisQueuedLocks::Utilities::Lock]
   #
@@ -169,13 +112,88 @@ class RedisQueuedLocks::LockKeeper
   # @since 1.24.0
   attr_reader :thread
 
-  # @param redis_client [RedisClient]
+  # NOTE: (settings) `config['lock_keeper.*']` of the client, read when the keeper thread starts
+  #   (`#load_settings`): a changed setting takes effect at the next start of the thread (after
+  #   its idle timeout or in a new process); the schedule is rebuilt with the new slot length;
+
+  # @return [Integer]
+  #   The keeper thread stops after this time without new leases (in milliseconds,
+  #   `config['lock_keeper.idle_timeout']`).
+  #
+  # @api private
+  # @since 1.24.0
+  attr_reader :idle_timeout
+
+  # An idle keeper follows the rhythm of the extensions, but it does not wake up more often than
+  # this (in milliseconds, `config['lock_keeper.min_idle_wake_up_interval']`): a lease with a
+  # shorter interval just wakes it up by itself.
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.24.0
+  attr_reader :min_idle_wake_up_interval
+
+  # A failed extension is retried sooner: `extension_interval / extension_retry_ratio`
+  # (`config['lock_keeper.extension_retry_ratio']`).
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.24.0
+  attr_reader :extension_retry_ratio
+
+  # The leases that are due in `extension_interval / extension_batching_ratio` are extended with the
+  # due ones (`config['lock_keeper.extension_batching_ratio']`): one pipeline instead of a wake-up
+  # per lease.
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.24.0
+  attr_reader :extension_batching_ratio
+
+  # The schedule of the leases is a set of slots of this length (in milliseconds,
+  # `config['lock_keeper.schedule_slot']`) by the time of their next extension: a wake-up looks at
+  # the leases of the due slots only, not at all leases (the work under the lock does not grow with
+  # the number of the running blocks of code).
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.24.0
+  attr_reader :schedule_slot
+
+  # How long the fiber of a `timed` block of code waits for the interruption that is sent through
+  # its fiber scheduler when the block ends before it comes (in milliseconds,
+  # `config['lock_keeper.fiber_interruption_timeout']`, see `#forget`): the scheduler raises it at
+  # the next suspension point of the fiber, and a scheduler that does not raise it in this time is
+  # not waited for anymore.
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.24.0
+  attr_reader :fiber_interruption_timeout
+
+  # The step of this wait (in seconds, `Kernel#sleep`,
+  # `config['lock_keeper.fiber_interruption_wait_step']`): each step suspends the fiber, so its
+  # scheduler gets the control and raises the interruption.
+  #
+  # @return [Float,Integer]
+  #
+  # @api private
+  # @since 1.24.0
+  attr_reader :fiber_interruption_wait_step
+
+  # @param rql_client [RedisQueuedLocks::Client]
+  #   The client of the keeper (its connection and its config).
   # @return [void]
   #
   # @api private
   # @since 1.24.0
-  def initialize(redis_client)
-    @redis_client = redis_client
+  def initialize(rql_client)
+    @rql_client = rql_client
     @sync = RedisQueuedLocks::Utilities::Lock.new
     @leases = {} #: Hash[Lease,bool]
     # NOTE: the schedule (under the lock): the leases by the slot of their next extension and the
@@ -185,9 +203,10 @@ class RedisQueuedLocks::LockKeeper
     @wakeups = ::Thread::Queue.new
     @wake_at = nil
     @last_lease_at = 0
-    @idle_wake_up_interval = IDLE_TIMEOUT
     @thread = nil
     @process_id = ::Process.pid
+    load_settings
+    @idle_wake_up_interval = idle_timeout
   end
 
   # Prepares the keeper before the lock is obtained: the thread and its connection have time to
@@ -277,7 +296,7 @@ class RedisQueuedLocks::LockKeeper
       @leases[lease] = true
       schedule(lease)
       @last_lease_at = monotonic_time
-      @idle_wake_up_interval = [lease.extension_interval, MIN_IDLE_WAKE_UP_INTERVAL].max
+      @idle_wake_up_interval = [lease.extension_interval, min_idle_wake_up_interval].max
       # NOTE: the thread sleeps till the nearest extension (or till its idle wake-up): a later one
       #   needs no wake-up (no context switch per block of code);
       wake_at = @wake_at
@@ -336,8 +355,8 @@ class RedisQueuedLocks::LockKeeper
   #
   # An interruption sent through the fiber scheduler can not be cancelled, and it comes at the next
   # suspension point of the fiber: when the block of code ends before it comes, the fiber waits for
-  # it here (inside the `rescue` scope of the interruption, see `FIBER_INTERRUPTION_TIMEOUT`), so it
-  # never reaches the code of the application after the block.
+  # it here (inside the `rescue` scope of the interruption, see `#fiber_interruption_timeout`), so
+  # it never reaches the code of the application after the block.
   #
   # @param lease [RedisQueuedLocks::LockKeeper::Lease]
   # @param raised_error [Exception,NilClass]
@@ -421,7 +440,7 @@ class RedisQueuedLocks::LockKeeper
     lock_indexes.each_with_index do |lock_index, reply_position|
       reply = replies[reply_position]
 
-      if reply == LOST_LOCK_REPLY
+      if reply == EXTEND_LOCK_LUA_LOST_LOCK_REPLY
         lock_lost = true
         report_lost_lock(lease, lock_index, time)
       else
@@ -466,7 +485,12 @@ class RedisQueuedLocks::LockKeeper
 
     # NOTE: the client is built here (not in the thread): a client without the connection config
     #   fails in the lock logic, not silently in the background;
-    redis = redis_client.config.new_client
+    redis = rql_client.redis_client.config.new_client
+    # NOTE: a new thread takes the leases of a dead one over: a killed thread can leave the due
+    #   leases of its tick out of the schedule (the registry keeps all leases); the slots are
+    #   rebuilt with the new settings;
+    load_settings
+    rebuild_schedule
     @last_lease_at = monotonic_time
     thread = ::Thread.new do
       # NOTE: a new thread inherits the interrupt mask of the current one (ruby/timeout#41);
@@ -486,10 +510,6 @@ class RedisQueuedLocks::LockKeeper
     # NOTE: connect before the first extension (see `#start`); an unavailable Redis is reported by
     #   the extensions;
     run_non_critical { redis.call('PING') }
-    # NOTE: a new thread takes the leases of a dead one over: a killed thread can leave the due
-    #   leases of its tick out of the schedule (the registry keeps all leases);
-    sync.synchronize { rebuild_schedule }
-
     while (leases = wait_for_due_leases)
       extend_locks(redis, leases)
     end
@@ -514,7 +534,7 @@ class RedisQueuedLocks::LockKeeper
           #   block of code ends before this thread gets the GVL, and the leases are in use;
           idle_time = now - @last_lease_at
 
-          if idle_time >= IDLE_TIMEOUT
+          if idle_time >= idle_timeout
             # NOTE: under the lock: a new lease sees the stopped thread and starts a new one;
             @thread = nil
             return nil
@@ -522,7 +542,7 @@ class RedisQueuedLocks::LockKeeper
 
           # NOTE: (idle) the rhythm of the extensions: the next lease with the same ttl is due later
           #   than this wake-up, so a stream of short blocks does not wake the thread per block;
-          idle_wait = [IDLE_TIMEOUT - idle_time, @idle_wake_up_interval].min #: Integer
+          idle_wait = [idle_timeout - idle_time, @idle_wake_up_interval].min #: Integer
           @wake_at = now + idle_wait
           idle_wait
         elsif next_extension_at > now
@@ -577,14 +597,14 @@ class RedisQueuedLocks::LockKeeper
   def take_due_leases(now)
     first_slot = @slot_keys.first #: Integer
     nearest_lease = @buckets.fetch(first_slot).each_key.min_by(&:next_extension_at) #: Lease
-    horizon = now + (nearest_lease.extension_interval / EXTENSION_BATCHING_RATIO)
+    horizon = now + (nearest_lease.extension_interval / extension_batching_ratio)
     due_leases = [] #: Array[Lease]
     later_leases = [] #: Array[Lease]
 
-    while (slot = @slot_keys.first) && slot * SCHEDULE_SLOT <= horizon
+    while (slot = @slot_keys.first) && slot * schedule_slot <= horizon
       @slot_keys.shift
       @buckets.delete(slot)&.each_key do |lease|
-        if lease.next_extension_at <= now + (lease.extension_interval / EXTENSION_BATCHING_RATIO)
+        if lease.next_extension_at <= now + (lease.extension_interval / extension_batching_ratio)
           due_leases << lease
         else
           later_leases << lease
@@ -616,7 +636,7 @@ class RedisQueuedLocks::LockKeeper
   # @api private
   # @since 1.24.0
   def schedule(lease)
-    slot = lease.next_extension_at / SCHEDULE_SLOT
+    slot = lease.next_extension_at / schedule_slot
     bucket = @buckets[slot]
 
     if bucket
@@ -639,7 +659,7 @@ class RedisQueuedLocks::LockKeeper
   # @api private
   # @since 1.24.0
   def unschedule(lease)
-    @buckets[lease.next_extension_at / SCHEDULE_SLOT]&.delete(lease)
+    @buckets[lease.next_extension_at / schedule_slot]&.delete(lease)
   end
 
   # @param redis [RedisClient]
@@ -706,7 +726,7 @@ class RedisQueuedLocks::LockKeeper
         #   lock is found lost by the thread of the block meanwhile (`#hold_for`);
         next if !lease_kept || lease.lock_lost?(lock_index)
 
-        if reply == LOST_LOCK_REPLY
+        if reply == EXTEND_LOCK_LUA_LOST_LOCK_REPLY
           report_lost_lock(lease, lock_index, time)
         else
           report_extended_lock(lease, lock_index, time, reply)
@@ -840,7 +860,7 @@ class RedisQueuedLocks::LockKeeper
   # @since 1.24.0
   def report_failed_extension(lease, time, error)
     lease.schedule_extension(
-      time + [lease.extension_interval / EXTENSION_RETRY_RATIO, 1].max
+      time + [lease.extension_interval / extension_retry_ratio, 1].max
     )
 
     lease.lock_keys.each_with_index do |lock_key, lock_index|
@@ -950,8 +970,25 @@ class RedisQueuedLocks::LockKeeper
   # @api private
   # @since 1.24.0
   def wait_for_interruption
-    deadline = monotonic_time + FIBER_INTERRUPTION_TIMEOUT
-    sleep(FIBER_INTERRUPTION_WAIT_STEP) while monotonic_time < deadline
+    deadline = monotonic_time + fiber_interruption_timeout
+    sleep(fiber_interruption_wait_step) while monotonic_time < deadline
+  end
+
+  # Reads the settings of the keeper from the config of the client (`config['lock_keeper.*']`).
+  #
+  # @return [void]
+  #
+  # @api private
+  # @since 1.24.0
+  def load_settings
+    config = rql_client.config
+    @idle_timeout = config['lock_keeper.idle_timeout']
+    @min_idle_wake_up_interval = config['lock_keeper.min_idle_wake_up_interval']
+    @extension_retry_ratio = config['lock_keeper.extension_retry_ratio']
+    @extension_batching_ratio = config['lock_keeper.extension_batching_ratio']
+    @schedule_slot = config['lock_keeper.schedule_slot']
+    @fiber_interruption_timeout = config['lock_keeper.fiber_interruption_timeout']
+    @fiber_interruption_wait_step = config['lock_keeper.fiber_interruption_wait_step']
   end
 
   # @return [Integer] In milliseconds.

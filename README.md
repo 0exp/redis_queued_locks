@@ -244,8 +244,8 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   endless loop, a call without a timeout) or a block abandoned midway (a fiber that is never
   #   resumed: its `ensure` never runs and the lock is not released); such a block looks like a
   #   running one, and without a limit its lock is extended till the end of the process;
-  # - the limit of the auto extension of the lock (the `auto_extend_max_hold_time:` option, see "Lock Auto
-  #   Extension");
+  # - the limit of the auto extension of the lock (the `auto_extend_max_hold_time:` option, see
+  #   "Lock Auto Extension");
   # - `nil` means no limit;
   # - !IMPORTANT: configure it yourself, deliberately, for your logic: `nil` (no limit) or a period
   #   that is longer than your longest block of code (a longer block of code loses its lock at the
@@ -253,6 +253,54 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   default is only a fallback;
   # - should be `nil` or a positive Integer;
   config['default_auto_extend_max_hold_time'] = 3_600_000
+
+  # (milliseconds) (default: 60_000)
+  # - the lock keeper thread (see "Lock Auto Extension") stops after this time without new blocks
+  #   of code with `auto_extend: true` (and starts again on demand);
+  # - should be a positive Integer;
+  config['lock_keeper.idle_timeout'] = 60_000
+  
+  # (milliseconds) (default: 100)
+  # - an idle lock keeper follows the rhythm of the extensions, but it does not wake up more often
+  #   than this: a block of code with a shorter extension interval wakes it up by itself;
+  # - should be a positive Integer;
+  config['lock_keeper.min_idle_wake_up_interval'] = 100
+  
+  # (integer) (default: 3)
+  # - a failed extension (Redis is not available, for example) is retried sooner:
+  #   in `extension interval / extension_retry_ratio` (the extension interval is `auto_extend_ttl / 3`);
+  # - should be a positive Integer;
+  config['lock_keeper.extension_retry_ratio'] = 3
+  
+  # (integer) (default: 10)
+  # - the locks that are due in `extension interval / extension_batching_ratio` are extended with
+  #   the due ones: one pipeline instead of a wake-up per block of code;
+  # - should be a positive Integer;
+  config['lock_keeper.extension_batching_ratio'] = 10
+  
+  # (milliseconds) (default: 10)
+  # - the schedule of the lock keeper is a set of slots of this length by the time of the next
+  #   extension: a wake-up looks at the due slots only, not at all running blocks of code (the
+  #   work of the keeper does not grow with the number of the running blocks of code);
+  # - should be a positive Integer;
+  config['lock_keeper.schedule_slot'] = 10
+  
+  # (milliseconds) (default: 1_000)
+  # - a `timed` block of code of a fiber scheduler task (see "Lock Auto Extension") is interrupted
+  #   through its fiber scheduler, and the interruption comes at the next suspension point of the
+  #   fiber; when the block ends before it comes, the fiber waits for it this time at most (a
+  #   scheduler that does not raise it in this time is not waited for anymore);
+  # - should be a positive Integer;
+  config['lock_keeper.fiber_interruption_timeout'] = 1_000
+  
+  # (seconds) (default: 0.001)
+  # - the step of this wait (`Kernel#sleep`): each step suspends the fiber, so its scheduler gets
+  #   the control and raises the interruption;
+  # - should be a positive Float or Integer;
+  config['lock_keeper.fiber_interruption_wait_step'] = 0.001
+  
+  # NOTE: the `lock_keeper.*` settings are read when the lock keeper thread starts: a changed
+  #   setting takes effect at the next start of the thread (after its idle timeout);
 
   # (boolean) (default: false)
   # - When the lock acquirement try reached the acquirement time limit (:timeout option) the
@@ -3062,7 +3110,10 @@ end
 - `timed: true` limits the block of code by `auto_extend_max_hold_time` instead of the lock's TTL; with `auto_extend_max_hold_time: nil` the block is limited by the lost lock only;
 - a lost lock is never revived, and the release after the block of code does not touch the lock of the next owner
   (the owner is checked; it is not so without `auto_extend`, see [#lock](#lock---obtain-a-lock));
-- a failed extension (Redis is not available) is reported (`lock_auto_extension_failed`) and is tried again sooner (each `auto_extend_ttl / 9`);
+- a failed extension (Redis is not available) is reported (`lock_auto_extension_failed`) and is tried again sooner (each `auto_extend_ttl / 9` by default,
+  `config['lock_keeper.extension_retry_ratio']`);
+- the lock keeper thread is tuned by `config['lock_keeper.*']` (the idle timeout, the wake-ups, the retries, the batching of the extensions, the schedule slots,
+  the wait for a fiber interruption; see [Configuration](#configuration)): the defaults fit most applications;
 - `timed: true` in a non-blocking fiber (a fiber scheduler task, `async` for example): `Thread#raise` reaches the current fiber of the thread only, so the keeper
   interrupts such a block through its fiber scheduler (`Fiber::Scheduler#fiber_interrupt`, a Ruby 4.0 hook; `async` >= 2.25 implements it), the same way as
   a block of a thread: at the hold limit (moved by `lease.hold_for` too) and when the lock is lost. The scheduler raises the error at the next suspension point

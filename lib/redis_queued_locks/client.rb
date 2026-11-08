@@ -51,7 +51,7 @@ class RedisQueuedLocks::Client
     @config = RedisQueuedLocks::Config.new(&configuration)
     @uniq_identity = config['uniq_identifier'].call
     @redis_client = redis_client
-    @lock_keeper = RedisQueuedLocks::LockKeeper.new(redis_client)
+    @lock_keeper = RedisQueuedLocks::LockKeeper.new(self)
     @swarm = RedisQueuedLocks::Swarm.new(self)
     @swarm.swarm! if config['swarm.auto_swarm']
   end

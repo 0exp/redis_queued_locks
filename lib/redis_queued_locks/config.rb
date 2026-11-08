@@ -33,6 +33,13 @@ class RedisQueuedLocks::Config
   setting('is_auto_extended_by_default', false)
   setting('default_auto_extend_ttl', nil) # NOTE: in milliseconds (nil: the ttl of the lock)
   setting('default_auto_extend_max_hold_time', 3_600_000) # NOTE: 1 hour in ms (nil: no limit)
+  setting('lock_keeper.idle_timeout', 60_000) # NOTE: in milliseconds
+  setting('lock_keeper.min_idle_wake_up_interval', 100) # NOTE: in milliseconds
+  setting('lock_keeper.extension_retry_ratio', 3)
+  setting('lock_keeper.extension_batching_ratio', 10)
+  setting('lock_keeper.schedule_slot', 10) # NOTE: in milliseconds
+  setting('lock_keeper.fiber_interruption_timeout', 1_000) # NOTE: in milliseconds
+  setting('lock_keeper.fiber_interruption_wait_step', 0.001) # NOTE: in seconds
   setting('default_conflict_strategy', :wait_for_lock)
   setting('default_access_strategy', :queued)
   setting('lock_priorities', { lowest: -100, low: -50, normal: 0, high: 50, highest: 100 }.freeze)
@@ -104,6 +111,15 @@ class RedisQueuedLocks::Config
   validate('default_auto_extend_ttl') { |val| val == nil || (val.is_a?(Integer) && val > 0) }
   validate('default_auto_extend_max_hold_time') do |val|
     val == nil || (val.is_a?(Integer) && val > 0)
+  end
+  validate('lock_keeper.idle_timeout') { |val| val.is_a?(Integer) && val > 0 }
+  validate('lock_keeper.min_idle_wake_up_interval') { |val| val.is_a?(Integer) && val > 0 }
+  validate('lock_keeper.extension_retry_ratio') { |val| val.is_a?(Integer) && val > 0 }
+  validate('lock_keeper.extension_batching_ratio') { |val| val.is_a?(Integer) && val > 0 }
+  validate('lock_keeper.schedule_slot') { |val| val.is_a?(Integer) && val > 0 }
+  validate('lock_keeper.fiber_interruption_timeout') { |val| val.is_a?(Integer) && val > 0 }
+  validate('lock_keeper.fiber_interruption_wait_step') do |val|
+    (val.is_a?(Float) || val.is_a?(Integer)) && val > 0
   end
   validate('log_sampler') { |val| RedisQueuedLocks::Logging.valid_sampler?(val) }
   validate('log_sampling_enabled') { |val| val == true || val == false }
