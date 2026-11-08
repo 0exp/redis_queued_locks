@@ -1,5 +1,11 @@
 name: Lint (Rubocop/RBS)
-on: [push]
+on:
+  push:
+    paths-ignore:
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CODE_OF_CONDUCT.md"
+      - "LICENSE.txt"
 jobs:
   lint:
     name: 'Lint (os: ${{ matrix.os }}) (ruby@${{ matrix.ruby_version }})'

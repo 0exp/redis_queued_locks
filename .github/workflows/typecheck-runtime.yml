@@ -1,5 +1,11 @@
 name: TypeCheck (Runtime/RBS)
-on: [push]
+on:
+  push:
+    paths-ignore:
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CODE_OF_CONDUCT.md"
+      - "LICENSE.txt"
 jobs:
   typecheck-runtime:
     name: 'TypeCheck (Runtime/RBS) (os: ${{ matrix.os }}) (ruby@${{ matrix.ruby_version }})'
