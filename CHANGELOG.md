@@ -7,6 +7,8 @@
   - `timed: true` with `auto_extend: true`: the block of code is limited by `max_hold_time_during_auto_extend` (or the moved limit) and is interrupted when the lock is lost: `TimedBlockExceedsMaxHoldTimeError`, `TimedBlockLostLockError` (fiber scheduler tasks too: through `Fiber::Scheduler#fiber_interrupt`, e.g. `async` >= 2.25);
   - `config['lock_keeper.*']`: the tuning of the lock keeper thread (idle timeout, wake-ups, retries, batching, schedule slots, fiber interruption wait);
   - instrumentation events and logs: `lock_auto_extended`, `lock_auto_extension_failed`, `auto_extended_lock_lost`, `lock_hold_limit_reached`, `lock_hold_limit_extended`; `try_lock.exit__reentrant_lock_is_changed` log;
+### Removed
+- `RedisQueuedLocks::Utilities::RUBY_OVER_4` and `RedisQueuedLocks::Utilities.ruby_over_4?`: always `true` (Ruby >= 4.0 is required);
 ### Fixed
 - `#lock`/`#lock!`: a lock obtained right at the acquirement `timeout` was kept till its ttl while the acquirement failed
   with `:timeout_reached` (`LockAcquirementTimeoutError`);
