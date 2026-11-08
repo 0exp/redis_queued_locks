@@ -176,7 +176,9 @@ class RedisQueuedLocks::LockKeeper::Lease
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param started_at [Integer] The start of the attempt that obtained the locks.
-  # @param ttl [Integer] The ttl of the obtained locks (in milliseconds).
+  # @param ttl [Integer]
+  #   The time the locks live from the attempt (in milliseconds), `0`: unknown (see
+  #   `RedisQueuedLocks::LockKeeper#keep`).
   # @param extension_ttl [Integer] How long the lock lives after an extension (in milliseconds).
   # @param max_hold_time_during_auto_extend [Integer,NilClass]
   #   The hold limit (in milliseconds), `nil`: no limit.
@@ -246,6 +248,8 @@ class RedisQueuedLocks::LockKeeper::Lease
     #     extension ttl);
     #   - `ttl - extension_ttl * 2 / 3`: an earlier extension of a long ttl changes nothing (it
     #     never shortens the lock): the same remaining time as before all other extensions;
+    #   - `0` ttl (a reentrant lock that is not extended by the attempt: its remaining ttl is
+    #     unknown): at once;
     @next_extension_at = 0
     schedule_extension(started_at + [ttl / 3, ttl - (extension_ttl * 2 / 3)].max)
   end

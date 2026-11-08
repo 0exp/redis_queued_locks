@@ -631,7 +631,11 @@ module RedisQueuedLocks::Acquirer::LockSeries
               acquirer_id,
               host_id,
               acq_process[:try_start_time],
-              ttl,
+              # NOTE: the locks live `ttl` from the attempt, except the reentrant locks that are not
+              #   extended (`:conflict_work_through`): their remaining ttl is unknown (the outer
+              #   logic can have spent it), so the locks of such a series are extended at once
+              #   (`0`; an extension never shortens a lock);
+              acq_process[:lock_processes].include?(:conflict_work_through) ? 0 : ttl,
               auto_extend_ttl || ttl,
               max_hold_time_during_auto_extend,
               lock_index_enabled,

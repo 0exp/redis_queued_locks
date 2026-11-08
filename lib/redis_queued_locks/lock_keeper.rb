@@ -234,7 +234,10 @@ class RedisQueuedLocks::LockKeeper
   #   The start of the attempt that obtained the locks (`Utilities#clock_gettime`, microseconds):
   #   the lock ttl and the hold limit start inside the attempt (the moment is unknown on the
   #   client), so all deadlines are counted from an earlier moment.
-  # @param ttl [Integer] The ttl of the obtained locks (in milliseconds).
+  # @param ttl [Integer]
+  #   The time the locks live from the attempt (in milliseconds): the ttl of the obtained (or
+  #   extended) locks, `0` when the remaining ttl is unknown (a reentrant lock that is not extended
+  #   by the attempt: the first extension comes at once).
   # @param extension_ttl [Integer] How long the lock lives after an extension (in milliseconds).
   # @param max_hold_time_during_auto_extend [Integer,NilClass]
   #   The hold limit (in milliseconds), `nil`: no limit.

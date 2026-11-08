@@ -137,7 +137,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
           acquirer_id,
           host_id,
           try_start_time,
-          ttl,
+          # NOTE: (auto extension) the lock lives `ttl` from the attempt (obtained or extended by
+          #   it), except a reentrant lock that is not extended (`:work_through`): its remaining
+          #   ttl is unknown (the outer logic can have spent it), so it is extended at once (`0`);
+          (should_expire || should_decrease) ? ttl : 0,
           auto_extend_ttl || ttl,
           max_hold_time_during_auto_extend,
           lock_index_enabled,
