@@ -7,6 +7,7 @@ Full details (config keys, key layout, events, errors, stack, CI): `.claude/proj
 - Tests (need a running local Redis): `bundle exec rake rspec:parallel` by default (~1 min; `WORKERS=<n>`, default: Redis `databases` / 2 up to the CPU count; each worker flushes its own pair of databases: db 0..2n-1 in total); the serial `bundle exec rake rspec` (~6 min) only when something must be checked in one process (order-dependent failures, a whole-suite `--seed`, leaks between examples, changes of the parallel runner: `tests.md#1`)
 - Lint: `bundle exec rake rubocop` (two passes, Ruby then RBS: both must be clean; never tune `.rubocop.yml` to pass, fix the code)
 - Static types: `bundle exec rbs collection install && bundle exec rake steep:check`
+- Reviews: `rql-code-review` (a diff: branch, PR, uncommitted; also the pre-commit review), `rql-project-full-review` (on request only: the whole repository, instructions ↔ code ↔ each other + a defect hunt; intentional decisions are not findings, deferred items get their own section)
 
 ## Architecture
 - `client.rb`: public API facade; fills defaults from `config[...]`, delegates to `Acquirer::*`.
