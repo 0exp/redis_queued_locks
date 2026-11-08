@@ -3066,7 +3066,7 @@ rql.lock_series('report', 'stats', auto_extend: true) { long_running_logic }
 
 #### The lease of the block of code
 
-A block of code with a parameter gets its lease (`RedisQueuedLocks::LockLease`). A block that makes progress moves the hold limit itself, and a stuck
+A block of code with a parameter gets its lease (`RedisQueuedLocks::LockKeeper::LockLease`). A block that makes progress moves the hold limit itself, and a stuck
 block stops moving it, so its lock expires at the last limit (a dead man's switch instead of one fixed `max_hold_time`):
 
 ```ruby
@@ -3724,7 +3724,7 @@ Detalized event semantics and payload structure:
 
 ##### `"redis_queued_locks.lock_hold_limit_extended"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
-- an event signalizes that the block of code moved its hold limit and the lock is extended at once (`RedisQueuedLocks::LockLease#hold_for`);
+- an event signalizes that the block of code moved its hold limit and the lock is extended at once (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`);
 - raised from the thread that called `#hold_for`, one event per lock (a lost lock is reported by `auto_extended_lock_lost` instead);
 - payload:
   - `:lock_key` - `string` - lock key (`rql:lock:<lock_name>`);

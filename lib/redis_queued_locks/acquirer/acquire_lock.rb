@@ -67,7 +67,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #   How long the lock lives after an auto extension (in milliseconds), `nil`: the lock ttl.
     # @option max_hold_time [Integer,NilClass]
     #   The limit of the auto extension (in milliseconds), `nil`: no limit; the block of code can
-    #   move it (`RedisQueuedLocks::LockLease#hold_for`).
+    #   move it (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`).
     # @option lock_keeper [RedisQueuedLocks::LockKeeper]
     #   The lock keeper of the client.
     # @option retry_count [Integer,NilClass]
@@ -195,7 +195,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     #     despite the enabled instrumentation sampling;
     #   - makes sense when instrumentation sampling is enabled;
     # @yield A block of code that should be executed after the successfully acquired lock.
-    # @yieldparam lease [RedisQueuedLocks::LockLease]
+    # @yieldparam lease [RedisQueuedLocks::LockKeeper::LockLease]
     #   The lease of an auto extended block of code (a block with arguments): see `Client#lock`.
     # @yieldreturn [Any]
     # @return [Hash<Symbol,Any>,yield]

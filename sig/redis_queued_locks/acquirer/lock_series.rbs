@@ -67,7 +67,7 @@ module RedisQueuedLocks
         Integer? max_hold_time,
         RQL::LockKeeper lock_keeper,
         RQL::LockKeeper::Lease? lock_lease,
-        RQL::LockLease? lease_handle,
+        RQL::LockKeeper::LockLease? lease_handle,
         Hash[String|Symbol,untyped]? meta
       ) ?{ (?) -> untyped } -> untyped?
 

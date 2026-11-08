@@ -7,8 +7,8 @@
 #   - the locks are parallel arrays in the order of the lock names;
 #   - the time values are the milliseconds of the monotonic clock;
 #   - the extension schedule is changed by the keeper thread only; the block of code reads `#lost?`
-#     and moves the hold limit (`RedisQueuedLocks::LockLease#hold_for`) under the lock of the
-#     keeper;
+#     and moves the hold limit (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`) under the lock
+#     of the keeper;
 #
 # @api private
 # @since 1.24.0
@@ -109,8 +109,8 @@ class RedisQueuedLocks::LockKeeper::Lease
 
   # The fiber of the running `timed` block of code (`nil`: the block is not `timed`, it is not
   # started yet or it is completed: `RedisQueuedLocks::LockKeeper#forget`): the block that finds its
-  # lock lost by itself (`RedisQueuedLocks::LockLease#hold_for`) is interrupted right there, in any
-  # fiber. See `RedisQueuedLocks::LockKeeper#interrupt_timed_block`.
+  # lock lost by itself (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`) is interrupted right
+  # there, in any fiber. See `RedisQueuedLocks::LockKeeper#interrupt_timed_block`.
   #
   # @return [Fiber,NilClass]
   #

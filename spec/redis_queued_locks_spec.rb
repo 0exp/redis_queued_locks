@@ -8747,8 +8747,9 @@ RSpec.shared_examples 'redis_queued_locks' do
 
         expect(arguments).to eq(
           [
-            [RedisQueuedLocks::LockLease], :no_arguments, *(RBS_RUNTIME_TEST ? [] : [:lambda]), [],
-            [RedisQueuedLocks::LockLease]
+            [RedisQueuedLocks::LockKeeper::LockLease], :no_arguments,
+            *(RBS_RUNTIME_TEST ? [] : [:lambda]), [],
+            [RedisQueuedLocks::LockKeeper::LockLease]
           ]
         )
       end
@@ -8986,7 +8987,9 @@ RSpec.shared_examples 'redis_queued_locks' do
         end.resume
 
         aggregate_failures do
-          expect(results).to eq([RedisQueuedLocks::LockLease, { ok: true, result: :extended }])
+          expect(results).to eq(
+            [RedisQueuedLocks::LockKeeper::LockLease, { ok: true, result: :extended }]
+          )
           # NOTE: the `Timeout` of `max_hold_time`: the moved limit of the keeper does not move it
           expect(raised_error).to be_a(RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError)
           expect(client.locked?('lease.fiber')).to eq(false)

@@ -22,7 +22,7 @@
 #
 # @api public
 # @since 1.24.0
-class RedisQueuedLocks::LockLease
+class RedisQueuedLocks::LockKeeper::LockLease
   # @param lock_keeper [RedisQueuedLocks::LockKeeper]
   # @param lease [RedisQueuedLocks::LockKeeper::Lease]
   # @param redis [RedisClient] The connection of the client.

@@ -77,7 +77,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @param instrumenter [#notify] See `RedisQueuedLocks::LockKeeper`.
   # @param instrument [NilClass,Any] See `RedisQueuedLocks::LockKeeper`.
   # @yield Custom logic that should be invoked under the obtained lock.
-  # @yieldparam lease [RedisQueuedLocks::LockLease]
+  # @yieldparam lease [RedisQueuedLocks::LockKeeper::LockLease]
   #   The lease of an auto extended block of code (only for a block with arguments).
   # @yieldreturn [Any]
   # @return [Any,NilClass] nil is returned when no block parametr is provided.
@@ -120,7 +120,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
     initial_time = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC, :millisecond)
     # @type var lock_lease: RedisQueuedLocks::LockKeeper::Lease?
     lock_lease = nil
-    # @type var lease_handle: RedisQueuedLocks::LockLease?
+    # @type var lease_handle: RedisQueuedLocks::LockKeeper::LockLease?
     lease_handle = nil
 
     if block
@@ -150,7 +150,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
         # NOTE: (auto extension) the block of code gets its lease when it takes an argument (no
         #   object for a block without arguments, a lambda without parameters gets no argument);
         if block.arity != 0
-          lease_handle = RedisQueuedLocks::LockLease.new(lock_keeper, lock_lease, redis)
+          lease_handle = RedisQueuedLocks::LockKeeper::LockLease.new(lock_keeper, lock_lease, redis)
         end
       end
 
@@ -257,7 +257,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @param max_hold_time [Integer,NilClass]
   # @param lock_keeper [RedisQueuedLocks::LockKeeper]
   # @param lock_lease [RedisQueuedLocks::LockKeeper::Lease,NilClass]
-  # @param lease_handle [RedisQueuedLocks::LockLease,NilClass] The argument of the block of code.
+  # @param lease_handle [RedisQueuedLocks::LockKeeper::LockLease,NilClass]
+  #   The argument of the block of code.
   # @param acquirer_id [String]
   # @param host_id [String]
   # @param meta [NilClass,Hash<Symbol|String,Any>]
@@ -313,7 +314,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
 
         if lock_lease&.interruptible?
           # NOTE: (auto extension) the keeper interrupts the block at the hold limit too: the block
-          #   can move the limit (`RedisQueuedLocks::LockLease#hold_for`), a `Timeout` can not;
+          #   can move the limit (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`), a `Timeout`
+          #   can not;
           lease_handle ? yield(lease_handle) : yield
         elsif lock_lease
           # NOTE: (auto extension) a non-blocking fiber without a fiber scheduler that can

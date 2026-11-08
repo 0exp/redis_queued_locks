@@ -78,7 +78,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
     #   How long the lock lives after an auto extension (in milliseconds), `nil`: the `ttl`.
     # @option max_hold_time [Integer,NilClass]
     #   The limit of the auto extension (in milliseconds), `nil`: no limit; the block of code can
-    #   move it (`RedisQueuedLocks::LockLease#hold_for`).
+    #   move it (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`).
     # @option lock_keeper [RedisQueuedLocks::LockKeeper]
     #   The lock keeper of the client.
     # @option retry_count [Integer,NilClass]
@@ -134,7 +134,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
     # @option instr_sample_this [Boolean]
     #   See `AcquireLock.acquire_lock`.
     # @yield A block of code that should be executed under all obtained locks.
-    # @yieldparam lease [RedisQueuedLocks::LockLease]
+    # @yieldparam lease [RedisQueuedLocks::LockKeeper::LockLease]
     #   The lease of an auto extended series (a block with arguments): see `Client#lock_series`.
     # @yieldreturn [Any]
     # @return [Hash<Symbol,Any>,yield]
@@ -419,7 +419,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
       yield_result = nil
       # @type var lock_lease: RedisQueuedLocks::LockKeeper::Lease?
       lock_lease = nil
-      # @type var lease_handle: RedisQueuedLocks::LockLease?
+      # @type var lease_handle: RedisQueuedLocks::LockKeeper::LockLease?
       lease_handle = nil
 
       LogVisitor.start_lock_series_obtaining(
@@ -641,7 +641,8 @@ module RedisQueuedLocks::Acquirer::LockSeries
             lock_lease = series_lease
             # NOTE: the block of code gets the lease of the series when it takes an argument;
             if block&.arity != 0
-              lease_handle = RedisQueuedLocks::LockLease.new(lock_keeper, series_lease, redis)
+              lease_handle =
+                RedisQueuedLocks::LockKeeper::LockLease.new(lock_keeper, series_lease, redis)
             end
           end
 
@@ -805,10 +806,11 @@ module RedisQueuedLocks::Acquirer::LockSeries
     # @param max_hold_time [Integer,NilClass] In milliseconds.
     # @param lock_keeper [RedisQueuedLocks::LockKeeper]
     # @param lock_lease [RedisQueuedLocks::LockKeeper::Lease,NilClass]
-    # @param lease_handle [RedisQueuedLocks::LockLease,NilClass] The argument of the block of code.
+    # @param lease_handle [RedisQueuedLocks::LockKeeper::LockLease,NilClass]
+    #   The argument of the block of code.
     # @param meta [NilClass,Hash<String|Symbol,Any>]
     # @yield Custom logic that should be invoked under the obtained locks.
-    # @yieldparam lease [RedisQueuedLocks::LockLease]
+    # @yieldparam lease [RedisQueuedLocks::LockKeeper::LockLease]
     #   The lease of an auto extended block of code (only for a block with arguments).
     # @yieldreturn [Any]
     # @return [Any,NilClass] nil is returned when no block parametr is provided.

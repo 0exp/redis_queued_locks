@@ -56,7 +56,7 @@ module RedisQueuedLocks
 
     def interrupt_timed_block: (Lease lease) -> void
     def forget: (Lease lease, ?::Exception? raised_error) -> void
-    def hold_for: (RC::client redis, Lease lease, Integer hold_time) -> RQL::LockLease::holdForResult
+    def hold_for: (RC::client redis, Lease lease, Integer hold_time) -> RQL::LockKeeper::LockLease::holdForResult
     def hold_time_left: (Lease lease) -> Integer?
 
     private

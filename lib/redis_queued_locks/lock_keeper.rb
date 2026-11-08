@@ -17,9 +17,9 @@
 #   - the lock of a stuck block is not kept forever: see `max_hold_time` (the extension just stops,
 #     nothing depends on the client: the lock expires by itself);
 #   - the block of code can move its hold limit while it makes progress
-#     (`RedisQueuedLocks::LockLease#hold_for`, see `#hold_for`); this thread interrupts a `timed`
-#     block of code at the hold limit (a `Timeout` can not be moved): `Thread#raise` in a blocking
-#     fiber, the fiber scheduler in a non-blocking one (see `#interrupt_timed_block`);
+#     (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`, see `#hold_for`); this thread interrupts
+#     a `timed` block of code at the hold limit (a `Timeout` can not be moved): `Thread#raise` in
+#     a blocking fiber, the fiber scheduler in a non-blocking one (see `#interrupt_timed_block`);
 #   - the leases are planned in a timer wheel (`SCHEDULE_SLOT`): a wake-up takes the due slots only
 #     and `#keep`/`#forget` change one slot, so the work under the lock does not grow with the
 #     number of running blocks of code;
@@ -35,6 +35,7 @@ class RedisQueuedLocks::LockKeeper
   require_relative 'lock_keeper/log_visitor'
   require_relative 'lock_keeper/instr_visitor'
   require_relative 'lock_keeper/lease'
+  require_relative 'lock_keeper/lock_lease'
 
   # @since 1.24.0
   include RedisQueuedLocks::Utilities
@@ -358,9 +359,9 @@ class RedisQueuedLocks::LockKeeper
     wait_for_interruption if pending_interruption
   end
 
-  # Moves the hold limit of the block of code (`RedisQueuedLocks::LockLease#hold_for`): its locks
-  # are kept at least `hold_time` from now (the limit never moves back) and they are extended at
-  # once, in the thread of the caller:
+  # Moves the hold limit of the block of code (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`):
+  # its locks are kept at least `hold_time` from now (the limit never moves back) and they are
+  # extended at once, in the thread of the caller:
   #   - at once: the last extensions before the limit are shortened to the limit, so a limit that is
   #     moved right before it could miss the next tick (a delayed keeper thread); `ok: true` means
   #     that all locks are still owned and extended;
@@ -375,7 +376,7 @@ class RedisQueuedLocks::LockKeeper
   # @param redis [RedisClient] The connection of the client.
   # @param lease [RedisQueuedLocks::LockKeeper::Lease]
   # @param hold_time [Integer] In milliseconds.
-  # @return [Hash<Symbol,Boolean|Symbol>] See `RedisQueuedLocks::LockLease#hold_for`.
+  # @return [Hash<Symbol,Boolean|Symbol>] See `RedisQueuedLocks::LockKeeper::LockLease#hold_for`.
   #
   # @raise [RedisQueuedLocks::TimedLockIntermediateTimeoutError]
   #

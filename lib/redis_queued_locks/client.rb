@@ -212,7 +212,8 @@ class RedisQueuedLocks::Client
   #     interrupt it); it is never revived, and the next owner of the lock does not lose it after
   #     the block of code;
   #   - has no effect without a block of code;
-  #   - the block of code gets its lease (`RedisQueuedLocks::LockLease`) when it takes an argument:
+  #   - the block of code gets its lease (`RedisQueuedLocks::LockKeeper::LockLease`) when it takes
+  #     an argument:
   #     `#hold_for` moves the hold limit while the block makes progress, `#lost?`,
   #     `#hold_time_left`;
   #   - see README "Lock auto extension" for the limits of a background thread;
@@ -236,7 +237,7 @@ class RedisQueuedLocks::Client
   #   - !IMPORTANT: configure it yourself, deliberately, for your logic: `nil` or a period that is
   #     longer than your longest block of code (a longer block of code loses its lock at the
   #     limit); the default of `config['default_max_hold_time']` (1 hour) is only a fallback;
-  #   - a block of code that makes progress can move it (`RedisQueuedLocks::LockLease#hold_for`);
+  #   - a block of code that makes progress can move it (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`);
   #   - it should not be less than `ttl` for an auto extended lock;
   #   - `nil` means no limit (a stuck block of code holds the lock till the end of the process);
   #   - pre-configured in `config['default_max_hold_time']`;
@@ -405,7 +406,7 @@ class RedisQueuedLocks::Client
   #     despite the enabled instrumentation sampling;
   #   - makes sense when instrumentation sampling is enabled;
   # @yield A block of code that should be executed after the successfully acquired lock.
-  # @yieldparam lease [RedisQueuedLocks::LockLease]
+  # @yieldparam lease [RedisQueuedLocks::LockKeeper::LockLease]
   #   The lease of an auto extended block of code (`auto_extend: true`, a block with arguments).
   # @yieldreturn [Any]
   # @return [Hash<Symbol,Any>,yield]
@@ -518,7 +519,7 @@ class RedisQueuedLocks::Client
   # @option priority [Integer,Symbol]
   #   The lock request priority of the series. See `#lock`.
   # @yield A block of code that should be executed under all obtained locks.
-  # @yieldparam lease [RedisQueuedLocks::LockLease]
+  # @yieldparam lease [RedisQueuedLocks::LockKeeper::LockLease]
   #   The lease of an auto extended series (`auto_extend: true`, a block with arguments): one
   #   lease for all locks of the series.
   # @yieldreturn [Any]
