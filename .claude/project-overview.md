@@ -513,7 +513,7 @@ Lock auto extension events and logs are raised by the keeper thread through `Loc
 
 Global base errors per branch (`logic.md#15`): `RedisQueuedLocks::Error < StandardError` (the main
 hierarchy: `LockAlreadyObtainedError`, `LockAcquirementTimeoutError`, `LockAcquirementRetryLimitError`,
-`TimedLockTimeoutError` (`LockTtlTimeBudgetIsSpentError`, `TimedBlockExceedsLockTtlError`, `TimedBlockExceedsMaxHoldTimeError`, `TimedBlockLostLockError`), `ConflictLockObtainError`, `SwarmError`, `ConfigError` (`ConfigNotFoundError`,
+`TimedLockTimeoutError` (`LockTtlTimeBudgetIsSpentError`, `TimedBlockExceedsLockTtlError`, `TimedBlockExceedsMaxHoldTimeError`, `TimedBlockLostLockError`), `ConflictLockObtainError`, `SwarmError` (never raised now: public, kept for compatibility: `rescue` of the applications), `ConfigError` (`ConfigNotFoundError`,
 `ConfigValidationError`)), `RedisQueuedLocks::ArgumentError < ::ArgumentError` (`SwarmArgumentError`),
 `RedisQueuedLocks::Exception < ::Exception` (`@api private`, super exceptional cases only: the internal
 `*IntermediateTimeoutError`s of `Timeout.timeout` for `timeout` and `timed`; like `Timeout::ExitException`,
@@ -553,6 +553,7 @@ the connection (drops the WATCH state, reconnected on the next use) and re-raise
 | Strategies | `default_conflict_strategy` (`:wait_for_lock`), `default_access_strategy` (`:queued`), `default_lock_priority` (0, from -100 to 100 or a priority name), `lock_priorities` (priority names => Integer priorities) |
 | Batching | `lock_release_batch_size` (100), `clear_locks_of__lock_scan_size` / `__queue_scan_size` (300), `key_extraction_batch_size` (500) |
 | Lock index | `lock_index_enabled` (false; client-wide mode, config only), `lock_index_grace_period` (60_000 ms; also a `lock`/`lock!`/`lock_series`/`lock_series!`/`reindex_locks` option) |
+| Lock keeper | `lock_keeper.idle_timeout` (60_000 ms), `lock_keeper.min_idle_wake_up_interval` (100 ms), `lock_keeper.extension_retry_ratio` (3), `lock_keeper.extension_batching_ratio` (10), `lock_keeper.schedule_slot` (10 ms), `lock_keeper.fiber_interruption_timeout` (1_000 ms), `lock_keeper.fiber_interruption_wait_step` (0.001 s): read when the keeper thread starts (see "Lock auto extension") |
 | Identity | `uniq_identifier` (lambda → `Resource.calc_uniq_identity`) |
 | Logging | `logger` (VoidLogger), `log_lock_try`, `log_sampling_enabled`, `log_sampling_percent` (15), `log_sampler` |
 | Instrumentation | `instrumenter` (VoidNotifier), `instr_sampling_enabled`, `instr_sampling_percent` (15), `instr_sampler` |
@@ -577,9 +578,9 @@ lib/redis_queued_locks/
   resource.rb                      keys and identities
   data.rb, errors.rb, utilities.rb, utilities/lock.rb, debugger/, version.rb
 sig/                               RBS mirror of lib/ + sig/vendor stubs (redis_client, active_support, semantic_logger), manifest.yml (dependencies of the signatures)
-spec/                              redis_queued_locks_spec.rb (~8.6k lines, integration: shared examples run with both lock lookup modes), redis_queued_locks/config_spec.rb (Redis-free: `Config#[]` RBS table == `setting` registry), spec_helper.rb, setup_simplecov.rb, support/parallel_runner.rb (the `rake rspec:parallel` runner, not a spec)
+spec/                              redis_queued_locks_spec.rb (~10.5k lines, integration: shared examples run with both lock lookup modes), redis_queued_locks/config_spec.rb (Redis-free: `Config#[]` RBS table == `setting` registry), spec_helper.rb, setup_simplecov.rb, support/parallel_runner.rb (the `rake rspec:parallel` runner, not a spec)
 .github/workflows/                 tests, lint, typecheck-static, typecheck-runtime
-.claude/                           this overview, rules/*.md (path-scoped rules), skills/rql-code-review (review of the changes)
+.claude/                           this overview, rules/*.md (path-scoped rules), skills/rql-code-review (review of the changes), skills/rql-project-full-review (full audit of the repository, on request)
 bin/console, bin/setup             dev scripts
 Rakefile, Steepfile, rbs_collection.yaml, .rubocop.yml, .rubocop.rbs.yml
 ```
