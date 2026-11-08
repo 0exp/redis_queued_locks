@@ -47,6 +47,8 @@ module RedisQueuedLocks::Config::DSL
     end
   end
 
+  # @api private
+  # @since 1.13.0
   module InstanceMethods
     # @return [Hash<String,Blcok>]
     #

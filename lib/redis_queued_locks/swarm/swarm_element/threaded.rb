@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.9.0
-# @version 1.21.1
+# @version 1.22.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   # @since 1.9.0
@@ -341,7 +341,7 @@ class RedisQueuedLocks::Swarm::SwarmElement::Threaded
   #
   # @api private
   # @since 1.9.0
-  # @version 1.21.1
+  # @version 1.22.0
   def swarm_element__terminate
     return if idle? || swarmed__dead?
     sync.synchronize do

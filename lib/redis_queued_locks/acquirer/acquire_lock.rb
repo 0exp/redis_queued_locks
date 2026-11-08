@@ -83,7 +83,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock
     # @option identity [String]
     #   Unique acquire identifier that is also should be unique between processes and pods
     #   on different machines. By default the uniq identity string is
-    #   represented as 10 bytes hexstr.
+    #   a 16-character hex string (`SecureRandom.hex(8)`).
     # @option fail_fast [Boolean]
     #   Should the required lock to be checked before the try and exit immidetly if lock is
     #   already obtained.

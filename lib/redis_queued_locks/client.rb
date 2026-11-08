@@ -254,7 +254,7 @@ class RedisQueuedLocks::Client
   # @option identity [String]
   #   Unique acquire identifier that is also should be unique between processes and pods
   #   on different machines. By default the uniq identity string is
-  #   represented as 10 bytes hexstr.
+  #   a 16-character hex string (`SecureRandom.hex(8)`).
   # @option fail_fast [Boolean]
   #   - Should the required lock to be checked before the try and exit immidietly if lock is
   #   already obtained;
@@ -535,10 +535,10 @@ class RedisQueuedLocks::Client
   #
   # @note See #lock method signature for all other options.
   #
-  # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.16.0
   # @version 1.24.0
+  # rubocop:disable Metrics/MethodLength
   def lock_series(
     *lock_names,
     detailed_result: false,
@@ -626,10 +626,10 @@ class RedisQueuedLocks::Client
 
   # @note See #lock_series method signature.
   #
-  # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.16.0
   # @version 1.24.0
+  # rubocop:disable Metrics/MethodLength
   def lock_series!(
     *lock_names,
     detailed_result: false,
@@ -708,10 +708,10 @@ class RedisQueuedLocks::Client
 
   # @note See #lock method signature.
   #
-  # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.0.0
   # @version 1.24.0
+  # rubocop:disable Metrics/MethodLength
   def lock!(
     lock_name,
     ttl: config['default_lock_ttl'],
@@ -1375,7 +1375,7 @@ class RedisQueuedLocks::Client
   # Extracts lock keys with their info. See #locks(with_info: true) for details.
   #
   # @option scan_size [Integer]
-  # @return [Set<Hash<String,Any>>]
+  # @return [Set<Hash<Symbol,Any>>]
   #
   # @api public
   # @since 1.0.0
@@ -1391,12 +1391,12 @@ class RedisQueuedLocks::Client
   #   consider that during info extration the lock queue may become empty. The queue key extraction
   #   (SCAN) without queue info extraction is doing first.
   #   Possible options:
-  #   - `true` => returns a set of hashes that represents the queue state: <queue:, containing:>
+  #   - `true` => returns a set of hashes that represents the queue state: <queue:, requests:>
   #     - :queue (String) - the lock queue key in Redis database;
   #     - :requests (Array<Hash<String,Any>>) - queue state in redis. see #queue_info for details;
   #   - `false` => returns a set of strings that represents an active queues
   #     at the moment of Redis'es SCAN;
-  # @return [Set<String>,String<Hash<Symbol,Any>>]
+  # @return [Set<String>,Set<Hash<Symbol,Any>>]
   #
   # NOTE: lock queues are found via the keyspace SCAN or via the lock index (ZSCAN, the enabled
   #   `config['lock_index_enabled']`: `scan_size` is the number of locks in one batch);
@@ -1464,7 +1464,7 @@ class RedisQueuedLocks::Client
   # @option instr_sampler [#sampling_happened?,Module<RedisQueuedLocks::Instrument::Sampler>]
   # @option instr_sample_this [Boolean]
   # @return [Hash<Symbol,Boolean|Hash<Symbol,Set<String>>>]
-  #   Format: { ok: true, result: { processed_queus: Set<String> } }
+  #   Format: { ok: true, result: { processed_queues: Set<String> } }
   #
   # @api public
   # @since 1.0.0
