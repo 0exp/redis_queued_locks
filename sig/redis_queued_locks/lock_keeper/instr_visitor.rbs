@@ -1,0 +1,67 @@
+use RedisQueuedLocks as RQL
+
+module RedisQueuedLocks
+  class LockKeeper
+    module InstrVisitor
+      def self.lock_auto_extended: (
+        RQL::instrObj instrumenter,
+        bool instr_sampled,
+        String lock_key,
+        RQL::readWriteMode rw_mode,
+        Integer ext_ttl,
+        Integer rem_ttl,
+        String acq_id,
+        String hst_id,
+        untyped? instrument
+      ) -> void
+
+      def self.lock_auto_extension_failed: (
+        RQL::instrObj instrumenter,
+        bool instr_sampled,
+        String lock_key,
+        RQL::readWriteMode rw_mode,
+        Integer ext_ttl,
+        String acq_id,
+        String hst_id,
+        String error,
+        untyped? instrument
+      ) -> void
+
+      def self.auto_extended_lock_lost: (
+        RQL::instrObj instrumenter,
+        bool instr_sampled,
+        String lock_key,
+        RQL::readWriteMode rw_mode,
+        String acq_id,
+        String hst_id,
+        Integer hold_time,
+        untyped? instrument
+      ) -> void
+
+      def self.lock_hold_limit_reached: (
+        RQL::instrObj instrumenter,
+        bool instr_sampled,
+        String lock_key,
+        RQL::readWriteMode rw_mode,
+        Integer? auto_extend_max_hold_time,
+        String acq_id,
+        String hst_id,
+        untyped? instrument
+      ) -> void
+
+      def self.lock_hold_limit_extended: (
+        RQL::instrObj instrumenter,
+        bool instr_sampled,
+        String lock_key,
+        RQL::readWriteMode rw_mode,
+        Integer hold_time,
+        Integer? rem_hold_time,
+        Integer ext_ttl,
+        Integer rem_ttl,
+        String acq_id,
+        String hst_id,
+        untyped? instrument
+      ) -> void
+    end
+  end
+end

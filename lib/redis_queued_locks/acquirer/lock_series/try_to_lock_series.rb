@@ -73,6 +73,7 @@ module RedisQueuedLocks::Acquirer::LockSeries::TryToLockSeries
   #
   # @api private
   # @since 1.23.0
+  # @version 1.24.0
   # rubocop:disable Metrics/MethodLength
   def try_to_lock_series(
     redis,
@@ -383,9 +384,34 @@ module RedisQueuedLocks::Acquirer::LockSeries::TryToLockSeries
       }
     elsif result == nil || (result.is_a?(::Array) && result.empty?)
       # Step 7.b: some lock state is changed during the acquire race => nothing is obtained
+      #   - a series with reentrant locks: an extension of the lock keeper changes the held locks,
+      #     the attempt is repeated at once (see `LockSeries.lock_series`); a real race is found
+      #     by the repeated attempt;
       acq_process[:lock_processes] = nil
       acq_process[:held_rw_modes] = nil
-      { ok: false, result: :lock_is_acquired_during_acquire_race, lock_name: nil, ready_locks: }
+      reentrant_lock_indexes = lock_processes.each_index.select do |index|
+        lock_processes[index] == :extendable_conflict_work_through ||
+          lock_processes[index] == :conflict_work_through
+      end
+
+      if reentrant_lock_indexes.empty?
+        { ok: false, result: :lock_is_acquired_during_acquire_race, lock_name: nil, ready_locks: }
+      else
+        if log_sampled && log_lock_try
+          reentrant_lock_indexes.each do |index|
+            LogVisitor.exit__reentrant_lock_is_changed(
+              logger, log_sampled, log_lock_try, lock_keys[index],
+              queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
+            )
+          end
+        end
+        {
+          ok: false,
+          result: :reentrant_lock_is_changed_during_extension,
+          lock_name: nil,
+          ready_locks:
+        }
+      end
     else
       # Step 7.c (RW): the read lock can expire during the extension (the registry is not watched):
       #   a transaction can not be rolled back, so the series releases its locks and retries;

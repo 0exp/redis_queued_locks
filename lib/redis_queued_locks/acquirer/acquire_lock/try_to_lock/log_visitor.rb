@@ -2,7 +2,7 @@
 
 # @api private
 # @since 1.7.0
-# @version 1.22.0
+# @version 1.24.0
 # rubocop:disable Metrics/ModuleLength
 module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
   # rubocop:disable Metrics/ClassLength
@@ -787,6 +787,43 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::LogVisitor
         "rw_mode => '#{rw_mode}' " \
         "first_acq_id_in_queue => '#{waiting_acquirer}' " \
         "first_priority_in_queue => #{waiting_priority.inspect}"
+      end rescue nil
+    end
+
+    # @param logger [::Logger,#debug]
+    # @param log_sampled [Boolean]
+    # @param log_lock_try [Boolean]
+    # @param lock_key [String]
+    # @param queue_ttl [Integer]
+    # @param acquirer_id [String]
+    # @param host_id [String]
+    # @param access_strategy [Symbol]
+    # @param rw_mode [Symbol]
+    # @return [void]
+    #
+    # @api private
+    # @since 1.24.0
+    def exit__reentrant_lock_is_changed(
+      logger,
+      log_sampled,
+      log_lock_try,
+      lock_key,
+      queue_ttl,
+      acquirer_id,
+      host_id,
+      access_strategy,
+      rw_mode
+    )
+      return unless log_sampled && log_lock_try
+
+      logger.debug do
+        "[redis_queued_locks.try_lock.exit__reentrant_lock_is_changed] " \
+        "lock_key => '#{lock_key}' " \
+        "queue_ttl => #{queue_ttl} " \
+        "acq_id => '#{acquirer_id}' " \
+        "hst_id => '#{host_id}' " \
+        "acs_strat => '#{access_strategy}' " \
+        "rw_mode => '#{rw_mode}'"
       end rescue nil
     end
 

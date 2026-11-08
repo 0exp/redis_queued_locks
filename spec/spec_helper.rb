@@ -16,6 +16,7 @@ SimpleCov.start unless ENV.key?('RQL_SPEC_LISTING')
 
 require 'rspec/retry'
 require 'pry'
+require 'async' # NOTE: a fiber scheduler for the `timed` blocks of non-blocking fibers
 require 'redis_queued_locks'
 
 # NOTE: (parallel specs) each worker of `rake rspec:parallel` works with its own Redis databases:

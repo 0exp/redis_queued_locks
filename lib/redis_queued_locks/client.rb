@@ -2,7 +2,7 @@
 
 # @api public
 # @since 1.0.0
-# @version 1.23.0
+# @version 1.24.0
 # rubocop:disable Metrics/ClassLength
 class RedisQueuedLocks::Client
   # @return [RedisClient]
@@ -31,6 +31,12 @@ class RedisQueuedLocks::Client
   # @since 1.13.0
   attr_reader :config
 
+  # @return [RedisQueuedLocks::LockKeeper]
+  #
+  # @api private
+  # @since 1.24.0
+  attr_reader :lock_keeper
+
   # @param redis_client [RedisClient]
   #   Redis connection manager, which will be used for the lock acquirerment and distribution.
   #   It should be an instance of RedisClient.
@@ -40,11 +46,12 @@ class RedisQueuedLocks::Client
   #
   # @api public
   # @since 1.0.0
-  # @version 1.13.0
+  # @version 1.24.0
   def initialize(redis_client, &configuration)
     @config = RedisQueuedLocks::Config.new(&configuration)
     @uniq_identity = config['uniq_identifier'].call
     @redis_client = redis_client
+    @lock_keeper = RedisQueuedLocks::LockKeeper.new(self)
     @swarm = RedisQueuedLocks::Swarm.new(self)
     @swarm.swarm! if config['swarm.auto_swarm']
   end
@@ -193,7 +200,49 @@ class RedisQueuedLocks::Client
   #   Time period whe should try to acquire the lock (in seconds). Nil means "without timeout"
   #   (`0` is the same as `nil`).
   # @option timed [Boolean]
-  #   Limit the invocation time period of the passed block of code by the lock's TTL.
+  #   - Limit the invocation time period of the passed block of code by the lock's TTL;
+  #   - with `auto_extend: true`: by `auto_extend_max_hold_time`, and the block of code is
+  #     interrupted when the lock is lost;
+  # @option auto_extend [Boolean]
+  #   - Keep the lock alive while the passed block of code is running: the block of code can run
+  #     longer than the lock's TTL, the crash of the process releases the lock by the TTL (the TTL
+  #     becomes a lease): one background thread per client extends the locks of all such blocks;
+  #   - a lock that is lost during the block of code (the expired lease, `#unlock`) is reported by
+  #     logs and instrumentation and the block of code continues to work (use `timed: true` to
+  #     interrupt it); it is never revived, and the next owner of the lock does not lose it after
+  #     the block of code;
+  #   - has no effect without a block of code;
+  #   - the block of code gets its lease (`RedisQueuedLocks::LockKeeper::LockLease`) when it takes
+  #     an argument:
+  #     `#hold_for` moves the hold limit while the block makes progress, `#lost?`,
+  #     `#hold_time_left`;
+  #   - see README "Lock auto extension" for the limits of a background thread;
+  #   - pre-configured in `config['is_auto_extended_by_default']`;
+  # @option auto_extend_ttl [Integer,NilClass]
+  #   - How long the lock lives after each auto extension (in milliseconds; it is not a sum: the
+  #     lock lives this time from the moment of the extension): the lifetime of the lock after a
+  #     crash and the tolerance of the extension to stalls of the process (2/3 of this value);
+  #     extensions are made each `auto_extend_ttl / 3`;
+  #   - `nil` means the lock's TTL (`ttl`);
+  #   - pre-configured in `config['default_auto_extend_ttl']`;
+  # @option auto_extend_max_hold_time [Integer,NilClass]
+  #   - The protection of an auto extended lock against blocks of code that never finish: a block
+  #     that hangs forever (an endless loop, a call without a timeout) or a block abandoned midway
+  #     (a fiber that is never resumed: its `ensure` never runs and the lock is not released); such
+  #     a block looks like a running one, and without a limit its lock is extended till the end of
+  #     the process;
+  #   - the limit of the auto extension (in milliseconds, from the start of the successful lock
+  #     acquirement attempt): the lock expires by this time and the block of code continues to
+  #     work (use `timed: true` to interrupt it);
+  #   - !IMPORTANT: configure it yourself, deliberately, for your logic: `nil` or a period that is
+  #     longer than your longest block of code (a longer block of code loses its lock at the
+  #     limit); the default of `config['default_auto_extend_max_hold_time']` (1 hour) is only a
+  #     fallback;
+  #   - a block of code that makes progress can move it
+  #     (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`);
+  #   - it should not be less than `ttl` for an auto extended lock;
+  #   - `nil` means no limit (a stuck block of code holds the lock till the end of the process);
+  #   - pre-configured in `config['default_auto_extend_max_hold_time']`;
   # @option retry_count [Integer,NilClass]
   #   How many times we should try to acquire a lock. Nil means "infinite retries".
   # @option retry_delay [Integer]
@@ -359,14 +408,16 @@ class RedisQueuedLocks::Client
   #     despite the enabled instrumentation sampling;
   #   - makes sense when instrumentation sampling is enabled;
   # @yield A block of code that should be executed after the successfully acquired lock.
-  #   @yieldreturn [Any]
+  # @yieldparam lease [RedisQueuedLocks::LockKeeper::LockLease]
+  #   The lease of an auto extended block of code (`auto_extend: true`, a block with arguments).
+  # @yieldreturn [Any]
   # @return [Hash<Symbol,Any>,yield]
   #   - Format: { ok: true/false, result: Symbol/Hash }.
   #   - If block is given the result of block's yield will be returned.
   #
   # @api public
   # @since 1.0.0
-  # @version 1.23.0
+  # @version 1.24.0
   # rubocop:disable Metrics/MethodLength
   def lock(
     lock_name,
@@ -375,6 +426,9 @@ class RedisQueuedLocks::Client
     lock_index_grace_period: config['lock_index_grace_period'],
     timeout: config['try_to_lock_timeout'],
     timed: config['is_timed_by_default'],
+    auto_extend: config['is_auto_extended_by_default'],
+    auto_extend_ttl: config['default_auto_extend_ttl'],
+    auto_extend_max_hold_time: config['default_auto_extend_max_hold_time'],
     retry_count: config['retry_count'],
     retry_delay: config['retry_delay'],
     retry_jitter: config['retry_jitter'],
@@ -414,6 +468,10 @@ class RedisQueuedLocks::Client
       lock_index_grace_period:,
       timeout:,
       timed:,
+      auto_extend:,
+      auto_extend_ttl:,
+      auto_extend_max_hold_time:,
+      lock_keeper:,
       retry_count:,
       retry_delay:,
       retry_jitter:,
@@ -463,6 +521,9 @@ class RedisQueuedLocks::Client
   # @option priority [Integer,Symbol]
   #   The lock request priority of the series. See `#lock`.
   # @yield A block of code that should be executed under all obtained locks.
+  # @yieldparam lease [RedisQueuedLocks::LockKeeper::LockLease]
+  #   The lease of an auto extended series (`auto_extend: true`, a block with arguments): one
+  #   lease for all locks of the series.
   # @yieldreturn [Any]
   # @return [Hash<Symbol,Any>,yield]
   #   - the result of the block when the series is obtained with a block;
@@ -477,7 +538,7 @@ class RedisQueuedLocks::Client
   # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.16.0
-  # @version 1.23.0
+  # @version 1.24.0
   def lock_series(
     *lock_names,
     detailed_result: false,
@@ -486,6 +547,9 @@ class RedisQueuedLocks::Client
     lock_index_grace_period: config['lock_index_grace_period'],
     timeout: config['try_to_lock_timeout'],
     timed: config['is_timed_by_default'],
+    auto_extend: config['is_auto_extended_by_default'],
+    auto_extend_ttl: config['default_auto_extend_ttl'],
+    auto_extend_max_hold_time: config['default_auto_extend_max_hold_time'],
     retry_count: config['retry_count'],
     retry_delay: config['retry_delay'],
     retry_jitter: config['retry_jitter'],
@@ -526,6 +590,10 @@ class RedisQueuedLocks::Client
       lock_index_grace_period:,
       timeout:,
       timed:,
+      auto_extend:,
+      auto_extend_ttl:,
+      auto_extend_max_hold_time:,
+      lock_keeper:,
       retry_count:,
       retry_delay:,
       retry_jitter:,
@@ -561,7 +629,7 @@ class RedisQueuedLocks::Client
   # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.16.0
-  # @version 1.23.0
+  # @version 1.24.0
   def lock_series!(
     *lock_names,
     detailed_result: false,
@@ -570,6 +638,9 @@ class RedisQueuedLocks::Client
     lock_index_grace_period: config['lock_index_grace_period'],
     timeout: config['try_to_lock_timeout'],
     timed: config['is_timed_by_default'],
+    auto_extend: config['is_auto_extended_by_default'],
+    auto_extend_ttl: config['default_auto_extend_ttl'],
+    auto_extend_max_hold_time: config['default_auto_extend_max_hold_time'],
     retry_count: config['retry_count'],
     retry_delay: config['retry_delay'],
     retry_jitter: config['retry_jitter'],
@@ -603,6 +674,9 @@ class RedisQueuedLocks::Client
       lock_index_grace_period:,
       timeout:,
       timed:,
+      auto_extend:,
+      auto_extend_ttl:,
+      auto_extend_max_hold_time:,
       retry_count:,
       retry_delay:,
       retry_jitter:,
@@ -637,7 +711,7 @@ class RedisQueuedLocks::Client
   # rubocop:disable Metrics/MethodLength
   # @api public
   # @since 1.0.0
-  # @version 1.23.0
+  # @version 1.24.0
   def lock!(
     lock_name,
     ttl: config['default_lock_ttl'],
@@ -645,6 +719,9 @@ class RedisQueuedLocks::Client
     lock_index_grace_period: config['lock_index_grace_period'],
     timeout: config['try_to_lock_timeout'],
     timed: config['is_timed_by_default'],
+    auto_extend: config['is_auto_extended_by_default'],
+    auto_extend_ttl: config['default_auto_extend_ttl'],
+    auto_extend_max_hold_time: config['default_auto_extend_max_hold_time'],
     retry_count: config['retry_count'],
     retry_delay: config['retry_delay'],
     retry_jitter: config['retry_jitter'],
@@ -677,6 +754,9 @@ class RedisQueuedLocks::Client
       lock_index_grace_period:,
       timeout:,
       timed:,
+      auto_extend:,
+      auto_extend_ttl:,
+      auto_extend_max_hold_time:,
       retry_count:,
       retry_delay:,
       retry_jitter:,

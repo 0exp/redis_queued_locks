@@ -171,6 +171,17 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   # @since 1.22.0
   MAX_DEAD_REQUEST_REMOVALS = 5
 
+  # How many times an attempt that is aborted by a change of the already held lock is repeated at
+  # once: an extension of the lock keeper changes the held lock (its ttl) during a reentrant
+  # attempt. It is not a failed acquirement: the lock is held, the next attempt sees the actual
+  # lock state. The limit protects from a key that is changed without pauses.
+  #
+  # @return [Integer]
+  #
+  # @api private
+  # @since 1.24.0
+  MAX_REENTRANT_EXTENSION_RETRIES = 5
+
   # @param redis [RedisClient]
   # @param logger [::Logger,#debug]
   # @param log_lock_try [Boolean]
@@ -208,7 +219,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
   #
   # @api private
   # @since 1.0.0
-  # @version 1.22.0
+  # @version 1.24.0
   # rubocop:disable Metrics/MethodLength
   def try_to_lock(
     redis,
@@ -657,8 +668,13 @@ module RedisQueuedLocks::Acquirer::AcquireLock::TryToLock
           { ok: false, result: :unknown }
         end
       elsif result == nil || (result.is_a?(::Array) && result.empty?)
-        # NOTE: the lock key was changed durign an SPC logic execution
-        { ok: false, result: :lock_is_acquired_during_acquire_race }
+        # NOTE: the lock key was changed durign an SPC logic execution (an extension of the lock
+        #   keeper, for example): the attempt is repeated at once (see `AcquireLock`);
+        LogVisitor.exit__reentrant_lock_is_changed(
+          logger, log_sampled, log_lock_try, lock_key,
+          queue_ttl, acquirer_id, host_id, access_strategy, rw_mode
+        )
+        { ok: false, result: :reentrant_lock_is_changed_during_extension }
       else
         # NOTE: unknown behaviour :thinking:. this part is not reachable at the moment.
         { ok: false, result: :unknown }

@@ -9,6 +9,8 @@ module RedisQueuedLocks
       extend RQL::Acquirer::AcquireLock::YieldExpire
       extend RQL::Acquirer::LockSeries::TryToLockSeries
 
+      MAX_REENTRANT_EXTENSION_RETRIES: Integer
+
       type lockSeriesResult = ({ ok: bool, result: untyped }|untyped)
       def self.lock_series: (
         RC::client redis,
@@ -24,6 +26,10 @@ module RedisQueuedLocks
         lock_index_grace_period: Integer,
         timeout: Integer?,
         timed: bool,
+        auto_extend: bool,
+        auto_extend_ttl: Integer?,
+        auto_extend_max_hold_time: Integer?,
+        lock_keeper: RQL::LockKeeper,
         retry_count: Integer?,
         retry_delay: Integer,
         retry_jitter: Integer,
@@ -37,7 +43,8 @@ module RedisQueuedLocks
         logger: RQL::loggerObj,
         log_lock_try: bool,
         conflict_strategy: RQL::conflictStrategy,
-        rw_mode: Symbol, # NOTE: (rbs test) validated at runtime (Step 0.1 (RW)): any Symbol is accepted here
+        # NOTE: (rbs test) validated at runtime (Step 0.1 (RW)): any Symbol is accepted here
+        rw_mode: Symbol,
         access_strategy: RQL::accessStrategy,
         priority: RQL::lockPriority,
         lock_priorities: Hash[Symbol, Integer],
@@ -58,6 +65,10 @@ module RedisQueuedLocks
         bool timed,
         Integer|Float ttl_shift,
         Integer ttl,
+        Integer? auto_extend_max_hold_time,
+        RQL::LockKeeper lock_keeper,
+        RQL::LockKeeper::Lease? lock_lease,
+        RQL::LockKeeper::LockLease? lease_handle,
         Hash[String|Symbol,untyped]? meta
       ) ?{ (?) -> untyped } -> untyped?
 

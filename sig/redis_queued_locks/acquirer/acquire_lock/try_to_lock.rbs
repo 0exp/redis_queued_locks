@@ -17,6 +17,7 @@ module RedisQueuedLocks
         QUEUE_LOCK_INDEX_REPLIES: Integer
         READ_LOCK_EXTENSION_COMMANDS: Integer
         MAX_DEAD_REQUEST_REMOVALS: Integer
+        MAX_REENTRANT_EXTENSION_RETRIES: Integer
 
         # { ok: bool, result: Symbol }
         # { ok: bool, result: Symbol }

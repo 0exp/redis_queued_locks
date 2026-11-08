@@ -18,7 +18,7 @@
 #
 # @api private
 # @since 1.23.0
-# @version 1.23.0
+# @version 1.24.0
 # rubocop:disable Metrics/ModuleLength
 # rubocop:disable Metrics/ClassLength
 # rubocop:disable Metrics/BlockNesting
@@ -36,6 +36,13 @@ module RedisQueuedLocks::Acquirer::LockSeries
   extend RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @since 1.23.0
   extend TryToLockSeries
+
+  # @return [Integer] See `RedisQueuedLocks::Acquirer::AcquireLock::TryToLock`.
+  #
+  # @api private
+  # @since 1.24.0
+  MAX_REENTRANT_EXTENSION_RETRIES =
+    RedisQueuedLocks::Acquirer::AcquireLock::TryToLock::MAX_REENTRANT_EXTENSION_RETRIES
 
   class << self
     # @param redis [RedisClient]
@@ -65,6 +72,15 @@ module RedisQueuedLocks::Acquirer::LockSeries
     #   timeout" (`0` is the same as `nil`: `Timeout.timeout(0)` sets no timeout).
     # @option timed [Boolean]
     #   Limit the invocation time period of the passed block of code by the `ttl`.
+    # @option auto_extend [Boolean]
+    #   Keep the locks alive while the passed block of code is running: see `Client#lock`.
+    # @option auto_extend_ttl [Integer,NilClass]
+    #   How long the lock lives after an auto extension (in milliseconds), `nil`: the `ttl`.
+    # @option auto_extend_max_hold_time [Integer,NilClass]
+    #   The limit of the auto extension (in milliseconds), `nil`: no limit; the block of code can
+    #   move it (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`).
+    # @option lock_keeper [RedisQueuedLocks::LockKeeper]
+    #   The lock keeper of the client.
     # @option retry_count [Integer,NilClass]
     #   How many times we should try to acquire the whole series. Nil means "infinite retries".
     # @option retry_delay [Integer]
@@ -118,6 +134,8 @@ module RedisQueuedLocks::Acquirer::LockSeries
     # @option instr_sample_this [Boolean]
     #   See `AcquireLock.acquire_lock`.
     # @yield A block of code that should be executed under all obtained locks.
+    # @yieldparam lease [RedisQueuedLocks::LockKeeper::LockLease]
+    #   The lease of an auto extended series (a block with arguments): see `Client#lock_series`.
     # @yieldreturn [Any]
     # @return [Hash<Symbol,Any>,yield]
     #  - Format: { ok: true/false, result: Any };
@@ -126,7 +144,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
     #
     # @api private
     # @since 1.23.0
-    # @version 1.23.1
+    # @version 1.24.0
     # rubocop:disable Metrics/MethodLength
     def lock_series(
       redis,
@@ -142,6 +160,10 @@ module RedisQueuedLocks::Acquirer::LockSeries
       lock_index_grace_period:,
       timeout:,
       timed:,
+      auto_extend:,
+      auto_extend_ttl:,
+      auto_extend_max_hold_time:,
+      lock_keeper:,
       retry_count:,
       retry_delay:,
       retry_jitter:,
@@ -243,6 +265,32 @@ module RedisQueuedLocks::Acquirer::LockSeries
           RedisQueuedLocks::ArgumentError,
           "`:lock_index_grace_period` argument should be a non-negative Integer, " \
           "got #{lock_index_grace_period.inspect}."
+        )
+      end
+
+      # Step 0.1: prevent :auto_extend_ttl and :auto_extend_max_hold_time incompatibilities (the
+      #   same ranges as their config keys); the hold limit shorter than the lock ttl can not be
+      #   reached: the lock is obtained for a longer time;
+      if auto_extend_ttl != nil && (!auto_extend_ttl.is_a?(::Integer) || auto_extend_ttl <= 0)
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:auto_extend_ttl` argument should be nil or a positive Integer, " \
+          "got #{auto_extend_ttl.inspect}."
+        )
+      end
+      if auto_extend_max_hold_time != nil &&
+         (!auto_extend_max_hold_time.is_a?(::Integer) || auto_extend_max_hold_time <= 0)
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:auto_extend_max_hold_time` argument should be nil or a positive Integer, " \
+          "got #{auto_extend_max_hold_time.inspect}."
+        )
+      end
+      if auto_extend && block_given? && auto_extend_max_hold_time && auto_extend_max_hold_time < ttl
+        raise(
+          RedisQueuedLocks::ArgumentError,
+          "`:auto_extend_max_hold_time` argument of an auto extended lock should not be less " \
+          "than `:ttl`, got #{auto_extend_max_hold_time.inspect} (ttl: #{ttl.inspect})."
         )
       end
 
@@ -350,6 +398,7 @@ module RedisQueuedLocks::Acquirer::LockSeries
       acq_process = {
         should_try: true,
         tries: 0,
+        reentrant_retries: 0,
         acquired: false,
         result: nil,
         failed_lock_name: nil,
@@ -369,11 +418,18 @@ module RedisQueuedLocks::Acquirer::LockSeries
       reported_ready_locks = Array.new(lock_names.size, false)
       # @type var yield_result: untyped
       yield_result = nil
+      # @type var lock_lease: RedisQueuedLocks::LockKeeper::Lease?
+      lock_lease = nil
+      # @type var lease_handle: RedisQueuedLocks::LockKeeper::LockLease?
+      lease_handle = nil
 
       LogVisitor.start_lock_series_obtaining(
         logger, log_sampled, lock_keys,
         queue_ttl, acquirer_id, host_id, access_strategy, rw_mode, priority
       )
+
+      # Step 1.1: (auto extension) the lock keeper should be ready before the locks are obtained
+      lock_keeper.start if auto_extend && block_given?
 
       # Step 2: try to obtain the series with timeout
       # NOTE: the acquirement start time is defined out of the timeout block: the failed
@@ -473,6 +529,14 @@ module RedisQueuedLocks::Acquirer::LockSeries
                 end
               end
 
+              # Step 2.1.b: a reentrant lock of the series is changed during the attempt: the
+              #   same as in `AcquireLock.acquire_lock` (the next attempt is made at once);
+              if attempt[:result] == :reentrant_lock_is_changed_during_extension &&
+                 acq_process[:reentrant_retries] < MAX_REENTRANT_EXTENSION_RETRIES
+                acq_process[:reentrant_retries] += 1
+                next
+              end
+
               unless attempt[:ok]
                 # Step 2.2: failed to acquire. anylize each case and act in accordance
                 case attempt[:result]
@@ -550,8 +614,42 @@ module RedisQueuedLocks::Acquirer::LockSeries
             RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
           ).ceil(2)
 
+          # NOTE: (auto extension) one lease for all locks of the series (reentrant locks too: the
+          #   block of code needs them, an extension of a lock with a lease of the outer logic is
+          #   harmless); inside the `ensure` scope of the release: the lease of an interrupted
+          #   method is dropped by the keeper (the released locks are not found);
+          if auto_extend && block_given?
+            series_lease = lock_keeper.keep(
+              lock_keys,
+              lock_readers_keys,
+              read_lock_keys,
+              acq_process[:held_rw_modes],
+              lock_names,
+              acquirer_id,
+              host_id,
+              acq_process[:try_start_time],
+              ttl,
+              auto_extend_ttl || ttl,
+              auto_extend_max_hold_time,
+              lock_index_enabled,
+              lock_index_grace_period,
+              logger,
+              log_sampled,
+              instrumenter,
+              instr_sampled,
+              instrument
+            )
+            lock_lease = series_lease
+            # NOTE: the block of code gets the lease of the series when it takes an argument;
+            if block&.arity != 0
+              lease_handle =
+                RedisQueuedLocks::LockKeeper::LockLease.new(lock_keeper, series_lease, redis)
+            end
+          end
+
           yield_result = yield_lock_series(
-            lock_keys, acquirer_id, host_id, timed, ttl_shift, ttl, meta, &block
+            lock_keys, acquirer_id, host_id, timed, ttl_shift, ttl, auto_extend_max_hold_time,
+            lock_keeper, lock_lease, lease_handle, meta, &block
           )
         end
       ensure
@@ -563,6 +661,10 @@ module RedisQueuedLocks::Acquirer::LockSeries
             log_sampled
           )
         elsif block_given?
+          # NOTE: (auto extension) the lock keeper can not find the released locks and report them
+          #   as the lost ones;
+          lock_keeper.forget(lock_lease) if lock_lease
+
           # Step 3.a.X: release the locks of the series after the block of code (on any failure too)
           spent_time = ((clock_gettime - acq_process[:acq_end_time]) / 1_000.0).ceil
           decreased_ttl = ttl - spent_time - RedisQueuedLocks::Resource::REDIS_TIMESHIFT_ERROR
@@ -702,27 +804,54 @@ module RedisQueuedLocks::Acquirer::LockSeries
     # @param timed [Boolean]
     # @param ttl_shift [Numeric] In milliseconds.
     # @param ttl [Integer] In milliseconds.
+    # @param auto_extend_max_hold_time [Integer,NilClass] In milliseconds.
+    # @param lock_keeper [RedisQueuedLocks::LockKeeper]
+    # @param lock_lease [RedisQueuedLocks::LockKeeper::Lease,NilClass]
+    # @param lease_handle [RedisQueuedLocks::LockKeeper::LockLease,NilClass]
+    #   The argument of the block of code.
     # @param meta [NilClass,Hash<String|Symbol,Any>]
     # @yield Custom logic that should be invoked under the obtained locks.
+    # @yieldparam lease [RedisQueuedLocks::LockKeeper::LockLease]
+    #   The lease of an auto extended block of code (only for a block with arguments).
     # @yieldreturn [Any]
     # @return [Any,NilClass] nil is returned when no block parametr is provided.
     #
     # @api private
     # @since 1.23.0
-    def yield_lock_series(lock_keys, acquirer_id, host_id, timed, ttl_shift, ttl, meta, &block)
+    # @version 1.24.0
+    def yield_lock_series(
+      lock_keys,
+      acquirer_id,
+      host_id,
+      timed,
+      ttl_shift,
+      ttl,
+      auto_extend_max_hold_time,
+      lock_keeper,
+      lock_lease,
+      lease_handle,
+      meta,
+      &block
+    )
       return unless block_given?
-      return yield unless timed
 
-      # NOTE: (steep) see `YieldExpire#yield_expire`: `::Integer - ::Integer|::Float`
-      # steep:ignore:start
-      # @type var timeout: Float
-      timeout = ((ttl - ttl_shift) / 1_000.0).yield_self do |time|
-        # NOTE: time in <seconds> cuz Ruby's Timeout requires <seconds>
-        (time < 0) ? 0.0 : time
+      unless timed
+        return lease_handle ? yield(lease_handle) : yield
       end
-      # steep:ignore:end
 
-      yield_with_timeout(timeout, lock_keys.join(', '), ttl, acquirer_id, host_id, meta, &block)
+      yield_with_timeout(
+        timed_block_budget(lock_lease ? auto_extend_max_hold_time : ttl, ttl_shift),
+        lock_keys.join(', '),
+        ttl,
+        auto_extend_max_hold_time,
+        lock_keeper,
+        lock_lease,
+        lease_handle,
+        acquirer_id,
+        host_id,
+        meta,
+        &block
+      )
     end
 
     # Releases the series: an interruption of the release itself (`Timeout.timeout` of the outer
