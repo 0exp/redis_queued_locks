@@ -74,7 +74,7 @@ Provides flexible invocation flow, parametrized limits (lock request ttl, lock t
 - [Lock Request Prioritization](#lock-request-prioritization)
 - [Read/Write Locks](#readwrite-locks)
 - [Lock Auto Extension](#lock-auto-extension)
-  - [Manual lock auto-extension from the running block of code (the lease of the block of code)](#manual-lock-auto-extension-from-the-running-block-of-code-the-lease-of-the-block-of-code)
+  - [Manual lock auto-extension from the running block of code](#manual-lock-auto-extension-from-the-running-block-of-code-the-lease-of-the-block-of-code)
 - [Deadlocks and Reentrant locks](#deadlocks-and-reentrant-locks)
 - [Logging](#logging)
   - [Logging Configuration](#logging-configuration)
