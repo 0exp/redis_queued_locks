@@ -3226,8 +3226,9 @@ There are no extensions at all, but the swarm has to run in your processes.
 "[redis_queued_locks.decrease_lock_series]" # (logs "lock_keys", "decreased_ttl", "queue_ttl", "acq_id", "hst_id", "acs_strat", "rw_mode", "priority");
 ```
 
-- lock auto extension logs (raised by the lock keeper thread, see [Lock Auto Extension](#lock-auto-extension); one log per lock;
-  `rw_mode` is the mode of the held lock):
+- lock auto extension logs (see [Lock Auto Extension](#lock-auto-extension); one log per lock; `rw_mode` is the mode of the held lock;
+  raised by the lock keeper thread, except `lock_hold_limit_extended`: it is raised from the thread that called `lease.hold_for`, as well as
+  `auto_extended_lock_lost` of a lock that `lease.hold_for` finds lost):
 
 ```ruby
 "[redis_queued_locks.lock_auto_extended]" # (logs "lock_key", "rw_mode", "ext_ttl", "rem_ttl", "acq_id", "hst_id");
@@ -3708,7 +3709,7 @@ Detalized event semantics and payload structure:
 ##### `"redis_queued_locks.auto_extended_lock_lost"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
 - an event signalizes that the lock of the running block of code is lost: it is expired or released, or it is obtained by another acquirer;
-- raised by the lock keeper thread, one event per lock;
+- raised by the lock keeper thread (or from the thread that called `#hold_for`, when `#hold_for` finds the lost lock), one event per lock;
 - payload:
   - `:lock_key` - `string` - lock key (`rql:lock:<lock_name>`);
   - `:rw_mode` - `symbol` - the mode of the held lock (`:write` or `:read`);
@@ -3720,12 +3721,13 @@ Detalized event semantics and payload structure:
 
 ##### `"redis_queued_locks.lock_hold_limit_reached"`
 - <sup>\[[back to the list](#instrumentation-events)\]</sup>
-- an event signalizes that the block of code reached `max_hold_time`: the lock is not extended anymore;
+- an event signalizes that the block of code reached its hold limit (`max_hold_time` or the limit moved by `lease.hold_for`): the lock is not extended anymore;
 - raised by the lock keeper thread, one event per lock;
 - payload:
   - `:lock_key` - `string` - lock key (`rql:lock:<lock_name>`);
   - `:rw_mode` - `symbol` - the mode of the held lock (`:write` or `:read`);
-  - `:max_hold_time` - `integer`/`milliseconds` - the limit;
+  - `:max_hold_time` - `integer`/`milliseconds` - the `max_hold_time` option of the block of code (the initial limit:
+    it stays the same when the limit is moved by `lease.hold_for`);
   - `:acq_id` - `string` - lock acquirer identifier;
   - `:hst_id` - `string` - lock's host identifier;
   - `:at` - `float`/`epoch` - the time when the event was reported;
