@@ -72,7 +72,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @param auto_extend [Boolean] Keep the lock alive while the block of code is running.
   # @param auto_extend_ttl [Integer,NilClass]
   #   How long the lock lives after an auto extension (in ms), `nil`: the lock ttl.
-  # @param max_hold_time [Integer,NilClass] The auto extension limit (in ms), `nil`: no limit.
+  # @param auto_extend_max_hold_time [Integer,NilClass]
+  #   The auto extension limit (in ms), `nil`: no limit.
   # @param try_start_time [Integer] The start of the successful attempt (`clock_gettime`).
   # @param instrumenter [#notify] See `RedisQueuedLocks::LockKeeper`.
   # @param instrument [NilClass,Any] See `RedisQueuedLocks::LockKeeper`.
@@ -111,7 +112,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
     lock_keeper,
     auto_extend,
     auto_extend_ttl,
-    max_hold_time,
+    auto_extend_max_hold_time,
     try_start_time,
     instrumenter,
     instrument,
@@ -138,7 +139,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
           try_start_time,
           ttl,
           auto_extend_ttl || ttl,
-          max_hold_time,
+          auto_extend_max_hold_time,
           lock_index_enabled,
           lock_index_grace_period,
           logger,
@@ -156,10 +157,10 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
 
       if timed
         yield_with_timeout(
-          timed_block_budget(lock_lease ? max_hold_time : ttl, ttl_shift),
+          timed_block_budget(lock_lease ? auto_extend_max_hold_time : ttl, ttl_shift),
           lock_key,
           ttl,
-          max_hold_time,
+          auto_extend_max_hold_time,
           lock_keeper,
           lock_lease,
           lease_handle,
@@ -254,7 +255,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   # @param timeout [Float,NilClass] `nil`: no time limit (an auto extended lock without a limit).
   # @param lock_key [String]
   # @param lock_ttl [Integer]
-  # @param max_hold_time [Integer,NilClass]
+  # @param auto_extend_max_hold_time [Integer,NilClass]
   # @param lock_keeper [RedisQueuedLocks::LockKeeper]
   # @param lock_lease [RedisQueuedLocks::LockKeeper::Lease,NilClass]
   # @param lease_handle [RedisQueuedLocks::LockKeeper::LockLease,NilClass]
@@ -279,7 +280,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
     timeout,
     lock_key,
     lock_ttl,
-    max_hold_time,
+    auto_extend_max_hold_time,
     lock_keeper,
     lock_lease,
     lease_handle,
@@ -339,7 +340,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
       #   keeper: it is taken here, so the next `#forget` calls do not wait for it;
       lock_keeper.forget(lock_lease, error) if lock_lease
       raise_timed_block_error(
-        lock_key, lock_ttl, max_hold_time, lock_lease, acquirer_id, host_id, meta
+        lock_key, lock_ttl, auto_extend_max_hold_time, lock_lease, acquirer_id, host_id, meta
       )
     end
   end
@@ -347,7 +348,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
 
   # @param lock_key [String]
   # @param lock_ttl [Integer]
-  # @param max_hold_time [Integer,NilClass]
+  # @param auto_extend_max_hold_time [Integer,NilClass]
   # @param lock_lease [RedisQueuedLocks::LockKeeper::Lease,NilClass]
   # @param acquirer_id [String]
   # @param host_id [String]
@@ -363,7 +364,7 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
   def raise_timed_block_error(
     lock_key,
     lock_ttl,
-    max_hold_time,
+    auto_extend_max_hold_time,
     lock_lease,
     acquirer_id,
     host_id,
@@ -384,7 +385,8 @@ module RedisQueuedLocks::Acquirer::AcquireLock::YieldExpire
       raise(
         RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError,
         "Passed <timed> block of code exceeded the max hold time of the lock " \
-        "(#{max_hold_time}#{', moved by the block of code' if lock_lease.hold_moved?}) " \
+        "(#{auto_extend_max_hold_time}" \
+        "#{', moved by the block of code' if lock_lease.hold_moved?}) " \
         "#{lock_details}"
       )
     else

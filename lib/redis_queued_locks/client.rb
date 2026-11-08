@@ -201,8 +201,8 @@ class RedisQueuedLocks::Client
   #   (`0` is the same as `nil`).
   # @option timed [Boolean]
   #   - Limit the invocation time period of the passed block of code by the lock's TTL;
-  #   - with `auto_extend: true`: by `max_hold_time`, and the block of code is interrupted when
-  #     the lock is lost;
+  #   - with `auto_extend: true`: by `auto_extend_max_hold_time`, and the block of code is
+  #     interrupted when the lock is lost;
   # @option auto_extend [Boolean]
   #   - Keep the lock alive while the passed block of code is running: the block of code can run
   #     longer than the lock's TTL, the crash of the process releases the lock by the TTL (the TTL
@@ -225,7 +225,7 @@ class RedisQueuedLocks::Client
   #     extensions are made each `auto_extend_ttl / 3`;
   #   - `nil` means the lock's TTL (`ttl`);
   #   - pre-configured in `config['default_auto_extend_ttl']`;
-  # @option max_hold_time [Integer,NilClass]
+  # @option auto_extend_max_hold_time [Integer,NilClass]
   #   - The protection of an auto extended lock against blocks of code that never finish: a block
   #     that hangs forever (an endless loop, a call without a timeout) or a block abandoned midway
   #     (a fiber that is never resumed: its `ensure` never runs and the lock is not released); such
@@ -236,12 +236,13 @@ class RedisQueuedLocks::Client
   #     work (use `timed: true` to interrupt it);
   #   - !IMPORTANT: configure it yourself, deliberately, for your logic: `nil` or a period that is
   #     longer than your longest block of code (a longer block of code loses its lock at the
-  #     limit); the default of `config['default_max_hold_time']` (1 hour) is only a fallback;
+  #     limit); the default of `config['default_auto_extend_max_hold_time']` (1 hour) is only a
+  #     fallback;
   #   - a block of code that makes progress can move it
   #     (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`);
   #   - it should not be less than `ttl` for an auto extended lock;
   #   - `nil` means no limit (a stuck block of code holds the lock till the end of the process);
-  #   - pre-configured in `config['default_max_hold_time']`;
+  #   - pre-configured in `config['default_auto_extend_max_hold_time']`;
   # @option retry_count [Integer,NilClass]
   #   How many times we should try to acquire a lock. Nil means "infinite retries".
   # @option retry_delay [Integer]
@@ -427,7 +428,7 @@ class RedisQueuedLocks::Client
     timed: config['is_timed_by_default'],
     auto_extend: config['is_auto_extended_by_default'],
     auto_extend_ttl: config['default_auto_extend_ttl'],
-    max_hold_time: config['default_max_hold_time'],
+    auto_extend_max_hold_time: config['default_auto_extend_max_hold_time'],
     retry_count: config['retry_count'],
     retry_delay: config['retry_delay'],
     retry_jitter: config['retry_jitter'],
@@ -469,7 +470,7 @@ class RedisQueuedLocks::Client
       timed:,
       auto_extend:,
       auto_extend_ttl:,
-      max_hold_time:,
+      auto_extend_max_hold_time:,
       lock_keeper:,
       retry_count:,
       retry_delay:,
@@ -548,7 +549,7 @@ class RedisQueuedLocks::Client
     timed: config['is_timed_by_default'],
     auto_extend: config['is_auto_extended_by_default'],
     auto_extend_ttl: config['default_auto_extend_ttl'],
-    max_hold_time: config['default_max_hold_time'],
+    auto_extend_max_hold_time: config['default_auto_extend_max_hold_time'],
     retry_count: config['retry_count'],
     retry_delay: config['retry_delay'],
     retry_jitter: config['retry_jitter'],
@@ -591,7 +592,7 @@ class RedisQueuedLocks::Client
       timed:,
       auto_extend:,
       auto_extend_ttl:,
-      max_hold_time:,
+      auto_extend_max_hold_time:,
       lock_keeper:,
       retry_count:,
       retry_delay:,
@@ -639,7 +640,7 @@ class RedisQueuedLocks::Client
     timed: config['is_timed_by_default'],
     auto_extend: config['is_auto_extended_by_default'],
     auto_extend_ttl: config['default_auto_extend_ttl'],
-    max_hold_time: config['default_max_hold_time'],
+    auto_extend_max_hold_time: config['default_auto_extend_max_hold_time'],
     retry_count: config['retry_count'],
     retry_delay: config['retry_delay'],
     retry_jitter: config['retry_jitter'],
@@ -675,7 +676,7 @@ class RedisQueuedLocks::Client
       timed:,
       auto_extend:,
       auto_extend_ttl:,
-      max_hold_time:,
+      auto_extend_max_hold_time:,
       retry_count:,
       retry_delay:,
       retry_jitter:,
@@ -720,7 +721,7 @@ class RedisQueuedLocks::Client
     timed: config['is_timed_by_default'],
     auto_extend: config['is_auto_extended_by_default'],
     auto_extend_ttl: config['default_auto_extend_ttl'],
-    max_hold_time: config['default_max_hold_time'],
+    auto_extend_max_hold_time: config['default_auto_extend_max_hold_time'],
     retry_count: config['retry_count'],
     retry_delay: config['retry_delay'],
     retry_jitter: config['retry_jitter'],
@@ -755,7 +756,7 @@ class RedisQueuedLocks::Client
       timed:,
       auto_extend:,
       auto_extend_ttl:,
-      max_hold_time:,
+      auto_extend_max_hold_time:,
       retry_count:,
       retry_delay:,
       retry_jitter:,

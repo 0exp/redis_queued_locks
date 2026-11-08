@@ -44,7 +44,7 @@ module RedisQueuedLocks
       Integer try_start_time,
       Integer ttl,
       Integer extension_ttl,
-      Integer? max_hold_time,
+      Integer? auto_extend_max_hold_time,
       bool lock_index_enabled,
       Integer lock_index_grace_period,
       RQL::loggerObj logger,

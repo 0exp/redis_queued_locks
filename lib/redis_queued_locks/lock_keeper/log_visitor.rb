@@ -112,7 +112,7 @@ module RedisQueuedLocks::LockKeeper::LogVisitor
     # @param log_sampled [Boolean]
     # @param lock_key [String]
     # @param rw_mode [Symbol]
-    # @param max_hold_time [Integer]
+    # @param auto_extend_max_hold_time [Integer]
     # @param acquirer_id [String]
     # @param host_id [String]
     # @return [void]
@@ -124,7 +124,7 @@ module RedisQueuedLocks::LockKeeper::LogVisitor
       log_sampled,
       lock_key,
       rw_mode,
-      max_hold_time,
+      auto_extend_max_hold_time,
       acquirer_id,
       host_id
     )
@@ -134,7 +134,7 @@ module RedisQueuedLocks::LockKeeper::LogVisitor
         "[redis_queued_locks.lock_hold_limit_reached] " \
         "lock_key => '#{lock_key}' " \
         "rw_mode => '#{rw_mode}' " \
-        "max_hold_time => #{max_hold_time} " \
+        "auto_extend_max_hold_time => #{auto_extend_max_hold_time} " \
         "acq_id => '#{acquirer_id}' " \
         "hst_id => '#{host_id}'"
       end rescue nil

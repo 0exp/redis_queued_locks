@@ -16,7 +16,7 @@ module RedisQueuedLocks
       attr_reader host_id: String
       attr_reader extension_ttl: Integer
       attr_reader extension_interval: Integer
-      attr_reader max_hold_time: Integer?
+      attr_reader auto_extend_max_hold_time: Integer?
       attr_reader started_at: Integer
       attr_reader next_extension_at: Integer
       attr_reader lock_index_enabled: bool
@@ -48,7 +48,7 @@ module RedisQueuedLocks
         Integer started_at,
         Integer ttl,
         Integer extension_ttl,
-        Integer? max_hold_time,
+        Integer? auto_extend_max_hold_time,
         bool lock_index_enabled,
         Integer lock_index_grace_period,
         RQL::loggerObj logger,

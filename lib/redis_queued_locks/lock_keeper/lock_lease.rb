@@ -3,7 +3,9 @@
 # The lease of an auto extended block of code (`auto_extend: true` of `#lock`, `#lock!`,
 # `#lock_series`, `#lock_series!`): the block of code gets it as its argument when it takes one.
 #
-#   rql.lock('report', ttl: 10_000, auto_extend: true, max_hold_time: 600_000) do |lease|
+#   rql.lock(
+#     'report', ttl: 10_000, auto_extend: true, auto_extend_max_hold_time: 600_000
+#   ) do |lease|
 #     batches.each do |batch|
 #       process(batch)
 #       lease.hold_for(120_000) # the progress is made: keep the lock two more minutes from now
@@ -11,9 +13,9 @@
 #     save_report unless lease.lost?
 #   end
 #
-#   - the hold limit (`max_hold_time`) is the limit of a stuck block of code: a block that makes
-#     progress moves it (`#hold_for`), a stuck one stops moving it and its lock expires at the
-#     last limit (a dead man's switch);
+#   - the hold limit (`auto_extend_max_hold_time`) is the limit of a stuck block of code: a block
+#     that makes progress moves it (`#hold_for`), a stuck one stops moving it and its lock expires
+#     at the last limit (a dead man's switch);
 #   - one lease per block of code: a lock series has one lease for all its locks, a nested block
 #     with `auto_extend: true` has its own one;
 #   - a block of code without arguments (a lambda without parameters too) gets no lease: nothing is
@@ -42,15 +44,16 @@ class RedisQueuedLocks::LockKeeper::LockLease
   #
   #   - the time is counted from now, it is not a sum: the calls in a loop do not accumulate it,
   #     and the limit never moves back (the latest limit wins);
-  #   - it can move the limit beyond `max_hold_time`: the block that makes progress decides; with
-  #     `max_hold_time: nil` (no limit) it only extends the locks and checks their owner;
+  #   - it can move the limit beyond `auto_extend_max_hold_time`: the block that makes progress
+  #     decides; with `auto_extend_max_hold_time: nil` (no limit) it only extends the locks and
+  #     checks their owner;
   #   - each extension of the keeper is still `auto_extend_ttl` at most: the crash of the process
   #     releases the lock in `auto_extend_ttl`, whatever the limit is;
   #   - `timed: true`: the limit of the block of code is moved too (the block is interrupted at the
   #     moved limit; a non-blocking fiber whose fiber scheduler has no
-  #     `Fiber::Scheduler#fiber_interrupt` keeps the `Timeout` of `max_hold_time`); a lost lock
-  #     interrupts such block right here (`RedisQueuedLocks::TimedBlockLostLockError`), in any
-  #     fiber;
+  #     `Fiber::Scheduler#fiber_interrupt` keeps the `Timeout` of `auto_extend_max_hold_time`); a
+  #     lost lock interrupts such block right here (`RedisQueuedLocks::TimedBlockLostLockError`),
+  #     in any fiber;
   #   - call it per a unit of progress (a batch), not per item: each call is a round trip;
   #   - from another thread: only with a connection pool (the connection of the client is used,
   #     like by any method of the client);

@@ -14,8 +14,8 @@
 #   - an extension is a Lua script: the owner check and all commands of a lock are one atomic step
 #     in one round trip of the whole tick (mutual exclusion stays with `WATCH`/`MULTI` of the
 #     acquirement: an extension changes the ttl of an already held lock only);
-#   - the lock of a stuck block is not kept forever: see `max_hold_time` (the extension just stops,
-#     nothing depends on the client: the lock expires by itself);
+#   - the lock of a stuck block is not kept forever: see `auto_extend_max_hold_time` (the
+#     extension just stops, nothing depends on the client: the lock expires by itself);
 #   - the block of code can move its hold limit while it makes progress
 #     (`RedisQueuedLocks::LockKeeper::LockLease#hold_for`, see `#hold_for`); this thread interrupts
 #     a `timed` block of code at the hold limit (a `Timeout` can not be moved): `Thread#raise` in
@@ -217,7 +217,8 @@ class RedisQueuedLocks::LockKeeper
   #   client), so all deadlines are counted from an earlier moment.
   # @param ttl [Integer] The ttl of the obtained locks (in milliseconds).
   # @param extension_ttl [Integer] How long the lock lives after an extension (in milliseconds).
-  # @param max_hold_time [Integer,NilClass] The hold limit (in milliseconds), `nil`: no limit.
+  # @param auto_extend_max_hold_time [Integer,NilClass]
+  #   The hold limit (in milliseconds), `nil`: no limit.
   # @param lock_index_enabled [Boolean]
   # @param lock_index_grace_period [Integer]
   # @param logger [::Logger,#debug]
@@ -241,7 +242,7 @@ class RedisQueuedLocks::LockKeeper
     try_start_time,
     ttl,
     extension_ttl,
-    max_hold_time,
+    auto_extend_max_hold_time,
     lock_index_enabled,
     lock_index_grace_period,
     logger,
@@ -261,7 +262,7 @@ class RedisQueuedLocks::LockKeeper
       try_start_time / 1_000,
       ttl,
       extension_ttl,
-      max_hold_time,
+      auto_extend_max_hold_time,
       lock_index_enabled,
       lock_index_grace_period,
       logger,
@@ -790,7 +791,7 @@ class RedisQueuedLocks::LockKeeper
       @leases.delete(lease)
       lease.stop_hold
       # NOTE: under the lock: see `#report_lost_lock`;
-      lease.interrupt("The hold limit (#{lease.max_hold_time}) of the locks is reached")
+      lease.interrupt("The hold limit (#{lease.auto_extend_max_hold_time}) of the locks is reached")
       :stopped
     end
     return status unless status == :stopped
@@ -800,11 +801,11 @@ class RedisQueuedLocks::LockKeeper
 
       LogVisitor.lock_hold_limit_reached(
         lease.logger, lease.log_sampled, lock_key, lease.rw_modes[lock_index],
-        lease.max_hold_time, lease.acquirer_id, lease.host_id
+        lease.auto_extend_max_hold_time, lease.acquirer_id, lease.host_id
       )
       InstrVisitor.lock_hold_limit_reached(
         lease.instrumenter, lease.instr_sampled, lock_key, lease.rw_modes[lock_index],
-        lease.max_hold_time, lease.acquirer_id, lease.host_id, lease.instrument
+        lease.auto_extend_max_hold_time, lease.acquirer_id, lease.host_id, lease.instrument
       )
     end
     status

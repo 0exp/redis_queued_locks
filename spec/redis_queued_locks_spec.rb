@@ -8054,7 +8054,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       expect(notifier.events('lock_auto_extended')).not_to be_empty
     end
 
-    specify 'max_hold_time: the lock expires by the limit, the next owner keeps its lock' do
+    specify 'auto_extend_max_hold_time: the lock expires by the limit, the next owner keeps it' do
       client = RedisQueuedLocks::Client.new(redis)
       other_client = RedisQueuedLocks::Client.new(redis)
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -8075,7 +8075,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         ttl: 300,
         auto_extend: true,
         auto_extend_ttl: 500,
-        max_hold_time: 900,
+        auto_extend_max_hold_time: 900,
         instrumenter: notifier,
         logger:,
         log_sample_this: true
@@ -8092,7 +8092,8 @@ RSpec.shared_examples 'redis_queued_locks' do
         expect(waiter.value).to match(
           { ok: true, result: hash_including(process: :lock_obtaining) }
         )
-        # NOTE: an extension does not exceed the limit: the lock lives exactly `max_hold_time`
+        # NOTE: an extension does not exceed the limit: the lock lives exactly
+        #   `auto_extend_max_hold_time`
         expect(waiter_time).to be > 0.8
         expect(waiter_time).to be < block_time
         # NOTE: the release of the lost lock does not touch the lock of the next owner
@@ -8103,7 +8104,7 @@ RSpec.shared_examples 'redis_queued_locks' do
           {
             lock_key: 'rql:lock:auto.hold',
             rw_mode: :write,
-            max_hold_time: 900,
+            auto_extend_max_hold_time: 900,
             acq_id: client.current_acquirer_id,
             hst_id: client.current_host_id,
             at: be_a(Float),
@@ -8113,7 +8114,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         expect(logger.logs).to include(
           a_string_starting_with(
             "[redis_queued_locks.lock_hold_limit_reached] lock_key => 'rql:lock:auto.hold' " \
-            "rw_mode => 'write' max_hold_time => 900 "
+            "rw_mode => 'write' auto_extend_max_hold_time => 900 "
           )
         )
       end
@@ -8121,10 +8122,10 @@ RSpec.shared_examples 'redis_queued_locks' do
       client.clear_locks
     end
 
-    specify 'max_hold_time: nil means no limit' do
+    specify 'auto_extend_max_hold_time: nil means no limit' do
       client = RedisQueuedLocks::Client.new(redis)
 
-      client.lock('auto.nolimit', ttl: 300, auto_extend: true, max_hold_time: nil) do
+      client.lock('auto.nolimit', ttl: 300, auto_extend: true, auto_extend_max_hold_time: nil) do
         sleep(0.7)
         expect(client.locked?('auto.nolimit')).to eq(true)
       end
@@ -8132,12 +8133,13 @@ RSpec.shared_examples 'redis_queued_locks' do
       expect(client.locked?('auto.nolimit')).to eq(false)
     end
 
-    specify 'read lock: max_hold_time' do
+    specify 'read lock: auto_extend_max_hold_time' do
       client = RedisQueuedLocks::Client.new(redis)
       other_client = RedisQueuedLocks::Client.new(redis)
 
       client.lock(
-        'auto.read_hold', ttl: 300, rw_mode: :read, auto_extend: true, max_hold_time: 600,
+        'auto.read_hold', ttl: 300, rw_mode: :read, auto_extend: true,
+        auto_extend_max_hold_time: 600,
         instrumenter: notifier
       ) do
         # NOTE: a writer waits for the expired read lock
@@ -8255,14 +8257,15 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
     end
 
-    specify 'timed: the block of code is limited by max_hold_time instead of the ttl' do
+    specify 'timed: the block of code is limited by auto_extend_max_hold_time instead of the ttl' do
       client = RedisQueuedLocks::Client.new(redis)
 
       aggregate_failures do
         # NOTE: longer than the ttl, shorter than the limit
         expect(
           client.lock(
-            'auto.timed_hold', ttl: 300, auto_extend: true, timed: true, max_hold_time: 3_000
+            'auto.timed_hold', ttl: 300, auto_extend: true, timed: true,
+            auto_extend_max_hold_time: 3_000
           ) do
             sleep(0.5)
             :completed
@@ -8271,7 +8274,8 @@ RSpec.shared_examples 'redis_queued_locks' do
 
         expect do
           client.lock(
-            'auto.timed_hold', ttl: 300, auto_extend: true, timed: true, max_hold_time: 600
+            'auto.timed_hold', ttl: 300, auto_extend: true, timed: true,
+            auto_extend_max_hold_time: 600
           ) { sleep(5) }
         end.to raise_error(
           RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError,
@@ -8281,12 +8285,13 @@ RSpec.shared_examples 'redis_queued_locks' do
       end
     end
 
-    specify 'timed: max_hold_time: nil means no time limit' do
+    specify 'timed: auto_extend_max_hold_time: nil means no time limit' do
       client = RedisQueuedLocks::Client.new(redis)
 
       expect(
         client.lock(
-          'auto.timed_nolimit', ttl: 300, auto_extend: true, timed: true, max_hold_time: nil
+          'auto.timed_nolimit', ttl: 300, auto_extend: true, timed: true,
+          auto_extend_max_hold_time: nil
         ) do
           sleep(0.5)
           :completed
@@ -8299,7 +8304,9 @@ RSpec.shared_examples 'redis_queued_locks' do
       invoked = false
 
       expect do
-        client.lock('auto.no_budget', ttl: 1, auto_extend: true, timed: true, max_hold_time: 1) do
+        client.lock(
+          'auto.no_budget', ttl: 1, auto_extend: true, timed: true, auto_extend_max_hold_time: 1
+        ) do
           invoked = true
         end
       end.to raise_error(RedisQueuedLocks::LockTtlTimeBudgetIsSpentError)
@@ -8346,7 +8353,7 @@ RSpec.shared_examples 'redis_queued_locks' do
       Fiber.new(blocking: false) do
         result = client.lock(
           'auto.fiber', ttl: 300, auto_extend: true, timed: true, instrumenter: notifier,
-          max_hold_time: nil
+          auto_extend_max_hold_time: nil
         ) do
           client.unlock('auto.fiber')
           wait_until.call { notifier.events('auto_extended_lock_lost').any? }
@@ -8376,7 +8383,8 @@ RSpec.shared_examples 'redis_queued_locks' do
         begin
           # NOTE: no hold limit (no `Timeout`): the lost lock interrupts the block
           client.lock(
-            'auto.fiber_scheduler', ttl: 300, auto_extend: true, timed: true, max_hold_time: nil,
+            'auto.fiber_scheduler', ttl: 300, auto_extend: true, timed: true,
+            auto_extend_max_hold_time: nil,
             instrumenter: notifier
           ) do
             client.unlock('auto.fiber_scheduler')
@@ -8447,7 +8455,8 @@ RSpec.shared_examples 'redis_queued_locks' do
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         result = client.lock(
-          'auto.fiber_failed', ttl: 300, auto_extend: true, timed: true, max_hold_time: nil,
+          'auto.fiber_failed', ttl: 300, auto_extend: true, timed: true,
+          auto_extend_max_hold_time: nil,
           instrumenter: notifier
         ) do
           client.unlock('auto.fiber_failed')
@@ -8637,7 +8646,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
       client.lock_series(
         'auto.again.1', 'auto.again.2',
-        ttl: 300, auto_extend: true, max_hold_time: 900, instrumenter: notifier
+        ttl: 300, auto_extend: true, auto_extend_max_hold_time: 900, instrumenter: notifier
       ) do
         client.unlock('auto.again.2')
         expect(wait_until.call { notifier.events('auto_extended_lock_lost').any? }).to eq(true)
@@ -8672,13 +8681,13 @@ RSpec.shared_examples 'redis_queued_locks' do
       end.to raise_error(RedisQueuedLocks::TimedBlockLostLockError)
     end
 
-    specify '#lock_series: max_hold_time' do
+    specify '#lock_series: auto_extend_max_hold_time' do
       client = RedisQueuedLocks::Client.new(redis)
 
       expect do
         client.lock_series(
           'auto.series_hold.1', 'auto.series_hold.2',
-          ttl: 300, auto_extend: true, timed: true, max_hold_time: 600
+          ttl: 300, auto_extend: true, timed: true, auto_extend_max_hold_time: 600
         ) { sleep(5) }
       end.to raise_error(RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError)
     end
@@ -8708,7 +8717,8 @@ RSpec.shared_examples 'redis_queued_locks' do
       aggregate_failures do
         expect(
           client.lock!(
-            'auto.bang', ttl: 300, auto_extend: true, auto_extend_ttl: 300, max_hold_time: 5_000
+            'auto.bang', ttl: 300, auto_extend: true, auto_extend_ttl: 300,
+            auto_extend_max_hold_time: 5_000
           ) do
             sleep(0.5)
             client.locked?('auto.bang')
@@ -8716,7 +8726,8 @@ RSpec.shared_examples 'redis_queued_locks' do
         ).to eq(true)
         expect(
           client.lock_series!(
-            'auto.bang', ttl: 300, auto_extend: true, auto_extend_ttl: 300, max_hold_time: 5_000
+            'auto.bang', ttl: 300, auto_extend: true, auto_extend_ttl: 300,
+            auto_extend_max_hold_time: 5_000
           ) do
             sleep(0.5)
             client.locked?('auto.bang')
@@ -8754,12 +8765,14 @@ RSpec.shared_examples 'redis_queued_locks' do
         )
       end
 
-      specify 'hold_for: the lock is kept beyond max_hold_time while the limit is moved' do
+      specify 'hold_for: the lock is kept beyond auto_extend_max_hold_time while the limit moves' do
         client = RedisQueuedLocks::Client.new(redis)
         results = []
         locked = []
 
-        client.lock('lease.hold', ttl: 300, auto_extend: true, max_hold_time: 400) do |lease|
+        client.lock(
+          'lease.hold', ttl: 300, auto_extend: true, auto_extend_max_hold_time: 400
+        ) do |lease|
           6.times do
             sleep(0.2)
             results << lease.hold_for(500)
@@ -8779,7 +8792,8 @@ RSpec.shared_examples 'redis_queued_locks' do
         started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         client.lock(
-          'lease.dead', ttl: 300, auto_extend: true, max_hold_time: 300, instrumenter: notifier
+          'lease.dead', ttl: 300, auto_extend: true, auto_extend_max_hold_time: 300,
+          instrumenter: notifier
         ) do |lease|
           aggregate_failures do
             expect(lease.hold_for(900)).to eq({ ok: true, result: :extended })
@@ -8800,7 +8814,9 @@ RSpec.shared_examples 'redis_queued_locks' do
       specify 'hold_for: the time is counted from now, the limit never moves back' do
         client = RedisQueuedLocks::Client.new(redis)
 
-        client.lock('lease.from_now', ttl: 300, auto_extend: true, max_hold_time: 300) do |lease|
+        client.lock(
+          'lease.from_now', ttl: 300, auto_extend: true, auto_extend_max_hold_time: 300
+        ) do |lease|
           aggregate_failures do
             lease.hold_for(5_000)
             expect(lease.hold_time_left).to be_between(4_500, 5_000)
@@ -8840,7 +8856,8 @@ RSpec.shared_examples 'redis_queued_locks' do
         end
 
         client.lock(
-          'lease.race', ttl: 300, auto_extend: true, max_hold_time: 300, instrumenter: notifier
+          'lease.race', ttl: 300, auto_extend: true, auto_extend_max_hold_time: 300,
+          instrumenter: notifier
         ) do
           aggregate_failures do
             expect(wait_until.call { moved }).to eq(true)
@@ -8884,10 +8901,12 @@ RSpec.shared_examples 'redis_queued_locks' do
         end
       end
 
-      specify 'hold_for: max_hold_time: nil (no limit)' do
+      specify 'hold_for: auto_extend_max_hold_time: nil (no limit)' do
         client = RedisQueuedLocks::Client.new(redis)
 
-        client.lock('lease.no_limit', ttl: 300, auto_extend: true, max_hold_time: nil) do |lease|
+        client.lock(
+          'lease.no_limit', ttl: 300, auto_extend: true, auto_extend_max_hold_time: nil
+        ) do |lease|
           aggregate_failures do
             expect(lease.hold_time_left).to eq(nil)
             expect(lease.hold_for(1_000)).to eq({ ok: true, result: :extended })
@@ -8917,7 +8936,8 @@ RSpec.shared_examples 'redis_queued_locks' do
         client = RedisQueuedLocks::Client.new(redis)
 
         client.lock(
-          'lease.report', ttl: 300, auto_extend: true, auto_extend_ttl: 600, max_hold_time: 300,
+          'lease.report', ttl: 300, auto_extend: true, auto_extend_ttl: 600,
+          auto_extend_max_hold_time: 300,
           instrumenter: notifier, logger:, log_sample_this: true, instr_sample_this: true,
           instrument: { custom: :data }
         ) { |lease| lease.hold_for(2_000) }
@@ -8954,7 +8974,8 @@ RSpec.shared_examples 'redis_queued_locks' do
         aggregate_failures do
           expect do
             client.lock(
-              'lease.timed', ttl: 300, auto_extend: true, timed: true, max_hold_time: 300
+              'lease.timed', ttl: 300, auto_extend: true, timed: true,
+              auto_extend_max_hold_time: 300
             ) do |lease|
               lease.hold_for(800)
               sleep(0.5)
@@ -8977,7 +8998,7 @@ RSpec.shared_examples 'redis_queued_locks' do
 
         Fiber.new(blocking: false) do
           client.lock(
-            'lease.fiber', ttl: 300, auto_extend: true, timed: true, max_hold_time: 600
+            'lease.fiber', ttl: 300, auto_extend: true, timed: true, auto_extend_max_hold_time: 600
           ) do |lease|
             results << lease.class << lease.hold_for(2_000)
             sleep(5)
@@ -8990,7 +9011,8 @@ RSpec.shared_examples 'redis_queued_locks' do
           expect(results).to eq(
             [RedisQueuedLocks::LockKeeper::LockLease, { ok: true, result: :extended }]
           )
-          # NOTE: the `Timeout` of `max_hold_time`: the moved limit of the keeper does not move it
+          # NOTE: the `Timeout` of `auto_extend_max_hold_time`: the moved limit of the keeper does
+          #   not move it
           expect(raised_error).to be_a(RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError)
           expect(client.locked?('lease.fiber')).to eq(false)
         end
@@ -9003,7 +9025,8 @@ RSpec.shared_examples 'redis_queued_locks' do
 
         Sync do
           client.lock(
-            'lease.fiber_scheduler', ttl: 300, auto_extend: true, timed: true, max_hold_time: 300
+            'lease.fiber_scheduler', ttl: 300, auto_extend: true, timed: true,
+            auto_extend_max_hold_time: 300
           ) do |lease|
             lease.hold_for(800)
             sleep(0.5)
@@ -9032,7 +9055,8 @@ RSpec.shared_examples 'redis_queued_locks' do
           Fiber.scheduler.singleton_class.send(:undef_method, :fiber_interrupt)
 
           client.lock(
-            'lease.no_hook', ttl: 300, auto_extend: true, timed: true, max_hold_time: 600
+            'lease.no_hook', ttl: 300, auto_extend: true, timed: true,
+            auto_extend_max_hold_time: 600
           ) do |lease|
             results << lease.hold_for(2_000)
             sleep(5)
@@ -9043,7 +9067,8 @@ RSpec.shared_examples 'redis_queued_locks' do
 
         aggregate_failures do
           expect(results).to eq([{ ok: true, result: :extended }])
-          # NOTE: the `Timeout` of `max_hold_time` (the scheduler implements it) is not moved
+          # NOTE: the `Timeout` of `auto_extend_max_hold_time` (the scheduler implements it) is not
+          #   moved
           expect(raised_error).to be_a(RedisQueuedLocks::TimedBlockExceedsMaxHoldTimeError)
           expect(client.locked?('lease.no_hook')).to eq(false)
         end
@@ -9114,7 +9139,8 @@ RSpec.shared_examples 'redis_queued_locks' do
         client = RedisQueuedLocks::Client.new(redis)
 
         client.lock_series(
-          'lease.series.a', 'lease.series.b', ttl: 300, auto_extend: true, max_hold_time: 300
+          'lease.series.a', 'lease.series.b', ttl: 300, auto_extend: true,
+          auto_extend_max_hold_time: 300
         ) do |lease|
           aggregate_failures do
             expect(lease.hold_for(900)).to eq({ ok: true, result: :extended })
@@ -9131,7 +9157,7 @@ RSpec.shared_examples 'redis_queued_locks' do
         client = RedisQueuedLocks::Client.new(redis)
 
         client.lock(
-          'lease.read', ttl: 300, rw_mode: :read, auto_extend: true, max_hold_time: 300
+          'lease.read', ttl: 300, rw_mode: :read, auto_extend: true, auto_extend_max_hold_time: 300
         ) do |lease|
           aggregate_failures do
             expect(lease.hold_for(900)).to eq({ ok: true, result: :extended })
@@ -9147,13 +9173,13 @@ RSpec.shared_examples 'redis_queued_locks' do
       client = RedisQueuedLocks::Client.new(redis) do |config|
         config['is_auto_extended_by_default'] = true
         config['default_auto_extend_ttl'] = 900
-        config['default_max_hold_time'] = 600
+        config['default_auto_extend_max_hold_time'] = 600
         config['instrumenter'] = notifier
       end
 
       expect(RedisQueuedLocks::Config.new['is_auto_extended_by_default']).to eq(false)
       expect(RedisQueuedLocks::Config.new['default_auto_extend_ttl']).to eq(nil)
-      expect(RedisQueuedLocks::Config.new['default_max_hold_time']).to eq(3_600_000)
+      expect(RedisQueuedLocks::Config.new['default_auto_extend_max_hold_time']).to eq(3_600_000)
 
       client.lock('auto.config', ttl: 300) do
         expect(wait_until.call { notifier.events('lock_auto_extended').any? }).to eq(true)
@@ -9168,8 +9194,8 @@ RSpec.shared_examples 'redis_queued_locks' do
           ['is_auto_extended_by_default', 1],
           ['default_auto_extend_ttl', 0],
           ['default_auto_extend_ttl', 1.5],
-          ['default_max_hold_time', 0],
-          ['default_max_hold_time', -1]
+          ['default_auto_extend_max_hold_time', 0],
+          ['default_auto_extend_max_hold_time', -1]
         ].each do |config_key, config_value|
           expect do
             RedisQueuedLocks::Client.new(redis) { |config| config[config_key] = config_value }
@@ -9189,17 +9215,20 @@ RSpec.shared_examples 'redis_queued_locks' do
           expect { lock_method.call({ auto_extend_ttl: 0 }) }.to raise_error(
             RedisQueuedLocks::ArgumentError, /:auto_extend_ttl/
           )
-          expect { lock_method.call({ max_hold_time: 0 }) }.to raise_error(
-            RedisQueuedLocks::ArgumentError, /:max_hold_time/
+          expect { lock_method.call({ auto_extend_max_hold_time: 0 }) }.to raise_error(
+            RedisQueuedLocks::ArgumentError, /:auto_extend_max_hold_time/
           )
           expect do
-            lock_method.call({ ttl: 1_000, auto_extend: true, max_hold_time: 999 }) { :block }
+            lock_method.call({ ttl: 1_000, auto_extend: true, auto_extend_max_hold_time: 999 }) do
+              :block
+            end
           end.to raise_error(RedisQueuedLocks::ArgumentError, /should not be less than `:ttl`/)
           # NOTE: the hold limit is used by the auto extension of a block of code only
-          expect(lock_method.call({ ttl: 1_000, max_hold_time: 999 })).to include(ok: true)
+          expect(lock_method.call({ ttl: 1_000, auto_extend_max_hold_time: 999 }))
+            .to include(ok: true)
           client.clear_locks
           expect(
-            lock_method.call({ ttl: 1_000, auto_extend: true, max_hold_time: 999 })
+            lock_method.call({ ttl: 1_000, auto_extend: true, auto_extend_max_hold_time: 999 })
           ).to include(ok: true)
           client.clear_locks
         end
@@ -10217,7 +10246,8 @@ RSpec.describe RedisQueuedLocks do
       end
 
       client.lock(
-        'idx.lease', ttl: 300, auto_extend: true, auto_extend_ttl: 90_000, max_hold_time: 300
+        'idx.lease', ttl: 300, auto_extend: true, auto_extend_ttl: 90_000,
+        auto_extend_max_hold_time: 300
       ) do |lease|
         aggregate_failures do
           expect(lease.hold_for(120_000)).to eq({ ok: true, result: :extended })

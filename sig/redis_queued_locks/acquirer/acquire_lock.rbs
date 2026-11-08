@@ -27,7 +27,7 @@ module RedisQueuedLocks
         timed: bool,
         auto_extend: bool,
         auto_extend_ttl: Integer?,
-        max_hold_time: Integer?,
+        auto_extend_max_hold_time: Integer?,
         lock_keeper: RQL::LockKeeper,
         retry_count: Integer?,
         retry_delay: Integer,

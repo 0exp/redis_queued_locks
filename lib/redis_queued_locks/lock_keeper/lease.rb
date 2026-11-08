@@ -79,7 +79,7 @@ class RedisQueuedLocks::LockKeeper::Lease
   #
   # @api private
   # @since 1.24.0
-  attr_reader :max_hold_time
+  attr_reader :auto_extend_max_hold_time
 
   # The start of the attempt that obtained the locks.
   #
@@ -178,7 +178,8 @@ class RedisQueuedLocks::LockKeeper::Lease
   # @param started_at [Integer] The start of the attempt that obtained the locks.
   # @param ttl [Integer] The ttl of the obtained locks (in milliseconds).
   # @param extension_ttl [Integer] How long the lock lives after an extension (in milliseconds).
-  # @param max_hold_time [Integer,NilClass] The hold limit (in milliseconds), `nil`: no limit.
+  # @param auto_extend_max_hold_time [Integer,NilClass]
+  #   The hold limit (in milliseconds), `nil`: no limit.
   # @param lock_index_enabled [Boolean]
   # @param lock_index_grace_period [Integer]
   # @param logger [::Logger,#debug]
@@ -202,7 +203,7 @@ class RedisQueuedLocks::LockKeeper::Lease
     started_at,
     ttl,
     extension_ttl,
-    max_hold_time,
+    auto_extend_max_hold_time,
     lock_index_enabled,
     lock_index_grace_period,
     logger,
@@ -220,9 +221,9 @@ class RedisQueuedLocks::LockKeeper::Lease
     @host_id = host_id
     @extension_ttl = extension_ttl
     @extension_interval = [extension_ttl / 3, 1].max
-    @max_hold_time = max_hold_time
+    @auto_extend_max_hold_time = auto_extend_max_hold_time
     @started_at = started_at
-    @hold_deadline = max_hold_time ? (started_at + max_hold_time) : nil
+    @hold_deadline = auto_extend_max_hold_time ? (started_at + auto_extend_max_hold_time) : nil
     @lock_index_enabled = lock_index_enabled
     @lock_index_grace_period = lock_index_grace_period
     @timed_fiber = nil
@@ -363,7 +364,8 @@ class RedisQueuedLocks::LockKeeper::Lease
     @hold_moved = true
   end
 
-  # @return [Boolean] The hold limit is moved by the block of code (it is not `max_hold_time`).
+  # @return [Boolean]
+  #   The hold limit is moved by the block of code (it is not `auto_extend_max_hold_time`).
   #
   # @api private
   # @since 1.24.0
