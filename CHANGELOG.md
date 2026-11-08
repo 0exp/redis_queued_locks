@@ -1,4 +1,6 @@
 ## [Unreleased]
+
+## [1.24.0] - 2026-11-09
 ### Added
 - *Brand New Feature*: **Lock Auto Extending**: a block of code keeps its lock alive while it is running, and the crash of the process releases the lock by the TTL (see README "Lock Auto Extending"):
   - `auto_extend:`, `auto_extend_ttl:` and `max_hold_time_during_auto_extend:` options of `#lock`/`#lock!`/`#lock_series`/`#lock_series!`;
