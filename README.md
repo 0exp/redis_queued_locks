@@ -8,7 +8,7 @@ Each lock request is put into the request queue (each lock is hosted by its own 
 
 In addition to the classic `queued` (FIFO) strategy RQL supports `random` (RANDOM) lock obtaining strategy when any acquirer from the lock queue can obtain the lock regardless the position in the queue.
 
-Supports [lock request prioritization](#lock-request-prioritization), `Read`/`Write` locks and `Reentrant` locks.
+Supports `Read`/`Write` locks, `Reentrant` locks, **[lock auto extension](#lock-auto-extension)** and [lock request prioritization](#lock-request-prioritization).
 
 Provides flexible invocation flow, parametrized limits (lock request ttl, lock ttl, queue ttl, lock attempts limit, fast failing, etc), **zombie locks elimination**, **[lock indexing](#lock-index)**, logging and instrumentation (and much more).
 
@@ -259,32 +259,32 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   of code with `auto_extend: true` (and starts again on demand);
   # - should be a positive Integer;
   config['lock_keeper.idle_timeout'] = 60_000
-  
+
   # (milliseconds) (default: 100)
   # - an idle lock keeper follows the rhythm of the extensions, but it does not wake up more often
   #   than this: a block of code with a shorter extension interval wakes it up by itself;
   # - should be a positive Integer;
   config['lock_keeper.min_idle_wake_up_interval'] = 100
-  
+
   # (integer) (default: 3)
   # - a failed extension (Redis is not available, for example) is retried sooner:
   #   in `extension interval / extension_retry_ratio` (the extension interval is `auto_extend_ttl / 3`);
   # - should be a positive Integer;
   config['lock_keeper.extension_retry_ratio'] = 3
-  
+
   # (integer) (default: 10)
   # - the locks that are due in `extension interval / extension_batching_ratio` are extended with
   #   the due ones: one pipeline instead of a wake-up per block of code;
   # - should be a positive Integer;
   config['lock_keeper.extension_batching_ratio'] = 10
-  
+
   # (milliseconds) (default: 10)
   # - the schedule of the lock keeper is a set of slots of this length by the time of the next
   #   extension: a wake-up looks at the due slots only, not at all running blocks of code (the
   #   work of the keeper does not grow with the number of the running blocks of code);
   # - should be a positive Integer;
   config['lock_keeper.schedule_slot'] = 10
-  
+
   # (milliseconds) (default: 1_000)
   # - a `timed` block of code of a fiber scheduler task (see "Lock Auto Extension") is interrupted
   #   through its fiber scheduler, and the interruption comes at the next suspension point of the
@@ -292,13 +292,13 @@ client = RedisQueuedLocks::Client.new(redis_client) do |config|
   #   scheduler that does not raise it in this time is not waited for anymore);
   # - should be a positive Integer;
   config['lock_keeper.fiber_interruption_timeout'] = 1_000
-  
+
   # (seconds) (default: 0.001)
   # - the step of this wait (`Kernel#sleep`): each step suspends the fiber, so its scheduler gets
   #   the control and raises the interruption;
   # - should be a positive Float or Integer;
   config['lock_keeper.fiber_interruption_wait_step'] = 0.001
-  
+
   # NOTE: the `lock_keeper.*` settings are read when the lock keeper thread starts: a changed
   #   setting takes effect at the next start of the thread (after its idle timeout);
 
@@ -3841,7 +3841,7 @@ Detalized event semantics and payload structure:
 - raised from `#clear_locks_of` and `#clear_current_locks` (`#release_locks_of` and `#release_current_locks` respectively);
 - payload:
   - `:rel_time` - `float`/`milliseconds` - time spent on "release locks of" operation;
-  - `:at` - `float`/`epoch` - the time when the opertaion has ended; 
+  - `:at` - `float`/`epoch` - the time when the opertaion has ended;
   - `:acq_id` - `string` - refused acquirer identifier;
   - `:hst_id` - `string` - refused host identifier;
   - `:rel_key_cnt` - `integer` - released locks count (write locks and read locks);
