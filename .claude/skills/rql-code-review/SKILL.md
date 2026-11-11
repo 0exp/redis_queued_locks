@@ -70,9 +70,10 @@ priorities", key layout, "Lock index", lock lookup modes, events, errors, conven
 | `spec/**` | `tests.md` (coverage expectations only, see §3) |
 | `CHANGELOG.md` | `changelog.md` |
 | commits / messages | `git.md` |
+| `.claude/settings.json` | `code-navigation.md` |
 
-- Read every changed method in full, its callers, its RBS signature and every copy of duplicated logic. Copies
-  that must change together:
+- Read every changed method in full, its callers (found by `code-navigation.md`: `findReferences` first, then
+  grep), its RBS signature and every copy of duplicated logic. Copies that must change together:
   - write lock info formatting `LockInfo.lock_info` ↔ `Locks.extract_locks_info`; reader formatting
     `LockInfo.read_lock_info` ↔ `Locks.read_lock_info`; request formatting `QueueInfo.queue_info` ↔
     `Queues.extract_queues_info`;
