@@ -17,5 +17,6 @@ gem 'tsort', require: false # NOTE: rbs dependency that will be dropped from std
 gem 'reline', require: false
 gem 'rspec', require: false
 gem 'rspec-retry', require: false # NOTE: temporary decision for non-refactored tests
+gem 'ruby-lsp', require: false # NOTE: the language server of the Claude Code `LSP` tool (.claude/settings.json)
 gem 'simplecov', require: false
 gem 'steep', require: false
