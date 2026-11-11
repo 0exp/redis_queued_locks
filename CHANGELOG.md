@@ -1,4 +1,10 @@
 ## [Unreleased]
+### Added
+- **[Claude instructions]** code navigation rule: definitions and usages via the `LSP` tool (the ruby-lsp plugin enabled in `.claude/settings.json`), grep for text;
+- **[Dev dependencies]** `ruby-lsp`: the language server of the `LSP` tool (code navigation of Claude Code);
+### Changed
+- **[Claude instructions]** `@since`/`@version` of new code after the formal `2.0.0` release: the next minor version (`2.1.0`), never `2.0.0`;
+- **[Claude instructions]** CHANGELOG also lists the changes of `.claude` instructions, CI, specs only and dev dependencies, marked by their area;
 
 ## [2.0.0] - 2026-11-09
 ### Changed
