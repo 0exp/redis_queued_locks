@@ -118,8 +118,9 @@ Big areas are read in full, not sampled: an audit claim "X holds everywhere" nee
 ### C. User docs ↔ code
 - README: every public method, keyword and default, config key and default, result shape, event and payload key,
   error, limitation and requirement matches the code; TOC entries and anchors resolve; `readme.md` rules followed.
-- CHANGELOG: `[Unreleased]` covers the user-visible changes since the last release tag
-  (`git describe --tags --abbrev=0`, `git log <tag>..HEAD --format=%s`); entries follow `changelog.md`; the gem
+- CHANGELOG: `[Unreleased]` covers the user-visible changes and the marked infrastructure changes
+  (`changelog.md#10`) since the last release tag (`git describe --tags --abbrev=0`, `git log <tag>..HEAD
+  --format=%s`); entries follow `changelog.md`; the gem
   version in `version.rb` and the latest released section agree.
 - gemspec: Ruby requirement and runtime deps (`redis-client` only) match CLAUDE.md, README Requirements and the CI
   Ruby version.
